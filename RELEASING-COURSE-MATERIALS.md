@@ -2,7 +2,7 @@
 
 The repository uses two unrelated local branches.
 
-- `course-source` contains the complete notes and assignments. Keep this branch local.
+- `course-source` contains the complete notes, slides, and assignments. Keep this branch local.
 - `main` contains the public site. Every unreleased page is a short placeholder with its scheduled availability date.
 
 Because the branches have unrelated histories, the complete source does not appear in the history of `main`. The sidebar remains complete on both branches.
@@ -25,7 +25,7 @@ Use the module ID printed by the status command. For instance, the following com
 python3 scripts/release_course.py release random-variables-and-distributions
 ```
 
-The script checks that tracked files are clean, switches to `main` if necessary, restores the complete pages from `course-source`, and renders the site. Add `--no-render` if you only want to update the source pages.
+The script checks that tracked files are clean, switches to `main` if necessary, restores the complete notes and matching slide deck from `course-source`, updates the slide index, and renders the site. Add `--no-render` if you only want to update the source files. Slide sources for later modules remain only on `course-source`.
 
 ## Release an assignment
 
