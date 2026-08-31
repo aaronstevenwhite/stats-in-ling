@@ -1,0 +1,155 @@
+---
+title: "Variance inflation from correlated predictors"
+---
+
+The [correlated-predictor page](correlated-predictors.qmd) explained why a coefficient becomes uncertain
+when few observations separate two predictors. A [**variance inflation factor (VIF)**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119) measures that uncertainty increase in an ordinary linear regression.
+
+As on the earlier [standard-error page](../statistical-inference/standard-errors.qmd), the relevant uncertainty is repeated-sample variation in an estimator. The diagnostic asks a counterfactual precision question: how much larger is the
+sampling variance of coefficient $j$ because its predictor overlaps with the
+other predictors in this design?
+
+## Define the auxiliary regression
+
+For predictor $X_j$, regress it on all other predictors and record $R_j^2$.
+Then
+
+$$
+\operatorname{VIF}_j
+=
+\frac{1}{1-R_j^2}.
+$$
+
+If the other predictors do not explain $X_j$, then $R_j^2=0$ and
+$\operatorname{VIF}_j=1$. The sampling variance is not inflated relative to the
+no-overlap reference.
+
+Suppose word length is regressed on log frequency and neighborhood density,
+producing
+
+$$
+R_{\text{length}}^2=.75.
+$$
+
+Then
+
+$$
+\operatorname{VIF}_{\text{length}}
+=
+\frac{1}{1-.75}=4.
+$$
+
+Under the usual linear-model conditions, the sampling variance of the length
+coefficient is four times what it would be if length had the same marginal
+variation but were uncorrelated with the other predictors. Its standard error
+is multiplied by
+
+$$
+\sqrt{4}=2.
+$$
+
+Variance and standard error are not inflated by the same factor because standard
+error is the square root of variance. If VIF is 9, coefficient variance is nine
+times the reference and standard error is three times the reference.
+
+## Connect VIF to residual predictor variation
+
+The auxiliary regression predicts $X_j$ from the other predictors. When
+$R_j^2$ is large, little residual variation in $X_j$ remains. The response model
+must estimate coefficient $j$ from this remaining variation.
+
+Since
+
+$$
+1-R_j^2
+$$
+
+is the proportion of predictor variation left by the auxiliary regression, VIF
+is its reciprocal. If 25 percent remains, VIF is $1/.25=4$. If 10 percent
+remains, VIF is $1/.10=10$.
+
+For length and frequency, the informative observations are unusually long
+frequent words and unusually short rare words. A large VIF says that such
+comparisons are scarce. It does not say that they are linguistically irrelevant.
+
+## Calculate VIF from a predictor table
+
+Suppose a morphological study uses stem length and affix count as predictors of
+production duration:
+
+```{r}
+#| label: calculate-vif-from-auxiliary-regression
+#| echo: true
+morphology_design <- data.frame(
+  stem_length = c(2, 3, 4, 4, 5, 6, 7, 8),
+  affix_count = c(0, 0, 1, 0, 1, 2, 2, 3),
+  duration = c(310, 335, 390, 365, 430, 505, 540, 620)
+)
+
+auxiliary <- lm(stem_length ~ affix_count, data = morphology_design)
+r_squared_j <- summary(auxiliary)$r.squared
+vif_j <- 1 / (1 - r_squared_j)
+
+c(r_squared = r_squared_j, vif = vif_j, se_multiplier = sqrt(vif_j))
+```
+
+The response `duration` does not enter the auxiliary regression. VIF is a
+property of the predictor design. Changing every duration while leaving the two
+predictors fixed would leave the reported VIF unchanged.
+
+For a model with only two predictors, the auxiliary $R^2$ equals their squared
+correlation. With more predictors, $R_j^2$ measures how well their combination
+predicts $X_j$.
+
+## Avoid a mechanical threshold
+
+Rules such as VIF greater than 5 or 10 are conventions. The same value can have
+different consequences depending on sample size, predictor range, and the
+precision required for the scientific claim.
+
+For instance, doubling a coefficient standard error may still leave enough
+precision to distinguish two substantively different hypotheses in one study.
+The same doubling may erase the distinction in another. The VIF quantifies a
+design consequence; the theory determines whether that consequence is tolerable.
+
+Inspect coefficient intervals, predictor support, and sensitivity to reasonable
+specifications. Do not delete a theory-bearing predictor solely to cross a
+threshold.
+
+If the `car` package is installed, it can retrieve VIFs from a fitted model:
+
+```{r}
+#| label: retrieve-vif-from-fitted-model
+#| echo: true
+fit_morphology <- lm(
+  duration ~ stem_length + affix_count,
+  data = morphology_design
+)
+
+# car::vif(fit_morphology)
+```
+
+For categorical predictors represented by several columns, software may report
+a generalized VIF. Its definition and degrees-of-freedom adjustment must be
+checked before comparing it with a one-column VIF.
+
+## Keep prediction and attribution separate
+
+Collinear models can make stable predictions within the observed predictor
+region while assigning unstable coefficients to correlated predictors. VIF
+diagnoses coefficient attribution, not predictive accuracy on new responses.
+
+VIF also does not say which predictor should be removed. Deleting stem length
+sets its partial coefficient to zero and changes the affix-count comparison. If
+both predictors express distinct hypotheses, the enlarged uncertainty may be
+the honest result.
+
+Deleting a predictor based only on a VIF cutoff treats a diagnostic as a model-selection command. A VIF is more useful when paired with the support plot and the coefficient contrast the study needs.
+
+::: {.callout-note title="Read the variance inflation factor"}
+1. What VIF results when $R_j^2=.50$?
+2. What happens to the coefficient standard error when VIF equals 9?
+3. Why is a high VIF not sufficient reason to remove a theoretical predictor?
+4. Why can VIF be calculated without the response?
+5. Explain why a VIF cutoff does not by itself determine whether a predictor should be deleted.
+:::

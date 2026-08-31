@@ -1,0 +1,165 @@
+---
+title: "Posterior predictive distributions"
+---
+
+The [prior predictive distribution](prior-predictive-distributions.qmd) averaged the observation model over the prior. A posterior predictive distribution performs the same averaging over the [posterior distribution](posterior-distributions.qmd). Suppose a sentence-processing experiment records whether a listener selects the intended parse after reading an ambiguous attachment.
+
+$$
+\Pi\mid\mathbf{x}
+\sim
+\operatorname{Beta}(18,6).
+$$
+
+The posterior describes uncertainty about the population response probability. A [**posterior predictive distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) instead describes possible responses that have not yet been observed.
+
+## Average over parameter uncertainty
+
+Let $\widetilde{X}$ denote a future binary response. Conditional on a fixed parameter value,
+
+$$
+\widetilde{X}\mid\Pi=\pi
+\sim
+\operatorname{Bernoulli}(\pi).
+$$
+
+Because $\pi$ is not known, prediction averages this observation model over the posterior:
+
+$$
+p(\widetilde{x}\mid\mathbf{x})
+=
+\int
+p(\widetilde{x}\mid\pi)
+p(\pi\mid\mathbf{x})
+\,\mathrm{d}\pi.
+$$
+
+For one future success,
+
+$$
+\begin{aligned}
+\mathbb{P}(\widetilde{X}=1\mid\mathbf{x})
+&=\int \pi p(\pi\mid\mathbf{x})\,\mathrm{d}\pi\\
+&=\mathbb{E}[\Pi\mid\mathbf{x}]\\
+&=\frac{18}{18+6}\\
+&=.75.
+\end{aligned}
+$$
+
+The prediction equals the posterior mean for one Bernoulli response. This equality does not make the posterior and predictive distributions identical. The posterior is continuous on $(0,1)$, while the future response is either zero or one.
+
+## Predict a future block
+
+Now let $\widetilde{K}$ be the number of intended parses in a future block of $m=20$ responses. Conditional on $\pi$,
+
+$$
+\widetilde{K}\mid\Pi=\pi
+\sim
+\operatorname{Binomial}(20,\pi).
+$$
+
+The posterior predictive distribution is beta-binomial because it averages the binomial probability over a beta posterior. We can sample from it in two steps:
+
+1. Draw $\pi^{(s)}\sim\operatorname{Beta}(18,6)$.
+2. Draw $\widetilde{k}^{(s)}\sim\operatorname{Binomial}(20,\pi^{(s)})$.
+
+```{r}
+#| label: posterior-predictive-parse-count
+#| echo: true
+
+set.seed(722)
+draw_count <- 100000
+pi_draw <- rbeta(draw_count, shape1 = 18, shape2 = 6)
+future_count <- rbinom(draw_count, size = 20, prob = pi_draw)
+
+predictive_mean <- 20 * 18 / (18 + 6)
+simulated_mean <- mean(future_count)
+
+stopifnot(abs(simulated_mean - predictive_mean) < .05)
+c(
+  analytic_mean = predictive_mean,
+  simulated_mean = simulated_mean,
+  quantile(future_count, c(.025, .5, .975))
+)
+```
+
+The analytic predictive mean is
+
+$$
+\mathbb{E}[\widetilde{K}\mid\mathbf{x}]
+=20(.75)
+=15.
+$$
+
+The simulated interval is wider than the variation obtained by fixing $\pi=.75$ because the predictive distribution includes uncertainty about $\pi$.
+
+For this beta-binomial distribution, the predictive variance is
+
+$$
+\operatorname{Var}(\widetilde{K}\mid\mathbf{x})
+=
+20
+\frac{18(6)}{(18+6)^2}
+\frac{18+6+20}{18+6+1}
+=6.60.
+$$
+
+If we fix $\pi=.75$, the binomial variance is only
+
+$$
+20(.75)(.25)=3.75.
+$$
+
+The difference, $2.85$, is the additional predictive spread contributed by posterior uncertainty about $\pi$.
+
+```{r}
+#| label: posterior-predictive-variance
+#| echo: true
+
+analytic_variance <- 20 * 18 * 6 * (18 + 6 + 20) /
+  ((18 + 6)^2 * (18 + 6 + 1))
+plug_in_variance <- 20 * .75 * .25
+
+stopifnot(abs(analytic_variance - 6.60) < 1e-12)
+stopifnot(abs(var(future_count) - analytic_variance) < .10)
+c(full_prediction = analytic_variance,
+  fixed_parameter = plug_in_variance)
+```
+
+## Separate two sources of predictive spread
+
+The law of total variance gives
+
+$$
+\operatorname{Var}(\widetilde{K}\mid\mathbf{x})
+=
+\mathbb{E}\left[
+\operatorname{Var}(\widetilde{K}\mid\Pi)
+\mid\mathbf{x}
+\right]
++
+\operatorname{Var}\left(
+\mathbb{E}[\widetilde{K}\mid\Pi]
+\mid\mathbf{x}
+\right).
+$$
+
+The first term is future response variation for a fixed parameter. The second is posterior uncertainty about the parameter. Plugging in only the posterior mean keeps the first source and discards the second.
+
+Using only the posterior mean thus discards parameter uncertainty. It tends to produce predictive distributions that are too narrow when that uncertainty is appreciable.
+
+## Keep prediction and checking separate
+
+A posterior predictive distribution says what the fitted model predicts after observing the data. It does not establish that those predictions resemble relevant features of the observed data. Posterior predictive checking later compares simulated and observed summaries to assess model adequacy.
+
+A future observation must also match the population and measurement process represented by the likelihood. Prediction for a new trial from a sampled listener differs from prediction for a new listener when listeners vary. The symbol $\widetilde{X}$ should be defined with the same care as the original response.
+
+Monte Carlo error is separate again. Using more simulated draws makes a computed predictive probability more stable. It does not reduce posterior uncertainty or future response variation.
+
+## Check your understanding
+
+1. What is the support of $\Pi\mid\mathbf{x}$?
+2. What is the support of $\widetilde{K}$ for a block of 20 responses?
+3. Which source of predictive variance is lost by setting $\pi=.75$ for every future block?
+4. Why does increasing the number of simulation draws not make future responses less variable?
+
+The next page asks what happens [beyond conjugacy](beyond-conjugacy.qmd), when the posterior cannot be recognized as a familiar normalized family.

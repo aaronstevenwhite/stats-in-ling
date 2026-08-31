@@ -1,0 +1,437 @@
+---
+title: "Finding unobserved groups in linguistic data"
+subtitle: "Statistical Methods in Linguistics"
+author: "Aaron Steven White"
+institute: "University of Rochester"
+date: "2026-11-23"
+date-format: "[November 23,] YYYY"
+title-slide-attributes:
+  data-background-color: "#113A6A"
+format:
+  revealjs:
+    css: ../shared/theme.css
+    width: 1280
+    height: 720
+    margin: 0
+    self-contained: true
+    embed-resources: true
+    transition: none
+    slide-number: false
+    controls: true
+    progress: true
+    footer: ""
+    center: false
+    incremental: false
+---
+
+## Big Question {.role-slide}
+
+Do linguistic objects form recurring groups when the group labels are not supplied to the analysis?
+
+## Data {.role-slide}
+
+A [unit of analysis](../../foundations/linguistic-data.html) may be a speaker represented by language-use ratings, a vowel token represented by F1 and F2, or a language represented by grammatical features.
+
+## Challenge {.role-slide}
+
+The rows, features, scaling, distance, and candidate number of groups all help determine the structure that can be found.
+
+## This Module {.role-slide .compact}
+
+1. Construct the representation and geometry.
+2. Fit and evaluate K-means clustering.
+3. Replace centroids with Gaussian component distributions.
+4. Evaluate mixture specifications on held-out speakers.
+
+## Finding unobserved groups {.section-slide}
+
+Two statistical representations
+
+## Possibility {.role-slide}
+
+K-means assigns every object to the nearest centroid. A [**finite mixture model**](https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html) gives every object a model-based probability for each component.
+
+<div class="source">Stan User’s Guide, Finite mixtures</div>
+
+::: {.notes}
+[Sources]
+
+1. https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html
+:::
+
+## Upshot {.role-slide}
+
+A learned group is a property of the representation and fitted procedure. It is not automatically a linguistic category.
+
+[Return to the notes](../../latent-structure/index.html)
+
+## Representing objects for clustering {.section-slide}
+
+Rows define what can be grouped
+
+## Data {.role-slide}
+
+Three speakers have English and Spanish speaking ratings:
+
+$$
+\mathbf X=
+\begin{bmatrix}
+5&1\\
+4&2\\
+1&5
+\end{bmatrix}.
+$$
+
+## Method {.role-slide}
+
+Each row is one speaker. The two columns define similarity. Identifiers and variables reserved for interpretation remain outside the feature matrix.
+
+## Upshot {.role-slide}
+
+Numerical storage does not guarantee numerical meaning. Coding language names as 1, 2, and 3 creates an unsupported ordered geometry.
+
+[Return to the notes](../../latent-structure/representing-objects.html)
+
+## Distance and scaling {.section-slide}
+
+Defining the geometry
+
+## Answer {.role-slide}
+
+[**Euclidean distance**](https://online.stat.psu.edu/stat505/Lesson14) combines squared column differences.
+
+$$
+d(\mathbf x_i,\mathbf x_j)=
+\sqrt{\sum_m(x_{im}-x_{jm})^2}
+$$
+
+<div class="source">Penn State STAT 505</div>
+
+::: {.notes}
+[Sources]
+
+1. https://online.stat.psu.edu/stat505/Lesson14
+:::
+
+## Challenge {.role-slide}
+
+A difference of 1,000 tokens dominates a difference of one rating point before scaling. Changing token units can therefore change the learned geometry.
+
+## Approach {.role-slide}
+
+Standardization expresses each difference in observed standard-deviation units. During validation, estimate means and standard deviations from training rows only.
+
+## Upshot {.role-slide}
+
+Equal observed variance does not imply equal reliability or theoretical importance. Euclidean distance remains a linguistic assumption about comparable differences.
+
+[Return to the notes](../../latent-structure/distance-and-scaling.html)
+
+## K-means clustering {.section-slide}
+
+Alternating assignments and centroid updates
+
+## Method {.role-slide}
+
+[**K-means clustering**](https://online.stat.psu.edu/stat505/Lesson14) minimizes the within-cluster sum of squared Euclidean distances.
+
+$$
+W=\sum_i\lVert\mathbf x_i-\boldsymbol\mu_{z_i}\rVert^2
+$$
+
+<div class="source">Penn State STAT 505</div>
+
+::: {.notes}
+[Sources]
+
+1. https://online.stat.psu.edu/stat505/Lesson14
+:::
+
+## Implementation {.role-slide .compact}
+
+1. Assign every row to its nearest centroid.
+2. Replace each centroid with the mean of its assigned rows.
+3. Repeat until assignments no longer change.
+
+## Question {.role-slide}
+
+For points $(0,0)$ and $(0,2)$ in one cluster, why is the updated centroid $(0,1)$?
+
+## Upshot {.role-slide}
+
+K-means can converge to a [**local minimum**](https://online.stat.psu.edu/stat505/Lesson14). Compare the fitted loss over several initializations.
+
+::: {.notes}
+[Sources]
+
+1. https://online.stat.psu.edu/stat505/Lesson14
+:::
+
+[Return to the notes](../../latent-structure/k-means.html)
+
+## Within-cluster loss {.section-slide}
+
+Comparing candidate values of K
+
+## Surprising Fact {.role-slide}
+
+Training within-cluster loss cannot increase when another centroid is added. More centroids can reproduce the earlier solution and may improve it.
+
+## Method {.role-slide}
+
+An [**elbow plot**](https://online.stat.psu.edu/stat505/Lesson14) displays fitted within-cluster loss against $K$. The elbow method looks for diminishing reductions.
+
+<div class="source">Penn State STAT 505</div>
+
+::: {.notes}
+[Sources]
+
+1. https://online.stat.psu.edu/stat505/Lesson14
+:::
+
+## Upshot {.role-slide}
+
+An elbow may be ambiguous and depends on representation, scaling, distance, and initialization. Training compactness does not establish held-out performance.
+
+[Return to the notes](../../latent-structure/within-cluster-loss.html)
+
+## Silhouette widths {.section-slide}
+
+Cohesion relative to separation
+
+## Answer {.role-slide}
+
+A [**silhouette width**](https://stat.ethz.ch/R-manual/R-devel/library/cluster/html/silhouette.html) compares average within-cluster distance $a(i)$ with distance to the nearest alternative cluster $b(i)$.
+
+<div class="source">R cluster reference</div>
+
+::: {.notes}
+[Sources]
+
+1. https://stat.ethz.ch/R-manual/R-devel/library/cluster/html/silhouette.html
+:::
+
+## Method {.role-slide}
+
+$$
+s(i)=\frac{b(i)-a(i)}{\max\{a(i),b(i)\}}.
+$$
+
+Positive values favor the assigned cluster. Negative values favor a neighboring cluster.
+
+## Upshot {.role-slide}
+
+Silhouette widths diagnose compact separation under the chosen distance. They do not establish that the groups are linguistic categories.
+
+[Return to the notes](../../latent-structure/silhouette-scores.html)
+
+## Validation without outcome labels {.section-slide}
+
+Predicting held-out rows
+
+## Question {.role-slide}
+
+Without observed group labels, what can a clustering predict for a row omitted during fitting?
+
+## Answer {.role-slide}
+
+Assign the held-out row to its nearest training centroid and record its squared distance to that centroid as predictive loss.
+
+## Implementation {.role-slide .compact}
+
+1. Estimate scaling from training rows.
+2. Fit candidate centroids to those rows.
+3. Transform held-out rows with training scaling.
+4. Compare paired nearest-centroid losses.
+
+## Upshot {.role-slide}
+
+Lower loss establishes better numerical prediction under the declared geometry. It does not establish recovery of an unobserved linguistic category.
+
+[Return to the notes](../../latent-structure/unsupervised-validation.html)
+
+## Gaussian mixtures {.section-slide}
+
+Overlapping component distributions
+
+## Data {.role-slide}
+
+Peterson and Barney measured F1 and F2 for vowel tokens in an /hVd/ frame. Intended vowel labels remain outside the mixture fit.
+
+<div class="source">Peterson and Barney 1952; phonTools pb52</div>
+
+::: {.notes}
+[Sources]
+
+1. https://doi.org/10.1121/1.1906875
+2. https://search.r-project.org/CRAN/refmans/phonTools/html/pb52.html
+:::
+
+## Method {.role-slide}
+
+A [**Gaussian mixture model (GMM)**](https://scikit-learn.org/stable/modules/mixture.html) combines weighted Gaussian component densities.
+
+$$
+p(\mathbf x_i)=\sum_{k=1}^{K}\pi_k\mathcal N(\mathbf x_i;\boldsymbol\mu_k,\boldsymbol\Sigma_k)
+$$
+
+<div class="source">scikit-learn, Gaussian mixture models</div>
+
+::: {.notes}
+[Sources]
+
+1. https://scikit-learn.org/stable/modules/mixture.html
+:::
+
+## Interpretation {.role-slide}
+
+Each [covariance matrix](../../random-variables-and-distributions/covariance.html) controls component spread and orientation. Every component contributes density to every token.
+
+## Challenge {.role-slide}
+
+A covariance can collapse around very few observations and produce an unbounded likelihood. A tiny fitted component may therefore be a numerical failure.
+
+## Upshot {.role-slide}
+
+A component is a distributional summary under the chosen representation. It is not automatically a phoneme or intended vowel category.
+
+[Return to the notes](../../latent-structure/gaussian-mixtures.html)
+
+## Posterior membership {.section-slide}
+
+Normalizing component contributions
+
+## Answer {.role-slide}
+
+The [**posterior probability of component membership**](https://scikit-learn.org/stable/modules/mixture.html) applies [Bayes’ rule](../../foundations/bayes-rule.html):
+
+$$
+\Pr(Z_i=k\mid\mathbf x_i)=
+\frac{\pi_kp(\mathbf x_i\mid Z_i=k)}{\sum_h\pi_hp(\mathbf x_i\mid Z_i=h)}.
+$$
+
+<div class="source">scikit-learn, Gaussian mixture models</div>
+
+::: {.notes}
+[Sources]
+
+1. https://scikit-learn.org/stable/modules/mixture.html
+:::
+
+## Interpretation {.role-slide}
+
+These probabilities, often called responsibilities, sum to one for each token. A hard assignment discards the remaining membership uncertainty.
+
+## Upshot {.role-slide}
+
+[**Label switching**](https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html) means that component numbers have no stable linguistic identity across separate fits.
+
+<div class="source">Stan User’s Guide, Finite mixtures</div>
+
+::: {.notes}
+[Sources]
+
+1. https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html
+:::
+
+[Return to the notes](../../latent-structure/posterior-membership.html)
+
+## Expectation-maximization {.section-slide}
+
+Fitting a Gaussian mixture
+
+## Method {.role-slide}
+
+The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html) alternates conditional expectations of component labels with parameter updates.
+
+<div class="source">scikit-learn, Gaussian mixture models</div>
+
+::: {.notes}
+[Sources]
+
+1. https://scikit-learn.org/stable/modules/mixture.html
+:::
+
+## Implementation {.role-slide .compact}
+
+1. Compute responsibilities under provisional parameters.
+2. Update weights, means, and covariances with responsibility-weighted quantities.
+3. Repeat until the fitted objective stabilizes.
+
+## Upshot {.role-slide}
+
+Expectation-maximization finds a local solution. Use several starts and inspect nearly empty or collapsing components.
+
+[Return to the notes](../../latent-structure/expectation-maximization.html)
+
+## Choosing a mixture with BIC {.section-slide}
+
+Comparing declared specifications
+
+## Question {.role-slide}
+
+How should component count and covariance structure be compared without choosing the specification with the largest fitted likelihood automatically?
+
+## Method {.role-slide}
+
+The [**Bayesian information criterion**](https://scikit-learn.org/stable/modules/mixture.html), introduced on the earlier [information-criteria page](../../model-criticism-and-prediction/information-criteria.html), adds a parameter-count penalty to maximized likelihood.
+
+$$
+\mathrm{BIC}=-2\ell(\widehat\theta)+k\log n
+$$
+
+<div class="source">scikit-learn, Gaussian mixture models</div>
+
+::: {.notes}
+[Sources]
+
+1. https://scikit-learn.org/stable/modules/mixture.html
+:::
+
+## Upshot {.role-slide}
+
+BIC selects among declared candidate distributions for the measured data. It does not establish a true number of linguistic categories.
+
+[Return to the notes](../../latent-structure/choosing-a-mixture.html)
+
+## Validating a mixture on held-out speakers {.section-slide}
+
+Predictive density for absent speakers
+
+## Method {.role-slide}
+
+For a held-out token, use log loss
+
+$$
+L_i(M)=-\log p_M(\mathbf x_i\mid D_{\mathrm{train}}).
+$$
+
+Lower loss means higher fitted predictive density.
+
+## Implementation {.role-slide .compact}
+
+1. Hold out every token from each test speaker.
+2. Estimate scaling and the complete mixture inside training data.
+3. Return token losses to held-out speakers.
+4. Examine stability across starts and speaker splits.
+
+## Upshot {.role-slide}
+
+Held-out speaker loss evaluates density for absent speakers under the stated normalization information. It remains conditional on the candidate set and representation.
+
+[Return to the notes](../../latent-structure/validating-a-mixture.html)
+
+## Conclusion {.section-slide}
+
+Finding unobserved groups in linguistic data
+
+## Big Question {.role-slide}
+
+Do linguistic objects form recurring groups when the group labels are not supplied to the analysis?
+
+## Answer {.role-slide .compact}
+
+1. State what each row and feature represents.
+2. Treat scaling and distance as modeling assumptions.
+3. Separate fitted components from linguistic categories.
+4. Match held-out evaluation to the sampling unit in the claim.

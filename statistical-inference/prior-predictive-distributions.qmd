@@ -1,0 +1,167 @@
+---
+title: "Prior predictive distributions"
+---
+
+The [conjugate prior page](conjugate-priors.qmd) updated a prior after observing data. A prior predictive distribution instead propagates the prior through the observation model before the present data are observed. Suppose a study will present 10 ambiguous sentences and record how often one modeled response process yields an instrument interpretation. Let $Y$ be that count.
+
+We propose a prior on the participant's interpretation probability:
+
+$$
+\Pi\sim\operatorname{Beta}(2,2).
+$$
+
+Conditional on $\Pi=\pi$, the ten binary choices define a count distribution. Before observing the participant, what values of $Y$ does the complete model expect?
+
+The [**prior predictive distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) answers this question. It averages possible observations over parameter values under the prior:
+
+$$
+p(\widetilde{y})
+=\int p(\widetilde{y}\mid\pi)p(\pi)\,\mathrm{d}\pi.
+$$
+
+The tilde marks $\widetilde{Y}$ as a possible observation generated from the model rather than a response already observed.
+
+The expression combines two claims. The binomial observation model says how a
+fixed value of $\pi$ generates a count. The beta prior says which values of
+$\pi$ receive substantial probability before the present participant's data are
+observed. The integral propagates the second claim through the first.
+
+We can read the integral as a weighted average. For each possible $\pi$, compute
+the binomial probability of $\widetilde{y}$. Then weight that probability by the
+prior density at $\pi$ and add across the unit interval. Values of $\pi$ that are
+more plausible under the prior contribute more to the resulting predictive
+probability.
+
+## Simulate one possible dataset
+
+First draw a probability from the prior:
+
+$$
+\pi^{(s)}\sim\operatorname{Beta}(2,2).
+$$
+
+Then draw ten choices using that probability and count the successes:
+
+$$
+\widetilde{y}^{(s)}\sim\operatorname{Binomial}(10,\pi^{(s)}).
+$$
+
+Repeat the two steps to approximate the full prior predictive distribution.
+
+One simulation draw makes the averaging concrete. Suppose the prior draw is $\pi^{(1)}=.68$. We keep that value fixed while generating all ten responses in prior predictive dataset 1. If the simulated count is $\widetilde{y}^{(1)}=8$, the pair $(.68,8)$ is one draw from the joint prior model. A second prior predictive dataset receives a new draw from the prior because the integral averages predictions over our prior uncertainty about $\pi$.
+
+```{r}
+#| label: prior-predictive-ambiguity
+#| echo: true
+set.seed(414)
+
+pi_prior <- rbeta(10000, shape1 = 2, shape2 = 2)
+y_prior <- rbinom(10000, size = 10, prob = pi_prior)
+
+plot(prop.table(table(y_prior)),
+     xlab = "instrument choices out of 10",
+     ylab = "prior predictive probability")
+```
+
+## Inspect predictions on the response scale
+
+The beta density describes an abstract probability parameter. The simulated values are counts that the experiment could record. They are often easier to evaluate.
+
+If a prior and likelihood predict that nearly every ten trial dataset must contain either 0 or 10 instrument readings, but comparable experiments show substantial interior counts, the prior predictive distribution reveals a mismatch before the present responses are used.
+
+The opposite failure can occur as well. A prior concentrated tightly around
+$\pi=.50$ may imply that almost every ten-trial count lies near 5. Such a model
+would rule out a strong preference for either interpretation before the experiment begins. If the linguistic theory permits the modeled response probability to lie far from $.50$, that prior is too restrictive even if its center appears neutral.
+
+We can also inspect summaries:
+
+```{r}
+#| label: summarize-prior-predictive
+#| echo: true
+quantile(y_prior, c(.025, .25, .5, .75, .975))
+mean(y_prior == 0 | y_prior == 10)
+```
+
+The quantiles describe the central spread of possible recorded counts. The
+boundary proportion describes how often the model expects categorical response
+patterns. Neither quantity is a universal diagnostic. We choose summaries that
+express the parts of the measurement we care about.
+
+## Compare priors through predictions
+
+Parameter-scale language can conceal how strongly two priors differ. Consider
+three beta priors:
+
+$$
+\operatorname{Beta}(2,2),
+\qquad
+\operatorname{Beta}(20,20),
+\qquad
+\operatorname{Beta}(.5,.5).
+$$
+
+All three are symmetric around $.50$. But symmetry does not make them
+equivalent. The first permits moderate variation, the second concentrates near
+$.50$, and the third favors values near the boundaries.
+
+```{r}
+#| label: compare-prior-predictive-counts
+#| echo: true
+set.seed(414)
+
+simulate_prior_counts <- function(alpha, beta, draws = 10000) {
+  pi_draw <- rbeta(draws, alpha, beta)
+  rbinom(draws, size = 10, prob = pi_draw)
+}
+
+y_moderate <- simulate_prior_counts(2, 2)
+y_concentrated <- simulate_prior_counts(20, 20)
+y_boundary <- simulate_prior_counts(.5, .5)
+
+rbind(
+  moderate = quantile(y_moderate, c(.05, .50, .95)),
+  concentrated = quantile(y_concentrated, c(.05, .50, .95)),
+  boundary = quantile(y_boundary, c(.05, .50, .95))
+)
+```
+
+The predictive counts state the practical commitments of each prior in the units
+the experiment records. We can ask whether each commitment is compatible with
+the design, earlier studies, and the range of behavior the theory leaves open.
+
+## Match the simulation to the sampling structure
+
+The current simulation draws one $\pi$ per complete ten trial dataset and then ten choices conditional on that value. It represents prior uncertainty about one shared probability in this model. It does not by itself define a population distribution of participant preferences.
+
+To represent several participants with different underlying probabilities, we would need an additional population distribution and one participant probability drawn from it for each participant. That structure is not part of the current model. Drawing a new $\pi$ before every trial would instead put the beta variation at the trial level. These are different generative claims, even if every version uses the same beta and binomial functions.
+
+A prior predictive check is only as informative as this generative structure.
+Simulating the correct response range while ignoring the grouping in the study
+can make a poorly specified model appear plausible.
+
+## Keep prior checking prior to the update
+
+Prior predictive checks use the prior and observation model. They do not use the posterior.
+
+If we repeatedly tune the prior until it reproduces the present observed outcome, that outcome has already influenced the prior. Any such data-dependent choice should be acknowledged rather than described as information supplied before the data.
+
+Prior predictive checking does not require a prior to predict the observed data
+closely. Before observing the current sample, a useful prior may allow many
+outcomes that did not happen. The narrower question is whether it places
+substantial probability on impossible or theoretically indefensible data, or
+rules out outcomes that the design and existing knowledge make plausible.
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 2](../problem-sets/ps4/ps4.qmd#task-2-check-the-priors-before-fitting-the-data) uses prior predictive category proportions for a seven category commitment response. Students must thus simulate the response scale before any observed commitment rating updates the model.
+:::
+
+::: {.callout-note title="Check the simulation order"}
+1. Why must each predictive count use the same sampled $\pi^{(s)}$ for all ten
+   choices?
+2. What different model would result from drawing a new $\pi$ before every
+   choice?
+3. Two priors have the same mean. Explain why their prior predictive
+   distributions can still differ.
+4. Give one response scale summary that would detect a prior predicting too many
+   categorical response patterns.
+:::

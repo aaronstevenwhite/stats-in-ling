@@ -1,0 +1,168 @@
+---
+title: "Residualizing a predictor"
+---
+
+The [multiple-regression page](multiple-regression.qmd) introduced partial coefficients, and the [residual page](residuals.qmd) defined an observed minus fitted discrepancy. The process of [**residualization**](https://doi.org/10.1016/j.jml.2013.12.003) combines these two ideas, but it does not create a new directly observed linguistic variable.
+
+Suppose surprisal and acceptability are correlated. One proposed response is to regress surprisal on acceptability and use the residual as a predictor of reading time.
+
+The first regression is
+
+$$
+S_i
+=
+\alpha_0+\alpha_1A_i+R_i,
+$$
+
+where $S_i$ is surprisal, $A_i$ is acceptability, and $R_i$ is the surprisal residual.
+
+The residual satisfies
+
+$$
+R_i
+=
+S_i-(\widehat{\alpha}_0+\widehat{\alpha}_1A_i).
+$$
+
+It is the part of observed surprisal not linearly predicted by acceptability in the fitted sample.
+
+The final phrase is essential. $R_i$ is defined relative to one sample and one
+linear residualizer. A different sample, a nonlinear residualizer, or a different
+set of predictors would produce a different residualized variable.
+
+The residual thus depends on the model used to residualize the predictor. It is
+a statistical construction, not a directly observed linguistic property.
+
+## Interpret the new predictor
+
+The second regression might be
+
+$$
+Y_i
+=
+\beta_0+\beta_RR_i+\beta_AA_i+\epsilon_i.
+$$
+
+The coefficient $\beta_R$ describes a change in reading time associated with residual surprisal while acceptability is held fixed. This is not the marginal association of the original surprisal variable.
+
+In an ordinary linear regression containing the same acceptability term, the coefficient on $R_i$ matches the partial coefficient on $S_i$. Residualization changes the parameterization, not the underlying fitted subspace.
+
+This equivalence can be derived. Since
+
+$$
+S_i=\widehat\alpha_0+\widehat\alpha_1A_i+R_i,
+$$
+
+substitute this expression into the original response model:
+
+$$
+\begin{aligned}
+Y_i
+&=\beta_0+\beta_SS_i+\beta_AA_i+\epsilon_i\\
+&=\beta_0+\beta_S
+(\widehat\alpha_0+\widehat\alpha_1A_i+R_i)
++\beta_AA_i+\epsilon_i\\
+&=(\beta_0+\beta_S\widehat\alpha_0)
++(\beta_A+\beta_S\widehat\alpha_1)A_i
++\beta_SR_i+\epsilon_i.
+\end{aligned}
+$$
+
+The coefficient on $R_i$ is the original partial surprisal coefficient
+$\beta_S$. The intercept and acceptability coefficient change because the
+coordinate system has changed.
+
+## Verify the equivalence
+
+```{r}
+#| label: verify-residualization-equivalence
+#| echo: true
+dat <- data.frame(
+  acceptability = c(2.1, 2.8, 3.4, 4.2, 4.8, 5.5, 6.1, 6.7),
+  surprisal = c(8.2, 7.4, 7.1, 6.0, 5.8, 4.9, 4.5, 3.7),
+  log_rt = c(6.775, 6.712, 6.687, 6.609, 6.596,
+             6.523, 6.501, 6.443)
+)
+
+fit_residualizer <- lm(surprisal ~ acceptability, data = dat)
+dat$residual_surprisal <- residuals(fit_residualizer)
+
+fit_original <- lm(log_rt ~ surprisal + acceptability, data = dat)
+fit_residual <- lm(log_rt ~ residual_surprisal + acceptability, data = dat)
+
+c(
+  original_surprisal = coef(fit_original)["surprisal"],
+  residual_surprisal = coef(fit_residual)["residual_surprisal"]
+)
+```
+
+The coefficient on `surprisal` in the first response model equals the coefficient on `residual_surprisal` in the second, up to numerical precision.
+
+The other coefficients are not equal. After residualization, the acceptability
+coefficient absorbs both its original response association and the part of
+surprisal that the residualizer assigned to acceptability. This is why the
+residualized fit must be interpreted as a reparameterized system, not as the
+original coefficient table with one purified predictor substituted.
+
+## Residualize both variables to expose the partial slope
+
+The same partial slope can be obtained by residualizing the response with respect
+to acceptability and regressing those response residuals on residual surprisal:
+
+```{r}
+#| label: residualize-response-for-partial-slope
+#| echo: true
+outcome_residualizer <- lm(log_rt ~ acceptability, data = dat)
+dat$residual_log_rt <- residuals(outcome_residualizer)
+
+fit_residual_both <- lm(
+  residual_log_rt ~ residual_surprisal,
+  data = dat
+)
+
+coef(fit_residual_both)["residual_surprisal"]
+```
+
+This calculation reveals the comparison behind a partial coefficient. First
+remove the linear association with acceptability from both surprisal and the
+response. Then relate the two remaining quantities.
+
+## Do not treat residuals as purified constructs
+
+Residual surprisal is not “pure processing difficulty.” It depends on the sample, the residualizer formula, measurement error in both variables, and the chosen functional form.
+
+It is also directional. Residualizing surprisal against acceptability does not
+produce the same variable as residualizing acceptability against surprisal. The
+first preserves surprisal units and defines deviations from predicted
+surprisal. The second preserves acceptability units and defines deviations from
+predicted acceptability.
+
+If acceptability is measured with error, subtracting its fitted association does not remove the underlying construct cleanly. It can also induce difficult interpretations when the residualizer is trained outside the predictive evaluation loop.
+
+Interpreting that residual as a purified theoretical construct is not licensed. The linear algebra establishes coefficient
+equivalence. It does not establish that the residual corresponds to one causal
+or cognitive mechanism.
+
+## Keep the residualizer inside cross-validation
+
+For held-out prediction, estimate $\widehat{\alpha}_0$ and $\widehat{\alpha}_1$ using only the training fold. Then compute residual surprisal for the test fold from those training estimates.
+
+Residualizing once on the complete dataset allows test-fold predictor relationships to influence the fitted transformation. That is leakage.
+
+The same rule applies to centering constants, scaling constants, and any selected
+functional form when these are learned from data. The test observations may be
+transformed using training estimates, but they may not determine those estimates.
+
+Residualization is often unnecessary for an explanatory multiple regression
+because the original two-predictor model already estimates the same partial
+surprisal coefficient. The explicit residualizer can still be pedagogically
+useful because it displays which surprisal variation identifies the coefficient.
+
+::: {.callout-note title="Interpret a residualized predictor"}
+1. What does $R_i$ measure relative to the residualizer model?
+2. Does residualization eliminate uncertainty due to correlated constructs?
+3. Where must the residualizer be fitted during cross-validation?
+4. Which coefficients remain equal between the original and residualized response
+   models, and which may change?
+5. Explain why residualizing a predictor does not isolate a pure theoretical construct.
+:::

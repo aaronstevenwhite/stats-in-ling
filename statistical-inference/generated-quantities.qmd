@@ -1,0 +1,99 @@
+---
+title: "Generating derived quantities in Stan"
+---
+
+The [Stan page](stan.qmd) showed how the `model` block adds density contributions that determine a posterior. An analysis often also needs a condition contrast, a replicated response, or an observation level log likelihood. The [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) computes such values after each saved parameter draw.
+
+## Distinguish three operations
+
+Suppose a normal model has condition means `mu_a` and `mu_b` and response standard deviation `sigma`. A generated-quantities block can contain
+
+```stan
+generated quantities {
+  real mean_difference;
+  array[N] real y_rep;
+  vector[N] log_lik;
+
+  mean_difference = mu_a - mu_b;
+
+  for (n in 1:N) {
+    real mu_n = condition[n] == 1 ? mu_a : mu_b;
+    y_rep[n] = normal_rng(mu_n, sigma);
+    log_lik[n] = normal_lpdf(y[n] | mu_n, sigma);
+  }
+}
+```
+
+The first line computes a deterministic transformation of the joint parameter draw. The second operation simulates a future response. The third evaluates the log density of an observed response.
+
+## Compute a contrast within each draw
+
+The derived quantity is
+
+$$
+D=\Mu_A-\Mu_B.
+$$
+
+Calculating it draw by draw preserves posterior dependence between the condition means. Combining marginal standard deviations as if the means were independent can give the wrong uncertainty.
+
+```{r}
+#| label: generated-mean-difference
+#| echo: true
+
+set.seed(248)
+draw_count <- 10000
+shared_location <- rnorm(draw_count, mean = 180, sd = 10)
+condition_difference <- rnorm(draw_count, mean = -12, sd = 4)
+mu_a <- shared_location + condition_difference / 2
+mu_b <- shared_location - condition_difference / 2
+generated_difference <- mu_a - mu_b
+
+naive_independent_sd <- sqrt(var(mu_a) + var(mu_b))
+joint_draw_sd <- sd(generated_difference)
+
+stopifnot(abs(mean(generated_difference) + 12) < .1)
+stopifnot(joint_draw_sd < naive_independent_sd)
+c(mean = mean(generated_difference),
+  joint_draw_sd = joint_draw_sd,
+  naive_independent_sd = naive_independent_sd,
+  quantile(generated_difference, c(.025, .975)))
+```
+
+The generated vector is a posterior sample for the mean difference. Its spread is model-based uncertainty. The finite accuracy of its summaries also depends on Monte Carlo error in the underlying parameter draws.
+
+## Simulate rather than evaluate
+
+The function
+
+```stan
+normal_rng(mu_n, sigma)
+```
+
+generates a new response. The suffix `_rng` marks a random-number generator. In contrast,
+
+```stan
+normal_lpdf(y[n] | mu_n, sigma)
+```
+
+evaluates the log density of the observed response. It does not generate a value.
+
+These operations have different targets. Replicated responses support posterior predictive checking. Pointwise log likelihoods support predictive scoring and comparison.
+
+## Preserve the observation index
+
+Each `log_lik[n]` must correspond to `y[n]`. If trials are nested within speakers and items, retaining one contribution per row permits later aggregation at the prediction unit required by the question. Premature aggregation can make downstream software run while answering a different predictive question.
+
+## Know what cannot happen here
+
+Generated quantities are evaluated after sampling a parameter draw. They cannot contribute density and cannot change the posterior. Moving a prior or likelihood term into this block removes it from inference.
+
+The block is for reporting and prediction. It is not a place for constraints that should influence parameter learning.
+
+## Check your understanding
+
+1. Which line generates a future response?
+2. Which line evaluates an observed response?
+3. Why should a contrast be calculated within each joint draw?
+4. Can a generated quantity repair a missing likelihood term?
+
+The next page uses replicated responses for [posterior predictive checks](posterior-predictive-checks.qmd).

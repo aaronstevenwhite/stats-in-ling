@@ -1,0 +1,121 @@
+---
+title: "Annotator effects"
+---
+
+Suppose two annotators judge the same set of event descriptions. One tends to affirm a proposed inference, while the other tends to reject it. If the model attributes every difference to the items, the first annotator's responses may make every item appear more supportive of the inference.
+
+The [random-intercept model introduced earlier](../regression-models/random-intercepts.qmd) can also represent stable annotator variation. Here an annotator random intercept represents a stable upward or downward response tendency shared across one annotator's judgments. It extends the item response model from the preceding page without changing the meaning of the item values.
+
+## Add one location term
+
+Let $\theta_i$ be the unobserved log odds for item $i$, and let $a_j$ be annotator $j$'s random intercept. Define
+
+$$
+\operatorname{logit}(\pi_{ij})=\theta_i+a_j,
+$$
+
+with
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}).
+$$
+
+To make $a_j$ a random intercept, give the annotator deviations a population distribution centered at zero:
+
+$$
+a_j\sim\operatorname{Normal}(0,\sigma_a^2).
+$$
+
+A positive $a_j$ raises the log odds of an affirmative response for every item judged by annotator $j$. A negative value lowers them. The effect is shared across responses, so it is not trial noise.
+
+This equation is an extension of the earlier joint model. The item value still locates the item, and the annotator value shifts the response mapping for one person.
+
+## Work through two annotators
+
+Suppose item 1 has $\theta_1=-1$ and item 2 has $\theta_2=1$. Annotator A has $a_A=.5$, while annotator B has $a_B=-.5$.
+
+For item 1, the two linear predictors are
+
+$$
+\eta_{1A}=-1+.5=-.5
+$$
+
+and
+
+$$
+\eta_{1B}=-1-.5=-1.5.
+$$
+
+The corresponding probabilities are approximately $.38$ and $.18$. For item 2, the predictors are $1.5$ and $.5$, giving probabilities of approximately $.82$ and $.62$.
+
+| item | $\theta_i$ | annotator | $a_j$ | $\theta_i+a_j$ | affirmative probability |
+|:--|--:|:--|--:|--:|--:|
+| 1 | -1 | A | .5 | -.5 | .38 |
+| 1 | -1 | B | -.5 | -1.5 | .18 |
+| 2 | 1 | A | .5 | 1.5 | .82 |
+| 2 | 1 | B | -.5 | .5 | .62 |
+
+Annotator A receives a higher probability for both items. The item ordering remains the same because the location effect adds the same shift to every item judged by that annotator.
+
+## Compute the response surface in base R
+
+```{r}
+item_values <- c(item_1 = -1, item_2 = 1)
+annotator_values <- c(A = 0.5, B = -0.5)
+
+response_surface <- expand.grid(
+  item = names(item_values),
+  annotator = names(annotator_values)
+)
+
+response_surface$theta <- item_values[response_surface$item]
+response_surface$a <- annotator_values[response_surface$annotator]
+response_surface$linear_predictor <- with(response_surface, theta + a)
+response_surface$probability <- plogis(response_surface$linear_predictor)
+
+response_surface
+```
+
+The call to `expand.grid()` creates every item and annotator combination. This crossing is not merely convenient for the calculation. Overlap in the annotation design helps separate stable item values from stable annotator tendencies.
+
+## Fix the coordinate system
+
+The decomposition into item and annotator locations is not identified without a reference. If every item value increases by a constant $c$ and every annotator value decreases by the same $c$, then
+
+$$
+(\theta_i+c)+(a_j-c)=\theta_i+a_j.
+$$
+
+The response probabilities do not change. One possible identifying convention is
+
+$$
+\sum_{j=1}^{J}a_j=0.
+$$
+
+The population distribution used on this page instead fixes the population mean of the annotator random intercepts at zero. Either convention fixes the origin. Under the population-distribution convention, $\theta_i$ is the item log odds for an annotator whose random intercept is zero. This conditional quantity is not the marginal probability obtained by averaging over the annotator distribution.
+
+The constraint does not claim that an annotator with random intercept zero has no response behavior. It defines where zero lies on the latent log-odds scale.
+
+## Location is not every annotator difference
+
+Annotators may also differ in response variability or in how they use ordered category boundaries. A location effect cannot represent those patterns. It shifts all predictions in the same direction.
+
+A more variable annotator is not automatically a lower quality annotator. Items may be genuinely ambiguous under that annotator's grammar, or the response scale may interact with their interpretation. Scale or threshold variation should be added only when the response pattern and scientific target require it. This page does not introduce those extensions.
+
+## Item and annotator effects must be identifiable
+
+Item and annotator effects are perfectly confounded when each item is judged by only one annotator. If annotator A judges only item 1 and annotator B judges only item 2, a response difference can be assigned to $\theta_1-\theta_2$, to $a_A-a_B$, or to both. The two effects are thus not separately identifiable.
+
+Crossing annotators with several items supplies overlap. A connected annotation design may still be sparse, but there must be a path of shared items or annotators tying the latent locations to one coordinate system. A fitted model cannot manufacture that overlap after collection.
+
+::: {.callout-note title="Check the annotator location"}
+1. What response pattern does a positive $a_j$ represent?
+2. Why does adding $c$ to every $\theta_i$ and subtracting it from every $a_j$ leave predictions unchanged?
+3. What does the zero sum convention identify?
+4. Why can a location effect not represent endpoint avoidance?
+5. Which annotation design makes item and annotator effects perfectly confounded?
+:::
+
+## Summing up
+
+An annotator random intercept separates a stable response shift from an item value, subject to a coordinate constraint and sufficient overlap in the annotation design. The next page adds an instrument rule that determines whether a [follow up annotation is observed](gated-annotations.qmd).

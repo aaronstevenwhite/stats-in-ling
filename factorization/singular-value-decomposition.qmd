@@ -1,0 +1,260 @@
+---
+title: "Singular value decomposition"
+---
+
+A rank one matrix contains one common row by column pattern. Most linguistic matrices contain several such patterns. We need a rule that finds them in order, assigns each a strength, and reconstructs the original matrix when they are added together.
+
+The [**singular value decomposition (SVD)**](https://cs357.cs.illinois.edu/textbook/notes/svd.html) provides that rule. It represents any real matrix as an ordered sum of mutually orthogonal rank one terms. The first term gives the closest rank one representation under squared reconstruction error, the second accounts for the strongest remaining orthogonal pattern, and the sequence continues through the matrix rank.
+
+We will first state the decomposition and its dimensions. We will then work through a $2\times2$ matrix for which every piece can be read by inspection. Finally, we will compute the same pieces in R and examine the sign and repeated-value ambiguities that constrain interpretation.
+
+## State the reduced decomposition
+
+Let
+
+$$
+\mathbf{X}\in\mathbb{R}^{n\times p}
+$$
+
+have rank $r$. Its reduced SVD is
+
+$$
+\mathbf{X}
+=
+\mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf T},
+$$
+
+where
+
+$$
+\mathbf{U}\in\mathbb{R}^{n\times r},
+\qquad
+\mathbf{D}\in\mathbb{R}^{r\times r},
+\qquad
+\mathbf{V}\in\mathbb{R}^{p\times r}.
+$$
+
+The columns of $\mathbf{U}$ are the [**left singular vectors**](https://cs357.cs.illinois.edu/textbook/notes/svd.html). They are orthonormal:
+
+$$
+\mathbf{U}^{\mathsf T}\mathbf{U}=\mathbf{I}_r.
+$$
+
+The columns of $\mathbf{V}$ are the [**right singular vectors**](https://cs357.cs.illinois.edu/textbook/notes/svd.html), and they are also orthonormal:
+
+$$
+\mathbf{V}^{\mathsf T}\mathbf{V}=\mathbf{I}_r.
+$$
+
+The matrix $\mathbf{D}$ is diagonal. Its nonnegative entries are the singular values:
+
+$$
+\mathbf{D}
+=
+\operatorname{diag}(d_1,\ldots,d_r),
+\qquad
+d_1\geq d_2\geq\cdots\geq d_r>0.
+$$
+
+The ordering fixes which pattern is called first, second, and so on.
+
+## Turn the product into rank one terms
+
+Let $\mathbf{u}_k$ be column $k$ of $\mathbf{U}$ and $\mathbf{v}_k$ be column $k$ of $\mathbf{V}$. Matrix multiplication lets us rewrite the SVD as
+
+$$
+\mathbf{X}
+=
+\sum_{k=1}^{r}
+d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}.
+$$
+
+Each term
+
+$$
+d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}
+$$
+
+is rank one. The left vector gives the relative expression of pattern $k$ across rows. The right vector gives the relative participation of the columns. The singular value gives the pattern's overall magnitude.
+
+Unlike an arbitrary collection of outer products, the terms in the singular value decomposition are orthogonal and sorted by singular value.
+
+## Work through a diagonal matrix
+
+Consider
+
+$$
+\mathbf{X}
+=
+\begin{bmatrix}
+2&0\\
+0&1
+\end{bmatrix}.
+$$
+
+The row and column axes already align with the matrix's two patterns. We can choose
+
+$$
+\mathbf{U}
+=
+\begin{bmatrix}
+1&0\\
+0&1
+\end{bmatrix},
+\qquad
+\mathbf{D}
+=
+\begin{bmatrix}
+2&0\\
+0&1
+\end{bmatrix},
+\qquad
+\mathbf{V}
+=
+\begin{bmatrix}
+1&0\\
+0&1
+\end{bmatrix}.
+$$
+
+Multiplying the three matrices returns $\mathbf{X}$. The sum form makes the two patterns more visible:
+
+$$
+\begin{aligned}
+\mathbf{X}
+&=
+2
+\begin{bmatrix}1\\0\end{bmatrix}
+\begin{bmatrix}1&0\end{bmatrix}
++
+1
+\begin{bmatrix}0\\1\end{bmatrix}
+\begin{bmatrix}0&1\end{bmatrix}\\
+&=
+\begin{bmatrix}2&0\\0&0\end{bmatrix}
++
+\begin{bmatrix}0&0\\0&1\end{bmatrix}.
+\end{aligned}
+$$
+
+The first rank one term reconstructs the upper-left entry of size 2. The second reconstructs the lower-right entry of size 1. Their sum reconstructs all four cells.
+
+If we retain only the first term, the approximation is
+
+$$
+\widehat{\mathbf{X}}_1
+=
+\begin{bmatrix}
+2&0\\
+0&0
+\end{bmatrix}.
+$$
+
+The omitted second term is smaller because $d_2=1<d_1=2$.
+
+## Why the singular values measure strength
+
+The squared size of the complete matrix under the Frobenius norm is
+
+$$
+\lVert\mathbf{X}\rVert_F^2
+=
+\sum_i\sum_j x_{ij}^2.
+$$
+
+For an SVD, orthogonality gives
+
+$$
+\lVert\mathbf{X}\rVert_F^2
+=
+\sum_{k=1}^{r}d_k^2.
+$$
+
+In the diagonal example,
+
+$$
+\lVert\mathbf{X}\rVert_F^2
+=
+2^2+1^2
+=
+5.
+$$
+
+The first term contributes $d_1^2=4$ of those 5 squared units, while the second contributes 1. This is why singular values quantify the magnitude of the ordered patterns.
+
+The truncated sum through term $K$ is also the closest rank $K$ matrix to $\mathbf{X}$ under the Frobenius norm. We will calculate its residual entries directly on the [reconstruction page](reconstruction.qmd). For now, the important point is that the ordering is tied to squared reconstruction, not to a linguistic label.
+
+## Compute the decomposition in R
+
+The R function `svd()` returns $\mathbf{U}$, the singular values, and $\mathbf{V}$.
+
+```{r}
+#| eval: false
+
+X_small <- matrix(
+  c(
+    2, 0,
+    0, 1
+  ),
+  nrow = 2,
+  byrow = TRUE
+)
+
+svd_fit <- svd(X_small)
+
+svd_fit$u
+svd_fit$d
+svd_fit$v
+```
+
+The package returns the singular values as a vector rather than as the diagonal matrix $\mathbf{D}$. We can reconstruct that matrix and verify the product.
+
+```{r}
+#| eval: false
+
+D <- diag(svd_fit$d)
+X_recovered <- svd_fit$u %*% D %*% t(svd_fit$v)
+
+X_recovered
+all.equal(X_small, X_recovered)
+```
+
+The transpose around `svd_fit$v` corresponds to $\mathbf{V}^{\mathsf T}$ in the formal statement.
+
+## The signs are arbitrary
+
+Suppose we replace both $\mathbf{u}_k$ and $\mathbf{v}_k$ with their negatives. Their outer product is unchanged:
+
+$$
+(-\mathbf{u}_k)(-\mathbf{v}_k)^{\mathsf T}
+=
+\mathbf{u}_k\mathbf{v}_k^{\mathsf T}.
+$$
+
+Software may thus return one singular direction with the opposite sign on a different system or after a numerically equivalent fit. Relative signs within a vector remain informative. The absolute choice of positive direction does not.
+
+The SVD has [**sign indeterminacy**](https://imae.udg.edu/~jpalarea/StatsDS/principal-components-analysis.html). Any interpretation that depends on component 1 being positive rather than negative is not invariant to an equivalent decomposition.
+
+## Repeated singular values weaken directional interpretation
+
+A second issue arises when two singular values are equal. Suppose $d_1=d_2$. Any orthogonal rotation within their two-dimensional subspace can produce another valid pair of singular vectors with the same reconstruction.
+
+Thus, the subspace is identified, but the individual directions within it are not uniquely fixed. Nearly equal singular values can likewise make individual vectors unstable under small changes to the matrix.
+
+This instability does not make the SVD incorrect. The reconstructed subspace may remain stable even when one arbitrary basis for that subspace rotates. Interpretation should match what the decomposition identifies.
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Tasks 6 and 7](../problem-sets/ps5/ps5.qmd#task-6-select-the-rank-on-validation-cells-15-points) use singular value decomposition to reconstruct masked inventory cells. The validation cells select the number of retained terms, while a separate test mask evaluates the selected representation. The separation is included because the factorization can otherwise choose its complexity from the same cells used for the final claim.
+:::
+
+## Check the ordered patterns
+
+1. What are the dimensions of $\mathbf{U}$, $\mathbf{D}$, and $\mathbf{V}$ in the reduced SVD of an $n\times p$ rank $r$ matrix?
+2. Why is every term $d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}$ rank one?
+3. In the diagonal example, how much squared matrix magnitude belongs to the first term?
+4. Why can both singular vectors in one term be multiplied by $-1$ without changing the matrix?
+5. If $d_1=d_2$, what is identified more securely: each individual vector or their shared subspace?
+
+## Before using variance directions
+
+The SVD rewrites a real matrix as an ordered sum of orthogonal rank one patterns. Singular values measure their squared-reconstruction strength, while sign and repeated-value indeterminacies limit directional interpretation. The [next page](principal-component-analysis.qmd) applies this decomposition to a centered linguistic matrix so that its directions describe observed variation around column means.

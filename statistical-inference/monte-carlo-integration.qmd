@@ -1,0 +1,155 @@
+---
+title: "Monte Carlo integration"
+---
+
+The [posterior summaries page](posterior-summaries.qmd) used averages and proportions of draws without yet explaining the numerical approximation. Monte Carlo integration supplies that explanation by connecting the [expectation of a function](../random-variables-and-distributions/expectation-of-functions.qmd) to a sample average. Suppose a posterior distribution for the probability of producing a palatalized consonant is
+
+$$
+\Pi\mid\mathbf{x}
+\sim
+\operatorname{Beta}(5,3).
+$$
+
+We want the posterior probability
+
+$$
+I
+=
+\mathbb{P}(\Pi>.60\mid\mathbf{x}).
+$$
+
+This probability is an integral of the posterior density. [**Monte Carlo integration**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) approximates the integral with an average over random draws from the target distribution.
+
+## Rewrite probability as an expectation
+
+Define the indicator function
+
+$$
+g(\pi)
+=
+\mathbb{1}[\pi>.60].
+$$
+
+It equals one when $\pi$ exceeds $.60$ and zero otherwise. Its posterior expectation is
+
+$$
+\begin{aligned}
+\mathbb{E}[g(\Pi)\mid\mathbf{x}]
+&=
+\int_0^1
+\mathbb{1}[\pi>.60]
+p(\pi\mid\mathbf{x})
+\,\mathrm{d}\pi\\
+&=
+\mathbb{P}(\Pi>.60\mid\mathbf{x}).
+\end{aligned}
+$$
+
+Thus a probability can be calculated as the expectation of an indicator.
+
+## Replace the expectation with an average
+
+Draw
+
+$$
+\pi^{(1)},\ldots,\pi^{(S)}
+\overset{\mathrm{iid}}{\sim}
+\operatorname{Beta}(5,3).
+$$
+
+The Monte Carlo estimator is
+
+$$
+\widehat{I}_S
+=
+\frac{1}{S}
+\sum_{s=1}^S
+\mathbb{1}[\pi^{(s)}>.60].
+$$
+
+It is simply the proportion of posterior draws above $.60$.
+
+```{r}
+#| label: monte-carlo-palatalization-tail
+#| echo: true
+
+set.seed(642)
+draw_count <- 50000
+pi_draw <- rbeta(draw_count, shape1 = 5, shape2 = 3)
+mc_estimate <- mean(pi_draw > .60)
+exact_value <- 1 - pbeta(.60, shape1 = 5, shape2 = 3)
+
+stopifnot(abs(mc_estimate - exact_value) < .01)
+c(Monte_Carlo = mc_estimate, exact = exact_value)
+```
+
+The beta cumulative distribution function supplies an exact benchmark for this simple target. Complicated posteriors may not provide such a benchmark, which is why the simulation calculation matters.
+
+## Generalize the calculation
+
+For any target density $p(\theta)$ and function $g$,
+
+$$
+I
+=
+\mathbb{E}_{p}[g(\Theta)]
+=
+\int g(\theta)p(\theta)\,\mathrm{d}\theta.
+$$
+
+Independent target draws give
+
+$$
+\widehat{I}_S
+=
+\frac{1}{S}
+\sum_{s=1}^Sg(\theta^{(s)}).
+$$
+
+For a posterior mean, use $g(\theta)=\theta$. For a posterior second moment, use $g(\theta)=\theta^2$. For an interval endpoint, use the corresponding empirical quantile rather than a simple average.
+
+## Quantify Monte Carlo error
+
+The [bootstrap page](bootstrap-confidence-intervals.qmd#check-simulation-error) first distinguished simulation error from sampling uncertainty. In the present setting, variation caused by using a finite number $S$ of simulation draws is [**Monte Carlo error**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html). For independent draws and a binary indicator, an estimated Monte Carlo standard error is
+
+$$
+\widehat{\operatorname{MCSE}}(\widehat{I}_S)
+=
+\sqrt{
+\frac{
+\widehat{I}_S(1-\widehat{I}_S)
+}{S}
+}.
+$$
+
+```{r}
+#| label: monte-carlo-standard-error
+#| echo: true
+
+mcse <- sqrt(mc_estimate * (1 - mc_estimate) / draw_count)
+stopifnot(mcse < .003)
+c(estimate = mc_estimate, MCSE = mcse)
+```
+
+Multiplying $S$ by four tends to divide MCSE by two. This square-root rate is the same rate that appears in sampling standard errors, but the source of variation differs.
+
+The law of large numbers supplies the basic justification. As $S$ grows, the average of independent target draws tends to approach the target expectation when that expectation exists. A central limit theorem motivates an approximate normal distribution for many Monte Carlo averages and the MCSE calculation above.
+
+This result does not guarantee that every finite simulation is precise enough. Monte Carlo error should be small relative to posterior uncertainty and the precision used in substantive claims. Reporting six decimal places when MCSE is $.003$ gives false numerical precision.
+
+## Keep two uncertainties separate
+
+The posterior spread describes uncertainty about the palatalization probability under the model and observed data. Monte Carlo error describes uncertainty in a numerical approximation to a posterior summary.
+
+Increasing $S$ reduces Monte Carlo error. It does not add speakers, tokens, or elicitation contexts, so it cannot narrow the target posterior. More simulation draws are not more linguistic evidence.
+
+Setting a seed makes the teaching calculation reproducible. Changing the seed provides a simple stability check. Agreement across seeds is evidence about simulation error only; it does not check the likelihood or prior.
+
+## Check your understanding
+
+1. Which function $g(\pi)$ gives $\mathbb{E}[\Pi^2\mid\mathbf{x}]$?
+2. Why is the proportion of draws above $.60$ an integral estimate?
+3. What happens to MCSE when the number of independent draws increases from 10,000 to 40,000?
+4. Which uncertainty can be reduced without collecting more linguistic observations?
+
+The next page considers [importance sampling](importance-sampling.qmd), where draws come from a proposal rather than directly from the target.

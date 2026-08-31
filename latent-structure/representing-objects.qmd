@@ -1,0 +1,173 @@
+---
+title: "Representing objects for clustering"
+---
+
+Suppose a survey records how often each participant speaks and reads two languages. A clustering algorithm receives numbers. It does not receive the interpretation that one row is a participant, that one column is speaking frequency, or that another column is meant only for later interpretation.
+
+The rows of the input matrix define the objects that can be grouped. Its columns define the properties under which those objects can be similar. This is the [unit-of-analysis choice](../foundations/linguistic-data.qmd) from the opening module expressed as a matrix. The accompanying index maps connect those rows and columns to linguistic objects and measurements. A clustering cannot recover a distinction removed before this representation was constructed.
+
+We first define the row by column matrix. We then build a small speaker representation by hand and in R. Finally, we separate clustering features from identifiers and external variables, since confusing those roles can build the intended interpretation into the groups themselves.
+
+## Define the represented objects
+
+Let $N$ linguistic objects be measured on $p$ numerical properties. Their representation is
+
+$$
+\mathbf{X}
+=
+\begin{bmatrix}
+x_{11}&\cdots&x_{1p}\\
+\vdots&\ddots&\vdots\\
+x_{N1}&\cdots&x_{Np}
+\end{bmatrix}
+\in
+\mathbb{R}^{N\times p}.
+$$
+
+Row $i$ is the vector
+
+$$
+\mathbf{x}_i
+=
+\begin{bmatrix}
+x_{i1}&\cdots&x_{ip}
+\end{bmatrix},
+$$
+
+which contains every property allowed to make object $i$ similar to another object. A learned cluster assignment attaches to this row unit.
+
+If one row is a participant, a cluster describes participants with similar recorded profiles. If survey responses are averaged within households before the matrix is built, one row becomes a household and the learned groups describe households. The algorithm may be identical, but the unit of interpretation has changed.
+
+## Build a small speaker representation
+
+Suppose three speakers report English and Spanish speaking frequency on a scale from 1 to 5.
+
+| speaker | English speaking | Spanish speaking |
+|:--|--:|--:|
+| A | 5 | 1 |
+| B | 4 | 2 |
+| C | 1 | 5 |
+
+The clustering matrix is
+
+$$
+\mathbf{X}
+=
+\begin{bmatrix}
+5&1\\
+4&2\\
+1&5
+\end{bmatrix}.
+$$
+
+The first row
+
+$$
+\mathbf{x}_A=
+\begin{bmatrix}5&1\end{bmatrix}
+$$
+
+represents speaker A only in terms of the two selected speaking ratings. It contains no information about reading, age, community, or any other unrecorded or excluded property.
+
+Speakers A and B differ by one rating point on each column. Speakers A and C differ by four points on each. A distance-based method will thus tend to regard A and B as more similar under this representation. The [next page](distance-and-scaling.qmd) makes that comparison numerical.
+
+## Assign each column a role
+
+A useful representation record states how every available column is used.
+
+1. Features included in the clustering define the learned groups.
+2. Identifiers link rows to other records but do not define similarity.
+3. Metadata withheld during fitting can be inspected afterward.
+4. Sampling and grouping variables determine how rows are separated during evaluation.
+
+These roles are not interchangeable. Suppose age is included as a clustering feature. A later finding that the groups differ in age partly restates how they were constructed. If age is withheld during fitting, its association with the groups is an external descriptive check.
+
+The same issue applies to intended vowel labels. If a mixture is meant to find structure in formant measurements, the vowel labels should not enter the measurement matrix. They can be compared with the fitted components afterward.
+
+## Keep identifiers out of the geometry
+
+An identifier such as `participant_id` distinguishes records, but its numerical value has no measurement interpretation. Speaker 102 is not two units closer to speaker 104 than to speaker 108 in any linguistically meaningful sense.
+
+Including such a column makes arbitrary differences among record numbers part of the distance calculation. The clustering may then produce groups driven by data-entry order.
+
+The repair is simple: retain identifiers beside the matrix, not inside it. They remain necessary for joining assignments back to metadata and for keeping repeated records from the same sampling unit together during [grouped validation](../model-criticism-and-prediction/grouped-cross-validation.qmd).
+
+## Do not encode categories as ordered numbers
+
+Suppose a language column is coded
+
+$$
+\text{English}=1,
+\qquad
+\text{Spanish}=2,
+\qquad
+\text{Hindi}=3.
+$$
+
+This coding places Spanish halfway between English and Hindi on a numerical line. The spacing comes from the labels rather than from a linguistic measurement.
+
+If category identity should help define similarity, separate indicator columns may be used. But doing so states that shared category membership is part of the clustering target. If category is meant to interpret the groups, it should remain outside the fitted representation.
+
+Thus, numerical storage does not guarantee numerical meaning.
+
+## Construct the feature matrix in R
+
+Keep row identifiers and external variables in a data frame.
+
+```{r}
+#| eval: false
+
+speaker_data <- data.frame(
+  speaker_id = c("A", "B", "C"),
+  english_speaking = c(5, 4, 1),
+  spanish_speaking = c(1, 2, 5),
+  age = c(26, 41, 33)
+)
+```
+
+Select only the declared clustering features for the numerical matrix.
+
+```{r}
+#| eval: false
+
+feature_names <- c(
+  "english_speaking",
+  "spanish_speaking"
+)
+
+X <- as.matrix(speaker_data[, feature_names])
+rownames(X) <- speaker_data$speaker_id
+
+X
+```
+
+The `age` and `speaker_id` columns remain available, but neither can affect the fitted similarity. After clustering, assignments can be joined back using `speaker_id`.
+
+## Repeated records change the row target
+
+Suppose each participant completes the survey twice. Treating both surveys as separate rows creates a grouping of survey occasions. Treating their average as one row creates a grouping of participants but discards within-participant change.
+
+Neither choice is universally correct. The representation should follow the intended object. If the goal is to describe stable participant profiles, repeated rows from one person should not be treated as unrelated participants.
+
+The prose must refer to the same object that each matrix row represents. Otherwise the interpretation and the fitted grouping refer to different units.
+
+## A representation cannot discover what it already contains
+
+Excluding an interpretation variable does remove information from the grouping criterion. That exclusion is exactly what makes a later comparison with the variable informative.
+
+If sex category enters a vowel clustering, an observed association between clusters and sex may be built into the geometry. If the aim is to ask whether formant-based components track sex category, the category must remain external to the fit.
+
+This separation does not make the external variable ground truth. It makes the construction and interpretation steps distinguishable.
+
+## Check the representation
+
+1. What does one row represent in the three-speaker matrix?
+2. How would the interpretation change if rows were households rather than speakers?
+3. Why should `participant_id` remain outside the feature matrix?
+4. What is learned by comparing clusters with age when age was withheld from fitting?
+5. Why does coding three language names as 1, 2, and 3 create an unsupported geometry?
+6. What grouping is obtained if repeated survey occasions, rather than participants, form the rows?
+
+## Before measuring distance
+
+The input matrix fixes the row object and the feature columns, while the analysis record states how external variables are used. These choices determine what a learned group can describe before an algorithm is selected. The [next page](distance-and-scaling.qmd) defines how the declared feature values make two rows close or far apart.

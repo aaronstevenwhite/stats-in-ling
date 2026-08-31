@@ -1,0 +1,97 @@
+---
+title: "Cross-validation"
+---
+
+The [preceding page](training-and-test-data.qmd) separated one training set from one test set. [**$K$-fold cross-validation (CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) reduces dependence on a single partition by dividing the data into $K$ folds and rotating which fold serves as the test set.
+
+The output of CV is one out-of-fold prediction for every observation. Each prediction comes from a model that did not use that observation's response.
+
+::: {.callout-note title="Reading: Nicenboim, Schad, and Vasishth, Chapter 14"}
+[Nicenboim, Schad, and Vasishth, *Cross-validation*, in *An Introduction to Bayesian Data Analysis for Cognitive Science*](https://bruno.nicenboim.me/bayescogsci/ch-cv.html).
+
+Read the chapter opening and Section 14.2 through Equation 14.6.
+
+**Why this reading?** These passages distinguish training data from held-out data and derive the rotation used in $K$-fold cross-validation. They are included on this page because the assigned portion develops the same algorithm and stops before the later material on approximate leave-one-out computation and model comparison.
+:::
+
+## The algorithm
+
+Partition the observation indices into disjoint folds $F_1,\ldots,F_K$. For fold $k$:
+
+1. fit the entire analysis procedure to observations outside $F_k$;
+2. use that fitted procedure to predict observations in $F_k$; and
+3. store the predictions in their original rows.
+
+After all folds have been processed, the cross-validated risk estimate is
+
+$$
+\widehat{R}_{\mathrm{CV}}
+=
+\frac{1}{N}
+\sum_{k=1}^K
+\sum_{i\in F_k}
+L\left(y_i,\widehat{f}_{-k}(x_i)\right),
+$$
+
+where $\widehat{f}_{-k}$ is fit without fold $k$. The model changes across folds, but the procedure used to fit it remains fixed.
+
+## A base-R implementation
+
+The following skeleton evaluates a linear model.
+
+```{r}
+#| eval: false
+
+set.seed(214)
+fold <- sample(rep(1:10, length.out = nrow(dat)))
+prediction <- rep(NA_real_, nrow(dat))
+
+for (k in 1:10) {
+  test <- fold == k
+  fit <- lm(response ~ predictor_1 + predictor_2, data = dat[!test, ])
+  prediction[test] <- predict(fit, newdata = dat[test, ])
+}
+
+rmse <- sqrt(mean((dat$response - prediction)^2))
+```
+
+The vector `prediction` is more useful than ten fold scores. It permits inspection of error by response range, linguistic category, item, or another prespecified unit. It also makes paired comparisons between models possible.
+
+## What $K$ changes
+
+With larger $K$, each model is trained on a larger fraction of the data, while each test fold is smaller. Leave-one-out CV sets $K=N$: each fitted model omits one observation. This can be computationally expensive, and the resulting estimate of predictive performance can have high variance.
+
+Five- or ten-fold CV is common because it balances training size and computation. These values are conventions, not probability laws. A dataset with 55 passages may instead use 55 folds when the predictive question requires one entire passage to be omitted at a time.
+
+Randomly assigning observations to folds is part of the procedure. Different assignments can produce slightly different scores. Repeating random CV over several prespecified seeds reveals split sensitivity, but the repeated scores are not independent replications of the dataset. They reuse the same responses.
+
+## Every fitted decision stays inside the loop
+
+CV evaluates a procedure, not just its final coefficient formula. If a procedure selects predictors, centers variables, chooses a penalty, or imputes missing values, those steps are repeated using only the training portion of every fold.
+
+For instance, a model with a tuning parameter $\lambda$ cannot choose $\lambda$ by comparing the outer test-fold responses. It requires an inner validation procedure within the outer training set. The outer prediction then evaluates the complete selection rule on data not consulted by either coefficient fitting or tuning.
+
+This nested construction may be unnecessary when the model specification is fixed in advance. Avoiding an unneeded tuning layer keeps the lesson focused and the score interpretable.
+
+## What random row folds evaluate
+
+Random row folds evaluate another row from the same mixture of represented units. In repeated linguistic data, the same speakers, items, passages, or languages may appear in both training and test folds. That can be appropriate when the question concerns another trial from represented groups.
+
+It is not appropriate merely because random folds are easy to create. If the claim concerns a new speaker, all rows from each test speaker must be excluded from training. If it concerns a new passage, all positions in the passage must move together. The next page changes the fold construction while leaving the CV algorithm itself intact.
+
+## Fold scores are not independent experiments
+
+A common comparison computes one loss per fold and applies a t test to the $K$ differences. This treats fold scores as independent observations even though their training sets overlap heavily. With ten-fold CV, any two fitted models share most of their training data.
+
+The folds are computational partitions, not necessarily the sampling units of the scientific claim. Predictive differences should instead be returned to the independent groups specified by the claim. For prediction on omitted passages, that means passage-level losses, even if several passages were assigned to one computational fold.
+
+## Check the split
+
+1. Why is each stored CV prediction out of sample for its own response?
+2. What must happen to a training-estimated transformation in every fold?
+3. Does repeating ten-fold CV 100 times create 1,000 independent estimates of performance on omitted corpora? Why not?
+4. For which predictive question would random trial folds be reasonable in a repeated participant by item experiment?
+
+## Before grouping folds
+
+$K$-fold CV rotates the training and test roles to obtain one held-out prediction per observation. Every adaptive decision belongs inside the fold, and random folds evaluate new rows from the observed mixture of groups. The [next page](leave-one-out-cross-validation.qmd) specializes this rotation to one held-out observation per fit. [Grouped cross-validation](grouped-cross-validation.qmd) then changes the partition so that complete speakers, items, passages, or languages move together.

@@ -1,0 +1,163 @@
+---
+title: "Inference for one mean"
+---
+
+The preceding pages introduced [confidence intervals](confidence-intervals.qmd), [null distributions](null-hypotheses-and-test-statistics.qmd), and the [Student t distribution](../random-variables-and-distributions/student-t-distribution.qmd). We now combine them for inference about one population mean. Suppose ten speakers each supply one normalized vowel-duration difference between a target condition and a fixed reference condition.
+
+$$
+D_1,\ldots,D_{10}.
+$$
+
+The population mean difference $\mu_D$ is the estimand. The sample mean $\overline{D}$ is the estimator. A [**one-sample t-test**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=308), together with its corresponding confidence interval, uses the sample to estimate the population mean and the uncertainty of that estimate.
+
+## Estimate the mean and response spread
+
+For $n$ independent speaker differences, the mean estimator is
+
+$$
+\overline{D}
+=\frac{1}{n}\sum_{i=1}^nD_i.
+$$
+
+The sample standard deviation is
+
+$$
+s_D
+=
+\sqrt{
+\frac{1}{n-1}
+\sum_{i=1}^n(D_i-\overline{D})^2
+}.
+$$
+
+The value $s_D$ describes variation among speaker differences. Dividing it by $\sqrt{n}$ gives the estimated standard error of their mean:
+
+$$
+\widehat{\operatorname{SE}}(\overline{D})
+=\frac{s_D}{\sqrt{n}}.
+$$
+
+The distinction between these two spreads remains important. $s_D$ concerns the responses. $s_D/\sqrt{n}$ concerns the estimator.
+
+## Account for estimating the spread
+
+If the population standard deviation $\sigma_D$ were known and the observations were normally distributed, standardizing with $\sigma_D/\sqrt{n}$ would produce a standard normal variable. In practice, $\sigma_D$ is unknown and $s_D$ is estimated from the same data as $\overline{D}$.
+
+Under independent normal sampling,
+
+$$
+T
+=
+\frac{\overline{D}-\mu_D}{s_D/\sqrt{n}}
+$$
+
+has a Student t distribution with
+
+$$
+\nu=n-1
+$$
+
+degrees of freedom. Estimating the mean imposes one constraint on the deviations because they must sum to zero:
+
+$$
+\sum_{i=1}^n(D_i-\overline{D})=0.
+$$
+
+Only $n-1$ deviations can vary freely. This is the source of the degrees of freedom in the one-sample t-test.
+
+The t distribution has heavier tails than the standard normal. Those heavier tails represent the additional uncertainty from estimating the population spread. As the sample grows, $s_D$ becomes more stable and the t distribution approaches the standard normal.
+
+## Work a confidence interval by hand
+
+Suppose the observed summary is
+
+$$
+n=10,
+\qquad
+\overline{d}=18\text{ ms},
+\qquad
+s_D=20\text{ ms}.
+$$
+
+The estimated standard error is
+
+$$
+\widehat{\operatorname{SE}}(\overline{D})
+=\frac{20}{\sqrt{10}}
+\approx6.3249\text{ ms}.
+$$
+
+For a 95% interval with $9$ degrees of freedom, the $.975$ t quantile is approximately $2.262$. The interval is
+
+$$
+\overline{d}
+\mathbin{\pm}
+t_{.975,9}\widehat{\operatorname{SE}}(\overline{D}),
+$$
+
+which becomes
+
+$$
+18\mathbin{\pm}2.262(6.3249)
+\approx[3.69,32.31]\text{ ms}.
+$$
+
+This interval targets the population mean difference. It does not contain 95% of speaker differences.
+
+## Test the zero reference value
+
+For $H_0:\mu_D=0$, the observed statistic is
+
+$$
+t_{\mathrm{obs}}
+=\frac{18-0}{6.3249}
+\approx2.846.
+$$
+
+The two-sided tail probability is approximately $.0192$.
+
+```{r}
+#| label: verify-one-sample-t
+#| echo: true
+
+n <- 10
+mean_difference <- 18
+sd_difference <- 20
+se_difference <- sd_difference / sqrt(n)
+df <- n - 1
+t_observed <- mean_difference / se_difference
+critical_value <- qt(.975, df = df)
+interval <- mean_difference + c(-1, 1) * critical_value * se_difference
+p_value <- 2 * pt(-abs(t_observed), df = df)
+
+stopifnot(abs(se_difference - 6.324555) < .000001)
+stopifnot(abs(p_value - 0.019213) < .000001)
+c(t = t_observed, lower = interval[1], upper = interval[2], p = p_value)
+```
+
+With a vector named `duration_difference`, R carries out the same procedure with
+
+```r
+t.test(duration_difference, mu = 0)
+```
+
+The hand calculation and software call should agree. Writing the target, estimator, and standard error first makes it possible to diagnose a disagreement.
+
+## Preserve the independent unit
+
+The ten $D_i$ values must be the independent units relevant to the population claim. Ten tokens from one speaker do not substitute for ten sampled speakers. Token rows are not independent speaker observations.
+
+If each speaker contributes several tokens, averaging within speaker can produce one difference per speaker. That aggregation may discard information, but it preserves the analysis unit needed by this procedure. A later multilevel model can retain token-level observations while representing speaker dependence.
+
+::: {.callout-note title="Problem-set reading"}
+[PS1, *Task 3: paired-mean inference*](../problem-sets/ps1/ps1.qmd#task-3-paired-mean-inference-30-points) applies one-sample t inference to within-speaker differences. It is included because paired inference becomes ordinary one-sample inference once the response has been constructed at the correct unit.
+:::
+
+## Check your understanding
+
+1. Why is the standard error $s_D/\sqrt{n}$ rather than $s_D$?
+2. Why does the t distribution have $n-1$ degrees of freedom here?
+3. Which population quantity does $[3.69,32.31]$ target?
+4. What goes wrong if the ten differences come from ten tokens produced by one speaker?
+
+The following pages show how design determines the response supplied to an inferential procedure. They begin with [paired observations](paired-observations.qmd).

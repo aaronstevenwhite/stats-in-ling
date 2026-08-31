@@ -1,0 +1,269 @@
+---
+title: "Principal component analysis"
+---
+
+Suppose two acoustic measurements tend to rise together across vowel tokens. We could keep both coordinates, but much of their variation may run along one common direction. We would like to find that direction without choosing one of the measurements as a response variable.
+
+[**Principal component analysis (PCA)**](https://online.stat.psu.edu/stat508/Lesson07.html) finds orthogonal directions in a centered data matrix, ordered by the variance of the observations projected onto them. The first direction has the largest possible projected variance. Each later direction has the largest remaining projected variance subject to being orthogonal to the earlier directions.
+
+We develop this idea from the [singular value decomposition](singular-value-decomposition.qmd) introduced on the previous page. We then solve a two-variable example by hand, reproduce it in R, and separate the variance criterion from claims about linguistic categories or processes.
+
+## Begin with variation around column means
+
+Let
+
+$$
+\mathbf{X}\in\mathbb{R}^{n\times p}
+$$
+
+be a linguistic data matrix, and let $\mathbf{X}_c$ be its column-centered version. Centering matters because PCA is meant to describe variation around each observed column mean rather than distance from the numerical origin.
+
+Take the SVD of the centered matrix:
+
+$$
+\mathbf{X}_c
+=
+\mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf T}.
+$$
+
+The columns of $\mathbf{V}$ are the [**principal component directions**](https://online.stat.psu.edu/stat508/Lesson07.html). These directions live in the original $p$-variable coordinate space. The projected coordinates of the $n$ observations are
+
+$$
+\mathbf{Z}
+=
+\mathbf{X}_c\mathbf{V}
+=
+\mathbf{U}\mathbf{D}.
+$$
+
+The matrix $\mathbf{Z}$ is the [**score matrix**](https://online.stat.psu.edu/stat508/Lesson07.html). Its entry $z_{ik}$ locates observation $i$ along component $k$.
+
+## State the variance criterion
+
+Consider a unit-length direction $\mathbf{v}$, so that
+
+$$
+\mathbf{v}^{\mathsf T}\mathbf{v}=1.
+$$
+
+Projecting every centered row onto this direction gives
+
+$$
+\mathbf{z}=\mathbf{X}_c\mathbf{v}.
+$$
+
+Since the columns of $\mathbf{X}_c$ have mean zero, the projected scores also have mean zero. Their sample variance is
+
+$$
+\operatorname{Var}(\mathbf{z})
+=
+\frac{1}{n-1}
+\mathbf{z}^{\mathsf T}\mathbf{z}
+=
+\frac{1}{n-1}
+\mathbf{v}^{\mathsf T}
+\mathbf{X}_c^{\mathsf T}
+\mathbf{X}_c
+\mathbf{v}.
+$$
+
+The first principal component direction solves
+
+$$
+\mathbf{v}_1
+=
+\underset{\mathbf{v}^{\mathsf T}\mathbf{v}=1}{\operatorname{argmax}}
+\frac{1}{n-1}
+\lVert\mathbf{X}_c\mathbf{v}\rVert^2.
+$$
+
+The second solves the same maximization with the additional constraint
+
+$$
+\mathbf{v}_2^{\mathsf T}\mathbf{v}_1=0.
+$$
+
+Later directions remain orthogonal to all earlier directions. The right singular vectors provide exactly this ordered solution.
+
+## Work through two measurements
+
+Suppose two centered acoustic measurements for two vowel tokens are
+
+$$
+\mathbf{X}_c
+=
+\begin{bmatrix}
+-1&-1\\
+1&1
+\end{bmatrix}.
+$$
+
+Both measurements change together. Consider the unit direction
+
+$$
+\mathbf{v}_1
+=
+\frac{1}{\sqrt{2}}
+\begin{bmatrix}
+1\\1
+\end{bmatrix}.
+$$
+
+The scores are
+
+$$
+\begin{aligned}
+\mathbf{z}_1
+&=
+\mathbf{X}_c\mathbf{v}_1\\
+&=
+\begin{bmatrix}
+-1&-1\\
+1&1
+\end{bmatrix}
+\frac{1}{\sqrt{2}}
+\begin{bmatrix}
+1\\1
+\end{bmatrix}\\
+&=
+\begin{bmatrix}
+-\sqrt{2}\\
+\sqrt{2}
+\end{bmatrix}.
+\end{aligned}
+$$
+
+Because $n=2$, their sample variance is
+
+$$
+\frac{(-\sqrt{2})^2+(\sqrt{2})^2}{2-1}
+=
+4.
+$$
+
+Now consider the orthogonal unit direction
+
+$$
+\mathbf{v}_2
+=
+\frac{1}{\sqrt{2}}
+\begin{bmatrix}
+1\\-1
+\end{bmatrix}.
+$$
+
+Its scores are
+
+$$
+\mathbf{X}_c\mathbf{v}_2
+=
+\begin{bmatrix}
+0\\0
+\end{bmatrix}.
+$$
+
+There is no observed variation along the difference between the two measurements because the columns are identical. All observed variation lies along their common direction.
+
+The first principal component is thus the direction of maximum sample variance.
+
+## Connect the scores to singular values
+
+From
+
+$$
+\mathbf{Z}=\mathbf{U}\mathbf{D},
+$$
+
+the score vector for component $k$ is $d_k\mathbf{u}_k$. Since $\mathbf{u}_k$ has squared length one, the sum of squared scores is $d_k^2$. The sample variance of component $k$ is thus
+
+$$
+\frac{d_k^2}{n-1}.
+$$
+
+In the worked example, the first singular value is 2. Its component variance is
+
+$$
+\frac{2^2}{2-1}=4,
+$$
+
+which matches the direct score calculation. The second singular value is zero, so its component variance is zero.
+
+## Fit PCA in R
+
+The function `prcomp()` centers the matrix and computes the SVD.
+
+```{r}
+#| eval: false
+
+X_two <- matrix(
+  c(
+    -1, -1,
+     1,  1
+  ),
+  nrow = 2,
+  byrow = TRUE
+)
+
+pca_two <- prcomp(
+  X_two,
+  center = TRUE,
+  scale. = FALSE
+)
+
+pca_two$rotation
+pca_two$x
+pca_two$sdev
+```
+
+The `rotation` matrix contains the component directions $\mathbf{V}$. The `x` matrix contains the scores $\mathbf{Z}$. The `sdev` vector contains the score standard deviations
+
+$$
+\frac{d_k}{\sqrt{n-1}}.
+$$
+
+The sign of the printed first direction may be the reverse of the hand calculation. This is the sign indeterminacy inherited from the SVD, not a different solution.
+
+For a general matrix `X`, the preprocessing decision should be stated explicitly.
+
+```{r}
+#| eval: false
+
+pca_fit <- prcomp(
+  X,
+  center = TRUE,
+  scale. = TRUE
+)
+```
+
+With `scale. = FALSE`, PCA describes the covariance structure of the centered variables. With `scale. = TRUE`, it describes the correlation structure of standardized variables. These coordinate systems can produce different directions because they assign different initial weights to the columns.
+
+## Interpret the variance criterion narrowly
+
+The first component accounts for the largest observed projected variance under the chosen coordinate system. It is not automatically the direction most relevant to a linguistic theory.
+
+A small-variance direction may separate two vowel categories. A large-variance direction may instead track microphone placement, speaker anatomy, or another source that dominates the measurements. PCA orders directions by observed variance, not by theoretical interest.
+
+A component can explain the largest amount of sample variance without being linguistically central. Its substantive interpretation requires evidence beyond that variance criterion.
+
+## PCA does not use category labels
+
+PCA does not receive vowel labels, language families, experimental conditions, or other metadata when it computes its directions. If labeled groups separate in a score plot, that separation is a relation discovered after the representation was fit. It was not the criterion optimized by the algorithm.
+
+A visible separation does not show that PCA recovered the category. The plot may omit later components, the label may correlate with a recording source, or a small number of observations may drive the appearance. The component scores need to be joined to metadata correctly and criticized with respect to the data construction.
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Task 8](../problem-sets/ps5/ps5.qmd#task-8-inspect-phonological-and-database-structure-15-points) relates fitted component scores to inventory source, language family, and macroarea. A component that reconstructs inventories well need not correspond to a universal phonological dimension. Its association with database provenance and sampling structure is part of its interpretation.
+:::
+
+## Check the variance direction
+
+1. Why is the matrix centered before PCA?
+2. In the worked example, why does $\mathbf{v}_2$ produce only zero scores?
+3. How is component variance related to the corresponding singular value?
+4. What changes when `scale. = TRUE` rather than `scale. = FALSE`?
+5. Why is the first component not automatically the most theoretically important direction?
+6. What evidence would be needed before interpreting a score separation as a linguistic category distinction?
+
+## Before reading observations and variables
+
+PCA applies the SVD to a centered matrix and orders orthogonal directions by projected variance. The resulting criterion is exact, but its linguistic interpretation remains relative to the chosen rows, columns, and coordinate transformation. The [next page](scores-and-loadings.qmd) separates the coordinates assigned to observations from the weights assigned to original variables.

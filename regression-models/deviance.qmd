@@ -1,0 +1,154 @@
+---
+title: "Deviance"
+---
+
+The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) defined the likelihood as a function of the parameter with the observed data held fixed. For ordinary linear regression, residual sums of squares provide a natural measure of mismatch. Generalized linear models use [**deviance**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) to compare a fitted model with a model that reproduces the observed responses as closely as the response family allows.
+
+This likelihood comparison defines the model deviance. The saturated model is not a theoretically plausible model. It is a likelihood benchmark
+that gives each observation enough freedom to attain the best family-specific
+fit.
+
+## The saturated model
+
+A saturated model has enough parameters to fit every observation's response. Its likelihood is $L_{\mathrm{sat}}$. The fitted candidate model has likelihood $L_{\mathrm{fit}}$.
+
+The deviance is
+
+$$
+D
+=
+2\left[
+\log L_{\mathrm{sat}}
+-
+\log L_{\mathrm{fit}}
+\right].
+$$
+
+The saturated model cannot fit worse than the candidate. The deviance is thus nonnegative. Smaller values indicate that the candidate is closer to the saturated fit.
+
+The factor 2 places likelihood differences on the conventional deviance scale.
+A deviance of zero means that the candidate attains the saturated likelihood. It
+does not mean that the candidate is the true data-generating model.
+
+## Calculate Bernoulli deviance
+
+Suppose five binary responses contain three successes and two failures, and an
+intercept-only model fits probability
+
+$$
+\widehat\pi=.6.
+$$
+
+The fitted log likelihood is
+
+$$
+\begin{aligned}
+\log L_{\text{fit}}
+&=3\log(.6)+2\log(.4)\\
+&\approx-3.365.
+\end{aligned}
+$$
+
+The saturated Bernoulli model assigns fitted probability 1 to each observed
+success and 0 to each observed failure. Its log likelihood is 0 because every
+observed response receives probability 1. Thus
+
+$$
+\begin{aligned}
+D
+&=2[0-(-3.365)]\\
+&\approx6.730.
+\end{aligned}
+$$
+
+```{r}
+#| label: calculate-intercept-only-bernoulli-deviance
+#| echo: true
+y <- c(1, 1, 0, 1, 0)
+pi_hat <- mean(y)
+log_lik_fit <- sum(dbinom(y, size = 1, prob = pi_hat, log = TRUE))
+deviance_by_hand <- 2 * (0 - log_lik_fit)
+
+fit <- glm(y ~ 1, family = binomial())
+
+c(
+  by_hand = deviance_by_hand,
+  from_model = deviance(fit)
+)
+```
+
+The two values agree. The calculation compares the fitted common probability
+with observation-specific saturated probabilities.
+
+## Residual deviance is not meaningful alone
+
+A deviance value has no universal good cutoff. Its scale depends on the family, sample size, and observed responses. Use it through comparisons, dispersion checks, and residual contributions.
+
+For instance, doubling a dataset by duplicating every observation can roughly
+double a deviance while leaving fitted response proportions unchanged. A raw
+value cannot be interpreted independently of the number and form of
+observations.
+
+One decontextualized cutoff cannot interpret every deviance value. Deviance becomes informative through a declared model comparison or a family-specific diagnostic.
+
+## Compare nested models
+
+Suppose model 0 is nested within model 1. The difference in deviance is
+
+$$
+D_0-D_1
+=
+2\left[
+\log L_1-\log L_0
+\right].
+$$
+
+This is the likelihood ratio statistic. Under regularity conditions and a null hypothesis that the smaller model is correct, it has an approximate chi squared distribution with degrees of freedom equal to the difference in parameter counts.
+
+The approximation can fail at parameter boundaries, with small samples, or for irregular mixture models. The test also answers a fit question. It does not directly estimate held out prediction.
+
+The models must be nested for this subtraction to have the usual likelihood
+ratio interpretation. Model 0 is nested in model 1 when a constraint on the
+larger model's parameters reproduces the smaller model. Setting one added slope
+to zero is a common case.
+
+If the two models use different response families or different observations,
+their saturated references may not be comparable. Subtracting the displayed
+deviances can then answer no clean nested-model question.
+
+## Deviance and overdispersion
+
+For a Poisson model, a residual deviance much larger than its residual degrees of freedom can be evidence that the conditional variation exceeds the Poisson mean variance relation. This ratio is a diagnostic, not a proof of one particular cause. Omitted grouping, excess zeros, and a negative binomial response can all produce related patterns.
+
+The numerator and denominator should not be treated as an exact test without
+checking the setting. A large ratio says that the fitted Poisson model leaves
+more likelihood discrepancy than its parameter count would lead us to expect
+under a rough reference. It does not identify which alternative model will fix
+the discrepancy.
+
+## In R
+
+```{r}
+#| label: retrieve-deviance
+#| echo: true
+deviance(fit)
+df.residual(fit)
+
+# For two fitted nested models on identical rows:
+# anova(smaller_fit, larger_fit, test = "Chisq")
+```
+
+The models must be fit to the same observations and with comparable likelihoods. A difference caused by different missing value deletion is not a clean nested model comparison.
+
+Thus a comparison should begin with a row check. The number and identity of
+modeled observations must agree. The commented code records the operation
+without assuming that two comparison models exist on this page.
+
+::: {.callout-note title="Interpret deviance relative to the saturated model"}
+1. What does the saturated model do?
+2. How is a nested model deviance difference related to a likelihood ratio statistic?
+3. Why is a large Poisson deviance ratio a clue rather than a diagnosis?
+4. Recalculate the Bernoulli deviance for four successes and one failure under
+   fitted probability $.8$.
+5. Explain why one decontextualized deviance cutoff cannot apply to every model.
+:::

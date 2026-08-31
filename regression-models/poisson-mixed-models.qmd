@@ -1,0 +1,151 @@
+---
+title: "Poisson mixed-effects models"
+---
+
+This page combines [Poisson regression](poisson-regression.qmd), an [exposure offset](exposure-offsets.qmd), and a [random intercept](random-intercepts.qmd). The model answers a rate question while retaining repeated speaker structure.
+
+Suppose a sociolinguistic corpus divides each interview into segments and counts filled pauses in each segment. Segments differ in duration, and several segments come from each speaker. A useful analysis must represent the response as a count, adjust for the amount of speech, and retain the repeated speaker structure.
+
+A [**Poisson mixed-effects model**](https://lme4.github.io/lme4/reference/glmer.html) combines these components. This page introduces no new distribution or grouping device. Its purpose is to show how the components work together in one linguistic analysis.
+
+## State the observation and target
+
+Let $Y_{ij}$ be the number of filled pauses in segment $i$ from speaker $j$. Let $t_{ij}$ be the segment duration in minutes, and let $x_{ij}$ be a centered measure of speech rate.
+
+The target is the association between speech rate and the expected filled pause rate per minute. It is not the association between speech rate and raw counts. Longer segments create more opportunities for a filled pause even when the underlying rate is unchanged.
+
+Speaker is the repeated unit. Several rows from the same speaker may share an unmeasured baseline tendency to produce filled pauses. This is the dependence that the random intercept will represent.
+
+## Assemble the conditional model
+
+Conditional on speaker $j$'s random intercept, use a Poisson response:
+
+$$
+Y_{ij}\mid b_{0j}
+\sim
+\operatorname{Poisson}(\lambda_{ij}).
+$$
+
+Place the exposure offset, fixed predictor, and random intercept in the log expected count:
+
+$$
+\log\lambda_{ij}
+=
+\log t_{ij}
++
+\beta_0
++
+\beta_1x_{ij}
++
+b_{0j},
+$$
+
+where
+
+$$
+b_{0j}\sim\mathcal N(0,\tau_0^2).
+$$
+
+Each term has one job. The offset $\log t_{ij}$ accounts for known observation time. The coefficient $\beta_1$ describes the population association with speech rate. The deviation $b_{0j}$ represents persistent speaker differences left after speech rate has been included.
+
+## Move from counts to rates
+
+Exponentiating the linear predictor gives
+
+$$
+\lambda_{ij}
+=
+t_{ij}
+\exp(\beta_0+\beta_1x_{ij}+b_{0j}).
+$$
+
+Divide both sides by duration:
+
+$$
+\frac{\lambda_{ij}}{t_{ij}}
+=
+\exp(\beta_0+\beta_1x_{ij}+b_{0j}).
+$$
+
+The right side is the conditional expected filled pause rate per minute. This rate conditions on a particular speaker deviation. Multiplying it by duration returns the expected count for one segment.
+
+Suppose $\beta_0=\log 1.5$, $\beta_1=.25$, $x_{ij}=1$, and $b_{0j}=.30$. The fitted rate is
+
+$$
+1.5\exp(.25+.30)
+\approx
+2.60
+$$
+
+filled pauses per minute. For a two minute segment, the expected count is
+
+$$
+2(2.60)=5.20.
+$$
+
+The fact that an expected count is not an integer causes no problem. Repeated segments with these properties would average about 5.20 filled pauses under the model.
+
+## Interpret each multiplicative change
+
+Holding speaker and duration fixed, a one unit increase in centered speech rate multiplies the expected rate by
+
+$$
+\exp(\beta_1).
+$$
+
+For $\beta_1=.25$,
+
+$$
+\exp(.25)\approx1.28.
+$$
+
+The fitted expected rate is thus about 28 percent higher. This comparison is conditional on the same speaker deviation. It should not be described as an additive increase of .25 filled pauses.
+
+The speaker deviation also has a multiplicative interpretation. A speaker with $b_{0j}=.30$ has a fitted rate multiplied by
+
+$$
+\exp(.30)\approx1.35
+$$
+
+relative to a speaker at the center of the random effect distribution, with the other predictors held fixed. The standard deviation $\tau_0$ describes variation among speaker baselines on the log rate scale.
+
+## Fit the assembled model
+
+The data must contain one row per segment, a nonnegative integer count, a positive duration, the predictor, and a speaker identifier. The corresponding R model is
+
+```r
+fit_pauses <- lme4::glmer(
+  filled_pause_count ~ speech_rate_centered +
+    offset(log(segment_minutes)) +
+    (1 | speaker_id),
+  family = poisson(link = "log"),
+  data = speech_segments
+)
+```
+
+The offset has a coefficient fixed at one. The speaker term groups rows that share a speaker. Replacing `speaker_id` with a unique segment identifier would not represent the repeated unit.
+
+For two segments from the same speaker with the same speech rate, tripling duration triples the expected count. For two speakers with the same predictor value and duration, differences in fitted counts may reflect their estimated speaker deviations.
+
+## Preserve the conditioning statement
+
+Conditional on $b_{0j}$, the model retains the Poisson mean and variance relation:
+
+$$
+\operatorname{Var}(Y_{ij}\mid b_{0j})
+=
+\operatorname{E}(Y_{ij}\mid b_{0j})
+=
+\lambda_{ij}.
+$$
+
+This statement concerns segments from a speaker with a given deviation. A prediction for a new speaker must instead average over the speaker distribution. These conditional and population predictions need not have the same variance. The distinction is developed on the next page.
+
+::: {.callout-note title="Check the assembled model"}
+1. Which term changes expected counts when segment duration changes?
+2. Which term represents persistent differences among speakers?
+3. If $\beta_1=.25$, what is the expected rate ratio for a one unit predictor increase?
+4. Why does the Poisson mean and variance equality above condition on $b_{0j}$?
+:::
+
+The [next page](overdispersion-and-random-effects.qmd) shows how speaker heterogeneity can produce extra Poisson variation when the random effects are averaged out.

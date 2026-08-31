@@ -1,0 +1,254 @@
+---
+title: "Fitting a linear regression"
+---
+
+The [straight-line mean](simple-linear-regression.qmd) specifies what the coefficients mean. The earlier page on [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) supplied a general fitting principle. This page shows how [**least squares**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) and maximum likelihood select the same coefficient estimates when errors are normally distributed with constant variance.
+
+Consider six constructed word observations:
+
+| surprisal | log reading time |
+|---:|---:|
+| 2 | 5.78 |
+| 3 | 5.82 |
+| 4 | 5.93 |
+| 5 | 5.99 |
+| 6 | 6.05 |
+| 7 | 6.13 |
+
+We want values of $\beta_0$ and $\beta_1$ that place a line near these points.
+The mean function tells us what a candidate line means, but it does not yet tell
+us which candidate to choose. We need a rule that compares whole lines against
+the observed responses.
+
+## Define each fitted value
+
+For observation $i$, a candidate line gives
+
+$$
+\widehat{y}_i=\beta_0+\beta_1x_i.
+$$
+
+The vertical discrepancy between the observed and fitted response is
+
+$$
+y_i-\widehat{y}_i
+=y_i-(\beta_0+\beta_1x_i).
+$$
+
+## Add squared discrepancies
+
+Least squares chooses the line that minimizes
+
+$$
+\operatorname{SSE}(\beta_0,\beta_1)
+=\sum_{i=1}^{n}
+\left[y_i-(\beta_0+\beta_1x_i)\right]^2.
+$$
+
+Squaring prevents positive and negative discrepancies from canceling and gives greater weight to larger misses.
+
+For instance, residuals of $.2$ and $-.2$ sum to zero even though neither
+observation lies on the line. Their squared values sum to $.08$. The squared
+error objective thus records both misses without allowing one direction to erase
+the other.
+
+The objective evaluates a complete candidate line. Moving the intercept or slope
+changes several fitted values at once, so the coefficient estimates must be
+chosen jointly.
+
+When errors are normally distributed with constant variance, the coefficient values that minimize this sum also maximize the likelihood.
+
+To see the connection, the normal log likelihood for fixed $\sigma$ can be
+written as
+
+$$
+\ell(\beta_0,\beta_1,\sigma)
+=C-n\log\sigma
+-\frac{1}{2\sigma^2}
+\sum_{i=1}^{n}
+\left[y_i-(\beta_0+\beta_1x_i)\right]^2,
+$$
+
+where $C$ does not depend on the coefficients. For a fixed positive value of
+$\sigma$, increasing the squared-error sum lowers the log likelihood. Thus the
+coefficient values with the smallest sum also have the largest normal
+likelihood.
+
+This equivalence does not say that squared error is a universally appropriate
+fitting rule. It follows from the normal likelihood. A binary response or
+a count response requires a different probability model, and later pages derive
+the fitting objectives implied by those models.
+
+## Derive the two coefficient estimates
+
+The least-squares slope for one predictor is
+
+$$
+\widehat\beta_1
+=\frac{
+\sum_{i=1}^{n}(x_i-\bar x)(y_i-\bar y)
+}{
+\sum_{i=1}^{n}(x_i-\bar x)^2
+}.
+$$
+
+The numerator measures how predictor and response deviations move together. The
+denominator measures the spread of the predictor. Their ratio gives response
+change per predictor unit.
+
+This expression also explains why the slope is not obtained by averaging the
+ratios $y_i/x_i$. Both variables must first be expressed relative to their own
+means. Otherwise the calculation confounds the line's vertical location with
+its change across the predictor.
+
+For the six observations,
+
+$$
+\bar x=4.5,
+\qquad
+\bar y=5.95,
+$$
+
+$$
+\sum_i(x_i-\bar x)(y_i-\bar y)=1.25,
+$$
+
+and
+
+$$
+\sum_i(x_i-\bar x)^2=17.5.
+$$
+
+Thus
+
+$$
+\widehat\beta_1
+=\frac{1.25}{17.5}
+\approx.0714.
+$$
+
+The fitted line passes through the point $(\bar x,\bar y)$, so the intercept is
+
+$$
+\begin{aligned}
+\widehat\beta_0
+&=\bar y-\widehat\beta_1\bar x\\
+&=5.95-.0714(4.5)\\
+&\approx5.629.
+\end{aligned}
+$$
+
+Thus the fitted conditional mean is
+
+$$
+\widehat m(x)=5.629+.0714x.
+$$
+
+## Fit the line in R
+
+```{r}
+#| label: fit-constructed-reading-times
+#| echo: true
+reading_times <- data.frame(
+  surprisal = 2:7,
+  log_rt = c(5.78, 5.82, 5.93, 5.99, 6.05, 6.13)
+)
+
+fit <- lm(log_rt ~ surprisal, data = reading_times)
+coef(fit)
+```
+
+The formula has three parts:
+
+| syntax | role |
+|---|---|
+| `log_rt` | response |
+| `~` | “is modeled as a function of” |
+| `surprisal` | predictor |
+
+The fitted coefficients define
+
+$$
+\widehat{m}(x)
+=\widehat{\beta}_0+\widehat{\beta}_1x.
+$$
+
+For this fit, the output should return an intercept near $5.629$ and a slope near
+$.0714$. The slope says that the fitted conditional mean increases by about
+$.0714$ log-time units for each one-unit increase in surprisal. It does not say
+that every observed response increases by that amount, since individual
+responses vary around the line.
+
+The software result is useful as a check on the hand derivation. But the hand
+derivation supplies the interpretation: `lm()` has selected the same line that
+minimizes the squared residuals.
+
+## Obtain fitted conditional means
+
+```{r}
+#| label: fitted-reading-time-means
+#| echo: true
+reading_times$fitted <- fitted(fit)
+reading_times
+```
+
+Each fitted value is the model's estimated conditional mean at that observation's surprisal. It is not a claim that the individual response must equal the line.
+
+## Calculate the residuals
+
+The residual for observation $i$ is the observed response minus its fitted
+conditional mean:
+
+$$
+e_i=y_i-\widehat m(x_i).
+$$
+
+The first word has fitted mean
+
+$$
+5.629+.0714(2)\approx5.7718,
+$$
+
+so its residual is approximately
+
+$$
+5.78-5.7718=.0082.
+$$
+
+A positive residual places the observed response above the line. A negative
+residual places it below the line. With an intercept in the fitted model, the
+residuals sum to zero up to numerical precision. This zero sum is a consequence
+of the fitting rule, not evidence that the model is adequate.
+
+```{r}
+#| label: check-linear-residual-sum
+#| echo: true
+sum(residuals(fit))
+sum(residuals(fit)^2)
+```
+
+The second value is the minimized squared-error sum. Any other intercept and
+slope produce a sum that is at least as large for these observations.
+
+## Separate fitting from evaluation
+
+The fitted line is the best line under the declared squared-error rule. This is
+a narrow claim. It does not establish that a line is a good representation of
+the conditional mean, that the conditional response variance is constant, or that the
+observations are conditionally independent.
+
+The best-fitting line within a model family is not necessarily an adequate model. Optimization answers which member of the chosen model
+family fits best. Adequacy asks whether that family captures the patterns needed
+for the linguistic question. Residual checks later provide evidence about the
+second question.
+
+The coefficient estimates summarize this one sample. The [next page](linear-regression-uncertainty.qmd) studies how such estimates vary across possible samples.
+
+::: {.callout-note title="Check the objective"}
+1. If a candidate line produces residuals $-.1$, $.2$, and $-.3$, calculate its
+   sum of squared errors for those three observations.
+2. Why would the unsquared residual sum be a poor fitting objective?
+3. Use the fitted equation to calculate the conditional mean at 6 bits of
+   surprisal.
+4. Explain the optimization-adequacy substitution in this example.
+:::

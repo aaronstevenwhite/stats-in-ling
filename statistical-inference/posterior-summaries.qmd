@@ -1,0 +1,152 @@
+---
+title: "Summarizing posterior draws"
+---
+
+The [posterior distribution page](posterior-distributions.qmd) represented uncertainty over parameter values. Suppose an analysis produces 4,000 draws of a difference $\Delta$ between two response probabilities:
+
+$$
+\Delta^{(1)},\ldots,\Delta^{(4000)}.
+$$
+
+The draws approximate the posterior distribution of $\Delta$. They retain more information than one estimate and one interval, but a results paragraph still needs a small set of interpretable quantities.
+
+A [**posterior summary**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is a calculation performed on the posterior distribution. It is not an additional model and does not create new evidence. The summary selects one aspect of the uncertainty already represented by the draws.
+
+## Locate the posterior center
+
+The posterior mean is approximated by
+
+$$
+\widehat{\mathbb{E}}[\Delta\mid y]
+=
+\frac{1}{S}
+\sum_{s=1}^{S}\Delta^{(s)}.
+$$
+
+The posterior median is the middle draw after sorting. In R:
+
+```r
+mean(draws$delta)
+median(draws$delta)
+```
+
+Suppose five equally weighted illustrative draws are
+
+$$
+-.09,\;-.07,\;-.06,\;-.05,\;.02.
+$$
+
+Their mean is
+
+$$
+\frac{-.09-.07-.06-.05+.02}{5}=-.05,
+$$
+
+while their median is $-.06$. The positive tail pulls the mean upward. With a symmetric posterior, the two centers will tend to be similar. With a skewed posterior, their difference records the different way each summary treats the tail.
+
+Neither quantity is automatically the "Bayesian estimate." The mean minimizes posterior expected squared error, while the median minimizes posterior expected absolute error. A course report can often use the median or mean consistently, provided the choice is stated and the full uncertainty is not hidden.
+
+## Construct a credible interval
+
+An equal-tailed 95 percent credible interval uses the $.025$ and $.975$ posterior quantiles:
+
+```r
+quantile(draws$delta, c(.025, .975))
+```
+
+The earlier [confidence interval page](confidence-intervals.qmd) attached a coverage interpretation to a repeated sampling procedure. A credible interval has a different interpretation. If the posterior quantiles are
+
+$$
+[-.08,-.02],
+$$
+
+then 95 percent of the represented posterior probability lies between those values. Conditional on the likelihood, prior, observed data, and computational approximation, this is a probability statement about $\Delta$.
+
+The conditioning clause matters. A credible interval does not guarantee that the model represents the linguistic sampling process or that the prior was appropriate. It describes uncertainty inside the fitted model.
+
+A 95 percent confidence interval has a different interpretation. Its 95 percent refers to long run coverage of an interval procedure across repeated samples. The two intervals can have similar numerical endpoints while licensing different probability statements.
+
+## Calculate a directional probability
+
+If the linguistic hypothesis predicts a negative response probability difference, estimate
+
+$$
+\Pr(\Delta<0\mid y)
+$$
+
+with the proportion of posterior draws below zero:
+
+```r
+mean(draws$delta < 0)
+```
+
+If 3,800 of 4,000 draws are negative, the estimate is
+
+$$
+\frac{3800}{4000}=.95.
+$$
+
+This quantity answers a directional posterior question. It is not a p value because it does not describe a tail probability for a test statistic under a null sampling distribution. It also does not describe the size of the association. A posterior probability of .95 can accompany a very small negative difference.
+
+Thus report direction together with a magnitude and interval on a meaningful scale. Replacing every posterior with a new verbal evidence label would discard the quantities that the analysis was designed to estimate.
+
+## Transform each draw before summarizing
+
+Suppose $\Theta$ is a response probability. Its odds are $\Theta/(1-\Theta)$. Transform every posterior draw:
+
+```r
+odds <- draws$theta / (1 - draws$theta)
+quantile(odds, c(.025, .5, .975))
+```
+
+Transforming the endpoints of an equal-tailed interval with this monotonic function gives the same interval endpoints as transforming every draw and taking the corresponding quantiles. But the mean of transformed draws is generally not the transformation of the posterior mean:
+
+$$
+\mathbb{E}\left[\frac{\Theta}{1-\Theta}\mid y\right]
+\ne
+\frac{\mathbb{E}[\Theta\mid y]}{1-\mathbb{E}[\Theta\mid y]}.
+$$
+
+Compute the estimand within every posterior draw, then summarize the resulting distribution. This procedure is necessary when an estimand combines several parameters or uses a nonlinear transformation.
+
+## Preserve joint uncertainty in a contrast
+
+Suppose a model contains response probabilities $\Theta_A$ and $\Theta_B$ for two linguistic conditions. Separate summaries do not retain which values occurred together in one posterior draw.
+
+For each draw $s$, compute the condition difference:
+
+$$
+\Delta^{(s)}
+=\Theta_A^{(s)}-\Theta_B^{(s)}.
+$$
+
+The collection of $\Delta^{(s)}$ values is the posterior distribution of the probability difference. Subtracting separate summaries of $\Theta_A$ and $\Theta_B$ would ignore posterior dependence between them.
+
+```r
+probability_difference <- draws$theta_a - draws$theta_b
+
+quantile(probability_difference, c(.025, .5, .975))
+mean(probability_difference > 0)
+```
+
+This calculation also fixes the comparison. The output is a probability difference for two declared conditions, not two unrelated marginal summaries.
+
+## Match the summary to the claim
+
+A parameter summary answers a parameter question. A response probability contrast answers a question about predicted outcomes. A directional probability answers a sign question. These targets overlap, but they are not interchangeable.
+
+For instance, a claim that one embedding environment produces more *yes* judgments should be supported by category probabilities or their contrast. A parameter on another scale may explain how the model generates that change, but it is not itself a change in the observed response category.
+
+Selecting response scale summaries after inspecting many predictor profiles can exaggerate a dramatic pattern. Predeclare the theoretically diagnostic profiles or show a complete small grid of conditions. Posterior computation does not remove researcher choice from reporting.
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) summarizes posterior parameters. [Task 4](../problem-sets/ps4/ps4.qmd#task-4-add-embedding-environment) compares predicted responses across embedding environments. These tasks are included here because parameter summaries and response scale comparisons support different parts of the projection claim.
+:::
+
+::: {.callout-note title="Check the inferential claim"}
+What probability statement does a 95 percent credible interval support? How would you estimate $\Pr(\Delta>0\mid y)$ from draws? Why should a multi parameter predicted contrast be calculated within each draw?
+:::
+
+## What posterior summaries add
+
+Posterior means, medians, intervals, directional probabilities, and derived contrasts describe different features of one fitted posterior distribution. The appropriate summary follows from the estimand. Nonlinear or multi parameter targets must be computed within each draw before they are summarized. Later predictive pages use the same draw by draw rule to generate complete replicated observations.

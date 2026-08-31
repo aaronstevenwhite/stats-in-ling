@@ -1,0 +1,157 @@
+---
+title: "Two predictors in logistic regression"
+---
+
+The [multiple-regression page](multiple-regression.qmd) introduced partial comparisons, and the [logistic-regression page](logistic-regression.qmd) placed a binary response on the log-odds scale. A logistic model with several predictors combines those already introduced ideas.
+
+Suppose an experiment records whether a referent is mentioned with a pronoun. One proposal says that a referent is pronominalized because it was the preceding subject. A second says that pronominalization depends on how recently the referent was mentioned.
+
+These properties need not vary independently. Preceding subjects may also tend to be recent. A one predictor model for subject status can then mix grammatical prominence with recency. A one predictor model for recency can mix memory accessibility with grammatical role.
+
+A logistic regression with multiple predictors places both comparisons in one linear predictor. Each coefficient describes one modeled contrast while the other predictors are held fixed. The partial comparison is now measured on the log-odds scale.
+
+::: {.callout-note title="Reading: Bresnan et al. (2007)"}
+Read [*Predicting the Dative Alternation*](https://web.stanford.edu/~bresnan/qs-submit.pdf), pages 69 to 94, focusing on harmonic alignment and the move to a multiple-predictor logistic model. The reading is included because accessibility, pronominality, animacy, and constituent length are correlated properties of dative arguments. Their coefficient interpretations thus require the partial comparisons introduced on this page rather than separate one-predictor analyses.
+:::
+
+## Write the additive model
+
+Let $Y_i=1$ mark a pronoun and $Y_i=0$ mark another referring expression:
+
+$$
+Y_i\sim\operatorname{Bernoulli}(\pi_i).
+$$
+
+Let `subject_status` equal one when the antecedent was the preceding subject and zero otherwise. Let `recency` count the number of intervening discourse units. The additive model is
+
+$$
+\operatorname{logit}(\pi_i)
+=\beta_0
++\beta_1\text{subject\_status}_i
++\beta_2\text{recency}_i.
+$$
+
+The intercept $\beta_0$ is the pronoun log odds for a nonsubject antecedent with recency zero. The subject coefficient $\beta_1$ compares subject and nonsubject antecedents at the same modeled recency. The recency coefficient $\beta_2$ describes a one unit recency change at the same subject status.
+
+The phrase "at the same" is the partial comparison. It comes from the additive linear predictor, not from a guarantee that the observed corpus contains many perfectly matched tokens.
+
+## Combine the coefficients for one observation
+
+Suppose
+
+$$
+\beta_0=-.5,
+\qquad
+\beta_1=1.2,
+\qquad
+\beta_2=-.3.
+$$
+
+For a preceding subject with two intervening units,
+
+$$
+\eta=-.5+1.2(1)-.3(2)=.1.
+$$
+
+The predicted pronoun probability is
+
+$$
+\operatorname{logit}^{-1}(.1)\approx.525.
+$$
+
+For a nonsubject at the same recency,
+
+$$
+\eta=-.5+1.2(0)-.3(2)=-1.1,
+$$
+
+so the probability is approximately $.250$. These two profiles differ only in subject status. Their probability difference is approximately
+
+$$
+.525-.250=.275.
+$$
+
+Now hold subject status fixed at one and increase recency from two to three. The linear predictor falls from $.1$ to $-.2$, and the probability falls from $.525$ to about $.450$. This second profile comparison isolates the modeled recency association.
+
+## Interpret coefficients without changing scales silently
+
+The coefficient $\beta_1=1.2$ is a 1.2 increase in pronoun log odds. Exponentiating gives
+
+$$
+e^{1.2}\approx3.32.
+$$
+
+Thus subject antecedents have 3.32 times the modeled pronoun odds of nonsubject antecedents at the same recency. This is not a constant probability difference. The .275 difference above applies to the declared recency value and parameter values.
+
+Likewise,
+
+$$
+e^{-.3}\approx.74.
+$$
+
+Each additional discourse unit multiplies the modeled pronoun odds by about .74 at either subject status under the additive model. Response scale predictions are still needed to show how that ratio changes probabilities at relevant profiles.
+
+## Fit and predict in R
+
+```r
+fit_pronoun <- glm(
+  pronoun ~ subject_status + recency,
+  family = binomial(link = "logit"),
+  data = reference_forms
+)
+```
+
+The formula contains two additive predictor terms. No product term appears, so the model assumes that the subject status difference is constant on the log odds scale across recency.
+
+Construct an explicit prediction grid:
+
+```r
+profiles <- expand.grid(
+  subject_status = c(0, 1),
+  recency = c(0, 2, 4)
+)
+
+profiles$pronoun_probability <- predict(
+  fit_pronoun,
+  newdata = profiles,
+  type = "response"
+)
+
+profiles
+```
+
+The grid does two things. First, it makes the held fixed values visible. Second, it reveals the nonlinear response scale pattern implied by an additive log odds model.
+
+## Inspect support for the partial comparison
+
+A coefficient can be computed even when predictor combinations are sparse. Suppose nearly every subject antecedent has recency zero and nearly every nonsubject antecedent has recency four. The model can still report $\beta_1$, but its same recency subject comparison relies heavily on the assumed additive form because few observations directly support it.
+
+Inspect the joint predictor distribution before treating a partial coefficient as an ordinary matched contrast:
+
+```r
+with(reference_forms, table(subject_status, recency))
+```
+
+With a continuous predictor, use a plot or binned summary rather than a large sparse table. The goal is to see whether both subject status values occur across a common recency range.
+
+Adding the second predictor does not automatically remove confounding. Unmeasured discourse status, animacy, genre, or lexical properties may still be associated with both predictors and the response. The coefficient remains conditional on the variables and functional form actually included.
+
+## Add a predictor because the theory needs its contrast
+
+A larger formula is not automatically a better linguistic analysis. A predictor earns its place when it encodes a hypothesis, a design control, or a specific source of measurement variation.
+
+In the dative alternation, accessibility, pronominality, animacy, and length bear on harmonic alignment. Their correlated distribution makes a joint model useful because the theory concerns their distinct directional contributions. An arbitrary identifier or convenience column does not become theoretically informative because its coefficient changes another estimate.
+
+The additive model also makes a substantive restriction. It assumes that the subject status association is constant on the log odds scale across recency. If the theory predicts that grammatical prominence matters most for distant antecedents, the restriction is wrong. The [interaction page](interactions.qmd) adds a product term for that new question.
+
+::: {.callout-note title="Check the partial comparison"}
+What observations support $\beta_1$ if subject antecedents tend to be more recent than nonsubject antecedents? Describe the same recency comparison the model needs. Then state what sparse overlap would force the additive form to supply.
+:::
+
+::: {.callout-note title="Problem Set 3 connection"}
+[Problem Set 3, Task 2](../problem-sets/ps3/ps3-dative-alternation.qmd#task-2-fit-the-prespecified-model-sequence-25-points) uses one additive logistic model to ask whether discourse accessibility, pronominality, animacy, and relative length predict dative choice in the directions licensed by harmonic alignment. The formulas are fixed before the coefficients are inspected. This makes the task an application of partial comparisons, not an invitation to search among formulas until a preferred pattern appears.
+:::
+
+## What multiple predictors add
+
+A multiple-predictor logistic model assigns each coefficient a partial log odds comparison while the remaining modeled predictors are fixed. Response scale profiles show the combined nonlinear consequences of those coefficients. Joint predictor support determines how directly the data inform each partial comparison. An interaction is needed only when the linguistic hypothesis says that one association changes with another predictor.

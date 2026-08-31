@@ -1,0 +1,117 @@
+---
+title: "Random intercept models"
+---
+
+The [partial-pooling page](random-effects.qmd) introduced group deviations from a shared population center. A [**random-intercept model**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) places one such deviation in a regression equation.
+
+Suppose several vowel tokens are measured for every speaker. Speakers may differ in baseline duration even after vowel category has been included as a predictor. A random-intercept model gives each speaker a partially pooled baseline deviation while keeping one population association for vowel category.
+
+## Insert one speaker deviation
+
+For token $i$ from speaker $j$, write
+
+$$
+Y_{ij}
+=\beta_0+b_{0j}+\beta_1x_{ij}+\varepsilon_{ij},
+$$
+
+where
+
+$$
+b_{0j}\sim\mathcal{N}(0,\tau_0^2)
+$$
+
+and
+
+$$
+\varepsilon_{ij}\sim\mathcal{N}(0,\sigma^2).
+$$
+
+The population intercept is $\beta_0$. Speaker $j$ has baseline $\beta_0+b_{0j}$. If $b_{0j}=15$ ms, that speaker's fitted baseline is 15 ms above the population baseline at the same predictor value.
+
+The subscript zero in $b_{0j}$ marks an intercept deviation. It changes the vertical position of the speaker's regression line. It does not change the association $\beta_1$.
+
+## Compare two speakers
+
+Suppose $\beta_0=100$ ms and $\beta_1=20$ ms. Let speaker A have $b_{0A}=-10$ ms and speaker B have $b_{0B}=15$ ms. Their fitted means are
+
+$$
+\widehat\mu_A(x)=90+20x
+$$
+
+and
+
+$$
+\widehat\mu_B(x)=115+20x.
+$$
+
+The lines are parallel. Speaker B is predicted to have durations 25 ms longer than speaker A at every value of $x$. The model attributes that stable difference to their intercept deviations.
+
+This model assumes that the predictor association is the same for every speaker. That common slope assumption is appropriate only when the modeled association can reasonably be treated as constant across speakers.
+
+## See the induced dependence
+
+Two observations from speaker $j$ share the same $b_{0j}$. Conditional on that deviation, their residuals may be independent. Before the deviation is known, the responses are associated because both contain the same speaker baseline.
+
+For two trials $i$ and $i'$ from the same speaker,
+
+$$
+Y_{ij}=\beta_0+b_{0j}+\beta_1x_{ij}+\varepsilon_{ij}
+$$
+
+and
+
+$$
+Y_{i'j}=\beta_0+b_{0j}+\beta_1x_{i'j}+\varepsilon_{i'j}.
+$$
+
+Observing an unusually high response on the first trial provides information about $b_{0j}$ and thus about the second trial. This is how the model represents the repeated speaker unit identified from the data structure.
+
+## Add a crossed item intercept
+
+In a reading experiment, trials may share both participants and sentence items. Give participant $j$ a deviation $b_{0j}$ and item $k$ a deviation $c_{0k}$:
+
+$$
+Y_{ijk}
+=\beta_0+b_{0j}+c_{0k}
++\beta_1x_{ijk}+\varepsilon_{ijk}.
+$$
+
+Use separate population distributions:
+
+$$
+b_{0j}\sim\mathcal{N}(0,\tau_{p}^{2}),
+$$
+
+$$
+c_{0k}\sim\mathcal{N}(0,\tau_{s}^{2}).
+$$
+
+The two standard deviations describe different populations. $\tau_p$ measures participant baseline variation. $\tau_s$ measures sentence item baseline variation.
+
+## Translate the equation into R
+
+```r
+library(lme4)
+
+fit_intercepts <- lmer(
+  log_rt ~ condition +
+    (1 | participant) +
+    (1 | item),
+  data = reading_experiment
+)
+```
+
+`condition` supplies a population coefficient. `(1 | participant)` adds a participant intercept distribution. `(1 | item)` adds an item intercept distribution. The two grouping terms are crossed because participant and item identifiers occur in many combinations.
+
+The formula does not create replication absent from the data. If each item is seen by only one participant, the design may not distinguish item and participant variation well. The grouping terms must be supported by the incidence structure.
+
+## State what remains common
+
+The condition coefficient $\beta_1$ remains identical for every participant and item. The model represents different baselines, not different condition associations. This is a substantive restriction rather than a software default to accept without thought.
+
+::: {.callout-note title="Check the formula"}
+Two trials come from the same participant but different items. Which random effect do they share? Under the common slope assumption, how does their condition association compare?
+:::
+
+The [next page](intraclass-correlation.qmd) measures the response similarity induced by a shared random intercept.

@@ -1,0 +1,199 @@
+---
+title: "The Poisson distribution"
+---
+
+Suppose we divide a conversation into one-minute intervals and count filled pauses in each interval. One observation may contain 0 filled pauses, another 2, and another 5.
+
+The response is a nonnegative count:
+
+$$
+X\in\{0,1,2,3,\ldots\}.
+$$
+
+A common baseline model for such counts is the [**Poisson distribution**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234):
+
+$$
+X\sim\operatorname{Poisson}(\lambda),
+$$
+
+where $\lambda>0$ is the expected count in one specified unit of exposure.
+
+The [probability mass function](probability-mass-functions.qmd) of a Poisson random variable specifies the distribution of one count. A homogeneous Poisson process provides one possible generative account for that distribution. Under that process, events occur at a constant rate and increments in nonoverlapping intervals are independent. The Poisson count distribution itself can also be used as an observation model without claiming that the full event sequence follows this process.
+
+## Exposure is part of the definition
+
+The statement $\lambda=2$ is incomplete until the opportunity for events to occur is stated. It might mean two filled pauses per minute, per hundred words, or per speaker turn.
+
+Here one observation is a one-minute interval, so
+
+$$
+\mathbb{E}[X]=\lambda=2
+$$
+
+means two filled pauses per minute on average under the model.
+
+The expected count scales with exposure when the modeled event rate stays fixed. A thirty-second interval has half the exposure of a one-minute interval, so its expected count is
+
+$$
+2\left(\frac{30}{60}\right)=1.
+$$
+
+A five-minute interval has five times the exposure, so its expected count is
+
+$$
+2(5)=10.
+$$
+
+This scaling does not claim that every five-minute stretch contains exactly ten filled pauses. It changes the Poisson mean for the larger opportunity window.
+
+## Calculate point probabilities
+
+The Poisson PMF is
+
+$$
+p_X(x)
+=\frac{e^{-\lambda}\lambda^x}{x!},
+\qquad x\in\{0,1,2,\ldots\}.
+$$
+
+For $\lambda=2$, the probability of no filled pauses is
+
+$$
+\begin{aligned}
+\mathbb{P}(X=0)
+&=\frac{e^{-2}2^0}{0!}\\
+&=e^{-2}\\
+&\approx.135.
+\end{aligned}
+$$
+
+The probability of exactly two is
+
+$$
+\begin{aligned}
+\mathbb{P}(X=2)
+&=\frac{e^{-2}2^2}{2!}\\
+&=2e^{-2}\\
+&\approx.271.
+\end{aligned}
+$$
+
+These are probabilities of individual counts. We can also ask for the
+probability of a range of counts. The probability of at most two filled pauses
+is
+
+$$
+\begin{aligned}
+\mathbb{P}(X\leq 2)
+&=\mathbb{P}(X=0)+\mathbb{P}(X=1)+\mathbb{P}(X=2)\\
+&\approx .135+.271+.271\\
+&\approx .677.
+\end{aligned}
+$$
+
+The distinction between exactly two and at most two is the distinction between
+a probability mass function and a cumulative distribution function. The first
+selects one point in the support. The second adds the mass at every point up to
+and including the requested count.
+
+## Ask four kinds of question in R
+
+R uses the same four prefixes for every named distribution family. For the
+Poisson family, they are `dpois`, `ppois`, `qpois`, and `rpois`.
+
+| function | statistical question | result when $\lambda=2$ |
+|---|---|---|
+| `dpois(2, 2)` | What is $\mathbb{P}(X=2)$? | approximately $.271$ |
+| `ppois(2, 2)` | What is $\mathbb{P}(X\leq2)$? | approximately $.677$ |
+| `qpois(.90, 2)` | What is the smallest $x$ with $\mathbb{P}(X\leq x)\geq.90$? | $4$ |
+| `rpois(6, 2)` | What might six new observations look like? | six simulated counts |
+
+The first three calls are deterministic. They return the same answer whenever
+their arguments are unchanged. The last call is a simulation. Its result may
+change from one call to the next because it draws new values from the specified
+distribution.
+
+```{r}
+#| label: four-poisson-questions
+#| echo: true
+dpois(2, lambda = 2)
+ppois(2, lambda = 2)
+qpois(.90, lambda = 2)
+rpois(6, lambda = 2)
+```
+
+The quantile call deserves a slower reading. Counts are discrete, so there may
+be no count whose cumulative probability is exactly $.90$. R returns the
+smallest count at which the cumulative probability reaches or passes $.90$.
+For $\lambda=2$, the cumulative probability through 3 is about $.857$, while
+the cumulative probability through 4 is about $.947$. Thus the requested
+quantile is 4.
+
+## Draw the whole distribution
+
+A probability mass function is easier to interpret when we look at all of its
+values together. The following code evaluates the PMF from 0 through 10.
+
+```{r}
+#| label: poisson-pmf
+#| echo: true
+counts <- 0:10
+mass <- dpois(counts, lambda = 2)
+
+plot(
+  counts, mass,
+  type = "h", lwd = 4,
+  xlab = "filled pauses in one minute",
+  ylab = "probability"
+)
+points(counts, mass, pch = 16)
+```
+
+The distribution places its greatest mass near 2, which is also its expected
+value. But an expected value is not a promise about the next observation. Zero,
+one, three, and larger counts remain possible. The parameter describes a
+distribution over repeated observations, not the value that each observation
+must take.
+
+## One parameter controls center and spread
+
+For a Poisson variable,
+
+$$
+\mathbb{E}[X]=\lambda
+$$
+
+and
+
+
+$$
+\operatorname{Var}(X)=\lambda.
+$$
+
+Thus a Poisson distribution with mean 2 must also have variance 2. The model cannot hold the mean fixed while increasing the variance.
+
+This restriction may be too strong for linguistic counts. If speakers, documents, genres, or lexical items have different rates, the observed variance may be much larger than the mean. The [negative-binomial page](negative-binomial-distribution.qmd) introduces one distribution that relaxes this equality.
+
+## Diagnose the first failure mode
+
+Suppose 100 one-minute intervals have a sample mean of 2.1 filled pauses and a
+sample variance of 9.4. A Poisson model fitted to the center would use a value of
+$\lambda$ near 2.1. It would then require a variance near 2.1 as well. The gap
+between 2.1 and 9.4 is evidence that the one-parameter family misses some
+structure in the observations.
+
+This pattern is called [**overdispersion**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) relative to the Poisson model. It does
+not by itself tell us why the extra variation occurs. Speakers may have
+different pause rates. Speech tasks may differ. Pauses may cluster after moments
+of planning difficulty. Each possibility suggests a different analysis. The
+mean to variance comparison is thus a diagnostic, not an explanation.
+
+::: {.callout-note title="Check the exposure"}
+1. Two documents contain 3 target constructions each, but one has 500 words and
+   the other 5,000. Explain why the raw counts do not represent the same rate.
+2. With $X\sim\operatorname{Poisson}(2)$, explain the difference between
+   `dpois(2, 2)` and `ppois(2, 2)` without referring to the R function names.
+3. A corpus count has a mean of 4.3 and a variance of 18.7. State the Poisson
+   restriction that this summary appears to violate. Then identify one linguistic
+   source of the extra variation.
+:::

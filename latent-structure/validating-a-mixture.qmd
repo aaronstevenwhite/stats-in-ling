@@ -1,0 +1,125 @@
+---
+title: "Validating a mixture on held-out speakers"
+---
+
+[BIC](choosing-a-mixture.qmd) penalizes maximized likelihood on the observations used for fitting. The [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) asks a different question: does a fitted mixture assign high predictive density to observations that did not determine its parameters?
+
+This page develops one validation design for the Peterson and Barney vowel measurements. The target is prediction for a new speaker. Thus, every token from a held-out speaker must remain outside the fitted mixture.
+
+## Apply log loss to a fitted density
+
+Recall that [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd) assigns a numerical cost to a prediction. For a model fit to training observations, the log loss for held-out observation $i$ is
+
+$$
+L_i(M)
+=
+-\log
+p_M
+(\mathbf{x}_i\mid D_{\mathrm{train}}).
+$$
+
+Smaller loss means that the fitted mixture assigns greater density to the held-out observation. Average loss across the declared test units to compare candidates.
+
+Suppose model A assigns density 0.04 to a held-out token and model B assigns density 0.06. Their log losses are
+
+$$
+L_i(A)=-\log(0.04)\approx3.22
+$$
+
+and
+
+$$
+L_i(B)=-\log(0.06)\approx2.81.
+$$
+
+The paired difference is
+
+$$
+d_i
+=
+L_i(B)-L_i(A)
+\approx
+-0.41.
+$$
+
+The negative difference favors model B for this token.
+
+## Hold out complete speakers
+
+Peterson and Barney speakers contribute multiple vowel tokens. A token-level split would leave the same speaker's other formant measurements in training. It would answer a new-token question for speakers partly represented during fitting.
+
+For a new-speaker target, all tokens from one speaker must be excluded together. This is the [grouped cross-validation rule](../model-criticism-and-prediction/grouped-cross-validation.qmd) applied to speakers. The fitted mixture then has no acoustic measurements from that speaker when it scores the speaker's held-out tokens.
+
+This grouping rule follows the linguistic claim, not the number of rows in the matrix. A model that predicts another token from a familiar speaker may be useful, but it answers a different question.
+
+## Keep the complete fit inside each fold
+
+Every training fold must estimate scaling, mixture parameters, and specification-dependent quantities without using held-out speakers. The mixture should also use the same declared multi-start policy in every fold.
+
+```{r}
+#| eval: false
+
+# Each element of folds contains every row for one or more speakers.
+for (fold in seq_along(folds)) {
+  test <- folds[[fold]]
+  train <- setdiff(seq_len(nrow(X)), test)
+
+  center <- colMeans(X[train, , drop = FALSE])
+  spread <- apply(X[train, , drop = FALSE], 2, sd)
+
+  X_train <- sweep(X[train, , drop = FALSE], 2, center, "-")
+  X_train <- sweep(X_train, 2, spread, "/")
+
+  X_test <- sweep(X[test, , drop = FALSE], 2, center, "-")
+  X_test <- sweep(X_test, 2, spread, "/")
+
+  fit <- fit_mixture(
+    X_train,
+    components = K,
+    covariance = covariance_family,
+    starts = 50
+  )
+
+  heldout_loss[test] <- -log(density_mixture(fit, X_test))
+}
+```
+
+The functions are schematic because packages encode covariance families differently. The procedural requirement is exact: held-out speakers cannot affect the representation or mixture whose density scores them.
+
+## State the information available for normalization
+
+Raw formants may allocate components partly to anatomical speaker differences. A speaker-relative representation may align more closely with intended vowels, but it creates a new information question.
+
+If the held-out speaker's complete formant set supplies that speaker's own means and standard deviations, the analysis evaluates an adapted representation in which the speaker's acoustic scale is already available. It does not evaluate the first token from a speaker whose acoustic scale has never been observed.
+
+The training-only transformation in the code above asks a stricter question. Its center and spread come only from training speakers. Neither choice is universally correct. The report must specify which measurements are available at prediction time.
+
+## Return token losses to speakers
+
+A full comparison retains one paired model difference for each held-out token, but speakers are the groups relevant to the scientific claim. Summarize or resample the token differences at the speaker level.
+
+Cross-validation folds share most of their training observations. Fold averages are computational summaries, not independent linguistic samples. A t test over repeated fold means would make precision depend on how often the analyst reran the partition.
+
+Instead, calculate the relevant loss summary for each held-out speaker and describe variation across speakers. Repeated partitions can still show sensitivity to a computational choice, but they do not create new sampled speakers.
+
+## Examine stability across fits
+
+Mixture fitting can reach different local solutions from different starting values. The preferred candidate may also change across speaker resamples or covariance restrictions.
+
+If several specifications have similar held-out loss, the data may not support one stable partition. Report the range of supported specifications and which component interpretations persist across them.
+
+A primary candidate may still be selected by a declared rule. The sensitivity analysis shows how much substantive weight that single selection can bear.
+
+## Check the validation design
+
+1. What does held-out log loss measure?
+2. What does a negative value of $L_i(B)-L_i(A)$ favor?
+3. Why must all Peterson and Barney tokens from one test speaker move together?
+4. Which transformations must be estimated inside each training fold?
+5. How does speaker-specific normalization change the information available at prediction time?
+6. Why are repeated fold averages not independent linguistic samples?
+7. What should be reported when preferred specifications change across speaker resamples?
+
+## What held-out mixture validation establishes
+
+Held-out log loss evaluates whether a fitted mixture assigns density to observations excluded from fitting. Grouping complete speakers aligns the split with a new-speaker claim, and training-only transformations prevent held-out acoustic measurements from shaping the fitted representation. The comparison remains conditional on the stated prediction-time information and candidate set.

@@ -1,0 +1,181 @@
+---
+title: "Checking a linear regression"
+---
+
+The [residual page](residuals.qmd) distinguished an observed residual from an unobserved error term. An ordinary linear regression with normally distributed errors makes predictions about patterns that should remain
+after subtracting the fitted conditional mean. [**Residual diagnostics**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) compare
+those predictions with the observed residuals.
+
+The aim is not to certify that a model is true. A finite dataset cannot establish
+that every assumption holds. The aim is to find consequential ways in which the
+model fails to reproduce the data.
+
+Each check needs three parts: a model prediction, an observable discrepancy, and
+a consequence for the linguistic analysis. A generic statement that a plot
+"looks bad" omits the first and third parts.
+
+## Construct a diagnostic example
+
+Suppose a phonetic study relates a speaker's local articulation rate to a segment
+duration. We construct observations with a slight bend in the mean and greater
+duration variation at faster rates, then fit a straight line with constant
+variance.
+
+```{r}
+#| label: construct-duration-diagnostic-data
+#| echo: true
+set.seed(214)
+
+duration_data <- data.frame(
+  rate = seq(2, 7, length.out = 80)
+)
+
+duration_data$mean_duration <-
+  175 - 15 * duration_data$rate +
+  3 * (duration_data$rate - 4.5)^2
+
+duration_data$duration <- rnorm(
+  nrow(duration_data),
+  mean = duration_data$mean_duration,
+  sd = 3 + duration_data$rate
+)
+
+fit <- lm(duration ~ rate, data = duration_data)
+```
+
+The fitted model is intentionally incomplete. This lets us connect visible
+residual patterns to the exact commitments the line fails to represent.
+
+## Check the mean shape
+
+Plot residuals against fitted values:
+
+```{r}
+#| label: residuals-versus-fitted
+#| echo: true
+plot(fitted(fit), residuals(fit),
+     xlab = "fitted conditional mean", ylab = "residual")
+abline(h = 0, lty = 2)
+```
+
+If the linear mean is adequate, the residual center should stay near zero across the fitted range.
+
+A U-shaped pattern suggests that the mean bends while the model forces a straight line. A systematic rise suggests that the fitted slope misses part of the association.
+
+Why does a U shape diagnose curvature? At the low and high ends, the observations
+fall systematically above the line, so residuals tend to be positive. Near the
+middle, they fall below the line, so residuals tend to be negative. The residual
+sign changes in an ordered way across fitted values. Random scatter around zero
+would not have this systematic sequence.
+
+This is evidence about the conditional mean. It does not yet identify which
+alternative mean function should replace the line. A theoretical account of
+articulation rate should guide that choice.
+
+## Check constant variance
+
+The ordinary linear regression model assumes one conditional response variance $\sigma^2$ at every predictor value.
+
+If the residual cloud is narrow at low fitted values and wide at high fitted values, the variance changes with the mean. This fan shape is evidence against the constant-variance assumption.
+
+The constructed durations should show this pattern because their standard
+deviation was set to $3+\text{rate}$. The fitted line uses one residual standard
+deviation for all observations. It may consequently understate uncertainty for
+fast speech and overstate it for slow speech.
+
+We should also plot residuals against theoretically relevant predictors or groups. A speaker-specific residual shift can be invisible when all speakers are pooled against fitted values.
+
+The predictor on a residual plot need not appear in the fitted formula. Plotting
+residuals against an omitted variable can reveal structure left in the data. For
+instance, if residuals for phrase-final segments are mostly positive, the model
+may have omitted phrase-final lengthening. The pattern is theory-bearing because
+it isolates a particular linguistic contrast the fitted mean does not represent.
+
+## Check distributional shape
+
+A normal quantile plot compares ordered residuals with the quantiles expected from a normal distribution:
+
+```{r}
+#| label: normal-quantile-residuals
+#| echo: true
+qqnorm(residuals(fit))
+qqline(residuals(fit))
+```
+
+Systematic tail departures indicate that extreme residuals occur differently from the prediction under normally distributed errors. Skew creates an asymmetric pattern.
+
+The quantile plot pairs each ordered residual with the corresponding theoretical
+normal quantile. If the empirical and theoretical distributions differ mainly
+in the upper tail, the largest observed durations will bend away from the line
+while most middle residuals remain near it. This location matters if the analysis
+uses predictions for unusually long segments.
+
+The goal is not to demand a perfect diagonal. We ask whether the departure is large enough to affect the quantities the analysis uses, such as coefficient intervals or predictions for slow responses.
+
+Treating every departure from a diagonal as a binary violation, and every nearly diagonal plot as approval, gives the plot too much authority.
+Instead ask what feature differs, where it differs, and which inferential
+quantity may change.
+
+## Check observation order
+
+Conditional independence also makes a prediction. Once the modeled predictors
+are accounted for, residuals should not retain an ordered pattern induced by the
+sampling process.
+
+```{r}
+#| label: residuals-in-observation-order
+#| echo: true
+plot(
+  seq_along(residuals(fit)),
+  residuals(fit),
+  xlab = "observation order",
+  ylab = "residual"
+)
+abline(h = 0, lty = 2)
+```
+
+A sequence of positive residuals followed by negative residuals might reflect
+drift over an experimental session. Alternation between positive and negative
+values might reflect a counterbalancing or trial-order pattern. The plot does
+not prove a particular source, but it locates dependence the fitted model does
+not represent.
+
+For repeated linguistic data, row order may not be the most informative order.
+We may instead group or order residuals by participant, item, recording session,
+or corpus document. The choice should follow the sampling structure.
+
+## Check the right discrepancy
+
+A reading-time model should be checked for right skew and condition-specific spread. A phonetic model may need speaker-specific residual patterns. A lexical model may need item or frequency structure.
+
+Generic normality tests compress all departures into one number and become sensitive to negligible deviations in large datasets. Diagnostic plots are more useful when they identify the form and location of a mismatch.
+
+## Turn a pattern into an analysis decision
+
+Finding a mismatch begins a model revision. It does not automatically license
+deleting observations or trying transformations until a plot appears tidy. The
+revision should target the observed discrepancy.
+
+For instance, curvature in the residual center motivates reconsidering the mean
+function. A fan shape motivates reconsidering constant variance. A speaker shift
+motivates representing speaker structure. These responses differ because the
+checks diagnose different commitments.
+
+Report the observed pattern and its consequence. "Residual
+spread increased with fitted duration, so the constant-variance model may
+understate uncertainty at the upper end" is more informative than "assumptions
+were checked."
+
+::: {.callout-note title="Keep two checks separate"}
+MCMC diagnostics ask whether an algorithm represented a posterior. Residual checks ask whether the statistical model reproduces relevant patterns in the observations.
+:::
+
+::: {.callout-note title="Diagnose the discrepancy"}
+1. What residual pattern would a mean function that bends upward tend to
+   produce under a fitted straight line?
+2. What model prediction does a fan-shaped residual cloud challenge?
+3. Why might plotting residuals by participant reveal a pattern hidden in a
+   residual-versus-fitted plot?
+4. State the model prediction, observed discrepancy, and inferential consequence for one pattern on
+   this page.
+:::

@@ -1,0 +1,197 @@
+---
+title: "Bayesian linear regression"
+---
+
+The earlier Bayesian chapters introduced [posterior distributions](../statistical-inference/posterior-distributions.qmd) and [prior predictive distributions](../statistical-inference/prior-predictive-distributions.qmd). This page applies those ideas to the same ordinary linear regression likelihood used on the [frequentist fitting page](frequentist-linear-regression.qmd).
+
+The ordinary linear regression model is
+
+$$
+Y_i\mid x_i,\beta_0,\beta_1,\sigma
+\sim
+\mathcal{N}(\beta_0+\beta_1x_i,\sigma^2).
+$$
+
+Frequentist fitting treated $\beta_0$, $\beta_1$, and $\sigma$ as fixed unknown parameters. [**Bayesian linear regression**](https://bruno.nicenboim.me/bayescogsci/ch-reg.html) adds prior distributions for them.
+
+The conditional response model has not changed. The new step is to represent
+uncertainty about the coefficients and conditional standard deviation before observing the
+responses. Instead of
+starting with one unknown line, the model starts with a distribution over lines.
+
+## Assign a prior to each coefficient
+
+Suppose the response is log reading time and surprisal has been centered at 5 bits. One possible specification is
+
+$$
+\beta_0\sim\mathcal{N}(6,.25^2)
+$$
+
+and
+
+
+$$
+\beta_1\sim\mathcal{N}(0,.10^2).
+$$
+
+The intercept prior places most prior density on expected log reading times near 6 at the reference surprisal.
+
+Since surprisal was centered at 5 bits, $\beta_0$ is the expected log reading
+time at 5 bits. The prior is thus attached to a specific linguistic reference point.
+If we had not centered the predictor, the same numerical prior would describe
+expected log reading time at 0 bits, which may be outside the observed range.
+
+The slope prior is centered at no association and represents most plausible changes per bit as modest on the log-time scale.
+
+About 95 percent of a normal distribution lies within roughly two standard
+deviations of its mean. Thus this prior places about 95 percent of its mass
+between $-.20$ and $.20$ log-time units per bit. Across a four-bit surprisal
+contrast, those endpoints imply conditional-mean changes of $-.80$ and $.80$.
+The four-bit implication is often easier to assess than a one-bit coefficient.
+
+The conditional standard deviation also needs a prior that assigns probability only to positive values:
+
+$$
+\sigma\sim p_+(\sigma).
+$$
+
+For current purposes, suppose $p_+$ is a half-normal distribution with scale
+$.25$:
+
+$$
+\sigma\sim\operatorname{Normal}^+(0,.25^2).
+$$
+
+The superscript $+$ means that negative draws are excluded. This prior assigns
+its greatest density near zero while allowing progressively less density for
+larger response variation.
+
+## Priors inherit measurement units
+
+A prior standard deviation of $.10$ for a log-time slope is not automatically suitable for a raw-millisecond slope. The coefficient's units combine response units per predictor unit.
+
+Centering changes the intercept's reference point, and rescaling a predictor changes the numerical slope. Prior choices must be interpreted after those transformations are declared.
+
+Suppose we replace surprisal in bits, $x$, with half-bit units,
+
+$$
+x^*=2x.
+$$
+
+A one-unit increase in $x^*$ is only a half-bit increase. To represent the same
+line, the new slope must be
+
+$$
+\beta_1^*=\frac{\beta_1}{2}.
+$$
+
+The prior standard deviation must likewise change from $.10$ to $.05$ if the
+prior is meant to represent the same response-scale changes. Copying a numerical
+prior across predictor units would change the model.
+
+## Inspect prior predictions
+
+Draw parameter values from the priors, calculate conditional means across the observed surprisal range, and draw possible reading times:
+
+$$
+\widetilde{Y}_i
+\sim
+\mathcal{N}(\beta_0+\beta_1x_i,\sigma^2).
+$$
+
+If the prior model routinely predicts impossible or implausible reading times, the coefficient priors need revision. Prior predictive checking is more informative than calling a normal prior “weak” without examining its response-scale implications.
+
+We can sample prior conditional means without fitting the data:
+
+```{r}
+#| label: draw-prior-regression-lines
+#| echo: true
+set.seed(214)
+
+n_draws <- 1000
+beta_0 <- rnorm(n_draws, mean = 6, sd = .25)
+beta_1 <- rnorm(n_draws, mean = 0, sd = .10)
+sigma <- abs(rnorm(n_draws, mean = 0, sd = .25))
+
+centered_surprisal <- c(-3, 0, 4)
+
+prior_means <- sapply(
+  centered_surprisal,
+  function(x) beta_0 + beta_1 * x
+)
+
+apply(prior_means, 2, quantile, probs = c(.025, .5, .975))
+```
+
+The three columns summarize prior expected log reading times at 2, 5, and 9
+bits on the original scale. The intervals widen away from the centered reference
+because uncertainty about the slope contributes more strongly at larger
+distances from zero.
+
+To inspect possible observations rather than conditional means, we would also
+draw residual variation using `sigma`. This produces a wider distribution because
+individual responses vary around each sampled line.
+
+## Update to a posterior
+
+Bayes' rule combines the prior model and normal likelihood:
+
+$$
+p(\beta_0,\beta_1,\sigma\mid\mathbf{y},\mathbf{x})
+\propto
+p(\mathbf{y}\mid\mathbf{x},\beta_0,\beta_1,\sigma)
+p(\beta_0)p(\beta_1)p(\sigma).
+$$
+
+Posterior draws represent joint uncertainty in the line and conditional standard deviation.
+
+The word *joint* is load-bearing. A posterior draw contains one compatible value
+of the intercept, slope, and conditional standard deviation. Combining an intercept from one draw
+with a slope from another would break the dependencies learned from the data.
+
+For posterior draw $s$, the conditional mean at predictor value $x$ is
+
+$$
+m^{(s)}(x)
+=\beta_0^{(s)}+\beta_1^{(s)}x.
+$$
+
+Repeating this calculation across draws gives a posterior distribution over the
+conditional mean at that predictor value.
+
+A 95% credible interval for $\beta_1$ contains 95% of that coefficient's posterior probability. This is a posterior statement, not the repeated-sampling statement attached to a confidence interval.
+
+## Interpret a posterior contrast
+
+Suppose we want the conditional-mean difference between 3 and 7 bits. In centered
+units these values are $-2$ and $2$. For every posterior draw,
+
+$$
+\begin{aligned}
+\Delta^{(s)}
+&=m^{(s)}(2)-m^{(s)}(-2)\\
+&=4\beta_1^{(s)}.
+\end{aligned}
+$$
+
+The posterior distribution of $4\beta_1$ directly represents uncertainty about
+the four-bit contrast. This derived quantity preserves joint posterior
+uncertainty because it is calculated within each draw.
+
+## Evaluate priors on the response scale
+
+Terms such as *weakly informative* do not determine a prior independently of the
+measurement scale and predictor range. A verbal label such as *weakly informative* does not by itself justify an unexamined numerical prior.
+
+A normal slope prior with standard deviation 1 may be modest for one response
+scale and extreme for another. The response-scale predictions decide. A distribution over regression lines is
+useful precisely because it lets us inspect those predictions before the data
+pull the model toward an observed line.
+
+::: {.callout-note title="Check the scale"}
+1. If surprisal is changed from bits to half-bit units, how does the numerical
+   slope change? Why must the slope prior change with it?
+2. What reference point does the displayed intercept prior describe?
+3. Why must a posterior contrast be calculated within each joint draw?
+4. Explain why a label such as *weakly informative* does not justify a numerical prior without a scale check.
+:::

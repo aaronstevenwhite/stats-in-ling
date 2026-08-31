@@ -1,0 +1,127 @@
+---
+title: "The Laplace approximation"
+---
+
+A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The model assigns those effects a population distribution, and the response likelihood is conditional on their values. To obtain a likelihood for the observed responses, we must average over every possible value of the random effects. This is the same marginalization operation introduced for [marginal distributions](../random-variables-and-distributions/marginal-distributions.qmd), now applied to a likelihood.
+
+This integral is part of the model definition, but it usually has no simple formula for a logistic or Poisson mixed model. The [**Laplace approximation**](https://bruno.nicenboim.me/bayescogsci/ch-complexstan.html) replaces the difficult integrand with a simpler shape near its highest point.
+
+## See why the integral appears
+
+Suppose a Poisson mixed model gives speaker $j$ a random intercept $b_j$. Conditional on that intercept, the likelihood for the speaker's responses is
+
+$$
+p(\mathbf y_j\mid b_j,\boldsymbol\beta).
+$$
+
+The group model assigns the intercept a density
+
+$$
+p(b_j\mid\tau).
+$$
+
+The speaker's contribution to the observed data likelihood is thus
+
+$$
+p(\mathbf y_j\mid\boldsymbol\beta,\tau)
+=
+\int
+p(\mathbf y_j\mid b_j,\boldsymbol\beta)
+p(b_j\mid\tau)
+\,db_j.
+$$
+
+The product inside the integral is large where two conditions coincide. First, the value of $b_j$ must fit that speaker's responses. Second, the value must remain plausible under the population distribution. Integration adds the area over all such values rather than selecting only one intercept.
+
+## Work on the log scale
+
+Define the log integrand
+
+$$
+h(b)
+=
+\log p(\mathbf y_j\mid b,\boldsymbol\beta)
++
+\log p(b\mid\tau).
+$$
+
+Let $\widehat b$ be the value at which $h(b)$ is largest. This is the conditional mode of the speaker effect for the current model parameters. At that point,
+
+$$
+h'(\widehat b)=0.
+$$
+
+Near the mode, a second order Taylor approximation gives
+
+$$
+h(b)
+\approx
+h(\widehat b)
++
+\frac{1}{2}h''(\widehat b)(b-\widehat b)^2.
+$$
+
+The curvature $h''(\widehat b)$ is negative because $\widehat b$ is a maximum. We can write
+
+$$
+H=-h''(\widehat b),
+$$
+
+where $H$ is positive. The approximation then becomes
+
+$$
+h(b)
+\approx
+h(\widehat b)
+-
+\frac{H}{2}(b-\widehat b)^2.
+$$
+
+This is a quadratic function of $b$. After exponentiation, it has the shape of a normal density centered at $\widehat b$.
+
+## Integrate the simpler shape
+
+The normal-shaped approximation has a known area. In one dimension,
+
+$$
+\int \exp[h(b)]\,db
+\approx
+\exp[h(\widehat b)]
+\sqrt{\frac{2\pi}{H}}.
+$$
+
+Two local quantities determine this area. The height $\exp[h(\widehat b)]$ records how well the best supported random effect fits. The curvature $H$ records how quickly support falls as $b$ moves away from that value. A narrow peak has large curvature and less area than a broad peak of the same height.
+
+With several random effects, the same reasoning uses a mode vector and a curvature matrix. The calculation is larger, but the central move is unchanged. The integrand is replaced by a normal-shaped approximation around its joint mode.
+
+## Keep computation separate from the model
+
+The Laplace approximation does not add a predictor, change the response family, or alter the grouping structure. It is a way to calculate an approximate likelihood for a model whose likelihood already requires integration. Confusing the approximation used for computation with the model itself would thus be a mistake.
+
+For instance, `lme4::glmer()` uses a Laplace approximation when `nAGQ = 1`:
+
+```r
+fit <- lme4::glmer(
+  response ~ condition + (1 | participant),
+  family = binomial(link = "logit"),
+  data = trials,
+  nAGQ = 1
+)
+```
+
+Changing the approximation can change estimated coefficients or variance components because the likelihood is calculated differently. But it does not repair a missing random slope, an inappropriate link, or an incorrect response distribution. Those are model specification problems.
+
+## Know when the local shape may be inadequate
+
+The approximation tends to work best when the integrand is concentrated and roughly symmetric near its mode. It may be less accurate when groups contain little information, one response category is rare, variance estimates lie near a boundary, or the integrand is strongly asymmetric.
+
+For an analysis whose conclusion might depend on small coefficient changes, fit a manageable version with a more accurate numerical integration setting and compare the quantities that support the conclusion. Agreement provides evidence that the local quadratic is adequate for those quantities. Disagreement identifies computational sensitivity. It does not by itself say which scientific model is preferable.
+
+::: {.callout-note title="Check the approximation"}
+1. Why must a generalized linear mixed model average over possible random effect values?
+2. Why is the first derivative term absent at the conditional mode?
+3. What do the height and curvature of the log integrand contribute to the approximated area?
+4. Why can the Laplace approximation not repair a missing grouping term?
+:::
+
+The [next page](poisson-mixed-models.qmd) uses the approximation behind the scenes while assembling a count model from components already introduced.

@@ -1,0 +1,209 @@
+---
+title: "Adding a second predictor"
+---
+
+The [simple linear model](simple-linear-regression.qmd) conditions the response mean on one predictor. Multiple regression extends the same conditional mean to several predictors, so each coefficient must be read relative to the others in the model.
+
+Suppose a word-recognition study predicts log response time from two lexical properties:
+
+1. log lexical frequency, which represents exposure to the word; and
+2. phonological neighborhood density, which represents competition from similar word forms.
+
+The theoretical question is whether each source of lexical structure is associated with response time when the other is held at the same modeled value.
+
+## Extend the mean function
+
+With one predictor,
+
+$$
+m(x_1)=\beta_0+\beta_1x_1.
+$$
+
+Add the second predictor:
+
+$$
+m(x_1,x_2)
+=\beta_0+\beta_1x_1+\beta_2x_2.
+$$
+
+The ordinary multiple linear regression model is
+
+$$
+Y_i\mid x_{i1},x_{i2}
+\sim
+\mathcal{N}
+\left(
+\beta_0+\beta_1x_{i1}+\beta_2x_{i2},
+\sigma^2
+\right).
+$$
+
+## Compare observations at the same $x_2$
+
+Hold neighborhood density at $x_2$. Increase log frequency by one unit:
+
+$$
+\begin{aligned}
+m(x_1+1,x_2)-m(x_1,x_2)
+&=\beta_1.
+\end{aligned}
+$$
+
+Thus $\beta_1$ is the frequency association among observations compared at the same modeled neighborhood density.
+
+Likewise, $\beta_2$ is the neighborhood-density association among observations at the same modeled log frequency.
+
+The coefficients are [**partial regression coefficients**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119). Each describes the modeled association for one predictor while the other predictors are held fixed. It can differ from the marginal association between that predictor and the response.
+
+The word *partial* indicates that other predictors are held constant. The frequency coefficient compares
+model predictions that differ by one frequency unit while neighborhood density
+is fixed. It need not equal the association obtained when neighborhood density
+is allowed to vary along with frequency.
+
+Adding a predictor changes the conditioning set for the other coefficients. It does not merely improve an existing coefficient. It
+changes the modeled comparison that the coefficient represents.
+
+## Calculate one prediction
+
+Suppose
+
+$$
+\beta_0=6.2,
+\qquad
+\beta_1=-.08,
+\qquad
+\beta_2=.015.
+$$
+
+For a word with centered log frequency 1 and centered neighborhood density 4,
+
+$$
+m(1,4)
+=6.2-.08(1)+.015(4)
+=6.18.
+$$
+
+Both predictor contributions are added to the same conditional mean.
+
+The same equation gives a direct comparison. Consider two words with centered
+neighborhood density 4 and centered log frequencies 1 and 2. Their expected
+responses differ by
+
+$$
+m(2,4)-m(1,4)
+=\beta_1
+=-.08.
+$$
+
+Now keep centered log frequency at 1 and compare neighborhood densities 4 and 6:
+
+$$
+m(1,6)-m(1,4)
+=2\beta_2
+=.03.
+$$
+
+Each coefficient controls a family of comparisons in which the other predictor
+is held fixed in the model.
+
+## Fit the additive model
+
+```{r}
+#| label: fit-constructed-multiple-regression
+#| echo: true
+lexical_decision <- data.frame(
+  log_frequency = c(-1.5, -1, -.5, 0, .5, 1, 1.5, 2),
+  neighborhood_density = c(14, 12, 13, 9, 10, 6, 7, 3),
+  log_rt = c(6.540, 6.450, 6.440, 6.330, 6.315, 6.205, 6.195, 6.075)
+)
+
+fit_two <- lm(
+  log_rt ~ log_frequency + neighborhood_density,
+  data = lexical_decision
+)
+
+coef(fit_two)
+```
+
+This model assumes that the frequency slope is the same at every neighborhood density and vice versa. An interaction will later relax that assumption.
+
+The fitted frequency coefficient is about $-.066$. It is the estimated
+log-frequency association among model comparisons with neighborhood density held
+fixed. The fitted neighborhood coefficient is about $.020$ at a fixed modeled
+log frequency.
+
+The intercept is the expected response when both centered predictors equal zero.
+This interpretation is useful only if the centering constants have been stated.
+
+## Compare the marginal and partial slopes
+
+In the constructed observations, higher-frequency words tend to have fewer
+phonological neighbors:
+
+```{r}
+#| label: inspect-predictor-association
+#| echo: true
+cor(
+  lexical_decision$log_frequency,
+  lexical_decision$neighborhood_density
+)
+```
+
+The correlation is about $-.94$. Thus the one-predictor frequency model
+compares words whose neighborhood densities also tend to differ:
+
+```{r}
+#| label: compare-marginal-and-partial-frequency-slopes
+#| echo: true
+fit_one <- lm(log_rt ~ log_frequency, data = lexical_decision)
+
+c(
+  marginal_frequency_slope = coef(fit_one)["log_frequency"],
+  partial_frequency_slope = coef(fit_two)["log_frequency"]
+)
+```
+
+The one-predictor slope is $-.125$, while the two-predictor slope is about
+$-.066$. Neither is the uniquely correct description independently of a
+question. The first describes the frequency association as neighborhood density
+varies in this sample. The second describes the frequency association under a
+model comparison that fixes neighborhood density.
+
+This difference follows from the change in conditioning set. It should not be narrated as the second model
+"correcting" the first unless the design and theory establish that the partial
+comparison is the intended target.
+
+## Adding a variable changes the coefficient target
+
+The frequency coefficient in the two-predictor model is not merely a more accurate version of the one-predictor coefficient. It answers a different question because it conditions on neighborhood density.
+
+Adding every available column does not automatically isolate a causal or theoretical effect. The predictor set should follow from the comparisons the theory requires and from the design that supports them.
+
+For instance, controlling for a variable caused by both the predictor and
+response can create a misleading partial association. Controlling for a noisy
+proxy can also leave substantial variation in the property the analysis meant
+to hold fixed. Regression performs the declared conditional comparison; it does
+not determine whether that comparison supports a causal claim.
+
+## Read predictions before coefficient labels
+
+A reliable interpretation method is to choose two predictor rows, calculate
+their fitted means, and subtract. If only frequency changes by one unit, the
+difference is $\beta_1$. If both predictors change, the difference is
+
+$$
+\beta_1\Delta x_1+\beta_2\Delta x_2.
+$$
+
+This calculation prevents one coefficient from being used to describe a
+contrast that also changes other predictors. The model's prediction for that
+contrast may involve several coefficients.
+
+::: {.callout-note title="Check the conditioning set"}
+1. In words, distinguish the frequency slope in `log_rt ~ log_frequency` from
+   the frequency slope in `log_rt ~ log_frequency + neighborhood_density`.
+2. Using the displayed coefficients, compare predictions for two words that
+   differ by two frequency units and three neighborhood-density units.
+3. Explain how adding a predictor changes the comparison represented by the other coefficient.
+4. Why does adding a predictor not by itself license a causal interpretation?
+:::

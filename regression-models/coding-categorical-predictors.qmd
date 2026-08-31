@@ -1,0 +1,199 @@
+---
+title: "Coding a categorical predictor"
+---
+
+The [design-matrix page](design-matrices.qmd) used numeric predictor columns. A categorical predictor must first be represented by numeric columns whose row patterns determine the coefficient comparisons.
+
+Suppose a verb-type predictor has three levels:
+
+$$
+\{\text{result},\text{manner},\text{stative}\}.
+$$
+
+A regression equation needs numerical columns. A [**contrast coding**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133) turns the levels into columns whose coefficients represent declared comparisons.
+
+The categories themselves have no numerical distance. We cannot subtract
+*manner* from *stative* in the way we subtract two frequency values. The coding
+supplies numeric rows that make particular comparisons estimable.
+
+## Choose a reference level
+
+Use result verbs as the reference and create two indicator columns:
+
+| verb type | manner column $M$ | stative column $S$ |
+|---|---:|---:|
+| result | 0 | 0 |
+| manner | 1 | 0 |
+| stative | 0 | 1 |
+
+The linear predictor is
+
+$$
+\eta
+=\beta_0+\beta_M M+\beta_S S.
+$$
+
+## Substitute each row
+
+For a result verb, both indicators are zero:
+
+$$
+\eta_{\text{result}}=\beta_0.
+$$
+
+For a manner verb,
+
+$$
+\eta_{\text{manner}}=\beta_0+\beta_M.
+$$
+
+For a stative verb,
+
+$$
+\eta_{\text{stative}}=\beta_0+\beta_S.
+$$
+
+Thus $\beta_M$ is the manner-minus-result difference on the linear-predictor scale, and $\beta_S$ is the stative-minus-result difference.
+
+The intercept is the result-verb mean because the result row contains zeros in
+both contrast columns. The two slope coefficients each compare another category
+with that same reference.
+
+## Reconstruct coefficients from category means
+
+Suppose the fitted mean ratings are
+
+| verb type | fitted mean |
+|---|---:|
+| result | 5.8 |
+| manner | 5.2 |
+| stative | 6.1 |
+
+Under the displayed reference coding,
+
+$$
+\beta_0=5.8.
+$$
+
+The manner coefficient is
+
+$$
+\begin{aligned}
+\beta_M
+&=\eta_{\text{manner}}-\eta_{\text{result}}\\
+&=5.2-5.8\\
+&=-.6.
+\end{aligned}
+$$
+
+The stative coefficient is
+
+$$
+\begin{aligned}
+\beta_S
+&=\eta_{\text{stative}}-\eta_{\text{result}}\\
+&=6.1-5.8\\
+&=.3.
+\end{aligned}
+$$
+
+Substituting these coefficients recovers all three means:
+
+$$
+\begin{aligned}
+\eta_{\text{result}}&=5.8,\\
+\eta_{\text{manner}}&=5.8-.6=5.2,\\
+\eta_{\text{stative}}&=5.8+.3=6.1.
+\end{aligned}
+$$
+
+This reconstruction is the safest check on a contrast interpretation.
+
+## Set the reference in R
+
+```{r}
+#| label: set-reference-category
+#| echo: true
+cloze <- data.frame(
+  verb_type = c("result", "manner", "stative")
+)
+
+cloze$verb_type <- relevel(
+  factor(cloze$verb_type),
+  ref = "result"
+)
+
+model.matrix(~ verb_type, data = cloze)
+```
+
+Software otherwise may choose a reference alphabetically. That default can make the coefficient table answer a comparison different from the theoretical question.
+
+The column names printed by `model.matrix()` identify the represented
+comparisons. The order of rows follows the observations, while factor level
+order determines the reference and the contrast columns.
+
+## Why use only two columns?
+
+With an intercept and three unrestricted indicators, the three indicators sum to the intercept column of ones. This exact dependency prevents unique coefficient estimates.
+
+Two columns suffice to represent three group locations relative to a reference.
+
+More specifically, the intercept supplies the result location. The manner
+column supplies the change needed to reach the manner location, and the stative
+column supplies the change needed to reach the stative location. A third
+indicator would duplicate information already present in the intercept and two
+contrasts.
+
+## Coding changes coefficients, not fitted group means
+
+If we make manner the reference, the intercept and comparison coefficients change. The model can still produce the same fitted value for result, manner, and stative verbs.
+
+For the three means above, making manner the reference yields
+
+$$
+\beta_0^*=5.2,
+$$
+
+$$
+\beta_R^*=5.8-5.2=.6,
+$$
+
+and
+
+$$
+\beta_S^*=6.1-5.2=.9.
+$$
+
+The numbers differ from the result-reference coefficients, but the category
+means remain 5.8, 5.2, and 6.1. Coding changes the coordinate system used to
+describe the same fitted values.
+
+Choose coding to make the theoretically relevant comparison direct. If the hypothesis concerns manner versus result, treatment coding with one of those levels as reference makes the coefficient immediately readable.
+
+The stative-minus-manner comparison is not a single displayed coefficient under
+result reference coding. It is
+
+$$
+\begin{aligned}
+\eta_{\text{stative}}-\eta_{\text{manner}}
+&=(\beta_0+\beta_S)-(\beta_0+\beta_M)\\
+&=\beta_S-\beta_M.
+\end{aligned}
+$$
+
+With the example values, this difference is $.3-(-.6)=.9$. The comparison is
+fully represented even though it does not appear in one coefficient row.
+
+The displayed coefficient rows are not the only available comparisons. Predictions and linear
+combinations can recover any comparison represented by the fitted category
+means.
+
+::: {.callout-note title="Check one comparison"}
+1. Using the table above, express the stative-minus-manner difference in terms
+   of $\beta_S$ and $\beta_M$.
+2. Reconstruct the three fitted means from $\beta_0=5.8$,
+   $\beta_M=-.6$, and $\beta_S=.3$.
+3. Why do three category means require only an intercept and two contrast
+   columns?
+4. Explain why the displayed coefficient rows are not the only comparisons available from the fitted model.
+:::

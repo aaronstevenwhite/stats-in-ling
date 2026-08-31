@@ -1,0 +1,196 @@
+---
+title: "Iteratively reweighted least squares"
+---
+
+The [least-squares page](frequentist-linear-regression.qmd) derived a closed-form coefficient solution from a quadratic objective. In many generalized linear models, the conditional mean is a nonlinear function of the coefficients on the response scale, so maximum-likelihood estimation requires an iterative numerical method.
+
+One common procedure is [**iteratively reweighted least squares**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214).
+
+The procedure replaces one nonlinear optimization with a sequence of local
+weighted linear problems. Each update is easy to solve, but its working responses and weights are
+valid only near the current coefficient values.
+
+## Start from provisional coefficients
+
+Given provisional coefficients $\boldsymbol\beta^{(t)}$, compute the linear predictor
+
+$$
+\boldsymbol\eta^{(t)}=\mathbf{X}\boldsymbol\beta^{(t)}
+$$
+
+and the fitted means
+
+$$
+\boldsymbol\mu^{(t)}=g^{-1}(\boldsymbol\eta^{(t)}).
+$$
+
+These means determine the conditional variance under the chosen response family.
+
+The superscript $(t)$ marks an iteration, not an exponent. Iteration 0 begins
+from initial coefficients, iteration 1 uses the first update, and the process
+continues until a declared convergence rule is met.
+
+## Construct a local linear problem
+
+Near the current fitted values, approximate the nonlinear relation between the response and the linear predictor. This produces a working response
+
+$$
+z_i
+=
+\eta_i^{(t)}
++
+(y_i-\mu_i^{(t)})
+\left.
+\frac{d\eta_i}{d\mu_i}
+\right|_{\mu_i^{(t)}}.
+$$
+
+It also produces a weight for each observation. The weight depends on the [variance function](exponential-family.qmd#why-this-family-is-useful) and the slope of the link.
+
+The working response $z_i$ is not a transformed linguistic measurement. It is a
+temporary numerical quantity constructed to approximate the log likelihood near
+the current fit. It changes at the next iteration.
+
+## Solve weighted least squares
+
+Using the working responses and weights, update the coefficients by solving
+
+$$
+\boldsymbol\beta^{(t+1)}
+=
+(\mathbf{X}^{\mathsf T}\mathbf{W}\mathbf{X})^{-1}
+\mathbf{X}^{\mathsf T}\mathbf{W}\mathbf{z}.
+$$
+
+Then recompute the means, working responses, and weights. Continue until the likelihood or coefficient vector changes by less than a tolerance.
+
+## Work through an intercept-only Bernoulli update
+
+Suppose five trials produce
+
+$$
+\mathbf y=(1,1,0,1,0).
+$$
+
+Fit one Bernoulli probability with a logit link. The linear predictor is the
+intercept alone:
+
+$$
+\eta_i=\beta_0.
+$$
+
+Begin at
+
+$$
+\beta_0^{(0)}=0.
+$$
+
+The fitted probability is $.5$ for every observation. For logistic IRLS, the
+working response is
+
+$$
+z_i
+=\eta_i+
+\frac{y_i-\pi_i}{\pi_i(1-\pi_i)}.
+$$
+
+At $\eta_i=0$ and $\pi_i=.5$, a success has
+
+$$
+z_i=0+\frac{1-.5}{.5(1-.5)}=2,
+$$
+
+while a failure has
+
+$$
+z_i=0+\frac{0-.5}{.5(1-.5)}=-2.
+$$
+
+Thus
+
+$$
+\mathbf z^{(0)}=(2,2,-2,2,-2).
+$$
+
+Every initial weight is
+
+$$
+w_i^{(0)}=\pi_i(1-\pi_i)=.25.
+$$
+
+With equal weights and an intercept only, the weighted least-squares update is
+the mean of the working responses:
+
+$$
+\beta_0^{(1)}
+=\frac{2+2-2+2-2}{5}
+=.4.
+$$
+
+The new fitted probability is
+
+$$
+\pi^{(1)}
+=\frac{1}{1+e^{-.4}}
+\approx.599.
+$$
+
+The observed success proportion is $3/5=.6$, so one update has already moved
+close to the maximum-likelihood probability.
+
+```{r}
+#| label: one-logistic-irls-update
+#| echo: true
+y <- c(1, 1, 0, 1, 0)
+eta_0 <- rep(0, length(y))
+pi_0 <- plogis(eta_0)
+weights_0 <- pi_0 * (1 - pi_0)
+z_0 <- eta_0 + (y - pi_0) / weights_0
+beta_1 <- weighted.mean(z_0, weights_0)
+
+c(
+  updated_intercept = beta_1,
+  updated_probability = plogis(beta_1),
+  exact_intercept = qlogis(mean(y))
+)
+```
+
+The exact maximum-likelihood intercept is
+
+$$
+\operatorname{logit}(.6)\approx.4055.
+$$
+
+Further IRLS steps close the small remaining gap.
+
+## Why the weights change
+
+In a Bernoulli model, observations with fitted probability near zero or one have a different conditional variance from observations near one half. The local information about the coefficients thus differs across observations and across iterations. Reweighting reflects that changing information.
+
+For the intercept-only example, all observations share a probability and thus a
+weight within each iteration. With predictors, fitted probabilities differ
+across rows, so the weights differ as well. The weighted linear problem is then
+local to both the current coefficients and each observation's predictor row.
+
+## What convergence means
+
+Algorithmic convergence means the updates stabilized. It does not mean the model fits the data well, that the maximum is well identified, or that the predictors answer the linguistic question. Warnings about nonconvergence, fitted probabilities at boundaries, or a nearly singular design matrix require investigation.
+
+Numerical convergence does not establish that the fitted model is scientifically adequate. IRLS convergence addresses a
+numerical question. Response support, predictor coding, and predictive adequacy
+remain separate.
+
+You will usually let software perform these calculations. Understanding the iteration explains why a generalized linear model can fail to converge and why the fitted result depends on both the response family and the link.
+
+The sequence of weighted linear updates also explains why changing the family or link changes more than a label.
+It changes the fitted means, the conditional variances, the working responses,
+and the weights used at every iteration.
+
+::: {.callout-note title="Reconstruct one local update"}
+1. Why is one ordinary least squares calculation not enough for most generalized linear models?
+2. What quantities are recomputed at each iteration?
+3. What does algorithmic convergence fail to establish?
+4. Starting from $\pi=.5$, calculate the working response for one success and
+   one failure.
+5. Explain why IRLS convergence does not establish scientific model adequacy.
+:::

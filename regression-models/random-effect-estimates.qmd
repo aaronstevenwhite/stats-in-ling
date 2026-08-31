@@ -1,0 +1,79 @@
+---
+title: "Group-specific estimates"
+---
+
+The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model thus gives each observed group a partially pooled estimate of its deviation from the population relation. These values are often called [**conditional modes**](https://lme4.github.io/lme4/reference/ranef.html) in a frequentist fit or [**group-specific estimates**](https://lme4.github.io/lme4/reference/ranef.html) more generally.
+
+They are useful summaries of the fitted group structure. They are not raw group means, independently estimated fixed coefficients, or error free rankings.
+
+## Build the group estimate
+
+Suppose a random intercept model has population baseline $\widehat\beta_0$ and estimated speaker deviation $\widehat b_j$. The fitted speaker baseline is
+
+$$
+\widehat\beta_0+\widehat b_j.
+$$
+
+The deviation answers a conditional question: given the population coefficients, variance components, and this speaker's observations, where does the model place the speaker relative to the population center?
+
+The estimate is partially pooled through the shared group distribution. A speaker with an unusually high raw mean based on two noisy tokens will usually have an estimated deviation closer to zero than that raw difference. A speaker with many consistent observations receives less shrinkage.
+
+Raw group means and partially pooled estimates differ most for groups with little information or high within-group noise.
+
+## Extract both kinds of quantity
+
+With `lme4`, `ranef()` returns estimated deviations and `coef()` adds the population coefficients to return group-specific coefficients.
+
+```r
+speaker_deviations <- ranef(fit_intercepts)$participant
+speaker_coefficients <- coef(fit_intercepts)$participant
+
+head(speaker_deviations)
+head(speaker_coefficients)
+```
+
+If the model contains only a participant random intercept, the first table reports $\widehat b_{0j}$. The second reports $\widehat\beta_0+\widehat b_{0j}$ and repeats any population slopes.
+
+These tables should be interpreted with the model formula in view. A deviation of 20 ms is relative to the model's baseline predictor values. Changing a coding reference or centering a continuous predictor changes the intercept meaning.
+
+## Display the estimates and their uncertainty
+
+A caterpillar plot orders group deviations and displays their conditional uncertainty.
+
+```r
+library(lattice)
+
+dotplot(ranef(fit_intercepts, condVar = TRUE))
+```
+
+The plot can reveal groups with weak information, groups with unusual fitted deviations, and a group distribution that may not resemble the assumed shape. It is a model diagnostic and descriptive display.
+
+The intervals are conditional on estimated population parameters in common frequentist implementations. They do not include every source of uncertainty. A Bayesian posterior for each group effect can represent parameter uncertainty more fully, but the ranks remain uncertain there as well.
+
+## Do not turn the display into many tests
+
+The model assumes that the group deviations arise from one population distribution. Testing every speaker against zero and labeling speakers whose intervals exclude zero changes the scientific target. It treats sampled groups as a collection of separate hypotheses and creates a multiple comparison problem.
+
+If particular speakers, dialects, or corpora are the scientific targets, their planned comparisons should be represented explicitly in the population relation. Random effects are not a substitute for declaring those targets.
+
+## Treat ranks as uncertain
+
+The displayed order is based on point estimates. Neighboring groups can exchange ranks across plausible parameter values. A plot that places speaker 17 above speaker 9 does not establish a stable population ordering.
+
+Rank uncertainty is often greatest in the middle, where many deviations are similar. Extreme estimates may also move substantially when their groups have few observations. Reporting the first and last point estimate without uncertainty can thus overstate what the data say.
+
+## Use the estimates for appropriate questions
+
+Group estimates can help with three tasks:
+
+1. checking whether a few groups dominate a fitted pattern;
+2. describing the scale of modeled group variation;
+3. generating a new, separately tested hypothesis about measured group properties.
+
+They should not replace the population coefficient when the groups were sampled for generalization. Nor should they be correlated with a new group predictor using only the point estimates as if those estimates were observed without error. A measured group predictor belongs in the multilevel model itself.
+
+::: {.callout-note title="Compare raw and partially pooled group estimates"}
+Two speakers have the same raw mean. One contributes three tokens and the other contributes three hundred. Why might their pooled deviations differ? Which additional quantities would you inspect before comparing their ranks?
+:::
+
+The [next page](random-slopes.qmd) relaxes the common slope assumption by allowing a predictor association to vary across groups.

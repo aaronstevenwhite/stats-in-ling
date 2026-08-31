@@ -1,0 +1,234 @@
+---
+title: "Uncertainty in a fitted slope"
+---
+
+The [fitting page](frequentist-linear-regression.qmd) produced one estimated slope. As introduced in the chapters on [estimators](../statistical-inference/properties-of-estimators.qmd) and [standard errors](../statistical-inference/standard-errors.qmd), an estimate is one sample result, while its standard error describes variation across repeated samples.
+
+The fitted slope $\widehat{\beta}_1$ is an estimator. A different sample of words and reading times would generally produce a different value.
+
+Its sampling distribution describes this repeated-sample variation. The standard deviation of that distribution is the slope's standard error.
+
+The observed estimate must be distinguished from its repeated-sample distribution. The estimate is one
+number computed from one sample. The sampling distribution is a distribution of
+numbers we would obtain by repeating the entire sampling and fitting procedure.
+The standard error summarizes the spread of that second object.
+
+We use the six constructed observations from the fitting page, but define them
+again so that every calculation on this page can be run on its own.
+
+```{r}
+#| label: fit-line-for-uncertainty
+#| echo: true
+reading_times <- data.frame(
+  surprisal = 2:7,
+  log_rt = c(5.78, 5.82, 5.93, 5.99, 6.05, 6.13)
+)
+
+fit <- lm(log_rt ~ surprisal, data = reading_times)
+```
+
+## Read the simple-regression formula
+
+For ordinary simple linear regression with constant error variance,
+
+$$
+\operatorname{SE}(\widehat{\beta}_1)
+=\frac{\sigma}
+{\sqrt{\sum_{i=1}^{n}(x_i-\bar{x})^2}}.
+$$
+
+The numerator is response variation around the true conditional mean. More residual variation makes the slope harder to estimate.
+
+The denominator measures how widely the predictor values are spread around their mean. A wider range of surprisal values supplies more information about the line's change.
+
+Sample size enters because adding observations usually adds terms to the denominator. But ten repetitions at nearly the same predictor value do not supply the same slope information as ten observations spread across the predictor range.
+
+In practice, $\sigma$ is unknown and replaced by an estimate.
+
+The formula separates three sources of precision. First, smaller response
+variation produces a smaller numerator. Second, predictor values farther from
+their mean produce a larger denominator. Third, additional observations help
+only insofar as they add predictor spread and information about the response
+variation. This is why sample size alone does not determine slope precision.
+
+## Compare two predictor designs
+
+Suppose two studies each collect four observations and have the same residual
+standard deviation. Their predictor values are
+
+$$
+\mathbf{x}_A=(4.9,5.0,5.0,5.1)
+$$
+
+and
+
+$$
+\mathbf{x}_B=(2,4,6,8).
+$$
+
+Both means equal 5. The squared predictor deviations are
+
+$$
+\sum_i(x_{Ai}-\bar x_A)^2
+=(-.1)^2+0^2+0^2+.1^2
+=.02
+$$
+
+and
+
+$$
+\sum_i(x_{Bi}-\bar x_B)^2
+=(-3)^2+(-1)^2+1^2+3^2
+=20.
+$$
+
+If $\sigma=.20$, the idealized standard errors are
+
+$$
+\operatorname{SE}_A
+=\frac{.20}{\sqrt{.02}}
+\approx1.414
+$$
+
+and
+
+$$
+\operatorname{SE}_B
+=\frac{.20}{\sqrt{20}}
+\approx.0447.
+$$
+
+The second design is much more informative about change because it observes the
+response across a wider predictor range. This calculation does not license
+choosing implausible words merely to widen that range. It shows which feature of
+the design supplies information about the slope.
+
+## Estimate residual variation
+
+For a fitted simple linear regression, the usual residual variance estimate is
+
+$$
+\widehat\sigma^2
+=\frac{\sum_{i=1}^n e_i^2}{n-2}.
+$$
+
+The denominator is $n-2$ because two coefficients, the intercept and slope, were
+estimated from the sample. Taking the square root gives $\widehat\sigma$, which
+is substituted into the standard-error formula. Thus the reported standard
+error depends both on the predictor design and on how far the observed responses
+fall from the fitted line.
+
+The fitted-model summary performs these calculations:
+
+```{r}
+#| label: inspect-fitted-slope-uncertainty
+#| echo: true
+summary(fit)$coefficients
+```
+
+The slope row contains the estimate, its standard error, a test statistic, and a
+tail probability. On this page, the first two columns are the objects of
+interest. The estimate describes fitted change. The standard error describes
+the estimator's precision under the model and sampling assumptions.
+
+## Form a coefficient interval
+
+For the constructed observations, the fitted slope is approximately
+
+$$
+\widehat{\beta}_1=.07143
+$$
+
+with standard error
+
+$$
+\widehat{\operatorname{SE}}(\widehat{\beta}_1)=.00361.
+$$
+
+The finite-sample critical value for four residual degrees of freedom is about
+$2.776$. This gives
+
+$$
+.07143\mathbin{\pm}2.776(.00361)
+\approx[.0614,.0815].
+$$
+
+The interval is in log-reading-time units per bit of surprisal.
+
+The endpoints preserve those units. They describe a set of slope values produced
+by a procedure whose long-run coverage is the declared confidence level, under
+the assumptions used to derive the procedure.
+
+In R, the fitted model supplies the finite-sample t calculation:
+
+```{r}
+#| label: slope-confidence-interval
+#| echo: true
+confint(fit, "surprisal", level = .95)
+```
+
+The interval has the repeated-sampling coverage interpretation developed earlier. It is not a posterior probability statement about this particular coefficient interval.
+
+More specifically, imagine repeating the study and interval construction many
+times while holding the data-generating parameter fixed. About 95 percent of the
+constructed intervals would contain that fixed slope if the procedure's
+assumptions held. After we observe one interval, frequentist probability does not
+assign a 95 percent probability to the fixed coefficient being inside it.
+
+That reading reverses the roles of procedure and parameter. The procedure is
+random before data are collected; the parameter is not. Bayesian
+credible intervals support a different probability statement because the model
+represents uncertainty about the parameter directly.
+
+## Distinguish coefficient and mean-response uncertainty
+
+The slope interval concerns one coefficient. We may instead ask for uncertainty
+about the conditional mean at a particular predictor value. For
+
+$$
+m(x_0)=\beta_0+\beta_1x_0,
+$$
+
+uncertainty in the intercept and slope both contribute. The two coefficient
+estimates are also associated, so their uncertainties cannot be added as if they
+were unrelated.
+
+R can construct an interval for the fitted conditional mean:
+
+```{r}
+#| label: fitted-mean-confidence-interval
+#| echo: true
+predict(
+  fit,
+  newdata = data.frame(surprisal = c(3, 5, 7)),
+  interval = "confidence",
+  level = .95
+)
+```
+
+These intervals are usually narrowest near the center of the observed predictor
+values and wider toward the edges. The data constrain the line most strongly
+where predictor observations are concentrated.
+
+This mean-response interval is not an interval for a new individual's reading
+time. A new response contains both uncertainty about the conditional mean and
+observation-level variation around that mean. The latter requires a prediction
+interval, which is wider. An interval for a new observation must thus remain
+distinct from an interval for the conditional mean.
+
+## Distinguish precision from adequacy
+
+A narrow interval says that the slope estimator is precise under the fitted model and sampling assumptions. It does not establish that a straight line, constant variance, independent observations, or the chosen predictor set adequately represents the data.
+
+Those assumptions need separate checks. We first define [residuals](residuals.qmd), then organize them into diagnostic plots.
+
+::: {.callout-note title="Check the denominator"}
+1. Holding residual variation and sample size fixed, which design estimates a
+   slope more precisely: predictor values concentrated between 4.9 and 5.1, or
+   values spread between 2 and 8? Use the standard-error formula.
+2. Distinguish one observed slope estimate from its sampling distribution.
+3. Why is a 95 percent confidence interval not a 95 percent posterior
+   probability statement?
+4. Distinguish an interval for a conditional mean from an interval for a new
+   response.
+:::

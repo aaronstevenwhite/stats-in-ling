@@ -1,0 +1,106 @@
+---
+title: "Predictive loss"
+---
+
+The earlier [mean-squared-error page](../statistical-inference/mean-squared-error.qmd) used squared error to evaluate an estimator across repeated samples. Predictive loss uses the same algebra to evaluate predictions for held-out responses. The random object and averaging scheme differ, so the two quantities should not be conflated.
+
+Once [what must be held out](prediction-targets.qmd) is fixed, an evaluation still needs a numerical definition of error. A 20 ms mistake and a 100 ms mistake should not receive the same assessment, but there is more than one defensible way to express how much worse the second mistake is.
+
+A [**loss function**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) $L(y,\widehat{y})$ assigns a nonnegative cost to predicting $\widehat{y}$ when the observed response is $y$. Lower loss is better, and zero loss usually occurs when prediction and observation coincide. The choice of loss states which mistakes matter for the intended use.
+
+The [**predictive risk**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) of a procedure is its expected loss on new responses from the population under study. A held-out mean loss estimates that expectation from the available data. Risk is thus an expectation over future responses, not a synonym for one observed error.
+
+## Squared loss
+
+The [**squared-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is
+
+$$
+L_{\mathrm{SE}}(y,\widehat{y})=(y-\widehat{y})^2.
+$$
+
+Doubling the absolute error multiplies squared loss by four. Thus squared loss gives large errors disproportionate influence. Over $N$ held-out predictions, the mean squared error is
+
+$$
+\operatorname{MSE}
+=
+\frac{1}{N}\sum_{i=1}^N (y_i-\widehat{y}_i)^2.
+$$
+
+The [**root mean squared error (RMSE)**](https://otexts.com/fpp3/accuracy.html) is the square root of mean squared error:
+
+$$
+\operatorname{RMSE}=\sqrt{\operatorname{MSE}},
+$$
+
+Taking the square root returns the score to the response's units. If the response is log reading time, RMSE remains on the log scale; it is not an error in milliseconds merely because the untransformed response was measured that way.
+
+The conditional mean is the optimal point prediction under squared loss. This connection explains why RMSE is a natural score for a regression model that estimates $\mathbb{E}[Y\mid X]$. It does not make squared loss universally appropriate.
+
+## Absolute loss
+
+The [**absolute-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is
+
+$$
+L_{\mathrm{AE}}(y,\widehat{y})=|y-\widehat{y}|,
+$$
+
+Its held-out average is the [**mean absolute error (MAE)**](https://otexts.com/fpp3/accuracy.html):
+
+$$
+\operatorname{MAE}
+=
+\frac{1}{N}\sum_{i=1}^N |y_i-\widehat{y}_i|.
+$$
+
+Absolute loss grows linearly with the error. A mistake of 100 units costs twice as much as a mistake of 50 units, rather than four times as much. The conditional median is the optimal point prediction under absolute loss.
+
+RMSE and MAE can thus prefer different models. A model that is usually accurate but makes a few very large mistakes may have low MAE and high RMSE. Reporting both can reveal this pattern, but it does not remove the need to designate a primary loss. Otherwise, the preferred score may be selected after the comparison is seen.
+
+## A small linguistic example
+
+Suppose two models predict mean log reading time for four word positions.
+
+```{r}
+#| eval: false
+
+observed <- c(5.1, 5.2, 5.0, 5.4)
+model_a <- c(5.0, 5.3, 5.1, 5.3)
+model_b <- c(5.1, 5.2, 5.0, 5.8)
+
+loss <- function(prediction) {
+  error <- observed - prediction
+  c(
+    RMSE = sqrt(mean(error^2)),
+    MAE = mean(abs(error))
+  )
+}
+
+rbind(A = loss(model_a), B = loss(model_b))
+```
+
+Model B predicts three positions exactly but badly misses the fourth. Absolute loss may reward its three exact predictions, while squared loss emphasizes the one large error. The scores disagree because they encode different consequences, not because one calculation is defective.
+
+## The unit of averaging
+
+The formula for MSE averages over $N$ observations. But the predictive question may concern groups. If one passage contains 100 word positions and another contains 20, a position-weighted MSE gives the first passage five times as much influence. A passage-weighted score first computes loss within each passage and then averages the passage means.
+
+Neither weighting is neutral. Position weighting describes a randomly selected position from the corpus mixture. Passage weighting describes a randomly selected passage followed by a position within it. The predictive question should determine which is primary.
+
+This distinction is especially important when reporting uncertainty. Thousands of position losses may be observed, but a new-passage claim varies across the number of passages. We will return to this issue after defining grouped validation.
+
+## Loss is not explanatory adequacy
+
+A lower predictive loss does not show that a predictor is causal, that a latent component corresponds to a linguistic category, or that a model's parameters have the interpretation assigned to them. Prediction evaluates a specified mapping from available information to responses under the stated data separation and population.
+
+Conversely, a theoretically meaningful coefficient need not produce a practically important loss reduction. A small and stable association can be real while contributing little to prediction relative to other variation. Comparing predictive loss thus addresses an additional question rather than replacing parameter interpretation.
+
+## Check the loss
+
+1. Which score, RMSE or MAE, is more sensitive to a small number of large errors? Why?
+2. If the response is log duration, on what scale is RMSE computed?
+3. Explain the population weighting difference between a position-weighted and passage-weighted loss.
+4. Can a predictor have a nonzero estimated coefficient but fail to improve held-out loss? Give one reason.
+
+## Before separating the data
+
+A loss function defines the cost of each prediction error. Squared loss targets conditional means and emphasizes large misses; absolute loss targets conditional medians and grows linearly. The averaging unit determines what receives weight. The [next page](bias-variance-tradeoff.qmd) explains why predictive error changes across possible training samples. [Training and test data](training-and-test-data.qmd) then explains why loss must be computed on responses excluded from fitting.

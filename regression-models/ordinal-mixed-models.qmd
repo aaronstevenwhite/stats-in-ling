@@ -1,0 +1,150 @@
+---
+title: "Ordinal mixed models"
+---
+
+This page combines the cumulative link introduced for [ordinal regression](ordinal-regression.qmd) with the group deviations introduced for [generalized linear mixed models](generalized-linear-mixed-models.qmd).
+
+Suppose each participant rates several discourses on an ordered commitment scale from *no* through *maybe* to *yes*. Each discourse also receives judgments from several participants. The ordinal regression page represents the response order, but it does not yet represent the two repeated units.
+
+An [**ordinal mixed model**](https://paulbuerkner.com/brms/articles/brms_families.html) places random effects inside the location predictor of a cumulative link model. The response categories and cutpoints are unchanged. The new step is the same one used by a generalized linear mixed model: observations that share a participant or discourse also share a modeled deviation.
+
+## Start from the cumulative link
+
+Let $Y_{ijd}$ be participant $j$'s ordered response to discourse $d$ in condition $i$. For each cutpoint $c$, an ordinal regression has
+
+$$
+\operatorname{logit}\Pr(Y_{ijd}\leq c)
+=\kappa_c-\eta_{ijd}.
+$$
+
+Suppose $X_{ijd}$ represents an embedding environment. Without random effects,
+
+$$
+\eta_{ijd}=\beta_0+\beta_1X_{ijd}.
+$$
+
+All participants and discourses with the same predictor value receive the same location. Repeated observations are treated as independent after conditioning on that predictor.
+
+## Add both repeated units
+
+Let $u_j$ be a participant deviation and $v_d$ be a discourse deviation:
+
+$$
+\eta_{ijd}
+=\beta_0+\beta_1X_{ijd}+u_j+v_d,
+$$
+
+with
+
+$$
+u_j\sim\mathcal N(0,\tau_{\text{participant}}^2)
+$$
+
+and
+
+$$
+v_d\sim\mathcal N(0,\tau_{\text{discourse}}^2).
+$$
+
+A positive participant deviation moves that participant toward higher response categories across represented discourses. A positive discourse deviation moves judgments of that discourse upward across participants. The two variance parameters describe different sources of heterogeneity and should not be combined into one generic error term.
+
+The model is crossed when participants judge multiple discourses and discourses receive judgments from multiple participants. Neither unit nests inside the other. The formula should preserve that design.
+
+## Follow one observation through the model
+
+Suppose one observation has fixed predictor location $.6$, participant deviation $.3$, and discourse deviation $-.4$. Its complete location is
+
+$$
+\eta=.6+.3-.4=.5.
+$$
+
+With cutpoints $\kappa_1=-.8$ and $\kappa_2=1$, its predicted category probabilities are
+
+$$
+\Pr(Y=\text{no})=F(-.8-.5)=F(-1.3)\approx.214,
+$$
+
+$$
+\Pr(Y=\text{maybe})
+=F(1-.5)-F(-.8-.5)
+\approx.622-.214=.408,
+$$
+
+and
+
+$$
+\Pr(Y=\text{yes})=1-F(.5)\approx.378.
+$$
+
+The participant deviation raises the response location, while the discourse deviation partly offsets that rise. Both operate before the inverse link converts the location into category probabilities.
+
+## Fit the crossed model
+
+```r
+judgments$commitment <- ordered(
+  judgments$commitment,
+  levels = c("no", "maybe", "yes")
+)
+
+fit_commitment_mixed <- ordinal::clmm(
+  commitment ~ embedding_environment + discourse_status +
+    (1 | participant_id) +
+    (1 | discourse_id),
+  data = judgments,
+  link = "logit"
+)
+```
+
+The fixed terms describe the modeled linguistic contrasts. `(1 | participant_id)` represents baseline response tendencies. `(1 | discourse_id)` represents baseline differences among the linguistic materials. The cutpoints are estimated jointly with the fixed coefficients and variance parameters.
+
+The model can include an interaction when the linguistic theory predicts that the embedding effect changes with discourse status:
+
+```r
+fit_commitment_interaction <- ordinal::clmm(
+  commitment ~ embedding_environment * discourse_status +
+    (1 | participant_id) +
+    (1 | discourse_id),
+  data = judgments,
+  link = "logit"
+)
+```
+
+The interaction belongs in the formula only when its contrast has been stated before fitting. The presence of several response categories does not by itself motivate a larger fixed effect structure.
+
+## State which groups are represented in a prediction
+
+A prediction for an observed participant and discourse can condition on both estimated deviations. A prediction for a new participant judging an observed discourse may condition on the discourse deviation but must average over or newly draw the participant effect. A prediction for a new participant and new discourse must handle both random effect populations.
+
+These are distinct predictive questions. Setting every random effect to zero gives a location at the center of each grouping distribution. It is not automatically the same as averaging response probabilities over those distributions because the cumulative logit inverse is nonlinear.
+
+The target should thus be stated before predictions are generated. Otherwise the same fixed coefficient can be accompanied by several apparently conflicting probability summaries that differ only in their conditioning choices.
+
+## Interpret the linguistic contrast on the response scale
+
+An embedding coefficient remains a common shift across cumulative logits. Random effects do not turn it into a change in slider points or category numbers. Report predicted probabilities for *no*, *maybe*, and *yes* in the theoretically diagnostic conditions.
+
+Participant and discourse variation also bear on the claim. A large discourse variance means that the represented materials differ substantially after the fixed predictors are included. It does not show that the fixed contrast is absent. It shows that the fixed contrast is not a complete account of discourse level commitment.
+
+This distinction is especially important for lexical semantic predictors such as factivity. A coarse predicate category may show an average contrast while individual predicates or discourses vary widely. The model can support the average association and simultaneously block the claim that the category determines every response.
+
+## What a random intercept cannot repair
+
+Participant response behavior may differ in more than baseline location. Some participants may use *maybe* broadly, while others divide their responses between the endpoints. A location random intercept cannot represent every threshold or scale difference. Likewise, discourse variation may interact with the embedding manipulation rather than merely shifting every condition together.
+
+These limitations should be diagnosed from response distributions and theoretically relevant contrasts. Adding a complex random effect structure without sufficient replication can make the model weakly identified. A simpler model should be described as simpler, not as proof that the omitted variation is zero.
+
+::: {.callout-note title="Reading: de Marneffe, Simons, and Tonhauser (2019)"}
+Read [*The CommitmentBank: Investigating projection in naturally occurring discourse*](https://ojs.ub.uni-konstanz.de/sub/index.php/sub/article/view/601), focusing on the response scale, embedding environments, and variation among predicates, items, and annotators. The reading is included because it shows why an average factivity contrast and substantial discourse level variation can coexist. The problem set uses a prespecified teaching model rather than reproducing every analysis in the paper.
+:::
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) fits a seven category cumulative logit model with annotator, discourse, and predicate intercepts. Students must keep the ordered measurement and all three repeated units in one model before interpreting factivity.
+:::
+
+::: {.callout-note title="Check the grouping structure"}
+Why are participant and discourse intercepts crossed? For a new discourse prediction, which estimated deviation cannot be reused? What kind of participant response variation is not represented by a location random intercept?
+:::
+
+## What the mixed model adds
+
+An ordinal mixed model retains ordered cutpoints and cumulative logits while adding shared participant and discourse deviations to the response location. The model separates a linguistic contrast from participant and discourse variation. Its predictions must state whether each grouping unit is observed or new. Problem Set 4 applies this model to commitment judgments and then asks how far the average embedding pattern transfers across discourses.

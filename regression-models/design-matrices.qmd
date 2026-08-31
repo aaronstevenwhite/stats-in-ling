@@ -1,0 +1,193 @@
+---
+title: "Design matrices"
+---
+
+The [multiple-regression page](multiple-regression.qmd) wrote one linear predictor for each observation. A design matrix collects those observation-specific equations into one matrix equation.
+
+A regression formula is converted into a numeric matrix before the model is fit.
+This [**design matrix**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133) places one observation on each row and one coefficient
+contribution on each column.
+
+The model matrix is the numeric representation produced from the formula. Inspecting this representation is useful because coefficient meaning comes from the
+numbers in the matrix, not from the surface form of a variable name.
+
+Suppose three words have centered log frequencies $-1.2$, $.4$, and $.8$, along
+with centered neighborhood densities 3, $-2$, and 1. The additive model is
+
+```{r}
+log_rt ~ log_frequency + neighborhood_density
+```
+
+Its design matrix is
+
+$$
+\mathbf{X}=
+\begin{bmatrix}
+1 & -1.2 & 3\\
+1 & 0.4 & -2\\
+1 & 0.8 & 1
+\end{bmatrix}.
+$$
+
+The first column represents the intercept. The second contains centered frequency
+values. The third contains centered neighborhood-density values. All three rows
+contain 1 in the first column because every observation receives the intercept.
+
+## The linear predictor is a matrix product
+
+With coefficient vector
+
+$$
+\boldsymbol\beta=
+\begin{bmatrix}
+\beta_0\\\beta_1\\\beta_2
+\end{bmatrix},
+$$
+
+all linear predictors are
+
+$$
+\boldsymbol\eta=\mathbf{X}\boldsymbol\beta.
+$$
+
+For the second row,
+
+$$
+\eta_2=1\beta_0+.4\beta_1-2\beta_2.
+$$
+
+The row shows exactly which coefficients contribute to that observation's fitted value.
+
+Suppose
+
+$$
+\boldsymbol\beta
+=
+\begin{bmatrix}
+6.2\\
+-.08\\
+.015
+\end{bmatrix}.
+$$
+
+Then the second fitted conditional mean is
+
+$$
+\begin{aligned}
+\eta_2
+&=1(6.2)+.4(-.08)-2(.015)\\
+&=6.138.
+\end{aligned}
+$$
+
+The matrix product repeats this calculation for all three observations at once.
+
+## Multiply the matrix by hand
+
+Matrix multiplication takes the dot product of each design row with the
+coefficient vector:
+
+$$
+\begin{aligned}
+\eta_1&=6.2+(-1.2)(-.08)+3(.015)=6.341,\\
+\eta_2&=6.2+.4(-.08)-2(.015)=6.138,\\
+\eta_3&=6.2+.8(-.08)+1(.015)=6.151.
+\end{aligned}
+$$
+
+Thus
+
+$$
+\boldsymbol\eta
+=
+\begin{bmatrix}
+6.341\\
+6.138\\
+6.151
+\end{bmatrix}.
+$$
+
+These are three conditional means. The design matrix does not contain the
+responses, and the multiplication does not add residual variation.
+
+## Construct the matrix in R
+
+```{r}
+#| label: construct-numeric-design-matrix
+#| echo: true
+lexical_rows <- data.frame(
+  log_frequency = c(-1.2, .4, .8),
+  neighborhood_density = c(3, -2, 1)
+)
+
+X <- model.matrix(
+  ~ log_frequency + neighborhood_density,
+  data = lexical_rows
+)
+
+beta <- c(6.2, -.08, .015)
+
+X
+as.vector(X %*% beta)
+```
+
+The first command exposes the model matrix. The second verifies the three hand
+calculations. `%*%` is R's matrix-multiplication operator.
+
+The column names provide another check:
+
+```{r}
+#| label: inspect-design-column-names
+#| echo: true
+colnames(X)
+```
+
+Their order must match the order of the coefficients in `beta`. Swapping the two
+slope values without swapping the columns would calculate a different model.
+
+## Interpret columns through row changes
+
+To read a coefficient, compare two hypothetical rows that differ in one column.
+For instance,
+
+$$
+\begin{bmatrix}1&0&0\end{bmatrix}
+$$
+
+and
+
+$$
+\begin{bmatrix}1&1&0\end{bmatrix}
+$$
+
+differ only by one frequency unit. Their fitted values differ by $\beta_1$. The
+same logic gives $\beta_2$ when only the third column changes by one unit.
+
+This row-comparison method generalizes beyond numeric predictors. Later pages
+show how categorical comparisons and products become columns, but their
+coefficients are still read by comparing design rows.
+
+## Keep rows and variables separate
+
+The matrix has one row per modeled observation, not one row per distinct word
+type unless the dataset itself has one observation per word type. Repeated
+tokens generate repeated rows, possibly with identical predictor values but
+different responses.
+
+Similarly, one original variable need not always become one matrix column. The
+The formula and contrast coding determine the actual columns. On this page, each numeric predictor supplies
+one column, so the correspondence happens to be one-to-one.
+
+One formula variable does not always produce one model-matrix column. That correspondence holds for these two numeric predictors
+but will fail for categorical predictors. Inspecting `model.matrix()` prevents
+the assumption from being carried into settings where it is false.
+
+::: {.callout-note title="Reconstruct the matrix product"}
+1. Calculate the fitted value for the first row using the displayed coefficient
+   vector.
+2. What changes in a design row when centered frequency increases by one unit
+   and centered neighborhood density stays fixed?
+3. Why does the design matrix not contain the response?
+4. Explain why one formula variable does not always produce one model-matrix column and why that correspondence holds only for the
+   current example.
+:::

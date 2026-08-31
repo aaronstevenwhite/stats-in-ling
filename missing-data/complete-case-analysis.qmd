@@ -1,0 +1,112 @@
+---
+title: "Complete case analysis"
+---
+
+Suppose an acoustic study records duration, F1, and F3 for every fricative token. F3 is absent on several long tokens because tracking was difficult. A software function that requires all three measurements may silently remove those rows. The resulting analysis runs, but it no longer describes the same set of tokens.
+
+[**Complete case analysis**](https://stefvanbuuren.name/fimd/sec-MCAR.html), also called listwise deletion, retains only rows observed on every variable required by the analysis. Its apparent simplicity hides two consequences. It reduces the amount of information, and it may change the target population from all eligible observations to a selected subset.
+
+## Define the complete case indicator
+
+Let $J$ be the set of variables required by an analysis. For row $i$, define
+
+$$
+C_i=\prod_{j\in J}R_{ij}.
+$$
+
+Because each $R_{ij}$ is zero or one, $C_i=1$ only when every required value is observed. A complete case estimate of a mean is
+
+$$
+\bar Y_{C=1}
+=\frac{\sum_{i=1}^{n}C_iY_i}{\sum_{i=1}^{n}C_i}.
+$$
+
+This quantity is a mean over complete rows. It equals the mean over all eligible rows only under additional conditions on the [missingness mechanism](missingness-mechanisms.qmd) and the estimand.
+
+## Work through a selected subset
+
+Consider eight tokens. Duration is observed for every token, but F3 is missing for the three longest tokens.
+
+| token | duration | F3 | complete for duration and F3 |
+|:--|--:|--:|:--|
+| t1 | 100 | 2480 | yes |
+| t2 | 110 | 2510 | yes |
+| t3 | 120 | 2440 | yes |
+| t4 | 130 | 2460 | yes |
+| t5 | 140 | 2420 | yes |
+| t6 | 150 | missing | no |
+| t7 | 160 | missing | no |
+| t8 | 170 | missing | no |
+
+The mean duration over all eight tokens is
+
+$$
+\bar Y=\frac{100+110+120+130+140+150+160+170}{8}=135.
+$$
+
+The complete case mean is
+
+$$
+\bar Y_{C=1}=\frac{100+110+120+130+140}{5}=120.
+$$
+
+Deletion changes the mean by 15 milliseconds because the retained tokens are shorter. The complete case mean is not arithmetically incorrect. It answers a different question: what is mean duration among tokens for which both duration and F3 were observed?
+
+## Make deletion explicit in R
+
+```{r}
+acoustic <- data.frame(
+  token = paste0("t", 1:8),
+  duration = seq(100, 170, by = 10),
+  F3 = c(2480, 2510, 2440, 2460, 2420, NA, NA, NA)
+)
+
+required <- c("duration", "F3")
+acoustic$is_complete <- complete.cases(acoustic[required])
+
+table(acoustic$is_complete)
+mean(acoustic$duration)
+mean(acoustic$duration[acoustic$is_complete])
+aggregate(duration ~ is_complete, data = acoustic, FUN = mean)
+```
+
+The first mean is available here only because duration itself is observed for all rows. In a real analysis requiring F3 as a response, the missing F3 values cannot be used to calculate the full target. Comparing observed duration across complete and incomplete rows nevertheless shows that deletion selects shorter tokens.
+
+## Several columns multiply the loss
+
+Complete case loss can be large even when each variable is mostly observed. Suppose five required measurements are independently observed in 90 percent of rows. A row is complete only when all five values are observed, so its probability of being complete is
+
+$$
+P(C_i=1)=.9^5\approx.59.
+$$
+
+A dataset with 1,000 rows would retain about 590 complete rows on average. The exact retained count varies, and the independence assumption used in this calculation may fail. The hand calculation is meant to show why missingness accumulates across columns, not to predict an exact count for every dataset.
+
+## When does deletion preserve a target?
+
+Under MCAR, complete rows form a random subset with respect to the measurements, so familiar complete case estimates may remain unbiased for their full data targets. MAR does not provide this guarantee automatically. If completeness depends on an observed variable related to the response, unadjusted deletion can change the response distribution.
+
+The relevant condition can also depend on the estimand. Missingness in a response and missingness in a predictor do not have identical consequences for every estimate. Thus, the report should state which variables define completeness and which complete row population the estimate describes.
+
+Complete case analysis may be reasonable when missingness is rare, the retained sample remains adequate, and the selection assumptions are plausible for the target. These are substantive conditions, not properties conferred by the `complete.cases()` function.
+
+## Complete-case analysis can change the target population
+
+Complete-case analysis can change the target population from all eligible observations to observations with complete records. This change often goes unreported when software drops rows automatically and reports only the final sample size.
+
+To diagnose it, record the number of rows before and after deletion, count missingness for every required variable, and compare observed characteristics across complete and incomplete rows. Such comparisons cannot reveal the missing values. They can show whether the retained subset differs on information that remains observed.
+
+::: {.callout-warning title="Do not hide the analysis set"}
+Store the complete case indicator in the analysis table. Report the variables used to define it, the number of retained rows, and the observed differences between retained and removed rows.
+:::
+
+::: {.callout-note title="Check the deletion claim"}
+1. Which variables belong in $J$ for a particular analysis?
+2. Why is the complete case duration mean 15 milliseconds below the full mean in the worked example?
+3. If four independently observed variables are each present in 80 percent of rows, what proportion of rows is complete on average?
+4. What does comparing observed duration across complete and incomplete rows reveal, and what can it not reveal?
+:::
+
+## Summing up
+
+Complete case analysis retains rows observed on every required variable. It can lose much more data than any single column suggests and may replace a full sample estimand with an estimand over selected rows. The next page considers an alternative that reconstructs [missing matrix entries](pca-imputation.qmd).

@@ -1,0 +1,204 @@
+---
+title: "Exposure offsets"
+---
+
+The [Poisson-regression page](poisson-regression.qmd) interpreted coefficients for counts observed over a common window. When observation windows differ, an exposure offset separates the expected rate from the number of opportunities.
+
+Two corpus documents each contain 10 relative clauses. The first has 1,000 words and the second has 10,000 words.
+
+Their counts are equal, but their rates differ:
+
+$$
+10/1000=.010
+$$
+
+and
+
+
+$$
+10/10000=.001.
+$$
+
+The longer document supplied ten times as many opportunities for a construction to occur.
+
+A count combines how often an event occurs per opportunity with how many
+opportunities were observed. A rate separates those quantities.
+
+## Separate rate from exposure
+
+Let $t_i>0$ be the exposure for observation $i$. Let $r_i$ be the expected event rate per exposure unit. Then the expected count is
+
+$$
+\lambda_i=t_ir_i.
+$$
+
+Take logarithms:
+
+$$
+\log\lambda_i
+=\log t_i+\log r_i.
+$$
+
+Model the log rate with predictors:
+
+$$
+\log r_i
+=\beta_0+\beta_1x_i.
+$$
+
+Substitution gives
+
+$$
+\log\lambda_i
+=\log t_i+\beta_0+\beta_1x_i.
+$$
+
+The term $\log t_i$ is the [**exposure offset**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234).
+
+The offset is known from the observation design. It enters the linear predictor
+without an estimated coefficient. The remaining coefficients describe expected
+rates after exposure has been accounted for.
+
+## Reconstruct two expected counts
+
+Suppose the expected relative-clause rate is $.002$ per word. For a 1,000-word
+document,
+
+$$
+\lambda_1=1000(.002)=2.
+$$
+
+For a 10,000-word document,
+
+$$
+\lambda_2=10000(.002)=20.
+$$
+
+The expected counts differ by a factor of 10 even though the expected rates are
+identical. The offset lets the Poisson mean represent that difference.
+
+On the log scale,
+
+$$
+\log\lambda_2-\log\lambda_1
+=\log10000-\log1000
+=\log10.
+$$
+
+Exponentiating returns the expected-count ratio 10.
+
+## Why its coefficient is fixed at one
+
+The equation assumes that doubling exposure doubles the expected count while leaving the expected rate unchanged:
+
+$$
+\lambda_i
+=t_i\exp(\beta_0+\beta_1x_i).
+$$
+
+The coefficient on $\log t_i$ is fixed at 1 because exposure defines the rate denominator.
+
+If we estimated a free coefficient instead, we would ask whether counts scale proportionally with exposure. That is a different model and a different scientific question.
+
+The fixed coefficient does not say that every document with twice the word count
+must contain exactly twice the observed clauses. It says that the expected count
+doubles when the modeled rate is held fixed. Poisson variation still produces
+different observed counts around that expectation.
+
+Interpreting proportional expected counts as deterministic observed counts is an
+error.
+
+## Fit an offset in R
+
+```{r}
+#| label: fit-relative-clause-rate-model
+#| echo: true
+documents <- data.frame(
+  genre = factor(c("conversation", "conversation",
+                   "news", "news")),
+  word_count = c(500, 2000, 1000, 4000),
+  relative_clause_count = c(2, 5, 7, 21)
+)
+
+fit_rate <- glm(
+  relative_clause_count ~ genre + offset(log(word_count)),
+  family = poisson(link = "log"),
+  data = documents
+)
+
+coef(fit_rate)
+```
+
+The genre coefficient now compares expected relative-clause rates per word, not raw document counts.
+
+To obtain rates, predict for an exposure of one word:
+
+```{r}
+#| label: predict-relative-clause-rates
+#| echo: true
+genre_rates <- data.frame(
+  genre = levels(documents$genre),
+  word_count = 1
+)
+
+genre_rates$rate_per_word <- predict(
+  fit_rate,
+  newdata = genre_rates,
+  type = "response"
+)
+
+genre_rates$rate_per_1000_words <-
+  1000 * genre_rates$rate_per_word
+
+genre_rates
+```
+
+Setting exposure to one returns the fitted rate per exposure unit. Multiplying
+by 1,000 changes only the reporting unit.
+
+## Define the opportunity carefully
+
+Word count is one possible exposure for document-level construction counts. It
+assumes every word contributes proportionally to the opportunity for a relative
+clause. A theory may instead define opportunities as noun phrases, clauses, or
+positions that license a particular dependency.
+
+These denominators answer different questions. A rate per word describes corpus
+density. A rate per noun phrase may describe the probability that a noun phrase
+is modified by a relative clause. The most convenient denominator is not
+automatically the theoretically relevant one.
+
+Substituting an available denominator for the theoretically intended opportunity can change the target rate. The offset can be numerically correct
+and still answer the wrong rate question.
+
+## Distinguish an offset from a predictor
+
+A predictor receives an estimated coefficient because the analysis asks how the
+rate changes with that variable. An offset receives a fixed coefficient because
+it defines how the count scales with known opportunity.
+
+Adding `log(word_count)` as an ordinary predictor would estimate a scaling
+exponent:
+
+$$
+\log\lambda_i
+=\beta_0+\gamma\log t_i+\beta_1x_i.
+$$
+
+The offset model fixes $\gamma=1$. Estimating $\gamma$ asks whether expected
+counts scale sublinearly or superlinearly with document length. That may be a
+useful hypothesis, but it no longer defines a simple rate per word.
+
+Exposure units must be meaningful and reported. Rates per word, minute, speaker turn, or opportunity defined by a syntactic context answer different questions.
+
+Zero exposure is not allowed because $\log0$ is undefined and no event can occur
+without an opportunity. Such rows usually indicate that the observation unit or
+denominator needs to be reconsidered.
+
+::: {.callout-note title="Check proportional exposure"}
+1. If two observations have the same predictors but one has three times the
+   exposure, what ratio of expected counts does the offset model impose?
+2. Why does this claim concern expected counts rather than observed counts?
+3. Distinguish an exposure offset from an estimated exposure predictor.
+4. Explain how an available denominator can define the wrong target rate.
+:::

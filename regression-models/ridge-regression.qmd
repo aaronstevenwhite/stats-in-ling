@@ -1,0 +1,212 @@
+---
+title: "Shrinking correlated coefficients"
+---
+
+The [correlated-predictor page](correlated-predictors.qmd) showed that nearly overlapping design-matrix columns can leave separate coefficients unstable while fitted values remain stable. Ridge regression changes the estimation rule for that setting.
+
+Suppose a reading-time model contains lexical frequency and contextual
+predictability. These predictors may be strongly correlated: frequent words also
+tend to be more predictable. The fitted model can still predict reading time
+well while assigning a large positive coefficient to one predictor and a large
+negative coefficient to the other. A small change in the sample may reverse the
+allocation.
+
+The problem is not that either predictor lacks a linguistic interpretation. The
+problem is that the observed data provide little information for separating
+their partial associations. We need an estimation rule that makes this weak
+separation explicit.
+
+## Begin with the least-squares objective
+
+For a multiple linear regression with centered predictors, ordinary least
+squares chooses coefficients to minimize the [**residual sum of squares (RSS)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf)
+
+$$
+\operatorname{RSS}(\boldsymbol\beta)
+=\sum_{i=1}^{n}
+\left(y_i-\beta_0-\sum_{j=1}^{p}x_{ij}\beta_j\right)^2.
+$$
+
+When two columns of the design matrix are identical, many coefficient vectors
+can produce the same fitted values. When they are nearly identical, the minimum
+is unique but shallow in one direction. Coefficients can move far along that
+direction while changing the residual sum of squares very little.
+
+## Add a coefficient penalty
+
+[**Ridge regression**](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) changes the estimation rule by adding the squared size of
+the slope coefficients to the objective:
+
+$$
+\widehat{\boldsymbol\beta}_{\lambda}
+=\operatorname*{arg\,min}_{\boldsymbol\beta}
+\left[
+\operatorname{RSS}(\boldsymbol\beta)
++\lambda\sum_{j=1}^{p}\beta_j^2
+\right].
+$$
+
+The constant $\lambda\geq0$ is the [**regularization parameter**](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso). When $\lambda=0$, the
+objective is ordinary least squares. As $\lambda$ increases, large slope
+coefficients become more costly.
+
+The intercept is normally excluded from the penalty. Penalizing it would pull
+the response baseline toward zero in the measurement's arbitrary units. The
+slopes are the terms whose unstable allocation we want to regularize.
+
+## Work through a perfectly correlated example
+
+Let two standardized predictors have the same values:
+
+| observation | $x_1$ | $x_2$ | $y$ |
+|---:|---:|---:|---:|
+| 1 | $-1$ | $-1$ | $-2$ |
+| 2 | $0$ | $0$ | $0$ |
+| 3 | $1$ | $1$ | $2$ |
+
+The intercept is zero because every column is centered. The fitted value is
+
+$$
+\widehat y_i=(\beta_1+\beta_2)x_i.
+$$
+
+Ordinary least squares reaches zero residual error whenever
+
+$$
+\beta_1+\beta_2=2.
+$$
+
+The solutions $(2,0)$, $(1,1)$, and $(10,-8)$ fit the three observations
+equally well. The data do not distinguish them.
+
+Now set $\lambda=2$. Because the predictors are interchangeable, the ridge
+minimum assigns them the same coefficient. Let
+$\beta_1=\beta_2=b$. The penalized objective becomes
+
+$$
+\begin{aligned}
+Q(b)
+&=2(2-2b)^2+2(b^2+b^2)\\
+&=8(1-b)^2+4b^2.
+\end{aligned}
+$$
+
+Differentiating and setting the result to zero gives
+
+$$
+\begin{aligned}
+Q'(b)&=-16+24b=0,\\
+b&=\frac{2}{3}.
+\end{aligned}
+$$
+
+The ridge estimate is thus
+
+$$
+\widehat\beta_1=\widehat\beta_2=\frac{2}{3}.
+$$
+
+The coefficients sum to $4/3$, so the fitted line no longer passes through all
+three observations. Ridge accepts some residual error on the observed points in
+exchange for smaller, uniquely determined coefficients.
+
+## Compute the estimate from matrices
+
+Let $\mathbf X$ contain a column of ones followed by the predictor columns. The
+ridge estimate is
+
+$$
+\widehat{\boldsymbol\beta}_{\lambda}
+=\left(\mathbf X^{\mathsf T}\mathbf X+\lambda\mathbf P\right)^{-1}
+\mathbf X^{\mathsf T}\mathbf y,
+$$
+
+where $\mathbf P$ has a zero for the intercept and ones for the slopes.
+
+```{r}
+#| label: ridge-by-matrix
+#| echo: true
+x <- c(-1, 0, 1)
+X <- cbind(intercept = 1, x1 = x, x2 = x)
+y <- c(-2, 0, 2)
+
+lambda <- 2
+penalty <- diag(c(0, 1, 1))
+
+beta_ridge <- solve(
+  crossprod(X) + lambda * penalty,
+  crossprod(X, y)
+)
+
+beta_ridge
+```
+
+The calculation returns an intercept of zero and two slope coefficients equal
+to $2/3$. Unlike the ordinary inverse of
+$\mathbf X^{\mathsf T}\mathbf X$, the penalized inverse exists in this example.
+
+## Put predictors on comparable scales
+
+The penalty acts on numerical coefficient size. Suppose lexical frequency is
+measured once in raw token counts and once in millions of tokens. The two
+columns express the same information on different scales, but their
+coefficients differ by a factor of one million. A common penalty would then
+treat the parameterizations differently.
+
+For this reason, ridge regression normally uses centered predictors divided by
+their training-set standard deviations:
+
+$$
+x_{ij}^{*}
+=\frac{x_{ij}-\overline{x}_j}{s_j}.
+$$
+
+The centering and scaling constants are part of the estimation rule. Changing
+them changes the meaning of a one-unit coefficient and thus changes the force of
+the penalty. They must be reported together with $\lambda$.
+
+## Interpret shrinkage with care
+
+Ridge changes the target of estimation. Its coefficients minimize a penalized
+objective, not the unpenalized residual sum of squares. They are biased toward
+zero under repeated sampling, and this bias is deliberate. The intended gain is
+lower variance when the predictors do not support stable coefficient
+separation.
+
+Ridge also does not decide which correlated predictor is the linguistic cause
+of the response. In the perfectly correlated example, it divides the signal
+equally because the columns are numerically interchangeable. A different scale
+or correlation pattern changes that allocation. Theoretically distinct
+predictors remain theoretically distinct, even when regularization stabilizes a
+prediction rule that uses both.
+
+The penalty strength must be declared. A value that produces small observed-data
+error is not automatically useful for new verbs, speakers, or texts. Later pages
+on predictive evaluation show how to select $\lambda$ for the observations and
+population to which the prediction will be applied.
+
+## Ridge does not identify separate coefficient meanings
+
+A stable prediction does not license a separate causal or theoretical interpretation for each shrunken coefficient. Ridge may stabilize the prediction
+by shrinking correlated slopes. It does not turn the shrunken slopes into clean
+estimates of separate linguistic mechanisms.
+
+When the scientific question concerns the distinct roles of frequency and
+predictability, the design needs observations that separate those predictors or
+additional assumptions that justify the decomposition. When the question
+concerns prediction for new lexical items, ridge can still be useful even if the
+individual slopes receive a narrower interpretation.
+
+::: {.callout-note title="Check the penalty"}
+1. What does ridge add to the ordinary least-squares objective?
+2. Why is the intercept usually excluded from the penalty?
+3. In the worked example, give another ordinary least-squares solution whose
+   coefficients sum to 2.
+4. Why must predictors be put on comparable scales before applying one penalty?
+5. Explain why a stable prediction does not supply separate interpretations for the two correlated
+   linguistic predictors.
+:::
+
+The [residualization page](residualizing-a-predictor.qmd) next considers a
+different reparameterization of correlated predictors. It does not impose a
+coefficient penalty.

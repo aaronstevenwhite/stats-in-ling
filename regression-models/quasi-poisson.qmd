@@ -1,0 +1,112 @@
+---
+title: "Quasi Poisson variance"
+---
+
+The [dispersion diagnostic](count-overdispersion.qmd) can reveal more conditional variation than a Poisson model permits. One narrow response is to keep the Poisson mean relation while multiplying its variance by a constant. This specification is called a [**quasi-Poisson model**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234).
+
+The word *quasi* signals that the specification does not provide a complete probability distribution. It provides a conditional mean and a conditional variance. That distinction determines both what the model can repair and what it cannot supply.
+
+## Keep the same conditional mean
+
+Suppose $Y_i$ is a linguistic count and $\mathbf{x}_i$ contains its predictors. The quasi Poisson mean uses the familiar log relation:
+
+$$
+\operatorname{E}(Y_i\mid\mathbf{x}_i)=\mu_i,
+$$
+
+$$
+\log\mu_i=\mathbf{x}_i^{\mathsf T}\boldsymbol{\beta}.
+$$
+
+The coefficients retain their multiplicative interpretation. If $x_i$ increases by one unit while the other predictors remain fixed, then
+
+$$
+\frac{\mu(x+1)}{\mu(x)}=\exp(\beta_x).
+$$
+
+An exposure offset can also remain in the conditional mean. The quasi Poisson model does not change the research comparison encoded by the predictors or the offset.
+
+## Multiply the variance
+
+The Poisson restriction is
+
+$$
+\operatorname{Var}(Y_i\mid\mathbf{x}_i)=\mu_i.
+$$
+
+The quasi Poisson model replaces it with
+
+$$
+\operatorname{Var}(Y_i\mid\mathbf{x}_i)=\phi\mu_i,
+$$
+
+where $\phi$ is a dispersion multiplier. This is the quasi-Poisson variance function.
+
+When $\phi=1$, the mean variance relation matches the Poisson model. When $\phi>1$, the response is overdispersed. When $\phi<1$, it is underdispersed.
+
+Suppose a fitted conditional mean is 9 and $\widehat\phi=4$. The Poisson model assigns variance 9 and standard deviation 3. The quasi-Poisson model assigns
+
+$$
+\widehat{\operatorname{Var}}(Y_i\mid\mathbf{x}_i)
+=4\times 9=36
+$$
+
+and standard deviation 6. The fitted mean remains 9. Only the represented spread changes.
+
+## See what changes in estimation
+
+For the same log linked mean, the quasi Poisson coefficient estimates equal the corresponding Poisson estimates. The constant dispersion multiplier does not alter their location. It changes their estimated uncertainty.
+
+The standard errors are multiplied by approximately $\sqrt{\widehat\phi}$. If a Poisson standard error is $.10$ and $\widehat\phi=4$, then
+
+$$
+\operatorname{SE}_{\text{quasi}}
+=.10\sqrt{4}
+=.20.
+$$
+
+The same coefficient is now estimated with twice the standard error. The uncertainty calculation now acknowledges that the counts vary more than the Poisson distribution predicts.
+
+```r
+poisson_fit <- glm(
+  count ~ predictor,
+  family = poisson(link = "log"),
+  data = counts
+)
+
+quasi_fit <- glm(
+  count ~ predictor,
+  family = quasipoisson(link = "log"),
+  data = counts
+)
+
+cbind(
+  poisson = coef(poisson_fit),
+  quasi = coef(quasi_fit)
+)
+
+c(
+  poisson = coef(summary(poisson_fit))["predictor", "Std. Error"],
+  quasi = coef(summary(quasi_fit))["predictor", "Std. Error"]
+)
+```
+
+The first comparison should return the same coefficients. The second should return different standard errors whenever the estimated dispersion differs from one.
+
+## Notice what is missing
+
+A complete response distribution assigns a probability to every possible count. The quasi-Poisson variance function does not. It states how the variance relates to the mean, but it does not specify the full shape of the count distribution.
+
+This omission has practical consequences. There is no ordinary likelihood for the complete quasi Poisson model. Thus ordinary likelihood quantities such as AIC are unavailable, and the model does not directly provide a full predictive distribution for new counts.
+
+The quasi-Poisson model is most useful when the conditional mean coefficients are the target and a constant variance multiplier gives an adequate uncertainty adjustment. It is less useful when the shape of the response distribution, the probability of zeros, or predictive count intervals are central to the question.
+
+## Interpret the repair narrowly
+
+An estimated $\phi$ greater than one says that residual variation is larger than the Poisson variance. It does not explain why. For instance, omitted predictors or unrepresented dependence can also inflate the dispersion estimate. Multiplying the variance does not recover either source.
+
+This limit makes the dispersion multiplier a statistical adjustment rather than a linguistic account. The predictors still carry the linguistic claim. The multiplier only changes how much unstructured variation remains around that claim.
+
+::: {.callout-note title="Check the repair"}
+A Poisson fit and a quasi Poisson fit have the same predictor coefficient, but the second fit has a standard error three times as large. What does this difference imply about $\widehat\phi$? Which part of the scientific claim remains unchanged?
+:::

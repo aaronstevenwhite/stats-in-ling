@@ -1,0 +1,156 @@
+---
+title: "The widely applicable information criterion"
+---
+
+The [PSIS-LOO page](psis-loo.qmd) stored one log-likelihood contribution for every observation and posterior draw. The earlier chapter on [predictive distributions](../statistical-inference/predictive-distributions.qmd) explained why predictions average over posterior uncertainty. The [**widely applicable information criterion (WAIC)**](https://mc-stan.org/loo/reference/waic.html) uses that pointwise matrix and posterior averaging to correct fitted posterior predictive density for optimism. Like the earlier [information criteria](information-criteria.qmd), it reports a relative comparison rather than a standalone measure of linguistic adequacy. Unlike PSIS-LOO, it does not approximate omitted posteriors with importance ratios.
+
+This page develops the WAIC correction one quantity at a time. We first calculate fitted posterior predictive density, then measure how much each pointwise log likelihood varies over the posterior, and finally subtract that variation as an optimism estimate.
+
+## Begin with fitted posterior predictive density
+
+For observation $i$, define the [**log pointwise predictive density (lppd)**](https://mc-stan.org/loo/reference/waic.html)
+
+$$
+\operatorname{lppd}_i
+=
+\log
+\left[
+\frac{1}{S}
+\sum_{s=1}^{S}
+p(y_i\mid\theta^{(s)})
+\right].
+$$
+
+The average inside the logarithm integrates the likelihood of $y_i$ over posterior uncertainty. The observation helped determine that posterior, though. Thus, $\operatorname{lppd}_i$ evaluates the fitted data under a posterior that has already seen the response being scored.
+
+Summing the pointwise values gives
+
+$$
+\operatorname{lppd}
+=
+\sum_{i=1}^{N}\operatorname{lppd}_i.
+$$
+
+This is a fitted predictive summary, not an omitted-data evaluation.
+
+## Measure pointwise optimism
+
+WAIC estimates effective flexibility using the posterior variance of each pointwise log likelihood:
+
+$$
+p_{\mathrm{waic},i}
+=
+\operatorname{Var}_s
+\left[
+\log p(y_i\mid\theta^{(s)})
+\right].
+$$
+
+If the pointwise log likelihood changes little across posterior draws, this contribution is small. If it changes substantially, the observation contributes more to the estimated flexibility of the fitted model.
+
+Summing gives the effective parameter estimate
+
+$$
+p_{\mathrm{waic}}
+=
+\sum_{i=1}^{N}p_{\mathrm{waic},i}.
+$$
+
+The word *effective* matters. This quantity is not obtained by counting coefficients in a formula. It depends on the fitted posterior and the pointwise likelihood contributions.
+
+## Subtract the correction
+
+WAIC's expected log predictive density is
+
+$$
+\operatorname{elpd}_{\mathrm{waic}}
+=
+\operatorname{lppd}
+-
+p_{\mathrm{waic}}.
+$$
+
+Larger values are preferred. Some software also reports a deviance-scale value
+
+$$
+\operatorname{WAIC}
+=
+-2\operatorname{elpd}_{\mathrm{waic}},
+$$
+
+for which smaller values are preferred. Before comparing printed numbers, check which scale the software reports.
+
+In R, the calculation uses the same pointwise log-likelihood matrix required by PSIS-LOO.
+
+```{r}
+#| eval: false
+
+waic_result <- loo::waic(log_lik_draws)
+print(waic_result)
+```
+
+A single total log likelihood per posterior draw cannot recover the pointwise variances. The observation columns must remain separate.
+
+## Work a small correction
+
+Suppose three observations have log pointwise posterior predictive densities
+
+$$
+-1.0,\quad -0.8,\quad -1.2,
+$$
+
+so that $\operatorname{lppd}=-3.0$. Suppose their posterior log-likelihood variances are
+
+$$
+0.10,\quad 0.05,\quad 0.20.
+$$
+
+The effective flexibility is
+
+$$
+p_{\mathrm{waic}}
+=
+0.10+0.05+0.20
+=
+0.35.
+$$
+
+Thus,
+
+$$
+\operatorname{elpd}_{\mathrm{waic}}
+=
+-3.0-0.35
+=
+-3.35.
+$$
+
+On the deviance scale, the corresponding value is $6.70$. The calculation makes the correction visible: fitted predictive density is reduced because the fitted model has adapted to the same observations it scores.
+
+## Inspect the pointwise variances
+
+A large posterior variance for one pointwise log likelihood warns that the WAIC approximation may be unreliable for that observation. The warning concerns the approximation, not merely the overall score.
+
+This is one reason PSIS-LOO is usually easier to diagnose. PSIS-LOO reports a tail diagnostic connected directly to its importance-sampling approximation. WAIC remains useful pedagogically because its correction can be read from the posterior variance formula.
+
+This comparison does not turn the page into a second PSIS lesson. The method developed here is WAIC. PSIS-LOO supplies a neighboring diagnostic standard against which the limits of WAIC can be stated.
+
+## Keep the pointwise likelihood contributions fixed
+
+WAIC is tied to the unit represented by one likelihood contribution. If one column describes one trial, the correction is pointwise at the trial level. It does not create prediction for a wholly new speaker, item, passage, or language.
+
+Repeated observations from the same group may also share latent effects. The pointwise likelihood must be defined consistently with the fitted model, and the scientific claim must specify what information is available when a new response is predicted.
+
+## Check the correction
+
+1. Why is $\operatorname{lppd}$ a fitted predictive quantity?
+2. What pointwise quantity supplies WAIC's optimism correction?
+3. Why is $p_{\mathrm{waic}}$ not simply the number of regression coefficients?
+4. Which direction is better for $\operatorname{elpd}_{\mathrm{waic}}$?
+5. Which direction is better for the deviance-scale WAIC value?
+6. Why must the log-likelihood matrix retain one observation per column?
+7. Why does trial-level WAIC not estimate prediction for a new speaker?
+
+## What WAIC establishes
+
+WAIC subtracts a posterior-variance estimate of optimism from fitted pointwise predictive density. Its effective flexibility depends on the fitted posterior rather than a raw coefficient count. The result remains an approximation tied to the pointwise likelihood unit and must be interpreted on the scale the software reports.

@@ -1,0 +1,211 @@
+---
+title: "Interaction terms"
+---
+
+The [multiple-regression page](multiple-regression.qmd) held each predictor association constant across the values of the other predictors. An [**interaction term**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=149) relaxes that restriction by allowing one modeled association to depend on another predictor.
+
+Suppose a reading experiment manipulates an aspectual mismatch and measures verb surprisal. The theory predicts that surprisal has a larger reading-time association in mismatching contexts than in matched contexts.
+
+An additive model cannot express this claim because it gives both conditions the same surprisal slope.
+
+The theoretical claim concerns a difference between associations. The interaction term lets the
+conditional-mean model estimate that slope difference directly.
+
+## Begin with the additive model
+
+Let $C_i=0$ mark the matched condition and $C_i=1$ the mismatch condition:
+
+$$
+\eta_i
+=\beta_0+\beta_1X_i+\beta_2C_i.
+$$
+
+For $C_i=0$, the surprisal slope is $\beta_1$. For $C_i=1$, the coefficient on $X_i$ is still $\beta_1$.
+
+The condition changes the intercept only.
+
+For instance, suppose $\beta_1=.04$ and $\beta_2=.10$. Increasing surprisal by
+one bit raises the fitted mean by $.04$ in both conditions. The mismatch line is
+shifted upward by $.10$, but the two lines remain parallel. A vertical shift is
+not a slope difference.
+
+## Add a product term
+
+The interaction model is
+
+$$
+\eta_i
+=\beta_0+\beta_1X_i+\beta_2C_i
++\beta_3X_iC_i.
+$$
+
+Substitute $C_i=0$:
+
+$$
+\eta_i=\beta_0+\beta_1X_i.
+$$
+
+The matched-condition slope is $\beta_1$.
+
+Substitute $C_i=1$:
+
+$$
+\eta_i
+=(\beta_0+\beta_2)
++(\beta_1+\beta_3)X_i.
+$$
+
+The mismatch-condition slope is $\beta_1+\beta_3$.
+
+Thus $\beta_3$ is the difference between the two slopes on the linear-predictor scale.
+
+More explicitly,
+
+$$
+\begin{aligned}
+\text{slope}_{\text{mismatch}}
+-\text{slope}_{\text{matched}}
+&=(\beta_1+\beta_3)-\beta_1\\
+&=\beta_3.
+\end{aligned}
+$$
+
+If $\beta_1=.04$ and $\beta_3=.03$, the matched slope is $.04$ and the mismatch
+slope is $.07$. The interaction coefficient is $.03$, not $.07$.
+
+## Read the condition difference at two surprisal values
+
+The mismatch-minus-matched difference at surprisal $x$ is
+
+$$
+\begin{aligned}
+\Delta(x)
+&=\eta(x,C=1)-\eta(x,C=0)\\
+&=\beta_2+\beta_3x.
+\end{aligned}
+$$
+
+Thus the condition difference itself changes with surprisal. At $x=0$, the
+difference is $\beta_2$. At $x=4$, it is $\beta_2+4\beta_3$.
+
+This makes the reference point for $x$ important. If surprisal is centered at 5
+bits, $x=0$ means 5 bits on the original scale. The coefficient $\beta_2$ is then
+the condition difference at 5 bits, not at zero original bits.
+
+## Derive the difference in differences
+
+An interaction can also be written as a difference in differences. Compare each
+condition at surprisal values $x_a$ and $x_b$:
+
+$$
+\begin{aligned}
+&[\eta(x_b,1)-\eta(x_a,1)]
+-[\eta(x_b,0)-\eta(x_a,0)]\\
+&\qquad=\beta_3(x_b-x_a).
+\end{aligned}
+$$
+
+For a one-bit contrast, this quantity is $\beta_3$. For a four-bit contrast, it
+is $4\beta_3$. The comparison should state the predictor interval because the
+interaction coefficient is expressed per predictor unit.
+
+## Fit the product in R
+
+```{r}
+#| label: fit-constructed-linear-interaction
+#| echo: true
+reading_times <- expand.grid(
+  surprisal_centered = c(-2, 0, 2),
+  condition = factor(c("matched", "mismatch"),
+                     levels = c("matched", "mismatch"))
+)
+
+reading_times$log_rt <- with(
+  reading_times,
+  6.00 +
+    .04 * surprisal_centered +
+    .10 * (condition == "mismatch") +
+    .03 * surprisal_centered * (condition == "mismatch")
+)
+
+fit_interaction <- lm(
+  log_rt ~ surprisal_centered * condition,
+  data = reading_times
+)
+
+coef(fit_interaction)
+```
+
+The `*` expands to the two lower-order terms and their product:
+
+```{r}
+#| label: inspect-interaction-formula-expansion
+#| echo: true
+terms(log_rt ~ surprisal_centered * condition)
+```
+
+Keeping the lower-order terms makes the coefficients correspond to the lines derived above.
+
+The constructed responses follow the interaction equation exactly, so the fit
+recovers coefficients 6.00, $.04$, $.10$, and $.03$ up to numerical precision.
+Real observations would vary around these conditional means.
+
+## Calculate response-scale predictions
+
+The fitted lines are easier to check in a prediction table:
+
+```{r}
+#| label: predict-two-interacting-lines
+#| echo: true
+prediction_grid <- expand.grid(
+  surprisal_centered = c(-2, 0, 2),
+  condition = levels(reading_times$condition)
+)
+
+prediction_grid$predicted_log_rt <- predict(
+  fit_interaction,
+  newdata = prediction_grid
+)
+
+prediction_grid
+```
+
+At centered surprisal $-2$, the matched prediction is 5.92 and the mismatch
+prediction is 5.96, a difference of $.04$. At centered surprisal 2, the matched
+prediction is 6.08 and the mismatch prediction is 6.24, a difference of $.16$.
+The condition contrast has increased by $.12$ across four surprisal units, which
+equals $4(.03)$.
+
+## Keep the lower-order terms
+
+Removing `surprisal_centered` while retaining its product with condition would
+force the matched-condition slope to zero. Removing `condition` would force the
+two lines to have the same intercept at centered surprisal zero. These are
+substantive constraints, not cosmetic simplifications.
+
+Lower-order terms should not be removed merely because their coefficient tests
+are not of interest. The product
+coefficient is interpreted relative to the two lower-order terms. Removing them
+changes the lines and the slope difference being estimated.
+
+## Separate interaction from causation
+
+An interaction states that a modeled association differs across conditions. It
+does not by itself show that the condition causes the slope difference. If
+condition was experimentally assigned while surprisal was measured, the two
+parts of the claim may have different identification support. The coefficient
+equation does not supply that design argument.
+
+Thus the interaction should be reported as the comparison it answers: how much
+the fitted surprisal slope differs between mismatch and matched contexts, on the
+log-reading-time scale, over a declared predictor interval.
+
+::: {.callout-note title="Check the second slope"}
+1. If $\beta_1=.04$ and $\beta_3=.03$, what is the surprisal slope in each
+   condition? Which coefficient is the slope difference?
+2. If $\beta_2=.10$, calculate the mismatch-minus-matched difference at
+   centered surprisal values 0 and 3.
+3. Express the interaction over a five-bit surprisal contrast as a difference
+   in differences.
+4. Explain why lower-order terms should ordinarily remain when their interaction is included.
+:::

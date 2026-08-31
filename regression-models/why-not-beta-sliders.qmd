@@ -1,0 +1,174 @@
+---
+title: "Why standard beta regression fails for sliders"
+---
+
+The [bounded-response page](bounded-responses.qmd) distinguished the values permitted by a measurement from those permitted by a response distribution. A slider from *no* to *yes* appears to invite beta regression after its responses are rescaled to the unit interval. The scale and the likelihood differ at precisely the values that express the strongest possible answers, though: the slider includes zero and one, while an [ordinary beta variable](../random-variables-and-distributions/beta-distribution.qmd) lies strictly between them.
+
+There are two problems to follow. Standard beta regression cannot use endpoint responses as recorded, and moving those responses inward by an arbitrary amount makes that choice part of the likelihood. The derivation follows Section 1 of the supplementary material for [Grove and White (2025)](https://doi.org/10.1007/s11050-025-09244-9).
+
+::: {.callout-note title="Reading: Grove and White (2025), supplementary material, Section 1"}
+[Grove and White, *Factivity, presupposition projection, and the role of discrete knowledge in gradient inference judgments*](https://doi.org/10.1007/s11050-025-09244-9), [supplementary material](https://media.springernature.com/original/springer-static/esm/art%3A10.1007%2Fs11050-025-09244-9/MediaObjects/11050_2025_9244_MOESM1_ESM.pdf).
+
+Read Section 1, *Beta distributions as likelihoods*.
+
+**Why this reading?** The section follows the same endpoint transformation analyzed on this page and derives how endpoint likelihood contributions depend on the nudge. It is included because this dependence explains why likelihood-based comparisons can consequently depend on the value used to move zeros and ones.
+:::
+
+## The scale and the likelihood have different support
+
+Suppose an inference experiment asks participants to respond on a slider with endpoints labeled *no* and *yes*. After rescaling, the recorded response satisfies
+
+$$
+Y_i\in[0,1].
+$$
+
+A standard beta regression instead assumes
+
+$$
+Y_i\mid\mu_i,\phi
+\sim\operatorname{Beta}(\alpha_i,\beta_i),
+$$
+
+where
+
+$$
+\alpha_i=\mu_i\phi,
+\qquad
+\beta_i=(1-\mu_i)\phi,
+\qquad
+0<\mu_i<1,
+$$
+
+and the beta density is defined for
+
+$$
+0<Y_i<1.
+$$
+
+Thus a response of exactly zero or one is not an extreme observation under this model. It is outside the response space. The response support is wrong, regardless of convergence or sample size.
+
+The mismatch can matter theoretically. Consider a prompt asking whether an embedded proposition follows from a sentence containing *know*. A semantic model in which *know* is factive may supply an intended answer of exactly one. Participants may then map that answer onto the physical slider with some response error. A response model should allow us to distinguish the intended answer from error in producing a slider response. A likelihood that excludes one cannot represent the full measurement process when either the theory or the participant can use that endpoint.
+
+## The usual inward nudge
+
+A common workaround replaces endpoints with nearby interior values. For a small constant $\delta$, define
+
+$$
+\widetilde Y_i=
+\begin{cases}
+\delta & \text{if }Y_i=0,\\
+1-\delta & \text{if }Y_i=1,\\
+Y_i & \text{otherwise.}
+\end{cases}
+$$
+
+If $\delta=.001$, for instance, an observed *no* becomes .001 and an observed *yes* becomes .999. The transformed values can be passed to ordinary beta software.
+
+But the nudge does not extend the beta model to the endpoints. It changes the observations so that they satisfy the model. It also creates a researcher choice: why .001 rather than .01, .0001, or a value determined by the sample size? Calling the change “tiny” describes the response scale, not its effect on the likelihood.
+
+## Follow one endpoint through the likelihood
+
+The beta density for one interior observation is
+
+$$
+f(y_i\mid\alpha_i,\beta_i)
+=\frac{y_i^{\alpha_i-1}(1-y_i)^{\beta_i-1}}
+{B(\alpha_i,\beta_i)}.
+$$
+
+Its log-density is
+
+$$
+\log f(y_i\mid\alpha_i,\beta_i)
+=(\alpha_i-1)\log y_i
++(\beta_i-1)\log(1-y_i)
+-\log B(\alpha_i,\beta_i).
+$$
+
+Now take an observed zero and replace it with $\delta$. Its pointwise contribution becomes
+
+$$
+\ell_{i,0}(\delta)
+=(\alpha_i-1)\log\delta
++(\beta_i-1)\log(1-\delta)
+-\log B(\alpha_i,\beta_i).
+$$
+
+For an observed one replaced with $1-\delta$, the roles reverse:
+
+$$
+\ell_{i,1}(\delta)
+=(\alpha_i-1)\log(1-\delta)
++(\beta_i-1)\log\delta
+-\log B(\alpha_i,\beta_i).
+$$
+
+When $\delta$ is small, $\log(1-\delta)$ is close to zero. The influential term is thus $\log\delta$. Its value does not become negligible as the nudge becomes smaller:
+
+| $\delta$ | $\log\delta$ |
+|---:|---:|
+| $.01$ | $-4.605$ |
+| $.001$ | $-6.908$ |
+| $.0001$ | $-9.210$ |
+
+Every tenfold reduction in $\delta$ changes $\log\delta$ by about $-2.303$. That change enters once for every endpoint response, multiplied by $\alpha_i-1$ for a zero or $\beta_i-1$ for a one. Its direction depends on the fitted beta shape, but its magnitude grows with the number of endpoints.
+
+A small change on the response scale can thus induce a large change on the log-likelihood scale. The two scales should not be confused.
+
+## The full endpoint contribution
+
+Let $I_0$ index the observed zeros and $I_1$ the observed ones. The endpoint-dependent portion of the nudged log-likelihood is
+
+$$
+\begin{aligned}
+\ell_{\partial}(\delta)
+= {} & \sum_{i\in I_0}
+\left[(\alpha_i-1)\log\delta
++(\beta_i-1)\log(1-\delta)\right]\\
+&+\sum_{i\in I_1}
+\left[(\alpha_i-1)\log(1-\delta)
++(\beta_i-1)\log\delta\right].
+\end{aligned}
+$$
+
+Ignoring terms that approach zero as $\delta$ shrinks gives the approximation
+
+$$
+\ell_{\partial}(\delta)
+\approx
+\log\delta
+\left[
+\sum_{i\in I_0}(\alpha_i-1)
++\sum_{i\in I_1}(\beta_i-1)
+\right].
+$$
+
+This expression makes three consequences visible.
+
+1. The nudge affects every endpoint, so its influence can accumulate rapidly.
+2. It interacts with the fitted mean because $\alpha_i=\mu_i\phi$ and $\beta_i=(1-\mu_i)\phi$. It can thus affect coefficient and precision estimates rather than merely adding the same constant to every model.
+3. Two candidate models generally imply different $\alpha_i$ and $\beta_i$, so changing $\delta$ can change their likelihood difference.
+
+That last consequence matters whenever models are compared with likelihood-based quantities. Such comparisons aggregate pointwise likelihood values. If those values depend strongly on an analyst-chosen nudge, the comparison partly measures the preprocessing choice. A sensitivity analysis may reveal the dependence, but it cannot supply a principled value of $\delta$.
+
+::: {.callout-warning title="A deterministic transformation does not remove the choice"}
+A software default or a rule based on sample size may choose $\delta$ automatically. The endpoint contribution still contains $\log\delta$. Automation hides the researcher degree of freedom; it does not give the beta likelihood support at zero and one.
+:::
+
+## When standard beta regression remains coherent
+
+This support problem does not imply that beta regression is never useful. It can be coherent when the measurement process produces genuinely continuous values strictly inside $(0,1)$. For instance, an interface whose handle cannot reach either endpoint may have open-interval support.
+
+The absence of endpoints in one sample is weaker evidence. If the instrument permits exact endpoint responses, a future participant can still produce one. And if the endpoint labels express theoretically meaningful answers, excluding those values makes a substantive claim about the response process. That claim needs justification from the task, not merely a dataset that happened to contain no zeros or ones.
+
+Once endpoints are possible, the analysis should use a likelihood that is defined for them and whose endpoint behavior matches the measurement story. The next page introduces one such likelihood. Other stories, such as censoring at a detection limit or a small set of ordered response categories, would require different models.
+
+## Read the model
+
+1. A slider permits 0 and 100, but a particular sample contains only values from 7 through 94. Does the sample alone establish open-interval support?
+2. Why can changing $\delta$ affect a comparison between two beta regressions rather than adding the same constant to both log-likelihoods?
+3. Suppose 80 observed zeros are nudged inward. For those cases, which fitted beta-shape parameter multiplies the influential $\log\delta$ term?
+
+## What the derivation established
+
+Standard beta regression assigns responses to $(0,1)$, while sliders that permit endpoint selections produce values in $[0,1]$. Nudging endpoints inward changes the data and places $\log\delta$ directly in every endpoint's likelihood contribution. This dependence can accumulate across endpoints and alter parameter estimates or model comparisons. The [next page](ordered-beta-regression.qmd) introduces ordered-beta regression, which models both endpoints without an arbitrary nudge.

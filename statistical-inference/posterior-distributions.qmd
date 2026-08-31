@@ -1,0 +1,152 @@
+---
+title: "Posterior distributions"
+---
+
+The foundations chapter derived [Bayes' rule](../foundations/bayes-rule.qmd), and the frequentist sequence distinguished a [likelihood from a probability distribution over observations](maximum-likelihood.qmd). We now use both distinctions to construct a posterior distribution. Suppose a listener hears an ambiguous reciprocal sentence and chooses either a collective interpretation or a distributive interpretation.
+
+Bayesian inference represents uncertainty about $\Theta$ with a probability distribution. The distribution before observing the present responses is the [**prior distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html). The distribution after observing them is the [**posterior distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html).
+
+## Begin with a finite parameter space
+
+To make the update visible by hand, suppose the model initially permits three possible response probabilities:
+
+$$
+\Theta\in\{.25,.50,.75\}.
+$$
+
+Assign prior probabilities
+
+| $\theta$ | $p(\theta)$ |
+|---:|---:|
+| $.25$ | $.20$ |
+| $.50$ | $.50$ |
+| $.75$ | $.30$ |
+
+These numbers describe uncertainty about the parameter before the present sample. They do not say that a response is 20%, 50%, or 30% likely to be collective. Conditional on a particular $\theta$, the Bernoulli model supplies that response probability.
+
+Now observe three collective responses and one distributive response. For a fixed $\theta$, the likelihood kernel is
+
+$$
+p(\mathbf{x}\mid\theta)
+\propto
+\theta^3(1-\theta).
+$$
+
+For fixed $\theta$, $p(\mathbf{x}\mid\theta)$ is the sampling distribution over possible data. Once $\mathbf{x}$ is observed, the same expression viewed as a function of $\theta$ is the likelihood. It is not a probability distribution over the three parameter values.
+
+## Multiply prior support by data support
+
+Bayes' rule is
+
+$$
+p(\theta\mid\mathbf{x})
+=
+\frac{
+p(\mathbf{x}\mid\theta)p(\theta)
+}{
+p(\mathbf{x})
+}.
+$$
+
+For the finite parameter space, we can update in three steps. First, evaluate the likelihood at each value. Second, multiply by the corresponding prior probability. Third, divide each product by the sum of all three products.
+
+| $\theta$ | likelihood kernel | prior | unnormalized posterior |
+|---:|---:|---:|---:|
+| $.25$ | $.01171875$ | $.20$ | $.00234375$ |
+| $.50$ | $.0625$ | $.50$ | $.03125$ |
+| $.75$ | $.10546875$ | $.30$ | $.031640625$ |
+
+The normalizing constant is
+
+$$
+Z
+=.00234375+.03125+.031640625
+=.065234375.
+$$
+
+Dividing each product by $Z$ gives posterior probabilities of approximately $.0359$, $.4791$, and $.4850$.
+
+```{r}
+#| label: discrete-posterior-update
+#| echo: true
+
+theta <- c(.25, .50, .75)
+prior <- c(.20, .50, .30)
+likelihood_kernel <- theta^3 * (1 - theta)
+unnormalized <- prior * likelihood_kernel
+posterior <- unnormalized / sum(unnormalized)
+
+stopifnot(abs(sum(posterior) - 1) < 1e-12)
+stopifnot(isTRUE(all.equal(
+  posterior,
+  c(0.03592814, 0.47904192, 0.48502994),
+  tolerance = 1e-7
+)))
+
+data.frame(theta, prior, likelihood_kernel, posterior)
+```
+
+The data favor larger values because three of four responses were collective. The prior gives substantial mass to $.50$, so the posterior probabilities for $.50$ and $.75$ are nearly equal. This result is an update from a particular prior through a particular likelihood.
+
+## Understand the normalizer
+
+The denominator
+
+$$
+p(\mathbf{x})
+=
+\sum_{\theta}
+p(\mathbf{x}\mid\theta)p(\theta)
+$$
+
+is the prior predictive probability of the observed data, up to any likelihood factor that is common to all parameter values. It does not depend on which $\theta$ is being evaluated. Dividing by it makes the posterior probabilities sum to one.
+
+For a continuous parameter, the sum becomes an integral:
+
+$$
+p(\mathbf{x})
+=
+\int
+p(\mathbf{x}\mid\theta)p(\theta)
+\,\mathrm{d}\theta.
+$$
+
+We often write
+
+$$
+p(\theta\mid\mathbf{x})
+\propto
+p(\mathbf{x}\mid\theta)p(\theta)
+$$
+
+when we first care about posterior shape. A normalized density is still required before assigning posterior probabilities or calculating expectations.
+
+## Interpret a continuous density
+
+For a continuous parameter, $p(\theta\mid\mathbf{x})$ is a density rather than the probability that $\Theta$ equals exactly $\theta$. The probability of any single point is zero. Posterior probability is assigned to an interval by integrating:
+
+$$
+\mathbb{P}(a<\Theta<b\mid\mathbf{x})
+=
+\int_a^b
+p(\theta\mid\mathbf{x})
+\,\mathrm{d}\theta.
+$$
+
+A higher density at $.75$ than at $.50$ says that a small neighborhood around $.75$ receives more posterior mass per unit width. It does not assign positive probability to the exact point $.75$ in a continuous model.
+
+## Keep the conditioning direction visible
+
+The [error of transposing a conditional probability](../foundations/bayes-rule.qmd#a-common-failure-transposing-conditional-probabilities) also applies here. The likelihood evaluates the observed data as a function of a candidate parameter. The posterior distributes uncertainty over parameter values after conditioning on those data. Bayes' rule connects the two quantities, but it does not make them interchangeable.
+
+Posterior uncertainty is also not computational error. In the hand calculation, the posterior probabilities are exact under the model. Later simulation methods will approximate posterior summaries and add Monte Carlo error, but that error is not part of the posterior itself.
+
+## Check your understanding
+
+1. Which quantity is fixed when evaluating $p(\mathbf{x}\mid\theta)$?
+2. Why do the unnormalized posterior values not sum to one?
+3. What role does $p(\mathbf{x})$ play in Bayes' rule?
+4. If the prior put all its probability on $\theta=.25$, could these data create posterior support at $.75$ under this model?
+5. Why is a continuous posterior density at one point not a point probability?
+
+The [posterior-summaries page](posterior-summaries.qmd) shows how a posterior distribution supports probability statements, expectations, and intervals.

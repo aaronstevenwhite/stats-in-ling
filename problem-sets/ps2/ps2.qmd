@@ -1,0 +1,171 @@
+---
+title: "Problem Set 2: Prediction across passages"
+subtitle: "Statistical Methods in Linguistics"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
+---
+
+## The question
+
+Accounts of prediction in comprehension differ in what they take readers to anticipate. One view emphasizes a particular upcoming word form. Another allows context to support partial information, such as the upcoming word's syntactic class or semantic content, even when its full form is uncertain.
+
+Luke and Christianson tested these accounts using the Provo Corpus. Their coefficient analyses suggest that orthographic, morphosyntactic, and semantic predictability are associated with eye movements. We will ask a different question: do these predictor sets improve first-fixation prediction for a passage omitted during model fitting?
+
+The focal method is [grouped cross-validation](../../model-criticism-and-prediction/grouped-cross-validation.qmd). The models are [linear regressions](../../regression-models/frequentist-linear-regression.qmd) already introduced in the notes.
+
+::: {.callout-note title="Reading"}
+Read Luke and Christianson (2016), [“Limits on lexical prediction during reading”](https://doi.org/10.1016/j.cogpsych.2016.06.002), together with the Provo Corpus data description in Luke and Christianson (2018), [“The Provo Corpus”](https://doi.org/10.3758/s13428-017-0908-4). The first reading supplies the lexical and graded prediction contrast. The second explains how the passages, readers, eye movements, and predictability norms were collected. Both are included because a passage-held-out score is interpretable only after the theoretical predictors and the sampling units have been named.
+:::
+
+## Data, source, and target
+
+The original data come from the [Provo Corpus](https://doi.org/10.3758/s13428-017-0908-4), with the theoretical analysis in [Luke and Christianson (2016)](https://doi.org/10.1016/j.cogpsych.2016.06.002). The corpus and its files are available from [OSF](https://osf.io/sjefs/) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
+`data/provo-content-word-positions.csv` is an adapted teaching table. One row represents one content-word position. The response `mean_log_ffd` is the mean log first-fixation duration over observed readers who fixated that position. Thus the analysis is conditional on fixation and targets an observed-reader mean, not individual reading behavior.
+
+```{r}
+items <- read.csv("data/provo-content-word-positions.csv")
+dim(items)
+head(items)
+```
+
+The principal columns are:
+
+- `position_id`: repaired passage by position identifier;
+- `Text_ID`: passage identifier;
+- `Word_POS`: adjective, adverb, noun, or verb;
+- `Word_Length` and `Word_In_Sentence_Number`: control predictors;
+- `OrthoMatchModel`: smoothed orthographic cloze probability;
+- `POSMatchModel`: smoothed part-of-speech match probability;
+- `LSA_Response_Match_Score`: mean semantic similarity between cloze responses and the target; and
+- `mean_log_ffd`: the response.
+
+The published `Word_Unique_ID` is not a valid key by itself: `QID2687` occurs in Texts 18 and 55. The preparation script constructs `position_id` from passage and word position.
+
+## Task 1: state what must be held out (15 points)
+
+Write a four-sentence [prediction-target statement](../../model-criticism-and-prediction/prediction-targets.qmd). Name:
+
+1. the response;
+2. the unit that must be new;
+3. the information available for a held-out unit; and
+4. the population or use setting to which the score is intended to apply.
+
+Then explain why random word-position folds and passage folds answer different questions, even if their numerical scores happen to be similar.
+
+## Task 2: prespecify the model sequence (20 points)
+
+Create these deterministic transforms:
+
+```{r}
+items$log_length <- log(items$Word_Length)
+items$log_position <- log(items$Word_In_Sentence_Number)
+items$log_ortho <- log(items$OrthoMatchModel)
+items$log_pos <- log(items$POSMatchModel)
+```
+
+Fit the three full-data models below for interpretation only.
+
+1. **Control:** log length, log sentence position, and word class.
+2. **Lexical:** the control model plus log orthographic cloze probability.
+3. **Graded:** the lexical model plus log part-of-speech match and semantic similarity between the response and target.
+
+```{r}
+control_fit <- lm(
+  mean_log_ffd ~ log_length + log_position + Word_POS,
+  data = items
+)
+
+# Fit lexical_fit and graded_fit.
+```
+
+Before scoring, state the expected sign of each predictability coefficient. Connect the orthographic predictor to lexical prediction and the two added predictors to graded prediction.
+
+Do not select predictors using these fitted p values. The sequence is fixed by the theoretical comparison.
+
+## Task 3: random position folds (20 points)
+
+The helper below fits a linear model from a fixed design matrix and returns test predictions.
+
+```{r}
+fit_predict <- function(design, response, train, test) {
+  coefficients <- qr.coef(qr(design[train, , drop = FALSE]), response[train])
+  coefficients[is.na(coefficients)] <- 0
+  drop(design[test, , drop = FALSE] %*% coefficients)
+}
+
+score <- function(observed, predicted) {
+  c(
+    RMSE = sqrt(mean((observed - predicted)^2)),
+    MAE = mean(abs(observed - predicted))
+  )
+}
+```
+
+Construct one design matrix for each prespecified model with `model.matrix()`. Use seed `20260801` to assign positions to ten random folds. Obtain one out-of-fold prediction per row and report RMSE and MAE for the three models.
+
+```{r}
+# Construct design matrices, random folds, and out-of-fold predictions.
+```
+
+Repeat the ten-fold procedure for the 100 seeds `20260801` through `20260900`. Report how often the graded model has lower RMSE than the lexical model. Explain why these 100 results are split-sensitivity checks, not 100 independent corpus replications.
+
+## Task 4: leave one passage out (25 points)
+
+Now obtain predictions by leaving out one complete passage at a time. Every position in a held-out passage must be predicted by a model fit to the other 54 passages.
+
+```{r}
+# Produce leave-one-passage-out predictions for all three models.
+```
+
+Verify the split with code: for every fitted model, the held-out `Text_ID` must be absent from the training indices. Report aggregate RMSE and MAE for each model.
+
+Then compute these quantities for each passage:
+
+$$
+\Delta_{p,\mathrm{lexical}}
+=
+\operatorname{MSE}_{p,\mathrm{control}}
+-
+\operatorname{MSE}_{p,\mathrm{lexical}}
+$$
+
+and
+
+$$
+\Delta_{p,\mathrm{graded}}
+=
+\operatorname{MSE}_{p,\mathrm{lexical}}
+-
+\operatorname{MSE}_{p,\mathrm{graded}}.
+$$
+
+Positive values favor the more theoretically specific model. Plot both distributions with a visible zero point, and report the proportion of passages with positive values.
+
+## Task 5: interpret transfer, not just coefficients (20 points)
+
+For each passage-level comparison, compute a 95% t interval for the mean loss difference, following the earlier treatment of [confidence intervals](../../statistical-inference/confidence-intervals.qmd). Use the 55 passage differences, not ten computational fold scores or 1,593 word positions.
+
+Write a results argument of two short paragraphs.
+
+1. Does orthographic cloze improve prediction beyond the control model for passages omitted during fitting?
+2. Do the morphosyntactic and semantic measures establish a stable further improvement across passages?
+
+Reconcile your answer with the full-data coefficient directions and the random-fold results. Do not turn an interval containing zero into the claim that graded prediction is false. State exactly which predictive claim is limited by the result.
+
+## LING 414 extension: loss sensitivity
+
+Repeat the passage-level comparison using mean absolute error. Compare the direction, passage improvement rate, and interval with the squared-loss analysis. Explain which passages drive any disagreement and whether your substantive conclusion depends on the primary loss.
+
+## Submission checklist
+
+- The model sequence is fixed before scoring.
+- Every response receives exactly one held-out prediction in each validation procedure.
+- Passage rows move together in the grouped analysis.
+- Test responses do not enter preprocessing or fitting.
+- Loss differences use one sign convention and identify which model positive values favor.
+- Uncertainty is reported over 55 passages.
+- The conclusion distinguishes association in the fitted corpus from transfer to omitted passages.

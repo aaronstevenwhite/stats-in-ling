@@ -1,0 +1,190 @@
+---
+title: "Bootstrap confidence intervals"
+---
+
+The [sampling distribution page](properties-of-estimators.qmd) described how an estimator varies across possible samples, and the [confidence interval page](confidence-intervals.qmd) used that variation to construct an interval. The bootstrap approximates the same sampling distribution by resampling. Suppose we observe median fundamental frequency for twelve speakers:
+
+```{r}
+#| label: f0-sample
+#| echo: true
+f0 <- c(182, 195, 201, 176, 188, 210, 193, 184, 205, 199, 180, 191)
+median(f0)
+```
+
+The sample median is 192 Hz. An analytic sampling distribution for the median is less familiar than the sampling distribution of a mean. The [**nonparametric bootstrap**](https://openintro-ims.netlify.app/foundations-bootstrapping.html) approximates it by resampling the observed units.
+
+The target is the population median of the speaker-level summaries. The
+estimator is the median of the twelve observed summaries. We would like to know
+how much that estimator might change if the sampling process produced another
+set of twelve speakers from the same target population.
+
+If the population distribution were known, we could repeatedly sample from it
+and calculate a median after each sample. But the population distribution is
+the object we do not know. The nonparametric bootstrap replaces it with the
+[**empirical distribution**](https://openintro-ims.netlify.app/foundations-bootstrapping.html), which assigns probability $1/12$ to each observed
+speaker summary. This replacement is the bootstrap's central approximation.
+
+## Draw one bootstrap sample
+
+Sample twelve values from the observed twelve, with replacement:
+
+```{r}
+#| label: one-bootstrap-sample
+#| echo: true
+set.seed(414)
+f0_star <- sample(f0, size = length(f0), replace = TRUE)
+f0_star
+median(f0_star)
+```
+
+Because sampling is with replacement, some speakers appear more than once and others do not appear in this bootstrap sample.
+
+For instance, one bootstrap sample might contain
+
+$$
+176,180,180,184,188,191,193,193,199,201,205,210.
+$$
+
+The value 180 occurs twice, the value 193 occurs twice, and several observed
+values do not occur. Its median is 192. Another resample will generally contain
+a different pattern of repetitions and omissions, so its median may differ.
+
+Sampling with replacement is essential. If every bootstrap sample contained
+each original speaker exactly once, every sample would merely reorder the same
+twelve numbers. The median would always remain 192, and the resulting
+distribution would contain no information about sampling variation.
+
+## Repeat the procedure
+
+For bootstrap replicate $b$:
+
+1. draw a sample of size $n$ from the observed units with replacement;
+2. calculate the estimator on that resample; and
+3. store the resulting estimate $\widehat{\theta}^{*(b)}$.
+
+Repeat these steps many times:
+
+```{r}
+#| label: bootstrap-medians
+#| echo: true
+set.seed(414)
+
+bootstrap_medians <- replicate(
+  10000,
+  median(sample(f0, size = length(f0), replace = TRUE))
+)
+
+hist(bootstrap_medians, xlab = "bootstrap median", main = "")
+```
+
+The empirical distribution of bootstrap estimates approximates the estimator's sampling distribution, using the observed empirical distribution in place of the unknown population distribution.
+
+The two distributions involved here should not be conflated. The empirical
+distribution of the twelve $f_0$ values approximates the population distribution
+of speaker summaries. The distribution of the 10,000 bootstrap medians
+approximates the sampling distribution of the median estimator. We resample
+observations from the first distribution to construct the second.
+
+The following summary makes that separation visible:
+
+```{r}
+#| label: summarize-bootstrap-medians
+#| echo: true
+c(
+  observed_median = median(f0),
+  bootstrap_mean = mean(bootstrap_medians),
+  bootstrap_standard_error = sd(bootstrap_medians)
+)
+```
+
+The standard deviation of the bootstrap medians is a bootstrap estimate of the
+standard error. It describes variation in the estimator across bootstrap
+samples. It is not the standard deviation of speaker fundamental frequency.
+
+## Form a percentile interval
+
+A 95% [**percentile bootstrap confidence interval**](https://openintro-ims.netlify.app/foundations-bootstrapping.html) takes the $.025$ and $.975$ quantiles of the bootstrap estimates:
+
+```{r}
+#| label: bootstrap-percentile-interval
+#| echo: true
+quantile(bootstrap_medians, c(.025, .975))
+```
+
+The calculation is simple, but the percentile interval is not always the most accurate bootstrap construction. Its purpose here is to make the resampling logic visible.
+
+Suppose the resulting interval is $[182,201]$ Hz. The repeated-sampling claim is
+about the procedure. If we could repeatedly sample twelve speakers from the
+target population and construct an interval in this way, the method is intended
+to cover the population median in about 95 percent of those repetitions under
+conditions where the bootstrap approximation works well. The endpoints are not
+probabilities for the fixed population median.
+
+The percentile method uses the quantiles of the bootstrap estimates directly.
+It tends to work best when the bootstrap distribution is reasonably centered on
+the observed estimate and not strongly skewed. With only twelve observations,
+the sample may give a poor approximation to the population, especially in its
+tails. The interval can also have coarse endpoints because a median from a small
+sample can take only a limited set of values.
+
+## Choose the resampling unit
+
+The example has one summary per speaker, so resampling speakers matches the proposed independent unit.
+
+If the raw table instead contained many vowel tokens per speaker, resampling individual rows would treat those tokens as exchangeable across speakers and destroy the within-speaker structure. A suitable bootstrap might resample speakers and retain each selected speaker's observations together.
+
+Consider a table with 20 speakers and 30 vowel tokens per speaker. The table has
+600 rows, but it does not necessarily contain 600 independent units. If the
+scientific claim concerns speakers, one speaker should enter or leave a
+bootstrap sample as a block. A selected speaker may appear twice, along with both
+copies of that speaker's complete token set. An omitted speaker contributes no
+tokens to that replicate.
+
+The statistic must also be recomputed from the resampled data. If the analysis
+first averages tokens within speaker and then compares vowel categories within
+speaker, each bootstrap replicate must repeat those operations. Resampling a
+finished list of token-level residuals would correspond to a different procedure.
+
+The bootstrap reproduces the sampling assumptions encoded by the resampling design. It does not decide which units are independent.
+
+## Check simulation error
+
+The earlier [random seed page](../random-variables-and-distributions/random-seeds.qmd) separated reproducibility from validity. Here the number of bootstrap replicates $B$ controls Monte Carlo precision. With a
+small $B$, the estimated quantiles may move appreciably when the random seed
+changes. We can check this source of variation by running the same procedure
+with several values of $B$.
+
+```{r}
+#| label: bootstrap-replicate-sensitivity
+#| echo: true
+bootstrap_interval <- function(B, seed) {
+  set.seed(seed)
+  estimates <- replicate(
+    B,
+    median(sample(f0, size = length(f0), replace = TRUE))
+  )
+  quantile(estimates, c(.025, .975))
+}
+
+bootstrap_interval(500, 214)
+bootstrap_interval(5000, 214)
+bootstrap_interval(5000, 414)
+```
+
+If the 5,000-replicate intervals agree closely while the 500-replicate interval
+moves, more simulation has reduced Monte Carlo error. If large bootstrap runs
+still produce an unstable scientific conclusion, the issue may lie in the small
+original sample or the resampling design. Increasing $B$ cannot create new
+speakers.
+
+::: {.callout-note title="Check one replicate"}
+1. Why must a nonparametric bootstrap sample contain $n$ draws rather than every
+   original case exactly once? Explain what would happen to the estimate if no
+   cases were repeated or omitted.
+2. Distinguish the empirical distribution of the observations from the bootstrap
+   distribution of the estimates.
+3. If a dataset contains repeated tokens from each speaker, state which rows
+   should move together when speakers are the intended independent units.
+4. Explain why increasing $B$ reduces simulation error but does not repair a
+   sample containing too few speakers.
+:::

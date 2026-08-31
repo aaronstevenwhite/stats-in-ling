@@ -1,0 +1,1662 @@
+# Multiple Regression
+
+## Extension to multiple predictors
+
+In simple regression, we modeled log RT as a function of surprisal alone.
+
+But reading times depend on multiple factors:
+
+- **Surprisal**: -log₂ p(word | context) from language model
+- **Acceptability**: Human grammaticality judgments
+- **Condition**: Experimental manipulation (early vs. late coercion)
+
+Multiple linear regression lets us model their joint effects.
+
+---
+
+## Loading data with multiple predictors
+
+```{r load-full-data}
+#| echo: true
+#| code-fold: false
+
+# Load merged dataset with both surprisal and acceptability
+spr_full <- read_csv("data/word_rt_surprisal_acceptability.csv",
+                     show_col_types = FALSE)
+
+# Filter to observations with acceptability ratings
+spr_full <- spr_full %>%
+  filter(!is.na(mean_acceptability))
+
+# Convert condition to factor
+spr_full <- spr_full %>%
+  mutate(
+    condition = factor(condition,
+                      levels = c("early coercion", "late coercion"))
+  )
+
+# Preview
+head(spr_full)
+```
+
+---
+
+## Dataset structure
+
+```{r data-structure}
+#| echo: true
+#| code-fold: false
+
+# Dimensions
+cat("Observations:", nrow(spr_full), "\n")
+
+# Variables
+cat("Predictors: surprisal, mean_acceptability, condition\n")
+cat("Response: log_rt\n")
+```
+
+---
+
+# Multicollinearity
+
+## Checking for collinearity
+
+Before fitting a model with both surprisal and acceptability, we should check if they're **correlated**.
+
+Why? **Multicollinearity** (high correlation between predictors) causes:
+
+1. Inflated standard errors → unstable estimates
+2. Difficulty separating individual effects
+3. Coefficients sensitive to small data changes
+
+Let's check the correlation to see if this is a concern in our data.
+
+---
+
+## Correlation between predictors
+
+```{r correlation-plot}
+#| echo: true
+#| code-fold: false
+#| fig-width: 8
+#| fig-height: 5
+
+# Compute correlation
+cor_value <- cor(spr_full$surprisal, spr_full$mean_acceptability,
+                 use = "complete.obs")
+
+cat("Correlation:", round(cor_value, 3), "\n")
+
+# Scatterplot
+ggplot(spr_full, aes(x = surprisal, y = mean_acceptability)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(x = "Surprisal (bits)",
+       y = "Acceptability (z-score)",
+       title = paste0("Correlation: ", round(cor_value, 3)))
+```
+
+---
+
+## Interpreting the correlation
+
+Looking at the correlation value and scatterplot:
+
+- The correlation is **weak to negligible** (likely |r| < 0.3)
+- There's no strong linear relationship between surprisal and acceptability
+- Multicollinearity is **not a major concern** in this dataset
+
+**Good news**: We can include both predictors without worrying about inflated standard errors.
+
+**But let's verify** using the Variance Inflation Factor (VIF)...
+
+---
+
+## Variance Inflation Factor (VIF)
+
+**Formal measure** of multicollinearity for predictor $j$:
+
+$$\text{VIF}_j = \frac{1}{1 - R^2_j}$$
+
+where $R^2_j$ is from regressing $X_j$ on all other predictors.
+
+**Interpretation**:
+- VIF = 1: No multicollinearity
+- VIF > 5: Moderate multicollinearity
+- VIF > 10: Severe multicollinearity (problematic)
+
+---
+
+## Computing VIF
+
+```{r vif-check}
+#| echo: true
+#| code-fold: false
+#| warning: false
+
+library(car)
+
+# Fit model with both predictors
+model_both <- lm(log_rt ~ surprisal + mean_acceptability + condition,
+                 data = spr_full)
+
+# Compute VIF
+vif(model_both)
+```
+
+VIF values close to 1 indicate **no multicollinearity**. All values well below 5 (the common threshold for concern).
+
+---
+
+## What if we had collinearity?
+
+In this dataset, multicollinearity is not a problem. But it's important to know how to handle it when it does occur.
+
+One approach is **residualization**: orthogonalizing predictors to remove their correlation.
+
+Let's demonstrate this technique even though we don't strictly need it here—it's a valuable tool for your analytic toolkit.
+
+---
+
+## Residualization approach
+
+**The idea**: Remove the correlation between predictors by residualizing one on the other.
+
+**Procedure**:
+
+1. Regress surprisal on acceptability: $\text{Surprisal} = \gamma_0 + \gamma_1 \text{Acceptability} + \eta$
+2. Extract residuals: $\hat\eta = \text{Surprisal} - (\hat\gamma_0 + \hat\gamma_1 \text{Acceptability})$
+3. Use $\hat\eta$ as predictor instead of raw surprisal
+
+**Result**: $\hat\eta$ captures variation in surprisal **orthogonal to** (independent of) acceptability.
+
+**Why this direction?** Surprisal from a language model likely reflects many factors, including acceptability/grammaticality. By residualizing surprisal on acceptability, we isolate the component of surprisal that's independent of acceptability ratings.
+
+---
+
+## Implementing residualization
+
+```{r residualization}
+#| echo: true
+#| code-fold: false
+
+# Residualize surprisal on acceptability
+resid_model <- lm(surprisal ~ mean_acceptability, data = spr_full)
+spr_full$surprisal_resid <- residuals(resid_model)
+
+# Check correlation (should be ~0)
+cor(spr_full$mean_acceptability, spr_full$surprisal_resid, use = "complete.obs")
+
+# Now fit with residualized predictor
+model_resid <- lm(log_rt ~ surprisal_resid + mean_acceptability + condition,
+                  data = spr_full)
+summary(model_resid)
+```
+
+Now `mean_acceptability` and `surprisal_resid` are uncorrelated by construction.
+
+---
+
+## Interpreting residualized coefficients
+
+With residualization:
+
+- $\beta_{\text{acceptability}}$: Effect of acceptability on log RT
+- $\beta_{\text{surprisal\_resid}}$: Effect of surprisal **beyond what's explained by acceptability**
+
+The second coefficient answers: "Does surprisal predict RT over and above acceptability?"
+
+This isolates the unique contribution of surprisal that isn't already captured by acceptability judgments.
+
+---
+
+## Visualizing residualization
+
+```{r residualization-visualization}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 5
+
+library(patchwork)
+
+# Before residualization
+p1 <- ggplot(spr_full, aes(x = mean_acceptability, y = surprisal)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(x = "Acceptability (z-score)",
+       y = "Surprisal (bits)",
+       title = "Before Residualization",
+       subtitle = paste0("r = ", round(cor(spr_full$surprisal,
+                                           spr_full$mean_acceptability,
+                                           use = "complete.obs"), 3))) +
+  theme_minimal(base_size = 12)
+
+# After residualization
+p2 <- ggplot(spr_full, aes(x = mean_acceptability, y = surprisal_resid)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Acceptability (z-score)",
+       y = "Residualized Surprisal (bits)",
+       title = "After Residualization",
+       subtitle = paste0("r = ", round(cor(spr_full$surprisal_resid,
+                                           spr_full$mean_acceptability,
+                                           use = "complete.obs"), 3))) +
+  theme_minimal(base_size = 12)
+
+p1 + p2
+```
+
+Residualization removes the linear relationship, making the predictors orthogonal (r ≈ 0).
+
+---
+
+## Understanding the residuals
+
+```{r residual-interpretation}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+ggplot(spr_full, aes(x = surprisal, y = surprisal_resid)) +
+  geom_point(alpha = 0.3, size = 1.5, color = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Original Surprisal (bits)",
+       y = "Residualized Surprisal (bits)",
+       title = "Residualized vs. Original Surprisal",
+       subtitle = "Positive residuals = higher surprisal than predicted by acceptability alone") +
+  theme_minimal(base_size = 13)
+```
+
+Residuals represent the **unexplained component** of surprisal after accounting for acceptability.
+
+---
+
+## When is residualization really needed?
+
+Residualization is most useful when predictors are **highly correlated** (r > 0.7).
+
+**Example scenario**: Comparing surprisal from two different autoregressive language models:
+
+- GPT-2 small and GPT-2 medium surprisal would likely be highly correlated (r > 0.8)
+- Both measure similar aspects of predictability
+- High VIF values would indicate multicollinearity
+- Residualization (or choosing one model) would be necessary
+
+Let's actually demonstrate this with real data...
+
+---
+
+## Simulating multicollinearity with language models
+
+To demonstrate multicollinearity effects, we **simulate** a second set of surprisal values that are highly correlated with our real surprisal values (r ≈ 0.95).
+
+This reflects what we would see if we computed surprisal from two similar Spanish language models.
+
+```{r load-two-models}
+#| echo: true
+#| code-fold: false
+
+# Load data with surprisals from both models
+spr_two_models <- read_csv("data/word_rt_surprisal.csv", show_col_types = FALSE)
+
+# Preview
+head(spr_two_models %>% select(word, surprisal, surprisal_gpt2_small2))
+```
+
+---
+
+## Correlation between language models
+
+```{r lm-correlation}
+#| echo: true
+#| code-fold: false
+#| fig-width: 8
+#| fig-height: 5
+
+# Compute correlation
+cor_lms <- cor(spr_two_models$surprisal, spr_two_models$surprisal_gpt2_small2,
+               use = "complete.obs")
+
+cat("Correlation between models:", round(cor_lms, 3), "\n")
+
+# Visualize
+ggplot(spr_two_models, aes(x = surprisal, y = surprisal_gpt2_small2)) +
+  geom_point(alpha = 0.2, size = 1) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(x = "Surprisal: Model 1 (bits)",
+       y = "Surprisal: Model 2 (bits)",
+       title = paste0("High Correlation: r = ", round(cor_lms, 3))) +
+  theme_minimal(base_size = 13)
+```
+
+**This is true multicollinearity**—both models capture similar aspects of predictability.
+
+---
+
+## VIF with correlated language models
+
+```{r vif-two-models}
+#| echo: true
+#| code-fold: false
+
+library(car)
+
+# Fit model with both language model surprisals
+model_two_lms <- lm(log_rt ~ surprisal + surprisal_gpt2_small2 + condition,
+                    data = spr_two_models)
+
+# Compute VIF
+vif(model_two_lms)
+```
+
+The VIF values for the two surprisal measures are **very high** (> 10), indicating severe multicollinearity.
+
+---
+
+## Residualization with correlated predictors
+
+Now residualization is **necessary**, not just pedagogical!
+
+```{r residualize-lms}
+#| echo: true
+#| code-fold: false
+
+# Residualize medium model surprisal on small model surprisal
+resid_lm_model <- lm(surprisal_gpt2_small2 ~ surprisal, data = spr_two_models)
+spr_two_models$surprisal_medium_resid <- residuals(resid_lm_model)
+
+# Check correlation (should be ~0)
+cor(spr_two_models$surprisal, spr_two_models$surprisal_medium_resid,
+    use = "complete.obs")
+
+# Fit model with residualized predictor
+model_resid_lms <- lm(log_rt ~ surprisal + surprisal_medium_resid + condition,
+                      data = spr_two_models)
+
+# Check VIF
+vif(model_resid_lms)
+```
+
+VIF values should now be close to 1!
+
+---
+
+## Visualizing residualization with correlated predictors
+
+```{r viz-resid-lms}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 5
+
+library(patchwork)
+
+# Before
+p1 <- ggplot(spr_two_models, aes(x = surprisal, y = surprisal_gpt2_small2)) +
+  geom_point(alpha = 0.2, size = 1) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(x = "Model 1 Surprisal",
+       y = "Model 2 Surprisal (simulated)",
+       title = "Before Residualization",
+       subtitle = paste0("r = ", round(cor_lms, 3))) +
+  theme_minimal(base_size = 11)
+
+# After
+p2 <- ggplot(spr_two_models, aes(x = surprisal, y = surprisal_medium_resid)) +
+  geom_point(alpha = 0.2, size = 1) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue") +
+  labs(x = "Model 1 Surprisal",
+       y = "Model 2 Surprisal (simulated, residualized)",
+       title = "After Residualization",
+       subtitle = paste0("r ≈ ", round(cor(spr_two_models$surprisal,
+                                           spr_two_models$surprisal_medium_resid,
+                                           use = "complete.obs"), 3))) +
+  theme_minimal(base_size = 11)
+
+p1 + p2
+```
+
+---
+
+## Key takeaway: Always check first
+
+**Workflow for handling potential multicollinearity**:
+
+1. ✅ **Check correlation matrix** between all predictors
+2. ✅ **Compute VIF** after fitting initial model
+3. ❓ **If VIF > 5**: Consider residualization, dropping predictors, or regularization
+4. ✅ **If VIF < 5**: Proceed with standard multiple regression
+
+**In this dataset**: VIF values are low, so we can include both predictors without concern.
+
+---
+
+## Summary: Two demonstrations of residualization
+
+We've seen residualization in two contexts:
+
+**1. Surprisal and Acceptability (low correlation)**
+- Demonstrated the *technique* of residualization
+- Not actually needed (VIF < 5, weak correlation)
+- Pedagogical example to learn the method
+
+**2. Two Language Models (high correlation)**
+- Actual multicollinearity problem (VIF > 5, r > 0.8)
+- Residualization is *necessary* to get stable estimates
+- Real-world scenario you'll encounter comparing similar measures
+
+**Key lesson**: Always check VIF before deciding if residualization is needed!
+
+---
+
+# Multiple Regression Formalism
+
+## Multiple linear regression model
+
+With $p$ predictors, the model is:
+
+$$Y_i = \beta_0 + \beta_1 X_{i1} + \beta_2 X_{i2} + \cdots + \beta_p X_{ip} + \epsilon_i$$
+
+where $\epsilon_i \sim \text{Normal}(0, \sigma^2)$.
+
+Each $\beta_j$ represents the partial effect of $X_j$ on $Y$, holding all other predictors constant.
+
+---
+
+## Matrix notation
+
+Let $\mathbf{y} = (y_1, \ldots, y_N)^T$ be the vector of responses.
+
+Let $\mathbf{X}$ be the $N \times (p+1)$ design matrix:
+
+$$\mathbf{X} = \begin{pmatrix}
+1 & x_{11} & x_{12} & \cdots & x_{1p}\\
+1 & x_{21} & x_{22} & \cdots & x_{2p}\\
+\vdots & \vdots & \vdots & \ddots & \vdots\\
+1 & x_{N1} & x_{N2} & \cdots & x_{Np}
+\end{pmatrix}$$
+
+Let $\boldsymbol{\beta} = (\beta_0, \beta_1, \ldots, \beta_p)^T$.
+
+---
+
+## Matrix form
+
+The model is:
+
+$$\mathbf{y} = \mathbf{X}\boldsymbol{\beta} + \boldsymbol{\epsilon}$$
+
+where $\boldsymbol{\epsilon} \sim \text{Normal}(\mathbf{0}, \sigma^2 \mathbf{I})$.
+
+The OLS estimate is:
+
+$$\hat{\boldsymbol{\beta}} = (\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T\mathbf{y}$$
+
+assuming $\mathbf{X}^T\mathbf{X}$ is invertible.
+
+---
+
+## Categorical predictors
+
+Categorical variables are encoded using dummy (indicator) variables.
+
+For a categorical predictor with $K$ levels, we create $K-1$ dummy variables.
+
+One level serves as the reference (baseline), and each dummy variable compares another level to the reference.
+
+This is called **treatment coding** or **dummy coding**.
+
+---
+
+## Dummy coding example
+
+For `condition` with two levels (early coercion, late coercion):
+
+- **Reference**: early coercion (coded as 0)
+- **Late coercion**: coded as 1
+
+The model includes one dummy variable:
+
+$$\text{LogRT}_i = \beta_0 + \beta_1 \mathbb{1}[\text{late}]_i + \cdots$$
+
+---
+
+## Interpreting dummy coefficients
+
+$\beta_0$: Expected log RT in the reference condition (early coercion)
+
+$\beta_1$: Difference in log RT between late coercion and early coercion
+
+Each coefficient is a **contrast** between levels.
+
+---
+
+# Contrast Coding Schemes
+
+## Reference coding vs. sum coding
+
+There are multiple ways to encode categorical variables numerically. Two common schemes:
+
+**Reference coding** (dummy coding, treatment coding):
+- One level serves as baseline (coded 0)
+- Other levels compared to baseline
+- Coefficients = differences from reference level
+
+**Sum coding** (effects coding, deviation coding):
+- All levels sum to zero
+- Coefficients = deviation from grand mean
+- Tests main effects symmetrically
+
+---
+
+## Reference coding in detail
+
+For a two-level factor (early coercion, late coercion):
+
+| Condition | Reference coding |
+|-----------|-----------------|
+| early coercion | 0 |
+| late coercion | 1 |
+
+**Model**: $Y_i = \beta_0 + \beta_1 X_i + \epsilon_i$
+
+**Interpretation**:
+- $\beta_0$: Mean of reference level (early coercion)
+- $\beta_1$: Difference (late coercion - early coercion)
+
+---
+
+## Sum coding in detail
+
+For a two-level factor (early coercion, late coercion):
+
+| Condition | Sum coding |
+|-----------|-----------|
+| early coercion | -0.5 |
+| late coercion | 0.5 |
+
+**Model**: $Y_i = \beta_0 + \beta_1 X_i + \epsilon_i$
+
+**Interpretation**:
+- $\beta_0$: Grand mean (average across both conditions)
+- $\beta_1$: Difference from grand mean to late coercion (= half the difference between conditions)
+
+Note: Sum coding weights sum to 0: $-0.5 + 0.5 = 0$
+
+---
+
+## Implementing coding schemes in R
+
+```{r coding-schemes}
+#| echo: true
+#| code-fold: false
+
+# Create copy of data for demonstration
+spr_ref <- spr_full
+spr_sum <- spr_full
+
+# Reference coding (default in R)
+contrasts(spr_ref$condition) <- contr.treatment(2)
+contrasts(spr_ref$condition)
+
+# Sum coding
+contrasts(spr_sum$condition) <- contr.sum(2)
+contrasts(spr_sum$condition)
+```
+
+---
+
+## Comparing models with different coding
+
+```{r compare-coding}
+#| echo: true
+#| code-fold: false
+
+# Fit with reference coding
+model_ref <- lm(log_rt ~ surprisal + mean_acceptability + condition,
+                data = spr_ref)
+
+# Fit with sum coding
+model_sum <- lm(log_rt ~ surprisal + mean_acceptability + condition,
+                data = spr_sum)
+
+# Compare intercepts and condition coefficients
+cat("Reference coding:\n")
+cat("Intercept:", coef(model_ref)[1], "\n")
+cat("Condition:", coef(model_ref)[4], "\n\n")
+
+cat("Sum coding:\n")
+cat("Intercept:", coef(model_sum)[1], "\n")
+cat("Condition:", coef(model_sum)[4], "\n")
+```
+
+---
+
+## Interpretation differences
+
+**Reference coding**:
+- Intercept = mean of early coercion condition
+- Condition coefficient = (late coercion mean) - (early coercion mean)
+
+**Sum coding**:
+- Intercept = grand mean across both conditions
+- Condition coefficient = (late coercion mean) - (grand mean)
+
+**Note**: The condition coefficient under sum coding is **half** the difference between conditions.
+
+**Model fit is identical**: Both achieve same predictions, $R^2$, residuals. Only parameterization differs.
+
+---
+
+## When to use each coding scheme
+
+**Reference coding**:
+- When one level is a natural baseline (e.g., control condition)
+- When comparing treatments to control
+- More intuitive for experimental contrasts
+
+**Sum coding**:
+- When no natural baseline exists
+- When testing symmetrical main effects
+- Standard in ANOVA-style analyses
+- Useful for balanced designs
+
+**Choice affects interpretation, not model fit.**
+
+---
+
+## Visualizing the data: condition effects
+
+```{r plot-by-condition}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+ggplot(spr_full, aes(x = condition, y = log_rt, fill = condition)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.2, size = 1) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = "Condition",
+       y = "Log Reaction Time (s)",
+       title = "Log RT by Condition") +
+  theme(legend.position = "none")
+```
+
+---
+
+## Visualizing by condition
+
+```{r plot-by-condition-new}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+ggplot(spr_full, aes(x = condition, y = log_rt, fill = condition)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.2, size = 1) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(x = "Condition",
+       y = "Log Reaction Time (s)",
+       title = "Log RT by Condition") +
+  theme(legend.position = "none")
+```
+
+---
+
+## Visualizing continuous predictors
+
+```{r plot-continuous-predictors}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 5
+
+library(patchwork)
+
+p1 <- ggplot(spr_full, aes(x = surprisal, y = log_rt)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(x = "Surprisal (bits)",
+       y = "Log RT",
+       title = "Log RT vs. Surprisal")
+
+p2 <- ggplot(spr_full, aes(x = mean_acceptability, y = log_rt)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(x = "Acceptability (z-score)",
+       y = "Log RT",
+       title = "Log RT vs. Acceptability")
+
+p1 + p2
+```
+
+---
+
+## Interaction visualization
+
+```{r plot-interaction-viz}
+#| echo: true
+#| code-fold: false
+#| fig-width: 10
+#| fig-height: 5
+
+ggplot(spr_full, aes(x = surprisal, y = log_rt, color = condition)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "lm", se = TRUE, linewidth = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(x = "Surprisal (bits)",
+       y = "Log Reaction Time (s)",
+       title = "Log RT vs. Surprisal by Condition",
+       color = "Condition") +
+  theme_minimal(base_size = 12)
+```
+
+Different slopes suggest an **interaction effect** between surprisal and condition.
+
+---
+
+# Additive Model
+
+## Model specification
+
+We start with an additive model (no interactions):
+
+$$\text{LogRT}_i = \beta_0 + \beta_1 \text{Surprisal}_i + \beta_2 \text{Acceptability}_i + \beta_3 \mathbb{1}[\text{late}]_i + \epsilon_i$$
+
+This assumes effects are **additive**—the effect of surprisal is the same across both conditions.
+
+---
+
+## Fitting the additive model
+
+```{r fit-additive}
+#| echo: true
+#| code-fold: false
+
+# Fit additive model
+model_additive <- lm(log_rt ~ surprisal + mean_acceptability + condition,
+                     data = spr_full)
+
+# Summary
+summary(model_additive)
+```
+
+---
+
+## Interpreting coefficients
+
+```{r coef-additive}
+#| echo: true
+#| code-fold: false
+
+# Extract coefficients
+coef(model_additive)
+```
+
+$\beta_1$ (surprisal): Effect of surprisal on log RT, controlling for acceptability and condition
+
+$\beta_2$ (acceptability): Effect of acceptability on log RT, controlling for surprisal and condition
+
+$\beta_3$ (late coercion): Difference from early coercion, controlling for surprisal and acceptability
+
+---
+
+## Visualizing additive model predictions
+
+```{r plot-additive-predictions}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+# Create prediction grid
+pred_grid <- expand.grid(
+  surprisal = seq(min(spr_full$surprisal, na.rm = TRUE),
+                  max(spr_full$surprisal, na.rm = TRUE),
+                  length.out = 50),
+  mean_acceptability = mean(spr_full$mean_acceptability, na.rm = TRUE),
+  condition = levels(spr_full$condition)
+)
+
+# Predict
+pred_grid$predicted <- predict(model_additive, newdata = pred_grid)
+
+# Plot
+ggplot() +
+  geom_point(data = spr_full,
+             aes(x = surprisal, y = log_rt, color = condition),
+             alpha = 0.3, size = 1) +
+  geom_line(data = pred_grid,
+            aes(x = surprisal, y = predicted, color = condition),
+            linewidth = 1) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(x = "Surprisal (bits)",
+       y = "Log Reaction Time (s)",
+       title = "Additive Model: Parallel Lines (Same Slope for Surprisal)",
+       color = "Condition") +
+  theme_minimal(base_size = 12)
+```
+
+Note: Lines are parallel (same slope for surprisal across conditions).
+
+---
+
+# Interaction Effects
+
+## What are interactions?
+
+An interaction occurs when the effect of one predictor depends on the level of another predictor.
+
+For example: Does the effect of acceptability differ across conditions?
+
+We model this by including **interaction terms**: products of predictors.
+
+---
+
+## Interaction model specification
+
+$$\begin{align*}
+\text{LogRT}_i &= \beta_0 + \beta_1 \text{Surprisal}_i + \beta_2 \text{Acceptability}_i + \beta_3 \mathbb{1}[\text{late}]_i \\
+&\quad + \beta_4 \text{Surprisal}_i \times \mathbb{1}[\text{late}]_i \\
+&\quad + \beta_5 \text{Acceptability}_i \times \mathbb{1}[\text{late}]_i + \epsilon_i
+\end{align*}$$
+
+---
+
+## Interpreting interaction coefficients
+
+$\beta_4$: How much the effect of surprisal changes in late coercion vs. early coercion
+
+$\beta_5$: How much the effect of acceptability changes in late coercion vs. early coercion
+
+Non-zero interaction coefficients indicate the slopes differ across conditions.
+
+---
+
+# Interactions and Coding Schemes
+
+## How coding affects interaction interpretation
+
+Interaction interpretation depends on the coding scheme for categorical predictors.
+
+With **reference coding**: Interaction tests whether slopes differ **between specific levels**.
+
+With **sum coding**: Interaction tests whether slopes differ **from the average slope**.
+
+Both test the same hypothesis (presence of interaction), but coefficients have different meanings.
+
+---
+
+## Interaction with reference coding
+
+Model: $Y_i = \beta_0 + \beta_1 X_i + \beta_2 C_i + \beta_3 X_i \times C_i + \epsilon_i$
+
+where $C_i = 0$ (early coercion) or $1$ (late coercion).
+
+**For early coercion** ($C_i = 0$):
+$$Y_i = \beta_0 + \beta_1 X_i$$
+
+**For late coercion** ($C_i = 1$):
+$$Y_i = (\beta_0 + \beta_2) + (\beta_1 + \beta_3) X_i$$
+
+$\beta_3$ = (slope for late coercion) - (slope for early coercion)
+
+---
+
+## Interaction with sum coding
+
+Model: $Y_i = \beta_0 + \beta_1 X_i + \beta_2 C_i + \beta_3 X_i \times C_i + \epsilon_i$
+
+where $C_i = -0.5$ (early coercion) or $0.5$ (late coercion).
+
+**For early coercion** ($C_i = -0.5$):
+$$Y_i = (\beta_0 - 0.5\beta_2) + (\beta_1 - 0.5\beta_3) X_i$$
+
+**For late coercion** ($C_i = 0.5$):
+$$Y_i = (\beta_0 + 0.5\beta_2) + (\beta_1 + 0.5\beta_3) X_i$$
+
+$\beta_1$ = average slope across conditions
+
+$\beta_3$ = (slope for late coercion) - (slope for early coercion)
+
+---
+
+## Comparing interaction models
+
+```{r interaction-coding-comparison}
+#| echo: true
+#| code-fold: false
+
+# Interaction with reference coding
+model_int_ref <- lm(log_rt ~ surprisal * condition +
+                             mean_acceptability * condition,
+                    data = spr_ref)
+
+# Interaction with sum coding
+model_int_sum <- lm(log_rt ~ surprisal * condition +
+                             mean_acceptability * condition,
+                    data = spr_sum)
+
+# Extract surprisal coefficients
+cat("Reference coding:\n")
+cat("Main effect of surprisal:", coef(model_int_ref)["surprisal"], "\n")
+cat("Interaction:", coef(model_int_ref)["surprisal:conditionlate coercion"], "\n\n")
+
+cat("Sum coding:\n")
+cat("Main effect of surprisal:", coef(model_int_sum)["surprisal"], "\n")
+cat("Interaction:", coef(model_int_sum)["surprisal:condition1"], "\n")
+```
+
+---
+
+## Interpretation comparison
+
+**Reference coding**:
+- Main effect = slope in reference condition (early coercion)
+- Interaction = change in slope for late coercion
+
+**Sum coding**:
+- Main effect = average slope across conditions
+- Interaction = half the difference in slopes
+
+**Key difference**: Under sum coding, the main effect is the **average** effect. Under reference coding, it is the effect in the **baseline** condition.
+
+---
+
+## Computing condition-specific slopes
+
+```{r compute-slopes-by-coding}
+#| echo: true
+#| code-fold: false
+
+# Reference coding
+beta_surp_ref <- coef(model_int_ref)["surprisal"]
+beta_int_ref <- coef(model_int_ref)["surprisal:conditionlate coercion"]
+
+slope_early_ref <- beta_surp_ref
+slope_late_ref <- beta_surp_ref + beta_int_ref
+
+cat("Reference coding:\n")
+cat("Early coercion slope:", slope_early_ref, "\n")
+cat("Late coercion slope:", slope_late_ref, "\n\n")
+
+# Sum coding
+beta_surp_sum <- coef(model_int_sum)["surprisal"]
+beta_int_sum <- coef(model_int_sum)["surprisal:condition1"]
+
+slope_early_sum <- beta_surp_sum - 0.5 * beta_int_sum
+slope_late_sum <- beta_surp_sum + 0.5 * beta_int_sum
+
+cat("Sum coding:\n")
+cat("Early coercion slope:", slope_early_sum, "\n")
+cat("Late coercion slope:", slope_late_sum, "\n")
+```
+
+Note: Condition-specific slopes are identical regardless of coding scheme.
+
+---
+
+## Which coding for interactions?
+
+**Reference coding** advantages:
+- Direct test of difference from baseline
+- Intuitive when one condition is control
+- Coefficients directly give condition-specific effects
+
+**Sum coding** advantages:
+- Main effect represents average across conditions
+- Symmetrical treatment of conditions
+- Matches ANOVA decomposition
+
+**Both test the same interaction hypothesis.** Choice depends on research question and interpretation preferences.
+
+---
+
+## Fitting the interaction model
+
+```{r fit-interaction}
+#| echo: true
+#| code-fold: false
+
+# Fit interaction model
+model_interaction <- lm(log_rt ~ surprisal * condition +
+                                 mean_acceptability * condition,
+                        data = spr_full)
+
+# Summary
+summary(model_interaction)
+```
+
+---
+
+## Comparing models
+
+```{r compare-models-anova}
+#| echo: true
+#| code-fold: false
+
+# ANOVA to compare nested models
+anova(model_additive, model_interaction)
+```
+
+The $F$-test tells us whether the interaction terms significantly improve model fit.
+
+---
+
+## Visualizing interaction model
+
+```{r plot-interaction}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+# Prediction grid
+pred_grid_int <- expand.grid(
+  surprisal = seq(min(spr_full$surprisal, na.rm = TRUE),
+                  max(spr_full$surprisal, na.rm = TRUE),
+                  length.out = 50),
+  mean_acceptability = mean(spr_full$mean_acceptability, na.rm = TRUE),
+  condition = levels(spr_full$condition)
+)
+
+# Predict
+pred_grid_int$predicted <- predict(model_interaction, newdata = pred_grid_int)
+
+# Plot
+ggplot() +
+  geom_point(data = spr_full,
+             aes(x = surprisal, y = log_rt, color = condition),
+             alpha = 0.3, size = 1) +
+  geom_line(data = pred_grid_int,
+            aes(x = surprisal, y = predicted, color = condition),
+            linewidth = 1.5) +
+  scale_color_brewer(palette = "Dark2") +
+  labs(x = "Surprisal (bits)",
+       y = "Log Reaction Time (s)",
+       title = "Interaction Model: Different Slopes by Condition",
+       color = "Condition") +
+  theme_minimal(base_size = 12)
+```
+
+Lines now have different slopes—the effect of surprisal differs by condition.
+
+---
+
+## Coefficient table
+
+```{r coef-table}
+#| echo: true
+#| code-fold: false
+
+# Full coefficient table
+summary(model_interaction)$coefficients
+```
+
+---
+
+# Diagnostic Checks for Multiple Regression
+
+## Same assumptions apply
+
+Multiple regression makes the same assumptions as simple regression:
+
+1. **Linearity**: Linear relationship between predictors and response
+2. **Normality**: Errors are normally distributed
+3. **Homoscedasticity**: Constant error variance
+4. **Independence**: Errors are independent
+
+We check these using the same diagnostic tools.
+
+---
+
+## Residuals vs. fitted
+
+```{r diag-resid-fitted}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(model_interaction, which = 1)
+```
+
+---
+
+## Q-Q plot
+
+```{r diag-qq}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(model_interaction, which = 2)
+```
+
+---
+
+## Scale-location plot
+
+```{r diag-scale-location}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(model_interaction, which = 3)
+```
+
+---
+
+## Cook's distance
+
+```{r diag-cooks}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(model_interaction, which = 4)
+```
+
+---
+
+## Residuals vs. leverage
+
+```{r diag-leverage}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(model_interaction, which = 5)
+```
+
+---
+
+## Formal normality tests
+
+```{r multi-normality-tests}
+#| echo: true
+#| code-fold: false
+
+# Extract residuals
+resid_multi <- residuals(model_interaction)
+
+# Shapiro-Wilk test (max N = 5000)
+if (length(resid_multi) <= 5000) {
+  shapiro.test(resid_multi)
+} else {
+  set.seed(42)
+  subsample <- sample(resid_multi, 5000)
+  cat("Note: Using random subsample of 5000 observations (N =", length(resid_multi), ")\n")
+  shapiro.test(subsample)
+}
+
+# Anderson-Darling test
+nortest::ad.test(resid_multi)
+```
+
+---
+
+## Breusch-Pagan test
+
+```{r multi-bp-test}
+#| echo: true
+#| code-fold: false
+
+# Test for heteroscedasticity
+lmtest::bptest(model_interaction)
+```
+
+---
+
+# Multicollinearity
+
+## The multicollinearity problem
+
+When predictors are highly correlated, coefficient estimates become unstable.
+
+High correlations among predictors lead to:
+
+1. Large standard errors
+2. Unstable coefficient estimates
+3. Difficulty interpreting individual effects
+
+This is **multicollinearity**.
+
+---
+
+## Variance Inflation Factor (VIF)
+
+VIF measures how much the variance of a coefficient is inflated due to collinearity.
+
+For predictor $X_j$:
+
+$$\text{VIF}_j = \frac{1}{1 - R^2_j}$$
+
+where $R^2_j$ is from regressing $X_j$ on all other predictors.
+
+**Rule of thumb**: VIF $> 10$ indicates problematic collinearity; VIF $> 5$ is concerning.
+
+---
+
+## Checking VIF
+
+```{r vif-interaction}
+#| echo: true
+#| code-fold: false
+
+library(car)
+
+# Compute VIF
+vif(model_interaction)
+```
+
+High VIF values indicate multicollinearity issues.
+
+---
+
+## Dealing with multicollinearity
+
+Solutions:
+
+1. **Remove correlated predictors**: Drop one of the highly correlated variables
+2. **Center predictors**: Mean-center continuous variables (reduces collinearity in interaction models)
+3. **Combine predictors**: Create composite variables via PCA
+4. **Regularization**: Use ridge regression or lasso
+5. **Bayesian priors**: Informative priors can stabilize estimates
+
+---
+
+# Advanced Visualizations
+
+## Marginal effects plots
+
+Marginal effects show the predicted values while varying one predictor and holding others at typical values.
+
+This clarifies the effect of each predictor in the presence of interactions.
+
+---
+
+## Marginal effects: acceptability by condition
+
+```{r marginal-condition}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 6
+
+# Create grid: vary acceptability and condition, hold surprisal at median
+marg_cond <- expand.grid(
+  mean_acceptability = seq(min(spr_full$mean_acceptability, na.rm = TRUE),
+                          max(spr_full$mean_acceptability, na.rm = TRUE),
+                          length.out = 100),
+  condition = levels(spr_full$condition),
+  surprisal = median(spr_full$surprisal, na.rm = TRUE)
+)
+
+# Predictions with standard errors
+marg_cond_pred <- predict(model_interaction, newdata = marg_cond, se.fit = TRUE)
+marg_cond$fit <- marg_cond_pred$fit
+marg_cond$se <- marg_cond_pred$se.fit
+marg_cond$lower <- marg_cond$fit - 1.96 * marg_cond$se
+marg_cond$upper <- marg_cond$fit + 1.96 * marg_cond$se
+
+# Plot
+ggplot(marg_cond, aes(x = mean_acceptability, y = fit, color = condition, fill = condition)) +
+  geom_line(linewidth = 1.2) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Mean Acceptability (z-score)",
+       y = "Predicted Log RT (s)",
+       title = "Marginal Effect of Acceptability by Condition",
+       color = "Condition",
+       fill = "Condition") +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+## Marginal effects: surprisal by condition
+
+```{r marginal-surprisal}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 6
+
+# Create grid: vary surprisal and condition, hold acceptability at mean
+marg_surp <- expand.grid(
+  surprisal = seq(min(spr_full$surprisal, na.rm = TRUE),
+                  max(spr_full$surprisal, na.rm = TRUE),
+                  length.out = 100),
+  condition = levels(spr_full$condition),
+  mean_acceptability = mean(spr_full$mean_acceptability, na.rm = TRUE)
+)
+
+# Predictions with standard errors
+marg_surp_pred <- predict(model_interaction, newdata = marg_surp, se.fit = TRUE)
+marg_surp$fit <- marg_surp_pred$fit
+marg_surp$se <- marg_surp_pred$se.fit
+marg_surp$lower <- marg_surp$fit - 1.96 * marg_surp$se
+marg_surp$upper <- marg_surp$fit + 1.96 * marg_surp$se
+
+# Plot
+ggplot(marg_surp, aes(x = surprisal, y = fit, color = condition, fill = condition)) +
+  geom_line(linewidth = 1.2) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Surprisal (bits)",
+       y = "Predicted Log RT (s)",
+       title = "Marginal Effect of Surprisal by Condition",
+       color = "Condition",
+       fill = "Condition") +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+# Bayesian Multiple Regression
+
+## Extending to multiple predictors
+
+Bayesian multiple regression extends naturally from simple regression.
+
+We specify priors for all coefficients:
+
+$$\beta_j \sim \text{Normal}(0, \sigma_{\beta})$$
+
+for $j = 0, 1, \ldots, p$.
+
+The posterior is computed via MCMC.
+
+---
+
+## Fitting with brms
+
+```{r brms-multiple}
+#| echo: true
+#| code-fold: false
+#| message: false
+#| warning: false
+#| results: hide
+#| eval: false
+
+library(brms)
+
+# Fit Bayesian interaction model
+bayes_multi <- brm(
+  log_rt ~ surprisal * condition + mean_acceptability * condition,
+  data = spr_full,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 5), class = Intercept),
+    prior(normal(0, 5), class = b),
+    prior(student_t(3, 0, 2.5), class = sigma)
+  ),
+  chains = 4,
+  iter = 2000,
+  warmup = 1000,
+  seed = 42,
+  file = "stan_output/bayes_multi"
+)
+```
+
+---
+
+## Model summary
+
+```{r brms-multi-summary}
+#| echo: true
+#| code-fold: false
+#| eval: false
+
+summary(bayes_multi)
+```
+
+---
+
+## Posterior distributions for key coefficients
+
+```{r posterior-distributions}
+#| echo: true
+#| code-fold: false
+#| fig-width: 10
+#| fig-height: 7
+#| eval: false
+
+plot(bayes_multi, variable = c("b_surprisal",
+                                "b_mean_acceptability",
+                                "b_conditionlatecoercion"))
+```
+
+---
+
+## Posterior predictive check
+
+```{r ppc-multi}
+#| echo: true
+#| code-fold: false
+#| fig-width: 8
+#| fig-height: 5
+#| eval: false
+
+pp_check(bayes_multi, ndraws = 100)
+```
+
+---
+
+## Credible intervals for all coefficients
+
+```{r credible-intervals-multi}
+#| echo: true
+#| code-fold: false
+#| eval: false
+
+# Extract posterior samples
+posterior_multi <- as_draws_df(bayes_multi)
+
+# Compute 95% credible intervals for all coefficients
+coef_names <- grep("^b_", names(posterior_multi), value = TRUE)
+coef_names <- coef_names[!grepl("Intercept", coef_names)]
+
+for (coef_name in coef_names) {
+  ci <- quantile(posterior_multi[[coef_name]], c(0.025, 0.975))
+  cat(sprintf("%s: [%.3f, %.3f]\n", coef_name, ci[1], ci[2]))
+}
+```
+
+---
+
+## Hypothesis testing: directional effects
+
+```{r hypothesis-directional}
+#| echo: true
+#| code-fold: false
+#| eval: false
+
+# Probability that acceptability has a negative effect
+prob_neg_accept <- mean(posterior_multi$b_mean_acceptability < 0)
+cat("P(β_acceptability < 0 | data) =", prob_neg_accept, "\n")
+
+# Probability that late coercion differs from early coercion
+prob_late_diff <- mean(posterior_multi$b_conditionlatecoercion != 0)
+cat("P(β_late ≠ 0 | data) ≈", prob_late_diff, "\n")
+```
+
+---
+
+## Visualizing Bayesian predictions
+
+```{r bayes-predictions-plot}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 6
+#| eval: false
+
+# Prediction grid
+bayes_pred_grid <- expand.grid(
+  surprisal = seq(min(spr_full$surprisal, na.rm = TRUE),
+                  max(spr_full$surprisal, na.rm = TRUE),
+                  length.out = 50),
+  mean_acceptability = mean(spr_full$mean_acceptability, na.rm = TRUE),
+  condition = levels(spr_full$condition)
+)
+
+# Predict with uncertainty
+bayes_preds <- predict(bayes_multi, newdata = bayes_pred_grid)
+bayes_pred_grid <- cbind(bayes_pred_grid, bayes_preds)
+
+# Plot
+ggplot() +
+  geom_point(data = spr_full,
+             aes(x = surprisal, y = log_rt, color = condition),
+             alpha = 0.3, size = 1) +
+  geom_line(data = bayes_pred_grid,
+            aes(x = surprisal, y = Estimate, color = condition),
+            linewidth = 1.5) +
+  geom_ribbon(data = bayes_pred_grid,
+              aes(x = surprisal, ymin = Q2.5, ymax = Q97.5, fill = condition),
+              alpha = 0.2) +
+  scale_color_brewer(palette = "Dark2") +
+  scale_fill_brewer(palette = "Dark2") +
+  labs(x = "Surprisal (bits)",
+       y = "Log Reaction Time (s)",
+       title = "Bayesian Predictions with 95% Credible Intervals",
+       color = "Condition",
+       fill = "Condition") +
+  theme_minimal(base_size = 12)
+```
+
+---
+
+# Interpreting the Full Model
+
+## Putting it all together
+
+Our final model includes:
+
+- **Main effects**: Surprisal, acceptability, condition
+- **Interactions**: Surprisal × condition, acceptability × condition
+
+Key findings:
+
+1. Higher surprisal predicts slower reading (positive slope)
+2. Higher acceptability predicts faster reading (negative slope)
+3. The effects of both surprisal and acceptability differ across conditions
+
+---
+
+## Conditional effects
+
+The effect of surprisal and acceptability depends on condition.
+
+For early coercion (reference level):
+
+$$\text{Surprisal effect} = \beta_{\text{surprisal}}$$
+
+$$\text{Acceptability effect} = \beta_{\text{acceptability}}$$
+
+For late coercion:
+
+$$\text{Surprisal effect} = \beta_{\text{surprisal}} + \beta_{\text{surprisal×late}}$$
+
+$$\text{Acceptability effect} = \beta_{\text{acceptability}} + \beta_{\text{acceptability×late}}$$
+
+---
+
+## Visualizing conditional slopes
+
+```{r conditional-slopes}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 6
+
+# Extract interaction coefficients from frequentist model
+coefs <- coef(model_interaction)
+
+# Compute slopes for each predictor × condition combination
+slopes_df <- data.frame(
+  condition = rep(levels(spr_full$condition), times = 2),
+  predictor = rep(c("Surprisal", "Acceptability"), each = 2),
+  slope = c(
+    coefs["surprisal"],  # surprisal, early coercion
+    coefs["surprisal"] + coefs["surprisal:conditionlate coercion"],  # surprisal, late coercion
+    coefs["mean_acceptability"],  # acceptability, early coercion
+    coefs["mean_acceptability"] + coefs["mean_acceptability:conditionlate coercion"]  # acceptability, late coercion
+  )
+)
+
+# Plot
+ggplot(slopes_df, aes(x = condition, y = slope, color = predictor, group = predictor)) +
+  geom_point(size = 4) +
+  geom_line(linewidth = 1.2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_color_brewer(palette = "Set1") +
+  labs(x = "Condition",
+       y = "Effect on Log RT",
+       title = "Conditional Slopes: How Predictor Effects Vary by Condition",
+       color = "Predictor") +
+  theme_minimal(base_size = 13)
+```
+
+---
+
+## Effect sizes
+
+Beyond statistical significance, we want to know the **magnitude** of effects.
+
+For continuous predictors, standardized coefficients indicate effect size:
+
+$$\beta_{\text{std}} = \beta \times \frac{\text{SD}(X)}{\text{SD}(Y)}$$
+
+For categorical predictors, Cohen's $d$ measures standardized mean differences.
+
+---
+
+## Computing effect sizes
+
+```{r effect-sizes}
+#| echo: true
+#| code-fold: false
+
+library(effectsize)
+
+# Standardized coefficients
+standardize_parameters(model_interaction)
+```
+
+---
+
+# Summary
+
+## What we've covered
+
+1. **Multiple regression**: Modeling with multiple predictors
+2. **Categorical encoding**: Dummy variables and interpretation
+3. **Interactions**: When effects depend on other variables
+4. **Diagnostics**: Same checks apply to multiple regression
+5. **Multicollinearity**: VIF and how to address it
+6. **Visualizations**: Faceting, marginal effects, interaction plots
+7. **Bayesian approach**: brms for multiple regression
+
+---
+
+## Key takeaways
+
+- Multiple regression models joint effects of several predictors
+- Categorical predictors are encoded as dummy variables
+- Interactions capture non-additive effects
+- Diagnostic checks ensure valid inference
+- Visualizations clarify complex relationships
+- Bayesian methods provide full uncertainty quantification
+
+---
+
+## Next steps
+
+The [mixed-effects models](structured-data.qmd) unit extends these models with **random effects**, allowing us to model hierarchical structure in linguistic data (e.g., variation across participants and items).
+
+This leads to **mixed-effects models**, which are the workhorse of modern psycholinguistic analysis.
+
+---

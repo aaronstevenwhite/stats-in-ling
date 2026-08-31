@@ -1,0 +1,222 @@
+---
+title: "Distance and scaling"
+---
+
+The input matrix tells us which measurements describe each linguistic object. It does not yet say how a difference of 100 Hz in F1 should be combined with a difference of 20 ms in duration. A distance calculation must turn those columnwise differences into one comparison. We have already used [centering](../regression-models/centering-predictors.qmd) to change a predictor's reference point. This page adds scaling because distance depends on both origins and units.
+
+[**Euclidean distance**](https://online.stat.psu.edu/stat505/Lesson14) and the scaling of the columns jointly determine the geometry of the feature space. Both are assumptions about which numerical differences should count as comparable.
+
+We first calculate a raw Euclidean distance. We then show how one high-variance column can dominate it, standardize a small matrix by hand, and implement a training-based transformation in R. Finally, we state the linguistic assumptions built into the resulting geometry.
+
+## Define Euclidean distance
+
+For two rows $\mathbf{x}_i$ and $\mathbf{x}_j$ with $p$ features, Euclidean distance is
+
+$$
+d(\mathbf{x}_i,\mathbf{x}_j)
+=
+\sqrt{
+\sum_{m=1}^{p}
+(x_{im}-x_{jm})^2
+}.
+$$
+
+The calculation has three steps. Subtract the values within each column, square the differences, and take the square root of their sum.
+
+Squaring makes positive and negative differences contribute in the same direction. The final square root returns the distance to the units of the coordinate system, though a system with several differently measured columns has no single physical unit.
+
+## Calculate one raw distance
+
+Suppose two speakers have feature vectors
+
+$$
+\mathbf{x}_A=(1,4)
+$$
+
+and
+
+$$
+\mathbf{x}_B=(3,5).
+$$
+
+Their columnwise differences are $1-3=-2$ and $4-5=-1$. Thus,
+
+$$
+\begin{aligned}
+d(\mathbf{x}_A,\mathbf{x}_B)
+&=
+\sqrt{(1-3)^2+(4-5)^2}\\
+&=
+\sqrt{(-2)^2+(-1)^2}\\
+&=
+\sqrt{4+1}\\
+&=
+\sqrt{5}\\
+&\approx2.24.
+\end{aligned}
+$$
+
+The first feature contributes four squared units, while the second contributes one. The first difference thus has four times the influence on squared distance.
+
+## See the unit problem
+
+Suppose one feature is a 1 to 5 speaking rating and another is an annual token count. Two speakers differ by one rating point and 1,000 tokens. Their squared contributions are
+
+$$
+1^2=1
+$$
+
+and
+
+$$
+1000^2=1{,}000{,}000.
+$$
+
+The token-count column dominates the distance. If the same counts were recorded in thousands of tokens, the numerical difference would be 1 and its squared contribution would also be 1. The learned geometry would change even though the speakers did not.
+
+Raw Euclidean distance treats one numerical unit on every column as directly comparable. A variable measured on a numerically larger scale can thus dominate the distance.
+
+## Standardize the columns
+
+For feature $m$, let $\bar{x}_m$ and $s_m$ be its sample mean and sample standard deviation. The standardized value is
+
+$$
+z_{im}
+=
+\frac{x_{im}-\bar{x}_m}{s_m}.
+$$
+
+After this transformation, the observed column has sample mean zero and sample standard deviation one. A one-unit difference now means one observed sample standard deviation on that feature.
+
+Consider three speaking ratings:
+
+$$
+1,\ 3,\ 5.
+$$
+
+Their mean is 3. Their sample standard deviation is 2, since
+
+$$
+s
+=
+\sqrt{
+\frac{(1-3)^2+(3-3)^2+(5-3)^2}{3-1}
+}
+=
+2.
+$$
+
+The standardized values are
+
+$$
+\frac{1-3}{2}=-1,
+\qquad
+\frac{3-3}{2}=0,
+\qquad
+\frac{5-3}{2}=1.
+$$
+
+The original four-point range has become a two-standard-deviation range. Relative position is retained, but the column unit has changed.
+
+## Recalculate a comparison after scaling
+
+Suppose two speakers differ by 1,000 tokens in a column whose sample standard deviation is 10,000. Their standardized difference is
+
+$$
+\frac{1000}{10000}=0.1,
+$$
+
+so its squared contribution is
+
+$$
+0.1^2=0.01.
+$$
+
+If the one-point rating difference is one full rating standard deviation, it contributes $1^2=1$. After standardization, the rating difference contributes more to Euclidean distance than the token difference.
+
+The underlying observations have not changed. The analysis has changed what counts as a comparable difference.
+
+## Implement the transformation and distance
+
+In R, `scale()` centers and standardizes each column.
+
+```{r}
+#| eval: false
+
+X_scaled <- scale(
+  X,
+  center = TRUE,
+  scale = TRUE
+)
+
+colMeans(X_scaled)
+apply(X_scaled, 2, sd)
+```
+
+The function `dist()` computes Euclidean distances among rows by default.
+
+```{r}
+#| eval: false
+
+distance_matrix <- dist(
+  X_scaled,
+  method = "euclidean"
+)
+
+as.matrix(distance_matrix)
+```
+
+The matrix is symmetric because $d(\mathbf{x}_i,\mathbf{x}_j)=d(\mathbf{x}_j,\mathbf{x}_i)$. Its diagonal is zero because every row has zero distance from itself.
+
+## Estimate scaling within training data
+
+During held-out evaluation, column means and standard deviations are fitted quantities. Estimate them from the training rows:
+
+$$
+\bar{x}^{\mathrm{train}}_m
+\qquad\text{and}\qquad
+s^{\mathrm{train}}_m.
+$$
+
+Apply those values to a test row:
+
+$$
+z^{\mathrm{test}}_{im}
+=
+\frac{
+x^{\mathrm{test}}_{im}-\bar{x}^{\mathrm{train}}_m
+}{
+s^{\mathrm{train}}_m
+}.
+$$
+
+Computing scaling from the complete dataset would allow test rows to influence the geometry used to evaluate them. Computing separate test means would put training and test rows in different coordinate systems.
+
+Estimating the scaling transformation from held-out rows is [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage). Out-of-sample evaluation requires one coordinate system estimated without those rows.
+
+## Equal variance is not equal importance
+
+Standardization gives every column observed variance one. It does not make the columns equally reliable, theoretically important, or independent.
+
+If two columns are near duplicates, their shared measurement effectively enters the distance twice. If one rating is noisy, standardization still gives it the same observed variance as a reliable acoustic measure. These are representation choices that scaling cannot diagnose.
+
+Standardization is a defensible convention when differences of one sample standard deviation should be comparable across features. The analysis should state that convention and check whether its conclusions depend on it.
+
+## Euclidean distance makes a linguistic assumption
+
+Euclidean distance treats feature differences as continuous, symmetric, and additive after scaling. A difference of one unit has the same cost in either direction. Separate squared contributions are added across columns.
+
+Ordinal ratings, binary grammatical properties, or strongly dependent acoustic measurements may not satisfy that interpretation. A poor clustering under Euclidean distance does not show that the objects lack structure. It may show that the declared geometry does not represent the relevant linguistic comparison.
+
+## Check the geometry
+
+1. What is the Euclidean distance between $(0,0)$ and $(3,4)$?
+2. Why does a difference of 1,000 dominate a difference of 1 before scaling?
+3. What does a one-unit difference mean after standardization?
+4. Why must test rows use training means and standard deviations?
+5. How can two duplicate columns receive too much combined influence even after each is standardized?
+6. Which assumptions does Euclidean distance make about feature differences?
+
+## Before assigning groups
+
+Euclidean distance combines columnwise differences under a declared coordinate system. Standardization replaces raw units with observed standard-deviation units, but it does not decide which features are reliable or theoretically relevant. The [next page](k-means.qmd) uses this geometry to assign observations to learned centroids.

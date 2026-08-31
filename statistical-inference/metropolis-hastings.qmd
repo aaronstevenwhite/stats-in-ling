@@ -1,0 +1,173 @@
+---
+title: "Metropolis-Hastings sampling"
+---
+
+The [preceding page](markov-chain-monte-carlo.qmd) stated the properties required of a transition without constructing one. The Metropolis-Hastings algorithm supplies a transition that leaves a chosen target distribution invariant. Suppose $\Delta$ is a standardized vowel shift contrast. For a small teaching model, take its target to be a standard normal density:
+
+$$
+p(\delta)\propto\exp\left(-\frac{\delta^2}{2}\right).
+$$
+
+The [**Metropolis-Hastings algorithm**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html) constructs a Markov chain for this target by proposing a move and then accepting or rejecting it with a probability that corrects the proposal process.
+
+## Step 1: propose a move
+
+Suppose the current state is
+
+$$
+\delta^{(s)}=.20.
+$$
+
+Use a normal random-walk proposal:
+
+$$
+\delta'\mid\delta^{(s)}
+\sim
+\operatorname{Normal}(\delta^{(s)},.75^2).
+$$
+
+Suppose this transition proposes
+
+$$
+\delta'=1.00.
+$$
+
+The proposal density is written $q(\delta'\mid\delta^{(s)})$. It describes a computational move, not uncertainty about the linguistic contrast.
+
+## Step 2: form the acceptance ratio
+
+For an unnormalized target $\widetilde{p}$ and a general proposal $q$, the ratio is
+
+$$
+r
+=
+\frac{
+\widetilde{p}(\delta')
+q(\delta^{(s)}\mid\delta')
+}{
+\widetilde{p}(\delta^{(s)})
+q(\delta'\mid\delta^{(s)})
+}.
+$$
+
+The random-walk proposal is symmetric:
+
+$$
+q(1.00\mid.20)
+=
+q(.20\mid1.00).
+$$
+
+The proposal terms cancel, leaving
+
+$$
+\begin{aligned}
+r
+&=
+\frac{\exp(-1^2/2)}
+{\exp(-.2^2/2)}\\
+&=
+\exp\left[-\frac{1^2-.2^2}{2}\right]\\
+&\approx.619.
+\end{aligned}
+$$
+
+Moves toward higher target density have $r>1$ and will be accepted. Moves toward lower density can still be accepted, which lets the chain leave a local high-density point and represent target spread.
+
+## Step 3: accept or repeat
+
+Draw $U\sim\operatorname{Uniform}(0,1)$ and accept when
+
+$$
+U<\min(1,r).
+$$
+
+If $u=.40$, the proposal is accepted because $.40<.619$, so
+
+$$
+\delta^{(s+1)}=1.00.
+$$
+
+If $u=.80$, it is rejected, so
+
+$$
+\delta^{(s+1)}=.20.
+$$
+
+The repeated current state must remain in the chain. Deleting rejections would change how much time the chain spends in different target regions.
+
+## See why the normalizer cancels
+
+Suppose $p(\delta)=\widetilde{p}(\delta)/Z$. The target part of the ratio is
+
+$$
+\frac{\widetilde{p}(\delta')/Z}
+{\widetilde{p}(\delta^{(s)})/Z}
+=
+\frac{\widetilde{p}(\delta')}
+{\widetilde{p}(\delta^{(s)})}.
+$$
+
+Metropolis-Hastings thus needs relative target density rather than a known normalizing constant.
+
+## Retain proposal correction when needed
+
+The proposal terms canceled only because the random walk is symmetric. If a proposal moves upward more readily than downward, then
+
+$$
+q(\delta'\mid\delta^{(s)})
+\neq
+q(\delta^{(s)}\mid\delta').
+$$
+
+The proposal ratio corrects this directional imbalance. Dropping it would generally change the stationary distribution. The full Metropolis-Hastings ratio should be written before symmetry is used to simplify a particular proposal.
+
+## Run the complete sampler
+
+```{r}
+#| label: random-walk-metropolis
+#| echo: true
+
+set.seed(491)
+draw_count <- 50000
+proposal_sd <- .75
+delta <- numeric(draw_count)
+accepted <- logical(draw_count)
+
+for (s in 2:draw_count) {
+  proposal <- rnorm(1, mean = delta[s - 1], sd = proposal_sd)
+  log_ratio <- dnorm(proposal, log = TRUE) -
+    dnorm(delta[s - 1], log = TRUE)
+
+  if (log(runif(1)) < min(0, log_ratio)) {
+    delta[s] <- proposal
+    accepted[s] <- TRUE
+  } else {
+    delta[s] <- delta[s - 1]
+  }
+}
+
+saved <- delta[1001:draw_count]
+stopifnot(abs(mean(saved)) < .05)
+stopifnot(abs(sd(saved) - 1) < .05)
+
+c(mean = mean(saved), sd = sd(saved),
+  acceptance_rate = mean(accepted[-1]))
+```
+
+## Understand proposal scale
+
+Very small steps are accepted often but move slowly. Very large steps travel farther but are frequently proposed in low-density regions and rejected. Proposal scale changes computational efficiency while a correctly formed acceptance probability preserves the same target.
+
+A high acceptance rate does not prove that a sampler is effective. A chain that barely moves can accept nearly every proposal and still approximate posterior summaries inefficiently.
+
+The acceptance decision is not a significance test. It does not decide whether a parameter is true or whether a vowel shift exists. It is a randomized computational step designed to allocate time across states according to target density.
+
+## Check your understanding
+
+1. Starting from zero, what is the target ratio for a proposal of two?
+2. Would that move be accepted when $u=.20$?
+3. Why must rejected states remain in the saved sequence?
+4. What does proposal scale change, and what should it leave unchanged?
+
+The next page in the sequence introduces [Hamiltonian Monte Carlo](hamiltonian-monte-carlo.qmd), which uses gradients to construct more directed proposals.

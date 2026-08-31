@@ -1,0 +1,422 @@
+---
+title: "Problem Set 5: Structure in phoneme inventories"
+subtitle: "Statistical Methods in Linguistics"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
+---
+
+## What this problem set asks
+
+Languages do not assemble their phoneme inventories by choosing each segment in isolation. A language with one series of voiced stops may be more likely to have other members of that series. Vowel length may recur across several vowel qualities. Place contrasts may likewise extend across several manners of articulation. These examples suggest that segment presence has structure.
+
+The comparison baseline predicts whether a segment occurs in an inventory using only the overall prevalence of that segment. It does not use the other segments in the inventory. A low rank representation can improve on this prevalence-only baseline only if recurring configurations of segments contain information about a cell that we deliberately hide.
+
+The focal technique is a [low-rank approximation based on the singular value decomposition](../../factorization/reconstruction.qmd). We will represent languages by segments, hide a balanced set of present and absent cells, select the rank on validation cells, and evaluate the selected representation on separate test cells. Following the earlier definition of [predictive loss](../../model-criticism-and-prediction/predictive-loss.qmd), the improvement in reconstruction is the baseline Brier loss minus the low-rank Brier loss:
+
+$$
+\operatorname{improvement}
+=
+\operatorname{Brier}_{\text{prevalence}}
+-
+\operatorname{Brier}_{\text{low rank}}.
+$$
+
+A positive improvement means that the low rank representation reconstructs held out cells better than segment prevalence alone. It does not show that the components are universal phonological dimensions. We will need the inventory source, language family, and macroarea diagnostics to determine how much structure those labels carry.
+
+::: {.callout-note title="Data documentation"}
+Consult the PHOIBLE 2.0 [download and citation page](https://phoible.org/download) and the FAQ sections ["Why do some languages have multiple entries in PHOIBLE?"](https://phoible.org/faq#why-do-some-languages-have-multiple-entries-in-phoible), ["Random sampling: one inventory per isocode/glottocode"](https://phoible.org/faq#random-sampling-one-inventory-per-isocodeglottocode), and ["What are the different sources in PHOIBLE?"](https://phoible.org/faq#what-are-the-different-sources-in-phoible). This documentation is included because the row selection and source diagnostic depend on how PHOIBLE combines inventories from different descriptions and collections. The factorization cannot be interpreted before those sampling decisions are understood.
+:::
+
+Before beginning, review [linguistic data matrices](../../factorization/data-matrices.qmd), [centering and scaling](../../factorization/centering-and-scaling.qmd), [rank one structure](../../factorization/rank-one-structure.qmd), [singular value decomposition](../../factorization/singular-value-decomposition.qmd), [principal component analysis](../../factorization/principal-component-analysis.qmd), [scores and loadings](../../factorization/scores-and-loadings.qmd), [reconstruction](../../factorization/reconstruction.qmd), and [choosing components](../../factorization/choosing-components.qmd). Each page supplies one part of the analysis below. The low-rank approximation is the only focal technique introduced here. Masking and scoring apply the [training, validation, and test separation](../../model-criticism-and-prediction/training-and-test-data.qmd) used earlier in the course.
+
+## Prepare the data
+
+The archived release is Moran and McCloy's (2019) PHOIBLE 2.0, DOI [10.5281/zenodo.2593234](https://doi.org/10.5281/zenodo.2593234). The PHOIBLE site licenses the data under Creative Commons Attribution ShareAlike 3.0 Unported. The course does not commit a copy of the archive.
+
+From the repository root, run:
+
+```sh
+Rscript problem-sets/ps5/scripts/prepare-phoible.R
+```
+
+The script downloads the pinned CLDF archive, checks its MD5 and SHA 256 values, and creates `data/phoible-pilot.rds` inside the PS5 directory. It retains consonants and vowels, removes tones, and removes rows explicitly marked as marginal. A blank marginality field remains because it means that the source did not state whether the segment is marginal.
+
+Load the prepared object and the audited functions.
+
+```{r}
+phoible <- readRDS("data/phoible-pilot.rds")
+source("scripts/phoible-svd-functions.R")
+
+names(phoible)
+phoible$provenance
+```
+
+The object contains three linked tables.
+
+1. `memberships`: one row states that one segment occurs in one contributed inventory.
+2. `inventories`: one row describes one contributed inventory and its Glottocode, source collection, top level family, and macroarea.
+3. `segments`: one row describes one PHOIBLE segment parameter.
+
+The inventory source is the PHOIBLE collection that contributed a description, not the language's family or location. Several collections have restricted geographic coverage. Thus source, family, and macroarea may be associated with one another.
+
+## Task 1: establish the recorded and sampling units (10 points)
+
+Use the provenance record and the three tables to answer the following questions.
+
+1. How many rows, contributed inventories, and Glottocodes occur in the original CLDF release?
+2. What does one row of `memberships` represent?
+3. Why can one Glottocode have more than one inventory?
+4. Why would treating all 3,020 inventories as independent language samples give heavily described Glottocodes extra weight?
+5. What claim does the exclusion of tones make about the matrix studied here?
+6. What claim does it not make about tone as a phonological property?
+
+Create a frequency table for the number of contributed inventories per Glottocode. Report how many Glottocodes have more than one inventory and the largest number attached to one Glottocode.
+
+```{r}
+# Count contributed inventories within each Glottocode.
+```
+
+**Piloted checkpoint:** the archived release contains 105,462 value rows, 3,020 inventories, and 2,186 Glottocodes. The later matrix must have one row for each of those 2,186 Glottocodes.
+
+## Task 2: select one inventory per Glottocode (10 points)
+
+There is no uniquely correct way to choose among several descriptions of the same Glottocode. We will compare two declared rules.
+
+1. Randomly select one inventory per Glottocode with seed 20260827.
+2. Select the inventory with the most retained nonmarginal consonants and vowels. Break ties by choosing the smaller inventory ID.
+
+The seeded rule follows the random sampling option in the PHOIBLE FAQ. The largest rule follows its suggested option for an analyst who prefers more inclusive segment inventories. The second rule will tend to prefer descriptions that split contrasts more finely, so it is a sensitivity condition rather than a neutral gold standard.
+
+```{r}
+seeded_inventories <- select_inventories(
+  phoible$inventories,
+  rule = "seeded_random"
+)
+largest_inventories <- select_inventories(
+  phoible$inventories,
+  rule = "largest_inventory"
+)
+
+# Verify one row per Glottocode under each rule.
+```
+
+Join the two selections by `glottocode`. Report the count and proportion for which the rules choose the same inventory. Then make a source frequency table under each rule.
+
+```{r}
+# Compare selected inventory IDs and source frequencies.
+```
+
+Explain why agreement between the rules does not show that the selected inventory is the true inventory for a language. It shows only that the two operational rules often make the same choice.
+
+**Piloted checkpoint:** each rule selects 2,186 inventories. The rules choose the same inventory for 1,887 Glottocodes, or .8632 of the sample.
+
+## Task 3: construct the language by segment matrix (10 points)
+
+We now turn the membership table into a binary matrix. A row is a selected inventory. A column is a PHOIBLE segment. A cell equals one when that segment occurs in the selected inventory and zero otherwise.
+
+Very rare segment columns create two problems for this exercise. First, a segment seen only once or twice supplies too little information for held out reconstruction. Second, a large set of nearly empty columns makes the result depend on many source specific transcription decisions. The primary analysis thus retains a segment only if it occurs in at least 20 selected inventories.
+
+```{r}
+primary_data <- build_inventory_matrix(
+  prepared = phoible,
+  selected = seeded_inventories,
+  minimum_count = 20L
+)
+X <- primary_data$matrix
+
+dim(X)
+summary(rowSums(X))
+summary(colMeans(X))
+mean(X)
+```
+
+Answer four questions.
+
+1. What do the row and column counts mean linguistically?
+2. What does a row sum mean?
+3. What does a column mean estimate?
+4. Why does a zero mean absence from the selected description rather than articulatory impossibility?
+
+Make a histogram of segment prevalence. Label the horizontal axis as a proportion of selected inventories, not as a probability for the world's languages.
+
+```{r}
+# Plot colMeans(X).
+```
+
+**Piloted checkpoint:** the primary matrix has 2,186 rows and 293 columns. Its mean cell value is .1045, so approximately .8955 of its cells are zeros.
+
+## Task 4: hide balanced present and absent cells (10 points)
+
+If we scored every cell, an algorithm that always predicts zero would appear accurate because almost 90 percent of the matrix is zero. Such a score would say little about recovering segments that are actually present. We will thus mask equal numbers of present and absent cells.
+
+For every eligible inventory, reserve three present and three absent cells for validation. Then reserve a disjoint set of three present and three absent cells for testing. An inventory is eligible when it has at least ten present and ten absent cells. The cells are known in the source data. They are hidden only to evaluate reconstruction.
+
+```{r}
+masks <- make_balanced_masks(X, seed = 20260847L)
+
+sum(masks$eligible)
+sum(masks$validation)
+sum(masks$test)
+sum(masks$validation & masks$test)
+table(X[masks$validation])
+table(X[masks$test])
+```
+
+Explain why the following properties matter.
+
+1. Present and absent cells occur equally often in each scoring set.
+2. Validation and test cells do not overlap.
+3. At least four present cells remain observed in every eligible row after both sets are hidden.
+4. Test cells remain hidden while rank is selected.
+
+**Piloted checkpoint:** all 2,186 inventories are eligible. Validation and test each contain 13,116 cells, split equally between presence and absence, with no overlap.
+
+## Task 5: define the prevalence baseline (10 points)
+
+The baseline uses the observed training prevalence of segment $j$,
+
+$$
+\widehat p_j
+=
+\frac{\text{observed inventories containing segment }j}
+{\text{inventories observed for segment }j}.
+$$
+
+The same value is predicted for every hidden cell in column $j$. Thus the baseline knows that /m/ is common and a rarer segment is rare, but it cannot use the rest of a particular inventory.
+
+Hide both validation and test cells. Estimate the column means from the remaining cells, and predict each validation cell with its column mean.
+
+```{r}
+validation_training <- X
+validation_training[masks$validation | masks$test] <- NA_real_
+
+segment_prevalence <- colMeans(validation_training, na.rm = TRUE)
+validation_cells <- which(masks$validation, arr.ind = TRUE)
+validation_baseline <- segment_prevalence[validation_cells[, "col"]]
+validation_truth <- X[masks$validation]
+
+balanced_score(validation_truth, validation_baseline, loss = "brier")
+```
+
+For a binary cell with observed value $y$ and prediction $p$, Brier loss is $(y-p)^2$. The balanced score takes the mean loss for present cells and absent cells separately, then averages those two means. Write out this calculation using the validation vectors and verify that it matches `balanced_score()`.
+
+Explain why column prevalence is a more informative baseline than the constant value .5, even though the evaluation set is balanced.
+
+**Piloted checkpoint:** validation balanced Brier loss for the prevalence-only baseline is .2168.
+
+## Task 6: select the rank on validation cells (15 points)
+
+The low rank model begins with the same column means. After centering, a hidden cell is filled with zero on the centered scale, which is equivalent to filling it with its column mean on the original scale. We then compute
+
+$$
+\mathbf{X}_{c}
+=
+\mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf T}.
+$$
+
+At rank $K$, the reconstruction for cell $(i,j)$ is
+
+$$
+\widehat x_{ij,K}
+=
+\widehat p_j
++
+\sum_{k=1}^{K}d_k u_{ik}v_{jk}.
+$$
+
+The first term is the prevalence-only baseline. Each additional term uses a row score and a segment loading to adjust that baseline. Predictions below zero or above one are clipped to the unit interval because the cells are binary.
+
+We center each segment column but do not divide it by its standard deviation. Standardizing a binary column would give a rare segment a different weight from the one it has in cellwise Brier loss. The unscaled factorization thus matches the reconstruction target stated above. This is a modeling decision, not a general prohibition against scaling binary variables.
+
+Fit up to rank 40 while both validation and test cells are hidden. Score the declared candidate ranks on validation cells.
+
+```{r}
+candidate_ranks <- c(1L, 2L, 3L, 5L, 8L, 12L, 16L, 24L, 32L, 40L)
+
+validation_fit <- fit_low_rank(
+  inventory_matrix = X,
+  mask = masks$validation | masks$test,
+  maximum_rank = max(candidate_ranks)
+)
+
+validation_brier <- vapply(candidate_ranks, function(rank) {
+  prediction <- predict_masked(validation_fit, masks$validation, rank)
+  balanced_score(validation_truth, prediction, loss = "brier")
+}, numeric(1))
+
+rank_curve <- data.frame(
+  rank = c(0L, candidate_ranks),
+  validation_brier = c(
+    balanced_score(validation_truth, validation_baseline, "brier"),
+    validation_brier
+  )
+)
+rank_curve
+```
+
+Plot the curve and select the rank with the smallest validation loss. Report the reduction in validation Brier loss at that rank.
+
+```{r}
+# Plot validation_brier by rank and identify the minimizing rank.
+```
+
+Explain why the selected rank need not be the first bend in a scree plot. Then explain why choosing the rank from observed reconstruction error would favor larger ranks even when they do not reconstruct hidden cells better.
+
+**Piloted checkpoint:** validation selects rank 32. Balanced Brier loss falls from .2168 under the prevalence-only baseline to .1242, a reduction of .0925.
+
+## Task 7: evaluate once on the test cells (10 points)
+
+The rank is now fixed. Restore the validation cells, keep only the test cells hidden, and recompute the factorization. This refit uses the validation values as training information without allowing the test values to determine the component directions.
+
+```{r}
+selected_rank <- rank_curve$rank[which.min(rank_curve$validation_brier)]
+
+test_fit <- fit_low_rank(
+  inventory_matrix = X,
+  mask = masks$test,
+  maximum_rank = max(candidate_ranks)
+)
+test_truth <- X[masks$test]
+test_baseline <- predict_masked(test_fit, masks$test, rank = 0L)
+test_low_rank <- predict_masked(test_fit, masks$test, rank = selected_rank)
+
+test_results <- data.frame(
+  model = c("prevalence", paste("rank", selected_rank)),
+  balanced_brier = c(
+    balanced_score(test_truth, test_baseline, "brier"),
+    balanced_score(test_truth, test_low_rank, "brier")
+  ),
+  balanced_log_loss = c(
+    balanced_score(test_truth, test_baseline, "log"),
+    balanced_score(test_truth, test_low_rank, "log")
+  )
+)
+test_results
+```
+
+Compute the reduction in test Brier loss. Then interpret it as a change in mean squared probability error under the balanced scoring target. Do not describe it as a percentage increase in accuracy.
+
+Calculate the fraction of centered squared variation represented by the first 32 singular values. Why is this quantity not interchangeable with the reduction in test Brier loss?
+
+**Piloted checkpoint:** test balanced Brier loss falls from .2123 to .1106, a reduction of .1017. Balanced log loss falls from .6877 to .3830. The selected components represent .6476 of centered squared variation in the test fit.
+
+## Task 8: inspect phonological and database structure (15 points)
+
+Good reconstruction establishes cooccurrence structure. It does not tell us what generated that structure. We will inspect segment loadings and three labels attached to each selected inventory.
+
+First, list the ten largest positive and negative loadings for components 1 and 2.
+
+```{r}
+top_loadings(
+  test_fit,
+  phoible,
+  colnames(X),
+  component = 1L,
+  n = 10L
+)
+
+top_loadings(
+  test_fit,
+  phoible,
+  colnames(X),
+  component = 2L,
+  n = 10L
+)
+```
+
+Describe one recurring phonological pattern in each table. For component 1, attend to the contrast between several plain obstruents and several retroflex or dental segments. For component 2, attend to long vowels. Because component signs are arbitrary, write about segments loading on the same or opposite sides, not about an inherently positive component.
+
+Next, calculate component scores and their association with source, top level family, and macroarea. For a score vector $z$ and grouping $g$, the squared [**correlation ratio**](https://courses.washington.edu/psy524a/_book/anova-is-just-regression.html), also called eta squared in a one-way analysis, is
+
+$$
+\eta^2(z,g)
+=
+\frac{\sum_h n_h(\overline z_h-\overline z)^2}
+{\sum_i(z_i-\overline z)^2}.
+$$
+
+It measures the proportion of observed score variation lying between the named groups. For the family calculation, families with fewer than 15 selected inventories are combined into `Other small families`. Without this grouping, a family represented by one inventory would place all of that inventory's score variation between families by construction. The ratio is not a causal effect, and it does not identify which of the three associated labels generated the pattern.
+
+```{r}
+associations <- score_associations(
+  test_fit,
+  selected_rank,
+  primary_data$metadata
+)
+
+associations[associations$component <= 5L, ]
+```
+
+Finally, compute the reduction in Brier loss for each inventory and summarize it by source, family, and macroarea.
+
+```{r}
+inventory_scores <- score_by_inventory(
+  X,
+  masks$test,
+  test_baseline,
+  test_low_rank
+)
+group_results <- summarize_groups(inventory_scores, primary_data$metadata)
+
+# Inspect groups with at least 50 inventories for source and macroarea.
+# Inspect families with at least 15 inventories.
+```
+
+Answer three questions.
+
+1. Is reconstruction gain confined to one large source, family, or macroarea?
+2. Why do strong component associations block a universal interpretation of the loadings?
+3. Why does a positive group mean not show that every inventory in that group is well reconstructed?
+
+**Piloted checkpoint:** component 1 association ratios are .72 for source, .67 for grouped family, and .74 for macroarea. The mean reduction in Brier loss is positive for all six macroareas with at least 50 inventories, all nine sources with at least 50 inventories, and all 25 families with at least 15 inventories.
+
+## Task 9: vary the declared data decisions and license the claim (10 points)
+
+Repeat the complete analysis under rare segment thresholds 10, 20, and 40 for both inventory selection rules. Do not change the rank candidates, mask sizes, seeds, or score after seeing a result.
+
+```{r}
+scenario_grid <- expand.grid(
+  selection_rule = c("seeded_random", "largest_inventory"),
+  minimum_count = c(10L, 20L, 40L),
+  stringsAsFactors = FALSE
+)
+
+# Run run_phoible_scenario() for every row and combine each $summary table.
+```
+
+Report the number of retained segments, selected rank, and the validation and test reductions in Brier loss for each condition. State whether the main conclusion depends on either declared choice.
+
+Then write a seven-to-nine sentence results paragraph. It must do all of the following.
+
+1. Name the rows, columns, and rare segment threshold in the primary matrix.
+2. Explain why present and absent cells receive equal weight.
+3. Report the selected rank and validation result.
+4. Report the primary reduction in test Brier loss and both test losses.
+5. Summarize the selection and threshold sensitivity.
+6. State that component scores are strongly associated with source, family, and macroarea.
+7. End with the narrow claim licensed by the analysis.
+
+The licensed claim is that recurring segment configurations improve balanced reconstruction within the selected PHOIBLE inventories. The analysis does not establish universal phonological dimensions, a probability sample of languages, or a causal effect of genealogy or geography.
+
+**Piloted checkpoint:** all six conditions select ranks from 24 to 32. The reduction in test Brier loss ranges from .0986 to .1017. At threshold 20, both selection rules give a reduction of .1017 when rounded to four decimal places.
+
+## LING 414 extension: determine what the first component predicts
+
+Component 1 is strongly associated with source, family, and macroarea. These labels are themselves associated. Construct three descriptive predictions of the component 1 score, one from each label, using leave-one-inventory-out group means. For an omitted inventory, predict its score with the mean of the remaining inventories in the same group, falling back to the overall training mean when the group has no remaining member.
+
+Compare squared prediction loss for source, family, and macroarea. This comparison asks which label transfers most information about this fitted score under a particular grouping rule. It does not isolate a causal contribution and must not be described as controlling for the other labels.
+
+## Submission checklist
+
+1. The analysis runs from a fresh R session after the data preparation command.
+2. Exactly one inventory is selected per Glottocode.
+3. The matrix meaning and rare segment threshold are stated before factorization.
+4. Validation and test masks contain equal numbers of present and absent cells and do not overlap.
+5. Rank is selected without using test cells.
+6. Test results are evaluated once after rank selection.
+7. Loading signs are treated as arbitrary.
+8. Source, family, and macroarea diagnostics appear before the final claim.
+9. Sensitivity conditions change only the declared selection rule and rare segment threshold.

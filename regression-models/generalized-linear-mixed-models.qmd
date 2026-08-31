@@ -1,0 +1,166 @@
+---
+title: "Generalized linear mixed models"
+---
+
+This page combines the [logistic response model](logistic-regression.qmd) with the group deviations introduced for [random-intercept models](random-intercepts.qmd). Neither component is new; their combination is a generalized linear mixed model.
+
+Suppose an experiment records whether a participant chooses a pronoun on each trial. The response is binary, so logistic regression supplies the response distribution and link. But each participant contributes several choices. A model that treats those choices as unrelated observations loses the repeated participant structure.
+
+A linear mixed-effects model represents repeated observations through group-specific deviations, but its normally distributed response does not represent a binary choice. A [**generalized linear mixed model**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html), or [**GLMM**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html), combines the two structures already introduced. It uses a generalized linear model response family and link, then places random effects inside the linear predictor.
+
+The principal concept on this page is the combination. No new response distribution or random effect distribution is required.
+
+## Begin with the logistic response model
+
+Let $Y_{ij}=1$ when participant $j$ chooses a pronoun on trial $i$. Let $X_{ij}=1$ when the antecedent was the preceding subject and $X_{ij}=0$ otherwise. A logistic regression without random effects writes
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij})
+$$
+
+and
+
+$$
+\operatorname{logit}(\pi_{ij})
+=\beta_0+\beta_1X_{ij}.
+$$
+
+The model has one baseline log odds value, $\beta_0$, and one subject status contrast, $\beta_1$. Participants with the same predictor value receive the same fitted probability. Any remaining participant variation is forced into the Bernoulli trial variation.
+
+That last assumption is often implausible. Some participants may prefer pronouns across conditions, while others may avoid them. Repeated responses from one participant then share a baseline tendency.
+
+## Add participant baselines
+
+Insert a participant random intercept into the linear predictor:
+
+$$
+\operatorname{logit}(\pi_{ij})
+=\beta_0+\beta_1X_{ij}+b_{0j},
+$$
+
+where
+
+$$
+b_{0j}\sim\mathcal{N}(0,\tau_0^2).
+$$
+
+The fixed intercept $\beta_0$ describes the population center on the log odds scale. The deviation $b_{0j}$ moves participant $j$ above or below that center. The parameter $\tau_0$ describes how much participant baselines vary in the modeled population.
+
+The Bernoulli distribution remains attached to each response. The logit link still maps the linear predictor to a valid probability. The random intercept changes only the participant specific location of that linear predictor.
+
+## Calculate two conditional probabilities
+
+Suppose
+
+$$
+\beta_0=-.5,
+\qquad
+\beta_1=1,
+\qquad
+b_{0j}=.4.
+$$
+
+For a nonsubject antecedent, $X=0$:
+
+$$
+\eta_{j,0}=-.5+1(0)+.4=-.1
+$$
+
+and
+
+$$
+\pi_{j,0}=\operatorname{logit}^{-1}(-.1)\approx.475.
+$$
+
+For a subject antecedent, $X=1$:
+
+$$
+\eta_{j,1}=-.5+1(1)+.4=.9
+$$
+
+and
+
+$$
+\pi_{j,1}=\operatorname{logit}^{-1}(.9)\approx.711.
+$$
+
+These are probabilities conditional on participant $j$ having deviation $.4$. A participant with deviation $-.6$ receives lower fitted probabilities in both conditions, even though the population coefficient $\beta_1$ is unchanged.
+
+## Fit the model in R
+
+```r
+fit_pronoun_glmm <- lme4::glmer(
+  pronoun ~ subject_status +
+    (1 | participant_id),
+  family = binomial(link = "logit"),
+  data = reference_choices
+)
+```
+
+The fixed part of the formula is the same as a logistic regression. `(1 | participant_id)` adds one random intercept for each participant and a population variance parameter for those intercepts.
+
+The grouping column identifies the source of dependence. Replacing it with a row identifier would give each observation its own group and would not represent repeated participants. Omitting the term would assert that any participant variation beyond `subject_status` is adequately described by Bernoulli trial variation.
+
+If experimental items also repeat, the design may require a second grouping term:
+
+```r
+fit_crossed_glmm <- lme4::glmer(
+  pronoun ~ subject_status +
+    (1 | participant_id) +
+    (1 | item_id),
+  family = binomial(link = "logit"),
+  data = reference_choices
+)
+```
+
+This formula has crossed participant and item intercepts. It does not average the responses by participant or by item. Each binary response remains in the likelihood, while the linear predictor records both shared sources of variation.
+
+## Distinguish conditional and population predictions
+
+The hand calculation conditioned on one participant deviation. A different question concerns a new participant drawn from the modeled population. That prediction must average over the random effect distribution:
+
+$$
+\mathbb{E}_{b}
+\left[
+\operatorname{logit}^{-1}(\eta+b)
+\right].
+$$
+
+Because the inverse logit is nonlinear,
+
+$$
+\mathbb{E}_{b}
+\left[
+\operatorname{logit}^{-1}(\eta+b)
+\right]
+\ne
+\operatorname{logit}^{-1}(\eta)
+$$
+
+in general. Setting the random effect to zero describes a participant at the population center on the link scale. It does not necessarily equal the probability obtained by averaging over the population of participants.
+
+A report should state whether its predicted probabilities condition on estimated groups, set group deviations to zero, or average over a group population. The appropriate calculation follows from the claim. Prediction for a returning participant can condition on that participant's estimated deviation. Prediction for a new participant cannot.
+
+## Fixed effects retain a conditional interpretation
+
+In the random intercept logistic model, $e^{\beta_1}$ is the subject status odds ratio for observations with the same participant deviation. With crossed item intercepts, the contrast also conditions on the same item deviation. This is sometimes called a subject specific or cluster conditional interpretation.
+
+The coefficient should not be described as the marginal odds ratio across the population unless that quantity has been computed. Nonlinearity means that averaging probabilities over random effects does not preserve the same odds ratio.
+
+This distinction is easy to miss when software prints one coefficient table. The model contains more than one useful scale: the additive link scale, the group conditional response scale, and the population averaged response scale.
+
+## A random intercept does not represent every dependence pattern
+
+The model above lets participants differ in baseline pronoun use. It assumes that the subject status contrast $\beta_1$ is common across participants. If participants vary in that contrast, a random intercept alone can still understate uncertainty about the experimental comparison.
+
+The repair is not to add every possible random term without reference to the design. It is to ask which manipulated or repeated contrasts vary across which sampled units. The earlier random slopes page develops that design question.
+
+GLMMs can also face weakly estimated variance components, separation, and computational warnings. A successful optimizer message does not establish that the response family, link, and dependence structure reproduce the relevant features of the data. Those checks remain part of model criticism.
+
+::: {.callout-note title="Check the components"}
+Which part of the model prevents invalid probabilities? Which part represents repeated responses from one participant? For a prediction about a new participant, why is inserting an estimated deviation from an observed participant inappropriate?
+:::
+
+## What the combination adds
+
+A GLMM retains the response distribution and link of a generalized linear model while adding group specific variation to its linear predictor. This combination keeps individual binary responses in the likelihood and represents dependence among responses from the same participant or item. Its predictions must specify how the random effects are handled. The [next page](ordinal-mixed-models.qmd) applies the same construction to an ordered response.

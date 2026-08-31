@@ -1,0 +1,183 @@
+---
+title: "Correlated predictors"
+---
+
+The [multiple-regression page](multiple-regression.qmd) interpreted each coefficient through a comparison that holds the other predictors fixed. Word length and lexical frequency often vary together. Very frequent words tend to be short. If both enter a reading-time regression, the model must learn their separate coefficients from words that break this usual association.
+
+The problem is easiest to see with an extreme example.
+
+## Begin with perfect overlap
+
+Suppose every word in a dataset satisfies
+
+$$
+\text{length}=10-\text{frequency}.
+$$
+
+The fitted mean is
+
+$$
+m
+=\beta_0+\beta_F\text{frequency}
++\beta_L\text{length}.
+$$
+
+Substitute the exact relation:
+
+$$
+\begin{aligned}
+m
+&=\beta_0+\beta_F\text{frequency}
++\beta_L(10-\text{frequency})\\
+&=(\beta_0+10\beta_L)
++(\beta_F-\beta_L)\text{frequency}.
+\end{aligned}
+$$
+
+Only the combinations $\beta_0+10\beta_L$ and $\beta_F-\beta_L$ are identified. Many separate coefficient triples produce the same fitted means.
+
+With perfect collinearity, unique partial coefficients do not exist.
+
+## Move to strong but imperfect overlap
+
+Real predictors are rarely exact transformations of one another. But when they are strongly correlated, the data contain few comparisons between words of different length at similar frequency.
+
+The coefficients are then learned from a narrow and possibly unusual subset of predictor combinations. Their sampling uncertainty grows, and small changes in the sample can move the separate estimates substantially.
+
+This predictor overlap is [**collinearity**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119).
+
+Strong predictor association also limits the directly observed comparisons. A partial frequency coefficient requires words that differ in
+frequency while remaining similar in length. If almost every frequent word is
+short and almost every rare word is long, the sample supplies few such
+comparisons.
+
+## Construct a nearly collinear sample
+
+Consider ten constructed word observations with centered log frequency and
+centered length. The two predictors are almost perfectly negatively correlated.
+
+```{r}
+#| label: construct-correlated-lexical-predictors
+#| echo: true
+frequency <- seq(-2, 2, length.out = 10)
+centered_length <-
+  -1.8 * frequency + c(.2, -.1, .1, -.2, .15, -.15, .2, -.1, .1, -.2)
+
+log_rt <-
+  6 - .08 * frequency + .02 * centered_length +
+  c(.01, -.005, .004, -.008, .006, -.004, .008, -.006, .005, -.01)
+
+lexical_sample <- data.frame(
+  frequency = frequency,
+  centered_length = centered_length,
+  log_rt = log_rt
+)
+
+cor(lexical_sample$frequency, lexical_sample$centered_length)
+```
+
+The correlation is about $-.998$. The sample contains almost no independent
+movement in frequency and length.
+
+Fit the additive model:
+
+```{r}
+#| label: fit-nearly-collinear-model
+#| echo: true
+fit_collinear <- lm(
+  log_rt ~ frequency + centered_length,
+  data = lexical_sample
+)
+
+coef(fit_collinear)
+confint(fit_collinear)
+```
+
+The separate slope estimates need not resemble the coefficients used to
+construct the responses. Many pairs of frequency and length slopes produce
+nearly the same fitted values over this narrow diagonal band of predictor space.
+
+## Perturb one response
+
+Now increase the final log response by $.03$ and refit:
+
+```{r}
+#| label: perturb-collinear-response
+#| echo: true
+perturbed_sample <- lexical_sample
+perturbed_sample$log_rt[10] <- perturbed_sample$log_rt[10] + .03
+
+fit_perturbed <- lm(
+  log_rt ~ frequency + centered_length,
+  data = perturbed_sample
+)
+
+rbind(
+  original = coef(fit_collinear),
+  perturbed = coef(fit_perturbed)
+)
+```
+
+The frequency slope changes from about $-.003$ to $-.032$, and the length slope
+changes from about $.063$ to $.045$. The one-response perturbation is small on
+the response scale, but it moves the allocation of association across the two
+predictors.
+
+The fitted values move much less:
+
+```{r}
+#| label: compare-collinear-fitted-values
+#| echo: true
+max(abs(fitted(fit_collinear) - fitted(fit_perturbed)))
+```
+
+The largest change is about $.013$. This is the distinction between unstable
+attribution and relatively stable interpolation.
+
+## Look at the comparison, not a threshold
+
+A correlation of $.70$ is not automatically acceptable or unacceptable. Ask which observations identify each theoretical contrast.
+
+If a theory distinguishes exposure from form complexity, we may need both frequency and length even when their separate estimates are uncertain. That uncertainty may be the correct reflection of the data.
+
+Removing length would make the frequency coefficient describe the joint pattern
+in which frequency and length vary together. Keeping both asks for a partial
+frequency comparison at fixed modeled length. These are different estimands.
+Neither choice repairs missing comparison support.
+
+If two columns are alternate noisy measurements of one construct, a measurement model or a prespecified composite may better represent the theory.
+
+Dropping or residualizing a predictor changes the coefficient target. Regularization may stabilize predictions, but it cannot create predictor combinations that were not observed.
+
+## Prediction can remain stable
+
+Different coefficient combinations may make similar predictions within the observed predictor region. Thus collinearity can strongly affect attribution to separate coefficients while having less effect on interpolation.
+
+Extrapolation remains risky because the fitted model has not learned what happens when the correlated predictors take novel combinations.
+
+For instance, the constructed sample contains no word that is simultaneously
+high in centered frequency and high in centered length. A prediction in that
+corner depends on how the model divided the diagonal association between its two
+slopes. Since multiple divisions fit the observed band similarly, the novel
+combination can receive very different predictions.
+
+## Report what the data distinguish
+
+A useful analysis states the observed predictor relation, shows the support for
+the theoretically relevant comparison, and reports uncertainty in the partial
+coefficients. A correlation threshold alone cannot perform this argument.
+
+The [next page](variance-inflation-factors.qmd) summarizes the precision loss
+with a variance inflation factor. It does not replace the analysis of predictor support because
+the numerical factor cannot say whether the scarce comparisons answer the
+linguistic question.
+
+::: {.callout-note title="Find the supporting observations"}
+1. If length and frequency are negatively correlated, which words are most
+   informative about a length coefficient holding frequency fixed?
+2. Why can the separate slopes change while fitted values remain similar in the
+   observed predictor band?
+3. Explain how strong predictor correlation limits the comparisons that directly support a partial coefficient.
+4. Why is prediction for a frequent long word especially uncertain in the
+   constructed sample?
+:::

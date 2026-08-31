@@ -1,0 +1,143 @@
+---
+title: "Validating an imputation procedure"
+---
+
+The true values of naturally missing acoustic measurements are unavailable. If a third formant value was never recovered from the signal, no direct error can compare its imputation with the unseen truth. We can still ask a related question: when a measured value is hidden on purpose, how accurately does the complete procedure reconstruct it?
+
+Holdout validation by artificial masking turns some observed cells into artificial missing cells, fits the imputation without those values, and compares the reconstructions with the values held aside. This applies the earlier [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) to matrix cells. The masking step creates known targets while preserving the rule that a target cannot guide its own prediction.
+
+## Define the validation error
+
+Let $O$ be the set of naturally observed cells, and choose a masked subset $M\subset O$. Construct a training matrix in which the cells in $M$ are temporarily replaced by missing values. After fitting the imputation procedure to that matrix, let $\widehat y_{ij}^{(-M)}$ be the reconstructed value for cell $(i,j)$.
+
+Using the [mean squared error introduced earlier](../statistical-inference/mean-squared-error.qmd), mean squared reconstruction error is
+
+$$
+\operatorname{MSE}(M)
+=\frac{1}{|M|}
+\sum_{(i,j)\in M}
+\left(y_{ij}-\widehat y_{ij}^{(-M)}\right)^2.
+$$
+
+The superscript $(-M)$ records that the masked values were not available during fitting. Without this separation, the calculation would measure how well a procedure reproduces values it already saw.
+
+## Work through one masked cell
+
+Consider four tokens with two standardized acoustic measurements.
+
+$$
+\mathbf{Y}=
+\begin{pmatrix}
+1.0&1.2\\
+2.0&2.1\\
+3.0&2.9\\
+4.0&4.2
+\end{pmatrix}.
+$$
+
+Mask the second measurement in row 3. As a simple reference procedure, impute the observed mean of that column. The training column contains $1.2$, $2.1$, and $4.2$, so the imputation is
+
+$$
+\widehat y_{32}^{(-M)}
+=\frac{1.2+2.1+4.2}{3}=2.5.
+$$
+
+The hidden value is $2.9$, giving squared error
+
+$$
+(2.9-2.5)^2=.16.
+$$
+
+This calculation does not establish that mean imputation is adequate. It shows how masking produces an error whose target was unavailable to the fitting procedure.
+
+## Implement the mask in base R
+
+```{r}
+acoustic <- matrix(
+  c(1.0, 2.0, 3.0, 4.0, 1.2, 2.1, 2.9, 4.2),
+  nrow = 4,
+  ncol = 2
+)
+
+mask <- matrix(FALSE, nrow = nrow(acoustic), ncol = ncol(acoustic))
+mask[3, 2] <- TRUE
+
+truth <- acoustic[mask]
+training <- acoustic
+training[mask] <- NA
+
+column_mean <- mean(training[, 2], na.rm = TRUE)
+prediction <- column_mean
+squared_error <- (truth - prediction)^2
+
+c(truth = truth, prediction = prediction, squared_error = squared_error)
+```
+
+The same structure can evaluate the iterative PCA imputation from the preceding page. Replace the column mean calculation with the full iterative procedure, fit it to `training`, and retrieve its prediction at `mask`. Centering values, component directions, and every tuning decision must be estimated from `training` rather than from `acoustic`.
+
+## Repeat the masking
+
+One masked cell may be unusually easy or difficult. Repeat the procedure across several masks so that every eligible observed cell can contribute an out of sample reconstruction error. The errors should be retained cell by cell before they are averaged.
+
+For a small fully observed matrix, one cell can be masked at a time.
+
+```{r}
+mean_impute_cell <- function(x, row, column) {
+  training <- x
+  truth <- training[row, column]
+  training[row, column] <- NA
+  prediction <- mean(training[, column], na.rm = TRUE)
+
+  data.frame(
+    row = row,
+    column = column,
+    truth = truth,
+    prediction = prediction,
+    squared_error = (truth - prediction)^2
+  )
+}
+
+errors <- do.call(
+  rbind,
+  lapply(seq_len(nrow(acoustic)), function(row) {
+    mean_impute_cell(acoustic, row = row, column = 2)
+  })
+)
+
+errors
+mean(errors$squared_error)
+```
+
+This leave one cell out scheme is useful only when fitting after masking one cell resembles the intended imputation problem. A larger matrix may permit several cells to be masked at once, provided the masking does not remove all information needed to fit a column or row.
+
+## Match the natural missingness problem
+
+Uniformly masking cells can create an easier task than natural missingness. Suppose F3 is usually absent for one vowel, one speaker group, or the highest values. A random mask dominated by common vowels and central values will mostly evaluate interpolation in well represented regions.
+
+An imputation method may look artificially accurate when the masking scheme creates easier cases than the natural missingness process. To diagnose this problem, design several masking schemes that resemble plausible natural patterns. One scheme might mask F3 within the vowel category where tracking failures are common. Another might mask complete blocks that resemble session failures. The schemes should be stated before inspecting which one favors a preferred procedure.
+
+Good performance under realistic artificial masks still does not prove that naturally missing entries are unbiased. The actual missing values may differ from all observed values available for masking. Holdout validation by artificial masking is thus a falsification tool. Poor reconstruction reveals a problem, while low error supports only the tested masking conditions.
+
+## Keep preprocessing inside the mask
+
+Using the full matrix to calculate column means, scales, component directions, or the number of components gives the hidden values an indirect path into their predictions. This is [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage), and it usually makes reconstruction error too optimistic.
+
+Every estimated preprocessing operation belongs inside the masked training data. If the completed matrix later enters a predictive analysis, the imputation must also be fitted inside each training split of that analysis. This requirement follows the [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) introduced earlier in the course.
+
+## Inspect errors at the level of the claim
+
+An overall mean can hide poor reconstruction for a minority vowel, speaker group, language, or measurement column. Retain the row and column identities attached to each masked error, then summarize error over the groups relevant to the linguistic target.
+
+A low overall error does not compensate for systematic failure in the group that carries the theoretical contrast. The validation summary must use the same units and measurements that the later interpretation concerns.
+
+::: {.callout-note title="Audit the validation"}
+1. Why can naturally missing values not provide a direct reconstruction error?
+2. Which quantities must be estimated after the target cell is masked?
+3. How can an unrealistically easy masking scheme make an imputation appear better than it is under natural missingness?
+4. Why should cell level errors be retained before averaging?
+5. What does low error under one masking scheme fail to establish?
+:::
+
+## Summing up
+
+Holdout validation by artificial masking evaluates an imputation on observed values made unavailable during fitting. Its conclusions depend on the masking pattern, leakage prevention, and the linguistic groups over which errors are summarized. The result cannot reveal the true naturally missing values, but it can identify reconstruction failures before imputed cells are treated as measurements.

@@ -1,0 +1,262 @@
+---
+title: "Expectation-maximization"
+---
+
+If the component label of every vowel token were observed, we could estimate each component from its assigned tokens. If the component parameters were known, we could calculate the posterior membership of every token. In a mixture model, neither side is known at the start.
+
+The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html) fits a latent-variable model by alternating between two calculations. The expectation step forms the conditional expectation of the complete-data log likelihood under the current parameters. For a Gaussian mixture, this calculation requires the responsibilities from the preceding page. The maximization step then chooses parameters that maximize that expected complete-data log likelihood.
+
+We first write both steps for a Gaussian mixture. We then carry out one weighted mean update by hand and in R, explain why the observed-data likelihood cannot decrease across exact updates, and identify the local-solution and collapse failures that make initialization checks necessary.
+
+## Begin with provisional parameters
+
+Let the current mixture parameters be
+
+$$
+\boldsymbol{\theta}^{(t)}
+=
+\left\{
+\pi_k^{(t)},
+\boldsymbol{\mu}_k^{(t)},
+\boldsymbol{\Sigma}_k^{(t)}
+\right\}_{k=1}^{K},
+$$
+
+where $t$ indexes the current iteration. These values may come from random starting assignments or another declared initialization rule.
+
+The superscript does not index data. It records the repeated algorithmic update.
+
+## The expectation step uses responsibilities
+
+Given $\boldsymbol{\theta}^{(t)}$, compute
+
+$$
+r_{ik}^{(t)}
+=
+P(Z_i=k\mid\mathbf{x}_i,\boldsymbol{\theta}^{(t)}).
+$$
+
+Using the formula from the previous page,
+
+$$
+r_{ik}^{(t)}
+=
+\frac{
+\pi_k^{(t)}
+\mathcal{N}
+(\mathbf{x}_i;
+\boldsymbol{\mu}_k^{(t)},
+\boldsymbol{\Sigma}_k^{(t)})
+}{
+\sum_{j=1}^{K}
+\pi_j^{(t)}
+\mathcal{N}
+(\mathbf{x}_i;
+\boldsymbol{\mu}_j^{(t)},
+\boldsymbol{\Sigma}_j^{(t)})
+}.
+$$
+
+Every row of responsibilities sums to one. A token with $(0.8,0.2)$ contributes mostly to component 1 in the next update but still contributes to component 2.
+
+These responsibilities provide the conditional probabilities needed to average over the unobserved component labels. This average is the expectation in the name of the algorithm. It replaces each unknown hard label with a probability vector under the current fit.
+
+## The maximization step updates the weights
+
+The effective number of observations assigned to component $k$ is
+
+$$
+N_k^{(t)}
+=
+\sum_{i=1}^{N}
+r_{ik}^{(t)}.
+$$
+
+The updated mixing weight is
+
+$$
+\pi_k^{(t+1)}
+=
+\frac{N_k^{(t)}}{N}.
+$$
+
+The weights still sum to one because
+
+$$
+\sum_{k=1}^{K}
+N_k^{(t)}
+=
+\sum_{i=1}^{N}
+\sum_{k=1}^{K}
+r_{ik}^{(t)}
+=
+N.
+$$
+
+Thus, dividing each effective count by $N$ gives a valid set of mixture proportions.
+
+## Update the component means
+
+The updated mean is the responsibility-weighted average
+
+$$
+\boldsymbol{\mu}_k^{(t+1)}
+=
+\frac{1}{N_k^{(t)}}
+\sum_{i=1}^{N}
+r_{ik}^{(t)}\mathbf{x}_i.
+$$
+
+Tokens with large responsibility for component $k$ have greater influence on its center. Tokens with responsibility near zero contribute little.
+
+Suppose one one-dimensional component has responsibilities 0.9, 0.6, and 0.1 for observations 2, 4, and 10. Its effective count is
+
+$$
+N_k
+=
+0.9+0.6+0.1
+=
+1.6.
+$$
+
+The weighted sum is
+
+$$
+0.9(2)+0.6(4)+0.1(10)
+=
+1.8+2.4+1.0
+=
+5.2.
+$$
+
+The updated mean is
+
+$$
+\mu_k^{\mathrm{new}}
+=
+\frac{5.2}{1.6}
+=
+3.25.
+$$
+
+The observation at 10 is far from the new mean, but it receives little weight because its current responsibility is only 0.1.
+
+## Update the covariance
+
+For an unrestricted Gaussian component, the covariance update is
+
+$$
+\boldsymbol{\Sigma}_k^{(t+1)}
+=
+\frac{1}{N_k^{(t)}}
+\sum_{i=1}^{N}
+r_{ik}^{(t)}
+\left(
+\mathbf{x}_i-
+\boldsymbol{\mu}_k^{(t+1)}
+\right)
+\left(
+\mathbf{x}_i-
+\boldsymbol{\mu}_k^{(t+1)}
+\right)^{\mathsf T}.
+$$
+
+This is a responsibility-weighted average of outer products around the updated mean. Covariance restrictions change this update. A shared covariance pools information across components, while a spherical covariance retains only a restricted scale.
+
+The chosen update must match the Gaussian component geometry declared in the model.
+
+## Reproduce the mean update in R
+
+```{r}
+#| eval: false
+
+x <- c(2, 4, 10)
+responsibility <- c(0.9, 0.6, 0.1)
+
+effective_count <- sum(responsibility)
+
+updated_mean <-
+  sum(responsibility * x) /
+  effective_count
+
+effective_count
+updated_mean
+```
+
+A one-dimensional covariance update follows the same weighting rule.
+
+```{r}
+#| eval: false
+
+updated_variance <-
+  sum(
+    responsibility *
+    (x - updated_mean)^2
+  ) /
+  effective_count
+
+updated_variance
+```
+
+These lines implement one maximization step after the responsibilities have been supplied. A complete EM implementation alternates this update with a new expectation step.
+
+## Alternate until the fit stabilizes
+
+After the maximization step, recompute responsibilities using the updated parameters. Continue until the observed-data log likelihood or parameter changes fall below a declared tolerance.
+
+The observed-data log likelihood is
+
+$$
+\ell(\boldsymbol{\theta})
+=
+\sum_{i=1}^{N}
+\log
+\left[
+\sum_{k=1}^{K}
+\pi_k
+\mathcal{N}
+(\mathbf{x}_i;
+\boldsymbol{\mu}_k,
+\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+Exact EM updates do not decrease this likelihood. The expectation step constructs the expected complete-data log likelihood under the current parameters, and an exact maximization step selects parameters that maximize that objective. This is a likelihood-optimization result of the sort introduced in [maximum likelihood](../statistical-inference/maximum-likelihood.qmd), now applied when component labels are unobserved.
+
+This monotonicity is an algorithmic guarantee. It is not a guarantee that the largest possible likelihood has been found.
+
+## Several starts are necessary
+
+Mixture likelihoods can have several local maxima. Different provisional parameters may lead EM to different component locations or covariance structures.
+
+The expectation-maximization algorithm can converge to different local optima from different initializations. Fit the same declared model from several starts, retain the valid solution with the largest attained likelihood, and record whether substantively different solutions recur.
+
+A fixed random seed makes the collection of starts reproducible. It does not make one start sufficient.
+
+## Watch for collapsing components
+
+EM may move one component toward a small number of observations while shrinking its covariance. The likelihood can become extremely large as the covariance approaches singularity.
+
+This is not a meaningful discovery of a tiny vowel category. It is the likelihood singularity from the previous page appearing during fitting. The implementation should enforce appropriate covariance restrictions or regularization and flag degenerate solutions.
+
+Retaining the fit with the largest likelihood could select the collapsed solution. This is why validity checks precede likelihood comparison. An invalid degenerate solution is not a candidate interpretation.
+
+## EM estimates a local representation
+
+At convergence, the responsibilities and parameters agree under the alternating updates. The result is a local maximum or stationary solution for the declared mixture.
+
+It does not establish the correct component count, covariance family, or linguistic category interpretation. Those are comparison and interpretation questions, not consequences of convergence.
+
+## Check the alternating algorithm
+
+1. Which quantities are calculated in the expectation step?
+2. Why does an observation with responsibility 0.1 still affect a component mean?
+3. How is the updated mean 3.25 obtained in the worked calculation?
+4. Why do updated mixing weights sum to one?
+5. What does monotonic observed-data likelihood guarantee, and what does it not guarantee?
+6. Why should the same mixture be fit from several initializations?
+7. Why must a covariance-collapse fit be rejected before comparing attained likelihoods?
+
+## Before comparing mixture specifications
+
+EM alternates posterior membership calculation with responsibility-weighted parameter updates. It improves the observed-data likelihood from a provisional starting point but may reach a local or degenerate solution. The [next page](choosing-a-mixture.qmd) compares component counts and covariance assumptions using BIC's penalty for fitted flexibility.

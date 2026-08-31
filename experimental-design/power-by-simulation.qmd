@@ -1,0 +1,144 @@
+---
+title: "Power by simulation"
+---
+
+Suppose we plan a within-participant acceptability experiment. Each participant judges active and passive sentences, and the primary analysis compares each participant's mean active rating with that participant's mean passive rating. How many participants are needed?
+
+There is no answer until we specify how large the condition difference might be, how much participant differences vary, and what decision the analysis must make. A simulation-based power analysis repeatedly generates data under those assumptions, fits the planned model, and applies the planned decision rule. It reuses the distinction between a [null hypothesis and test statistic](../statistical-inference/null-hypotheses-and-test-statistics.qmd), but now evaluates the decision rule under a stated nonzero effect and complete design.
+
+## Power is conditional on a data-generating process
+
+Let $G$ denote an assumed data-generating process, and let $A(Y)$ denote the decision returned by the planned analysis for simulated data $Y$. If $A(Y)=1$ means that the decision rule is met, power is
+
+$$
+\operatorname{Power}(G)=P_G\{A(Y)=1\}.
+$$
+
+The subscript $G$ is essential. Power is not a fixed property of a sample size. It depends on the assumed effect, variation, design, exclusion process, analysis, and decision rule.
+
+For the acceptability study, suppose the analysis will use one active minus passive difference $D_i$ for each participant. A simple generating model is
+
+$$
+D_i\sim\operatorname{Normal}(\delta,\sigma_D^2),
+$$
+
+where $\delta$ is the mean condition difference and $\sigma_D$ is the standard deviation of participant differences. Both quantities must be supplied before simulation begins.
+
+## Work through the simulation estimate by hand
+
+Imagine simulating 20 complete studies. The planned decision rule is met in 16 of them. The estimated power is
+
+$$
+\widehat{\operatorname{Power}}=\frac{16}{20}=.80.
+$$
+
+This estimate has Monte Carlo error because it is based on a finite number of simulated studies. As in the earlier discussion of [Monte Carlo integration](../statistical-inference/monte-carlo-integration.qmd), the simulation average has its own numerical uncertainty. Its approximate Monte Carlo standard error is
+
+$$
+\operatorname{MCSE}
+=\sqrt{\frac{\widehat{\operatorname{Power}}(1-\widehat{\operatorname{Power}})}{S}},
+$$
+
+where $S$ is the number of simulations. With $S=20$ and estimated power $.80$,
+
+$$
+\operatorname{MCSE}
+=\sqrt{\frac{.8(.2)}{20}}
+\approx .089.
+$$
+
+An estimate of $.80$ with Monte Carlo standard error $.089$ is too imprecise for a fine distinction between candidate designs. If the same estimate came from 1,000 simulations, the standard error would be about $.013$.
+
+## Simulate the exact planned comparison
+
+The following function simulates participant differences, runs the planned one sample test of those differences, and records whether the two sided decision rule is met.
+
+```{r}
+simulate_study <- function(n_participants, effect, sd_difference) {
+  difference <- rnorm(
+    n = n_participants,
+    mean = effect,
+    sd = sd_difference
+  )
+
+  test <- t.test(difference, mu = 0)
+
+  data.frame(
+    estimate = mean(difference),
+    p_value = test$p.value,
+    decision = test$p.value < .05
+  )
+}
+```
+
+Each argument corresponds to part of the formal statement. `n_participants` determines how many $D_i$ values are drawn. `effect` supplies $\delta$, and `sd_difference` supplies $\sigma_D$. The analysis then operates on the same participant differences that the planned study would produce.
+
+We estimate power by repeating the entire function.
+
+```{r}
+set.seed(903)
+
+simulations <- replicate(
+  n = 1000,
+  expr = simulate_study(
+    n_participants = 40,
+    effect = 0.35,
+    sd_difference = 0.80
+  )$decision
+)
+
+estimated_power <- mean(simulations)
+mcse <- sqrt(estimated_power * (1 - estimated_power) / length(simulations))
+
+c(power = estimated_power, mcse = mcse)
+```
+
+The printed probability is conditional on a mean rating difference of .35 and a participant difference standard deviation of .80. It is not a claim that those assumptions are true. They should come from related evidence, a pilot, or a smallest difference that would matter for the linguistic argument.
+
+## Power analysis is a curve, not one number
+
+A single assumed effect gives a single conditional answer. A more useful design analysis varies assumptions that remain uncertain. For instance, we can repeat the simulation across several participant counts and effect sizes while holding the decision rule fixed.
+
+```{r}
+set.seed(904)
+
+designs <- expand.grid(
+  n_participants = c(24, 32, 40, 48),
+  effect = c(0.20, 0.35, 0.50)
+)
+
+designs$power <- mapply(
+  FUN = function(n, delta) {
+    mean(replicate(
+      1000,
+      simulate_study(n, delta, sd_difference = 0.80)$decision
+    ))
+  },
+  n = designs$n_participants,
+  delta = designs$effect
+)
+
+designs
+```
+
+This table describes a [**power curve**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=187) across assumptions. A design that performs adequately only at the largest effect is more fragile than one that performs similarly across a plausible range. The decision should also consider whether the smaller effects would matter scientifically, not merely whether they would be difficult to detect.
+
+## Power follows the complete procedure
+
+The simulated design and planned study must match. If the study will analyze participant differences, a simulation of unrelated trial values answers a different question. If the study will exclude participants below a prespecified accuracy threshold, the simulation should apply that rule and record how often it removes participants. If condition order can affect the response, plausible order effects should be included when they bear on the target.
+
+The estimated power will not describe the planned study when the simulated analysis is simpler than the planned analysis or when the generated data omit a design feature that determines the comparison. The [mixed effects models introduced earlier](../regression-models/random-effects.qmd) allow richer data generators for repeated participants and items. The principle does not change: simulate the design, fit the planned analysis, and apply the planned decision.
+
+Power also does not guarantee a successful individual study. A study with power $.80$ still fails its decision rule with probability $.20$ under the assumed process. And power says nothing about bias when the data-generating assumptions are wrong. Simulation exposes assumptions; it does not certify them.
+
+::: {.callout-note title="Audit the design simulation"}
+1. Which quantities define $G$ in the participant difference simulation?
+2. What uncertainty is measured by the Monte Carlo standard error?
+3. Why does increasing the number of simulations not add participants to the planned study?
+4. What target is changed if the simulation draws independent trials but the analysis compares participant averages?
+5. Why should power be reported across plausible effect sizes?
+:::
+
+## Summing up
+
+Simulation-based design analysis evaluates a complete planned procedure under a stated data-generating process. Estimated power is the proportion of simulated studies meeting the decision rule, and its Monte Carlo error depends on the number of simulations. The design pages have now fixed the comparison and its repeated units. That record tells us how to apply the earlier models for [grouped linguistic data](../regression-models/structured-data.qmd) without confusing additional rows with additional assignments.

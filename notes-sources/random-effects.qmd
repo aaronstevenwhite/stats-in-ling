@@ -1,0 +1,334 @@
+# Random Effects: Theory
+
+## What is a random effect?
+
+A **random effect** is a parameter treated as a random variable drawn from a population distribution.
+
+**Fixed effect** (β): A coefficient we estimate directly
+
+- Example: $\beta_1$ = effect of log frequency on log RT
+- We estimate $\beta_1$ = -0.05, meaning higher frequency → faster RT
+- Inference: "The frequency effect is -0.05"
+
+**Random effect** (α): A parameter drawn from a distribution
+
+- Example: $u_i$ = participant i's deviation from population mean RT
+- We estimate $u_i \sim N(0, \sigma_u^2)$ where $\sigma_u^2$ = 0.019
+- Inference: "Participants vary with SD = 0.14 around the population mean"
+
+**Key difference**: Fixed effects estimate specific values; random effects estimate variance parameters.
+
+---
+
+## Why random effects?
+
+Random effects model **sources of variation** that arise from **sampling** larger populations.
+
+**Participants are a random sample** from the population of speakers:
+
+- We test 30 participants, but want to generalize to all native speakers
+- Each participant has their own baseline RT (some fast, some slow)
+- We don't care about estimating each individual's exact RT
+- We care about **how much participants vary** (the variance σ²_subject)
+
+**Items are a random sample** from the population of words:
+
+- We test 200 words, but want to generalize to the lexicon
+- Each word has its own baseline RT (controlling for frequency)
+- Some words are intrinsically easier/harder to process
+- We care about **how much items vary** (the variance σ²_item)
+
+---
+
+## Fixed vs. random: The generalization question
+
+Ask: **Do we want to generalize beyond the observed levels?**
+
+**Participants**: YES
+
+- We sampled 30 people from a population
+- We want inferences to apply to **new, unseen participants**
+- Therefore: Random effect
+
+**Items**: YES
+
+- We sampled 200 words from the lexicon
+- We want inferences to apply to **new, unseen words**
+- Therefore: Random effect
+
+**Log frequency**: NO
+
+- Frequency is a continuous predictor, not a grouping factor
+- We want to estimate the specific effect of frequency
+- Therefore: Fixed effect
+
+---
+
+## The sampling process
+
+```{r sampling-diagram}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 6
+
+library(ggplot2)
+library(tidyverse)
+
+# Create visualization of sampling process
+set.seed(42)
+
+# Population
+pop_data <- tibble(
+    id = 1:1000,
+    value = rnorm(1000, mean = 0, sd = 0.15),
+    sampled = id %in% sample(1:1000, 30)
+)
+
+p1 <- ggplot(pop_data, aes(x = value, fill = sampled)) +
+    geom_histogram(bins = 50, alpha = 0.7) +
+    scale_fill_manual(values = c("gray70", "steelblue"),
+                      labels = c("Population", "Sample"),
+                      name = "") +
+    labs(x = "Random Intercept α", y = "Count",
+         title = "Population of Participants",
+         subtitle = "We sample 30 from a population of thousands") +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "top")
+
+# Sample distribution
+sample_data <- pop_data %>% filter(sampled)
+
+p2 <- ggplot(sample_data, aes(x = value)) +
+    geom_histogram(bins = 15, fill = "steelblue", alpha = 0.7) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+    annotate("text", x = 0.05, y = 6, label = "Population mean = 0",
+             color = "red", hjust = 0) +
+    labs(x = "Random Intercept u", y = "Count",
+         title = "Our Sample (n = 30)",
+         subtitle = "Sample estimates population variance") +
+    theme_minimal(base_size = 14)
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+We observe the sample, estimate $\sigma_u^2$, and make inferences about the population.
+
+---
+
+## Mathematical formulation
+
+For participant $i$ responding to item $j$:
+
+$$Y_{ij} = \beta_0 + \beta_1 x_{ij} + u_i + \epsilon_{ij}$$
+
+where:
+
+- $\beta_0$: Population mean (fixed intercept)
+- $\beta_1$: Fixed effect of predictor $x_{ij}$
+- $u_i$: Random intercept for participant $i$
+- $\epsilon_{ij}$: Residual error for observation $ij$
+
+**Distributional assumptions**:
+
+$$u_i \sim N(0, \sigma_u^2)$$
+$$\epsilon_{ij} \sim N(0, \sigma^2)$$
+
+**Parameters to estimate**: $\beta_0, \beta_1, \sigma_u^2, \sigma^2$
+
+---
+
+## Extending the GLM framework
+
+Recall the three components of [generalized linear models](generalized-linear-models.qmd):
+
+1. **Random component**: Distribution of $Y_i$
+2. **Systematic component**: $\eta_i = \mathbf{x}_i^T \boldsymbol{\beta}$
+3. **Link function**: $g(\mu_i) = \eta_i$
+
+Mixed effects models extend the **systematic component** by adding random effects:
+
+$$\eta_{ij} = \mathbf{x}_{ij}^T \boldsymbol{\beta} + u_i$$
+
+The **random component** now has **two sources of variation**:
+
+- **Residual (within-group)**: $\epsilon_{ij} \sim N(0, \sigma^2)$
+- **Random effects (between-group)**: $u_i \sim N(0, \sigma_u^2)$
+
+The **link function** remains unchanged: $g(\mu_{ij}) = \eta_{ij}$
+
+---
+
+## Variance decomposition
+
+Total variance in $Y_{ij}$ comes from multiple sources:
+
+$$\text{Var}(Y_{ij}) = \sigma_u^2 + \sigma^2$$
+
+- $\sigma_u^2$: Between-participant variance (how much participants differ)
+- $\sigma^2$: Within-participant variance (residual noise)
+
+```{r variance-decomposition}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 6
+
+# Load actual variance components from M3
+vc <- read_csv("data/model_results/m3_variance_components.csv", show_col_types = FALSE)
+
+vc_plot <- vc %>%
+    mutate(
+        component = case_when(
+            grp == "subject" ~ "Between-Subject",
+            grp == "item" ~ "Between-Item",
+            grp == "Residual" ~ "Within (Residual)"
+        ),
+        percentage = vcov / sum(vcov) * 100
+    )
+
+ggplot(vc_plot, aes(x = "", y = vcov, fill = component)) +
+    geom_bar(stat = "identity", width = 1) +
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = c("steelblue", "coral", "gray70")) +
+    labs(title = "Variance Decomposition: MALD Model M3",
+         subtitle = sprintf("Total variance partitioned into three components"),
+         fill = "Component") +
+    theme_void(base_size = 14) +
+    theme(legend.position = "right") +
+    geom_text(aes(label = sprintf("%.1f%%", percentage)),
+              position = position_stack(vjust = 0.5), size = 5, color = "white")
+```
+
+**Intraclass correlation (ICC)**: Proportion of variance due to grouping
+
+$$\text{ICC} = \frac{\sigma_u^2}{\sigma_u^2 + \sigma^2}$$
+
+---
+
+## Random effects as deviations
+
+Each participant has a random intercept $u_i$ representing their deviation from the population mean.
+
+```{r random-intercepts-histogram}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 6
+
+# Load actual model
+load("data/model_results/all_models.RData")
+
+# Extract random intercepts for subjects from M3
+library(lme4)
+subject_REs <- ranef(m3)$subject %>%
+    rownames_to_column("subject") %>%
+    rename(intercept = `(Intercept)`)
+
+ggplot(subject_REs, aes(x = intercept)) +
+    geom_histogram(bins = 15, fill = "steelblue", alpha = 0.7, color = "white") +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "red", linewidth = 1) +
+    annotate("text", x = 0.05, y = 6,
+             label = sprintf("Mean = 0\nSD = %.3f", sd(subject_REs$intercept)),
+             hjust = 0, color = "red", size = 5) +
+    labs(x = "Random Intercept (log RT units)", y = "Count",
+         title = "Distribution of Subject Random Intercepts",
+         subtitle = "Each participant's deviation from population mean (Model M3)") +
+    theme_minimal(base_size = 14)
+```
+
+Positive intercepts: slower than average participants
+
+Negative intercepts: faster than average participants
+
+---
+
+## Caterpillar plot: Ranking random effects
+
+A **caterpillar plot** displays random effects with confidence intervals, ordered by magnitude.
+
+```{r caterpillar-plot}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 8
+
+# Get random effects with SEs
+subject_REs_conf <- ranef(m3, condVar = TRUE)$subject %>%
+    rownames_to_column("subject") %>%
+    rename(intercept = `(Intercept)`) %>%
+    mutate(
+        se = sqrt(attr(ranef(m3, condVar = TRUE)$subject, "postVar")[1, 1, ]),
+        lower = intercept - 1.96 * se,
+        upper = intercept + 1.96 * se
+    ) %>%
+    arrange(intercept) %>%
+    mutate(subject = factor(subject, levels = subject))
+
+ggplot(subject_REs_conf, aes(x = intercept, y = subject)) +
+    geom_point(size = 3, color = "steelblue") +
+    geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.3, color = "steelblue") +
+    geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+    labs(x = "Random Intercept (log RT units)", y = "Subject",
+         title = "Caterpillar Plot: Subject Random Intercepts",
+         subtitle = "95% confidence intervals | Ordered from slowest to fastest") +
+    theme_minimal(base_size = 14) +
+    theme(axis.text.y = element_text(size = 10))
+```
+
+Subjects at the top are consistently slower; those at the bottom are consistently faster.
+
+---
+
+## Why not fixed effects for participants?
+
+Why not estimate 30 separate fixed effects for participants?
+
+**Problems with fixed effects**:
+
+1. **Loss of generalizability**: Inferences limited to these 30 people
+2. **Parameter explosion**: 30 parameters instead of 1 variance parameter
+3. **No pooling**: Each participant estimated independently (inefficient)
+4. **Overfitting**: More parameters = better fit to training data but worse generalization
+
+---
+
+## Benefits of random effects over fixed effects
+
+**Random effects provide**:
+
+1. **Generalizability**: Infer about population, not just sample
+2. **Parsimony**: 1 variance parameter ($\sigma_u^2$) captures all participant variation
+3. **Shrinkage**: Extreme estimates pulled toward population mean (regularization)
+4. **Efficiency**: Borrow strength across participants (partial pooling)
+
+---
+
+## Shrinkage and borrowing strength
+
+Random effects models apply **shrinkage**: Extreme group estimates are pulled toward the population mean.
+
+**Why?** Groups with few observations or extreme values are likely overestimates. Shrinkage regularizes by borrowing information from other groups.
+
+**Fixed effects**: No pooling—each group estimated independently
+
+**Random effects**: Partial pooling—groups inform each other through shared variance
+
+**No pooling** (complete pooling): Ignore groups entirely
+
+This is the **bias-variance tradeoff** in action: Shrinkage increases bias but reduces variance, improving prediction.
+
+---
+
+## Summary: Random effects
+
+**Random effects model sources of variation from sampling**:
+
+- Participants sampled from population of speakers → $u_i \sim N(0, \sigma_u^2)$
+- Items sampled from population of stimuli → $v_j \sim N(0, \sigma_v^2)$
+- Verbs sampled within semantic classes → $w_k \sim N(0, \sigma_w^2)$
+
+**Key concepts**:
+
+- **Variance components**: $\sigma_u^2, \sigma_v^2, \sigma_w^2$ capture between-group variation
+- **Generalizability**: Inferences extend beyond observed groups
+- **Shrinkage**: Regularization via partial pooling
+- **Systematic + random**: Extends GLM framework by adding REs to linear predictor
+
+---

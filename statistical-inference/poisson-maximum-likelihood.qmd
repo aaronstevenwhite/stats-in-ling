@@ -1,0 +1,208 @@
+---
+title: "Maximum likelihood for a Poisson mean"
+---
+
+The [maximum-likelihood page](maximum-likelihood.qmd) introduced estimation with
+a Bernoulli response. We now repeat the same reasoning with the [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd) for a count response. The
+new result is worth deriving because it gives us a direct link between a
+statistical model and a familiar descriptive summary.
+
+## Start with a linguistic count
+
+The Universal Dependencies English Web Treebank contains annotated dependency
+relations. Consider a teaching extract of 2,594 wh expressions and the linear
+distance from each wh expression to its annotated head. A relative pronoun such
+as *who* may be near its head, as in *the officer who was working*, or separated
+from it by several intervening tokens.
+
+::: {.callout-note title="Data source"}
+The extract comes from the [Universal Dependencies English Web
+Treebank](https://universaldependencies.org/treebanks/en_ewt/index.html), derived
+from the English Web Treebank described by [Silveira et al.
+(2014)](https://aclanthology.org/L14-1067/). The variable used here is a distance
+between two nodes in the basic dependency annotation. It should not be treated
+as a complete representation of a syntactic filler and its silent gap.
+:::
+
+Let $X_i$ be the distance for observation $i$. The observed distances are
+positive integers, but the Poisson family also assigns probability to zero. We
+will temporarily ignore that mismatch so that we can isolate the estimation
+step. Our working model is
+
+$$
+X_i\mathrel{\overset{\text{IID}}{\sim}}\operatorname{Poisson}(\lambda).
+$$
+
+The model says that every observation shares one Poisson mean $\lambda$ and that the
+observations are independent after we condition on that mean. Those claims are
+strong. We will check one of their consequences after finding the estimate.
+
+## Write the likelihood one observation at a time
+
+For one observed distance $x_i$, the Poisson probability mass is
+
+$$
+p(x_i\mid\lambda)
+=\frac{e^{-\lambda}\lambda^{x_i}}{x_i!}.
+$$
+
+For $n$ independent observations, multiplication gives the joint probability
+
+$$
+p(\mathbf{x}\mid\lambda)
+=\prod_{i=1}^{n}\frac{e^{-\lambda}\lambda^{x_i}}{x_i!}.
+$$
+
+Once the distances are observed, we hold $\mathbf{x}$ fixed and view the same
+expression as a function of $\lambda$:
+
+$$
+L(\lambda;\mathbf{x})
+=\prod_{i=1}^{n}\frac{e^{-\lambda}\lambda^{x_i}}{x_i!}.
+$$
+
+This is the likelihood function. It compares candidate values of the mean by
+asking how much probability each candidate assigns to the observed collection
+of distances.
+
+## Take logs before differentiating
+
+The product contains one small probability for each observation. Taking a log
+turns that product into a sum:
+
+$$
+\begin{aligned}
+\ell(\lambda;\mathbf{x})
+&=\log L(\lambda;\mathbf{x})\\
+&=\sum_{i=1}^{n}
+\left[x_i\log\lambda-\lambda-\log(x_i!)\right]\\
+&=\left(\sum_{i=1}^{n}x_i\right)\log\lambda
+  -n\lambda
+  -\sum_{i=1}^{n}\log(x_i!).
+\end{aligned}
+$$
+
+The final term depends on the observations but not on $\lambda$. It changes the
+height of the log-likelihood curve, but it cannot change where that curve is
+maximized.
+
+## Find the maximizing mean
+
+Differentiate with respect to $\lambda$:
+
+$$
+\frac{\mathrm{d}}{\mathrm{d}\lambda}
+\ell(\lambda;\mathbf{x})
+=\frac{\sum_{i=1}^{n}x_i}{\lambda}-n.
+$$
+
+At an interior maximum, this derivative is zero. Thus
+
+$$
+\begin{aligned}
+\frac{\sum_{i=1}^{n}x_i}{\widehat{\lambda}}-n&=0,\\
+\sum_{i=1}^{n}x_i&=n\widehat{\lambda},\\
+\widehat{\lambda}_{\mathrm{MLE}}
+&=\frac{1}{n}\sum_{i=1}^{n}x_i\\
+&=\bar{x}.
+\end{aligned}
+$$
+
+The maximum-likelihood estimate of a shared Poisson mean is the sample mean. This
+equality is a consequence of the Poisson model and its likelihood. It is not a
+general definition of maximum likelihood.
+
+## Verify the result on the dependency distances
+
+The data are available in
+[`wh_filler_gap.csv`](../problem-sets/ps1-2/data/wh_filler_gap.csv). We can compute
+the analytic estimate and compare it with a numerical optimizer.
+
+```{r}
+#| label: poisson-mle-wh-distance
+#| echo: true
+wh <- read.csv("../problem-sets/ps1-2/data/wh_filler_gap.csv")
+x <- wh$linear_distance
+
+analytic_mle <- mean(x)
+
+negative_log_likelihood <- function(lambda, observations) {
+  -sum(dpois(observations, lambda = lambda, log = TRUE))
+}
+
+numerical_fit <- optimize(
+  negative_log_likelihood,
+  interval = c(.01, 20),
+  observations = x
+)
+
+c(
+  analytic = analytic_mle,
+  numerical = numerical_fit$minimum
+)
+```
+
+Both calculations return approximately $3.007$. The agreement is not a second
+piece of evidence about the linguistic phenomenon. It is a check that the code
+and the algebra solve the same optimization problem.
+
+We can also inspect the log-likelihood near the maximum.
+
+```{r}
+#| label: poisson-log-likelihood-curve
+#| echo: true
+lambda_grid <- seq(2.5, 3.5, length.out = 300)
+log_likelihood <- vapply(
+  lambda_grid,
+  function(lambda) sum(dpois(x, lambda = lambda, log = TRUE)),
+  numeric(1)
+)
+
+plot(
+  lambda_grid, log_likelihood,
+  type = "l",
+  xlab = expression(lambda),
+  ylab = "log-likelihood"
+)
+abline(v = analytic_mle, lty = 2)
+```
+
+The curve is highest at the sample mean. Values near the maximum have similar
+support from the observed data, while more distant values assign lower joint
+probability to those observations.
+
+## Separate estimation from model adequacy
+
+The estimate answers a conditional question: if the distances were independent
+draws from one Poisson distribution, which value of $\lambda$ would fit them
+best? It does not establish that the Poisson family is a good description.
+
+For this extract,
+
+$$
+\bar{x}\approx3.01
+\qquad\text{and}\qquad
+s^2\approx10.46.
+$$
+
+A Poisson variable has equal mean and variance. The fitted model must thus have
+both mean and variance near 3.01, while the empirical variance is more than
+three times as large. The distances also cannot be zero in this particular
+extract, even though the fitted distribution assigns positive probability to
+zero.
+
+These discrepancies identify two distinct model failures. The support mismatch
+concerns which values can occur. The variance mismatch concerns how probability
+is distributed over the values that can occur. Maximum likelihood finds the
+best parameter within the chosen family. It cannot repair a family whose
+structural assumptions miss the response.
+
+::: {.callout-note title="Work through the estimate"}
+1. For the distances $1,2,2,3,7$, calculate
+   $\widehat{\lambda}_{\mathrm{MLE}}$.
+2. Explain why $\sum_i\log(x_i!)$ disappears when we differentiate with respect
+   to $\lambda$.
+3. State the conditional question answered by the estimate.
+4. Give one reason that wh dependency distances from the same document might
+   not be independent.
+:::

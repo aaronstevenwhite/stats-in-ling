@@ -1,0 +1,204 @@
+---
+title: "Problem Set 3: Harmonic alignment in the dative alternation"
+subtitle: "Statistical Methods in Linguistics"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
+---
+
+## What this problem set asks
+
+English speakers can describe a transfer using a double-object dative, as in *Kim gave Lee the book*, or a prepositional dative, as in *Kim gave the book to Lee*. The recipient occurs before the theme in the first variant and after the theme in the second. The alternatives thus let us ask which properties make an argument more likely to occur early.
+
+Bresnan, Cueni, Nikitina, and Baayen connect this ordering to [**harmonic alignment**](https://web.stanford.edu/~bresnan/qs-submit.pdf). Accessible, pronominal, animate, and short arguments tend to precede less accessible, nonpronominal, inanimate, and long arguments. Harmonic alignment is a probabilistic constraint, not a categorical ban. It predicts a direction of change in construction probability when an argument property changes.
+
+The focal method is [logistic regression with multiple predictors](../../regression-models/logistic-regression-with-multiple-predictors.qmd). The response is `PP = 1`, so a positive coefficient raises the modeled probability that the recipient follows the theme. A negative coefficient raises the modeled probability that the recipient immediately follows the verb. Keeping this coding in view will be necessary in every interpretation.
+
+Earlier methods supply two secondary checks. First, response-scale predictions show what a collection of log-odds coefficients implies for concrete dative profiles. Second, grouped evaluation asks whether the alignment pattern improves prediction for tokens headed by a verb omitted during fitting. Neither check introduces a second model family.
+
+::: {.callout-note title="Reading"}
+Read Bresnan, Cueni, Nikitina, and Baayen (2007), [“Predicting the Dative Alternation”](https://web.stanford.edu/~bresnan/qs-submit.pdf), in *Cognitive Foundations of Interpretation*, pages 69 to 94. Focus on the discussion of harmonic alignment and the move to a multiple-predictor logistic model. The reading is included because it supplies the linguistic hypothesis, explains why the predictors are correlated, and treats lexical conditioning as a possible limit on a broad alignment account. This problem set uses a smaller prespecified model, so it is not a reproduction of every analysis in the chapter.
+:::
+
+Before beginning, review [odds and log odds](../../regression-models/odds-and-log-odds.qmd), [logistic regression with multiple predictors](../../regression-models/logistic-regression-with-multiple-predictors.qmd), [predictive loss](../../model-criticism-and-prediction/predictive-loss.qmd), and [grouped cross-validation](../../model-criticism-and-prediction/grouped-cross-validation.qmd). The first two pages establish the focal method. The latter two establish the evaluation procedure used in Task 4.
+
+## From ordering claims to coefficient signs
+
+Let $p_i$ be the probability that token $i$ has a PP recipient. An additive logistic model has the form
+
+$$
+\operatorname{logit}(p_i)
+= \log\left(\frac{p_i}{1-p_i}\right)
+= \beta_0 + \beta_1 x_{1i} + \cdots + \beta_K x_{Ki}.
+$$
+
+Each coefficient describes a conditional change in PP log odds. “Conditional” matters because argument properties are correlated. Pronouns tend to be short, animate referents tend to be discourse accessible, and discourse accessible expressions tend to occur early. A multiple-predictor model asks whether one property carries a directional association while the remaining modeled properties are fixed.
+
+Exponentiating a coefficient gives an odds ratio. An odds ratio above one raises the PP odds, while an odds ratio below one lowers them. Odds are not probabilities. Task 3 thus returns the fitted model to the response scale before you write the main substantive comparison.
+
+## Data and source
+
+The data come from the `dative` table in `languageR` 1.5.0, which adapts the corpus annotations analyzed in [Bresnan et al. (2007)](https://web.stanford.edu/~bresnan/qs-submit.pdf). The [package documentation](https://search.r-project.org/CRAN/refmans/languageR/html/dative.html) describes 3,263 dative tokens from spoken Switchboard and the written Wall Street Journal Treebank. The teaching table contains annotations but no corpus sentence text.
+
+```{r}
+items <- read.csv("data/dative-alternation.csv")
+dim(items)
+head(items)
+```
+
+One row is one annotated dative token. The response `recipient_realization` is `NP` when the recipient immediately follows the verb and `PP` when it follows the theme. The principal predictors describe the two arguments:
+
+- `recipient_accessibility` and `theme_accessibility`: accessible, given, or new
+- `recipient_pronominality` and `theme_pronominality`: pronominal or nonpronominal
+- `recipient_animacy`: animate or inanimate
+- `recipient_length_words` and `theme_length_words`: length in graphemic words
+
+The columns `modality` and `semantic_class` supply controls. The semantic class codes are `a` for abstract, `c` for communication, `f` for future transfer, `p` for prevented possession, and `t` for transfer of possession. These controls matter because the written and spoken samples differ, and different transfer meanings have different construction distributions. They are not substitutes for the alignment predictors.
+
+The table contains 75 verb types. Some are common, while many occur only once or twice. This imbalance will matter when you evaluate transfer across verbs. A change in average token loss and a count of improved verb types answer different descriptive questions.
+
+## Task 1: state the directional theory (15 points)
+
+Create
+
+```{r}
+items$pp <- as.integer(items$recipient_realization == "PP")
+items$relative_log_length <-
+  log(items$theme_length_words) - log(items$recipient_length_words)
+```
+
+Then state the predicted coefficient direction for each of the following contrasts. In every case, connect the sign to the argument order in a PP. Do not write only that an early argument should precede a late one.
+
+1. relative log length;
+2. a given rather than accessible recipient;
+3. a new rather than accessible recipient;
+4. a pronominal rather than nonpronominal recipient;
+5. a given rather than accessible theme;
+6. a new rather than accessible theme;
+7. a pronominal rather than nonpronominal theme; and
+8. an inanimate rather than animate recipient.
+
+Note that a positive value of `relative_log_length` means that the theme is longer than the recipient. A PP would place that longer theme first. Thus the sign of this coefficient must be reasoned through from the variable definition and the response coding.
+
+## Task 2: fit the prespecified model sequence (25 points)
+
+Set the factor levels below. These baselines make every coefficient in Task 1 interpretable without changing the observed data.
+
+```{r}
+factor_levels <- list(
+  modality = c("spoken", "written"),
+  semantic_class = c("a", "c", "f", "p", "t"),
+  recipient_accessibility = c("accessible", "given", "new"),
+  theme_accessibility = c("accessible", "given", "new"),
+  recipient_pronominality = c("nonpronominal", "pronominal"),
+  theme_pronominality = c("nonpronominal", "pronominal"),
+  recipient_animacy = c("animate", "inanimate")
+)
+
+for (variable in names(factor_levels)) {
+  items[[variable]] <- factor(items[[variable]], levels = factor_levels[[variable]])
+}
+```
+
+Fit two models whose formulas are fixed before you inspect the fitted coefficients.
+
+- The first model contains relative log length, modality, and semantic class.
+- The second model adds recipient accessibility, theme accessibility, recipient pronominality, theme pronominality, and recipient animacy.
+
+The first model is a comparison baseline, not a claim that length, modality, and semantic class exhaust dative choice. The second asks whether the discourse and referential properties add the directional pattern predicted by harmonic alignment.
+
+```{r}
+baseline_formula <- pp ~
+  relative_log_length + modality + semantic_class
+
+alignment_formula <- update(
+  baseline_formula,
+  . ~ . + recipient_accessibility + theme_accessibility +
+    recipient_pronominality + theme_pronominality + recipient_animacy
+)
+
+# Fit both formulas with glm(..., family = binomial()).
+```
+
+Construct a table containing the second model's coefficient, its exponentiated value, and a Wald 95 percent interval on the odds-ratio scale. Interpret relative length and one recipient property in words. Name the reference level, the direction of the contrast, and the fact that the remaining predictors are held fixed by the model.
+
+Then compare every focal coefficient sign with your predictions from Task 1. This comparison is the primary result here. Do not reduce it to a count of p values. A matching sign supports the predicted direction in this fitted corpus model, while a mismatching sign identifies a part of the alignment account that the model does not recover.
+
+## Task 3: interpret probabilities, not only coefficients (25 points)
+
+A coefficient is local to the log-odds scale. Several coefficients can combine nonlinearly on the probability scale, so we now compare predeclared profiles. Predeclaring the profiles prevents the fitted model from choosing its own most dramatic contrast.
+
+Create the two predeclared profiles below. Both describe a spoken transfer event with equal-length arguments.
+
+- The first profile has a given, pronominal, animate recipient and a new, nonpronominal theme.
+- The second profile has a new, nonpronominal, inanimate recipient and a given, pronominal theme.
+
+Use transfer of possession (`semantic_class = "t"`) for both profiles. Predict the probability of a PP recipient for each profile using the second model. Report the probability difference and explain why the direction follows from harmonic alignment.
+
+Then inspect data support. Count exact corpus matches for each profile and count matches after ignoring modality, semantic class, and equal length. An extreme model prediction supported by very few matching tokens should be reported as an extrapolation toward a sparse corner of the predictor space, not as a categorical construction rule.
+
+Then start from the first profile and change only recipient accessibility from `given` to `new`. Report the two model predictions and their difference. Why is this comparison easier to interpret than comparing two observed token subsets that also differ in pronominality, animacy, length, and verb?
+
+This is a model-based predictive contrast. The corpus does not [randomly assign](../../experimental-design/random-assignment.qmd) accessibility, so the contrast does not by itself identify a causal effect.
+
+## Task 4: test transfer to omitted verbs (25 points)
+
+The second model may predict the observed tokens partly because it learns associations carried by common verbs. Leaving out a complete verb type asks a stricter question: do the alignment predictors help on tokens whose verb type was absent during fitting? This is why the grouping variable is `verb`, not a random row label.
+
+For a binary response, the Brier loss for token $i$ is
+
+$$
+(y_i-\widehat p_i)^2.
+$$
+
+Smaller values are better. A confident wrong prediction receives a large loss, while a well calibrated probability receives a small loss. Average the token losses within each held-out verb before constructing the requested verb plot.
+
+Use leave-one-verb-out evaluation. For each of the 75 verb types:
+
+1. hold out every token of that verb;
+2. fit both models to the remaining verb types;
+3. predict the held-out responses; and
+4. compute Brier loss for each model.
+
+```{r}
+verb_levels <- unique(items$verb)
+
+# Return one row per held-out verb with its token count and both Brier losses.
+```
+
+Report token-weighted Brier loss for each model and the proportion of verb types on which the second model improves. Plot the per-verb difference `first model loss - second model loss` against held-out token count, with a horizontal line at zero.
+
+Do not compute a standard error from the 75 fitted folds or run a test over fold scores. The training sets overlap, and the verb types are not exchangeable replicates created by the fitting algorithm. Use the losses descriptively for prediction on omitted verb types.
+
+Inspect `tell`, a common verb rather than a singleton. The alignment predictors worsen its held-out loss. Explain why this result does not negate the broad alignment pattern, but does block the claim that the second model is a complete lexical theory of dative choice.
+
+## Task 5: license the claim (10 points)
+
+Write a five-to-seven sentence results paragraph that does all of the following:
+
+1. names the response and model;
+2. summarizes the directional coefficient pattern;
+3. reports the two profile probabilities;
+4. reports the held-out-verb Brier comparison;
+5. identifies the `tell` limitation; and
+6. states why these corpus tokens do not license a claim about every English speaker, genre, or dative context.
+
+Do not say that harmonic alignment “determines” dative choice. The model estimates graded shifts in a corpus probability.
+
+## LING 414 extension: modality as a boundary condition
+
+An additive model assumes that every alignment coefficient is the same in spoken and written tokens. Add interactions between modality and the five alignment predictor groups. This model introduces seven product terms because the two three-level accessibility variables each contribute two contrasts.
+
+Compare the expanded model with the second model using the same leave-one-verb-out Brier loss as Task 4. Plot predicted probabilities for the two predeclared profiles in matched spoken and written conditions. Inspect the interaction estimates and their standard errors. State whether the data support one alignment pattern whose strength varies by modality, or whether predictive results and sparse combinations make that interpretation too unstable.
+
+## Submission checklist
+
+- The notebook runs from a fresh R session.
+- The response direction (`PP = 1`) is stated wherever a sign is interpreted.
+- Factor baselines match the assignment.
+- Predictions change one property at a time when a causal-sounding comparison is not warranted.
+- Verb groups never appear in both training and test data within a fold.
+- The final paragraph distinguishes a broad probabilistic constraint from a complete lexical theory.
+- Every claim based on the second profile acknowledges its sparse support.

@@ -1,0 +1,589 @@
+# Frequentist Approach
+
+## We already derived OLS = MLE
+
+In Section 3, we showed:
+
+- Under normality assumption, **OLS is the MLE**
+- MLEs have good statistical properties (consistency, asymptotic normality)
+- We know the formulas: $\hat\beta_1 = \text{Cov}(X,Y)/\text{Var}(X)$, $\hat\beta_0 = \bar{y} - \hat\beta_1\bar{x}$
+
+Now we fit the model in R and interpret results.
+
+---
+
+## Fitting in R
+
+```{r fit-lm}
+#| echo: true
+#| code-fold: false
+
+# Fit linear model: log RT ~ surprisal
+model <- lm(log_rt ~ surprisal, data = word_data)
+
+# View summary
+summary(model)
+```
+
+---
+
+## Interpreting the output
+
+```{r extract-coefs}
+#| echo: true
+#| code-fold: false
+
+# Extract coefficients
+coef(model)
+
+# Extract confidence intervals
+confint(model)
+```
+
+The slope coefficient tells us how log RT changes per bit increase in surprisal.
+
+A positive coefficient confirms that higher surprisal predicts slower reading.
+
+---
+
+## Visualizing the fit
+
+```{r plot-fit}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+
+ggplot(word_data, aes(x = surprisal, y = log_rt)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(x = "Surprisal (bits)",
+       y = "Log Reaction Time (log seconds)",
+       title = "Fitted Regression Line with 95% Confidence Band")
+```
+
+---
+
+# Confidence Intervals
+
+## Connecting to prior material
+
+**Recall from [confidence intervals](../statistical-inference/confidence-intervals.qmd)**: intervals for the Bernoulli parameter $\pi$
+
+- **Clopper-Pearson method**: Exact confidence intervals using binomial distribution
+  - Complex formulas involving binomial CDFs
+  - Required computing quantiles: $\inf\{\theta \mid P(X \geq k) > (1-\gamma)/2\}$
+
+**Recall from Problem Set 1**: Bootstrap CIs for Poisson $\lambda$
+
+- Resampled data 10,000 times with replacement
+- Computed $\hat\lambda$ on each resample
+- Took 2.5% and 97.5% quantiles of bootstrap distribution
+
+---
+
+## Why regression CIs are different
+
+**Challenge**: In regression, we're estimating multiple parameters simultaneously: $\beta_0, \beta_1, \sigma$
+
+- For Bernoulli: One parameter $\pi$, known sampling distribution
+- For regression: Multiple parameters, more complex dependencies
+
+**Good news**: Under the normality assumption, we know the exact sampling distribution of $\hat{\boldsymbol{\beta}}$
+
+**Key result**: $$\frac{\hat\beta_j - \beta_j}{SE(\hat\beta_j)} \sim t_{N-p-1}$$
+
+This gives us a simple closed-form formula for confidence intervals (no complex binomial quantiles, no bootstrap needed!)
+
+---
+
+## Confidence intervals for regression coefficients
+
+A $(1-\alpha) \times 100\%$ confidence interval for $\beta_j$ is:
+
+$$\hat\beta_j \pm t_{\alpha/2, N-p-1} \times SE(\hat\beta_j)$$
+
+where $t_{\alpha/2, N-p-1}$ is the critical value from the $t$-distribution.
+
+```{r confint-regression}
+#| echo: true
+#| code-fold: false
+
+# 95% confidence intervals for all coefficients
+confint(model, level = 0.95)
+```
+
+---
+
+## Interpreting confidence intervals
+
+For our model: `log_rt ~ surprisal`
+
+Suppose the 95% CI for $\beta_1$ (surprisal) is $[0.012, 0.018]$.
+
+**Interpretation**: We are 95% confident that the true effect of surprisal lies in this interval.
+
+**In context**: Each additional bit of surprisal increases log RT by between 0.012 and 0.018 log seconds.
+
+**Connection to hypothesis testing**: Since the interval doesn't contain 0, we can reject $H_0: \beta_1 = 0$ at $\alpha = 0.05$.
+
+---
+
+# Regression Diagnostics
+
+## The importance of assumptions
+
+OLS inference validity depends on our three assumptions:
+
+1. **Independence**: Observations are independent
+2. **Conditional normality**: $Y_i \mid X_i \sim \text{Normal}(\beta_0 + \beta_1 x_i, \sigma^2)$
+3. **Homoscedasticity**: Constant variance $\sigma^2$
+
+We check these using residuals: $e_i = y_i - \hat{y}_i$
+
+---
+
+## Residuals
+
+The residual for observation $i$ is:
+
+$$e_i = y_i - \hat{y}_i = y_i - (\hat\beta_0 + \hat\beta_1 x_i)$$
+
+Residuals estimate the true errors $\epsilon_i$.
+
+If assumptions hold, residuals should behave like random noise.
+
+---
+
+## Extracting residuals
+
+```{r extract-residuals}
+#| echo: true
+#| code-fold: false
+
+# Extract residuals and fitted values
+residuals <- residuals(model)
+fitted_values <- fitted(model)
+
+# Summary statistics
+summary(residuals)
+```
+
+---
+
+# Normality Assumption
+
+## Why normality matters
+
+Normality of $\epsilon_i$ is required for:
+
+1. Valid hypothesis tests ($t$-tests, $F$-tests)
+2. Accurate confidence intervals
+3. Valid prediction intervals
+
+Departures invalidate statistical inference.
+
+---
+
+## Q-Q plot
+
+```{r qq-plot}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+qqnorm(residuals, main = "Normal Q-Q Plot")
+qqline(residuals, col = "red", lwd = 2)
+```
+
+If residuals are normal, points should fall on the line. Systematic deviations indicate non-normality.
+
+---
+
+## Histogram of residuals
+
+```{r histogram}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+hist(residuals, breaks = 30, freq = FALSE,
+     main = "Distribution of Residuals",
+     xlab = "Residuals",
+     col = "lightblue", border = "white")
+curve(dnorm(x, mean = mean(residuals), sd = sd(residuals)),
+      add = TRUE, col = "red", lwd = 2)
+```
+
+---
+
+## Shapiro-Wilk test
+
+**Test**: $H_0$: Residuals $e_1, \ldots, e_N \sim \text{Normal}(\mu, \sigma^2)$
+
+**Test statistic**: $$W = \frac{(\sum_{i=1}^N a_i e_{(i)})^2}{\sum_{i=1}^N (e_i - \bar{e})^2}$$
+
+where:
+- $e_{(i)}$ are ordered residuals
+- $a_i$ are constants derived from expected order statistics of standard normal distribution
+
+**What W measures**: Correlation between ordered residuals and expected normal quantiles
+
+- $W \in [0, 1]$; values close to 1 indicate normality
+- Small $W$ = evidence against normality
+
+**Decision**: Reject $H_0$ if $p < \alpha$
+
+**Limitation**: Sample size $N \leq 5000$
+
+---
+
+```{r shapiro-test}
+#| echo: true
+#| code-fold: false
+
+# Shapiro-Wilk test has max sample size of 5000
+if (length(residuals) <= 5000) {
+  shapiro.test(residuals)
+} else {
+  # Use random subsample for large datasets
+  set.seed(42)
+  subsample <- sample(residuals, 5000)
+  cat("Note: Using random subsample of 5000 observations (N =", length(residuals), ")\n")
+  shapiro.test(subsample)
+}
+```
+
+---
+
+## Kolmogorov-Smirnov test
+
+**Test**: $H_0$: Residuals follow $\text{Normal}(\mu, \sigma^2)$
+
+**Test statistic**: $$D = \sup_x |F_N(x) - \Phi(x)|$$
+
+where:
+- $F_N(x)$ = empirical CDF (proportion of residuals $\leq x$)
+- $\Phi(x)$ = standard normal CDF
+
+**What D measures**: Maximum vertical distance between empirical and theoretical CDFs
+
+- **Intuition**: How far is the "worst" point from the normal distribution?
+- Small $D$ = good fit to normality
+- Large $D$ = poor fit, evidence against normality
+
+**Note**: When $\mu, \sigma$ are estimated from data, test becomes conservative (may fail to reject even when data are non-normal)
+
+```{r ks-test}
+#| echo: true
+#| code-fold: false
+
+# Standardize residuals
+std_residuals <- scale(residuals)
+# KS test against standard normal
+ks.test(std_residuals, "pnorm")
+```
+
+**Note**: $p$-value may be overly conservative when parameters are estimated.
+
+---
+
+## Anderson-Darling test
+
+**Test**: $H_0$: Residuals $\sim \text{Normal}(\mu, \sigma^2)$
+
+**Test statistic**: $$A^2 = -N - \frac{1}{N}\sum_{i=1}^N (2i-1)[\log \Phi(e_{(i)}) + \log(1-\Phi(e_{(N+1-i)}))]$$
+
+where $e_{(i)}$ are ordered residuals.
+
+**What A² measures**: Weighted squared distance between empirical and theoretical CDFs
+
+- **Key advantage**: Gives more weight to deviations in the distribution tails than KS test
+- Small $A^2$ = consistent with normality
+- Large $A^2$ = evidence against normality (especially tail behavior)
+
+**Why it's better**: More sensitive to departures that matter for inference (tail probabilities)
+
+```{r ad-test}
+#| echo: true
+#| code-fold: false
+#| warning: false
+
+library(nortest)
+ad.test(residuals)
+```
+
+---
+
+# Homoscedasticity
+
+## Constant variance assumption
+
+**Assumption**: $\text{Var}(\epsilon_i \mid X_i = x) = \sigma^2$ for all $x$
+
+**Violation** (heteroscedasticity) causes:
+1. Inefficient estimates (higher variance)
+2. Biased standard errors → invalid tests
+3. Confidence intervals have wrong coverage
+
+---
+
+## Residuals vs. fitted plot
+
+```{r residuals-fitted}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(fitted_values, residuals,
+     xlab = "Fitted Values",
+     ylab = "Residuals",
+     main = "Residuals vs. Fitted Values")
+abline(h = 0, col = "red", lwd = 2)
+```
+
+Random scatter around zero with constant spread indicates homoscedasticity. Funnel shapes indicate heteroscedasticity.
+
+---
+
+## Scale-location plot
+
+```{r scale-location}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+standardized_res <- rstandard(model)
+
+plot(fitted_values, sqrt(abs(standardized_res)),
+     xlab = "Fitted Values",
+     ylab = expression(sqrt("|Standardized Residuals|")),
+     main = "Scale-Location Plot")
+lines(lowess(fitted_values, sqrt(abs(standardized_res))),
+      col = "red", lwd = 2)
+```
+
+Horizontal line with equal spread indicates homoscedasticity.
+
+---
+
+## Breusch-Pagan test
+
+**Test**: $H_0$: Homoscedasticity ($\text{Var}(\epsilon_i) = \sigma^2$ constant)
+
+**Procedure**:
+1. Fit original model, obtain residuals $\hat\epsilon_i$
+2. Regress $\hat\epsilon_i^2$ on predictors $X_1, \ldots, X_p$
+3. Compute $\text{BP} = N \times R^2$ from auxiliary regression
+4. Under $H_0$: $\text{BP} \sim \chi^2_p$ (asymptotically)
+
+**Decision**: Reject $H_0$ if $\text{BP} > \chi^2_{p,\alpha}$ critical value
+
+```{r bp-test}
+#| echo: true
+#| code-fold: false
+#| warning: false
+
+library(lmtest)
+bptest(model)
+```
+
+---
+
+# Influential Observations
+
+## Outliers and leverage
+
+**Outlier**: Observation with large residual (unusual $Y$ value)
+
+**High leverage**: Observation with extreme $X$ value
+
+**Influential**: Observation that substantially changes regression when removed
+
+---
+
+## Cook's distance
+
+**Measure**: Influence of observation $i$ on all fitted values
+
+$$D_i = \frac{\sum_{j=1}^N (\hat{y}_j - \hat{y}_{j(i)})^2}{(p+1) \times \text{MSE}}$$
+
+where $\hat{y}_{j(i)}$ is fitted value when observation $i$ is excluded.
+
+**Rule of thumb**: $D_i > 1$ indicates high influence (or $D_i > 4/N$ for smaller threshold)
+
+```{r cooks-distance}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+cooks_d <- cooks.distance(model)
+
+plot(cooks_d, type = "h",
+     main = "Cook's Distance",
+     ylab = "Cook's Distance",
+     xlab = "Observation Index")
+abline(h = 1, col = "red", lty = 2, lwd = 2)
+```
+
+---
+
+## Residuals vs. leverage plot
+
+```{r residuals-leverage}
+#| echo: true
+#| code-fold: false
+#| fig-width: 7
+#| fig-height: 5
+
+plot(model, which = 5)
+```
+
+Points in upper/lower right corners are both outliers and high leverage (most influential).
+
+---
+
+## Identifying influential points
+
+```{r identify-influential}
+#| echo: true
+#| code-fold: false
+
+# Identify observations with high Cook's distance
+influential <- which(cooks_d > 4/length(cooks_d))
+
+cat("Number of influential observations:", length(influential), "\n")
+if(length(influential) > 0 && length(influential) <= 10) {
+  cat("Their Cook's distances:", head(cooks_d[influential], 10), "\n")
+}
+```
+
+---
+
+# Model Fit
+
+## Coefficient of determination
+
+$$R^2 = 1 - \frac{\text{RSS}}{\text{TSS}} = 1 - \frac{\sum_{i=1}^N (y_i - \hat{y}_i)^2}{\sum_{i=1}^N (y_i - \bar{y})^2}$$
+
+- $R^2 \in [0,1]$: Proportion of variance in $Y$ explained by the model
+- Higher values indicate better fit to the observed data
+- **Important caveat**: $R^2$ always increases when adding more predictors
+  - This doesn't necessarily mean a better model!
+  - We need to assess for overfitting
+
+```{r r-squared}
+#| echo: true
+#| code-fold: false
+
+summary(model)$r.squared
+```
+
+**Note**: A later unit on model evaluation will develop methods for guarding against overfitting.
+
+---
+
+# Hypothesis Testing
+
+## Connecting to Problem Set 2
+
+**Recall Exercise 4.2**: You manually computed Welch's t-statistic for comparing vowel formants (IY vs. IH)
+
+**What you did**:
+
+1. Extracted F1 values for each vowel
+2. Computed means, standard deviations, sample sizes
+3. Calculated t-statistic: $$t = \frac{\bar{x}_{\text{IY}} - \bar{x}_{\text{IH}}}{\sqrt{s^2_{\text{IY}}/n_{\text{IY}} + s^2_{\text{IH}}/n_{\text{IH}}}}$$
+4. Computed degrees of freedom using Welch-Satterthwaite formula
+5. Found p-value using `pt(-abs(t), df)`
+
+**Same idea for regression**: Test if a coefficient differs from 0
+
+---
+
+## Hypothesis test for regression coefficients
+
+Testing whether a predictor has an effect on the response:
+
+- **Null hypothesis** $H_0$: $\beta_1 = 0$ (no relationship between $X$ and $Y$)
+- **Alternative hypothesis** $H_1$: $\beta_1 \neq 0$ (X affects Y)
+
+**Test statistic**:
+
+$$t = \frac{\hat\beta_1 - 0}{SE(\hat\beta_1)} = \frac{\hat\beta_1}{SE(\hat\beta_1)}$$
+
+**Under $H_0$**: $t \sim t_{N-2}$ (for simple regression)
+
+**Decision rule**: Reject $H_0$ if $|t| > t_{\alpha/2, N-2}$ or equivalently if $p < \alpha$
+
+---
+
+## Understanding the test statistic
+
+The t-statistic measures how many standard errors the estimate is from the null value:
+
+$$t = \frac{\hat\beta_1}{SE(\hat\beta_1)}$$
+
+- **Numerator**: How far is $\hat\beta_1$ from 0?
+- **Denominator**: How uncertain are we about $\hat\beta_1$?
+- **Large $|t|$**: Strong evidence against $H_0$ (effect is many SEs away from 0)
+- **Small $|t|$**: Weak evidence against $H_0$ (effect is close to 0 relative to uncertainty)
+
+---
+
+## Computing the test in R
+
+```{r inference}
+#| echo: true
+#| code-fold: false
+
+# Coefficient table with hypothesis tests
+summary(model)$coefficients
+```
+
+Output columns:
+
+- **Estimate**: $\hat\beta_j$ (point estimate)
+- **Std. Error**: $SE(\hat\beta_j)$ (standard error)
+- **t value**: $t = \text{Estimate} / \text{Std. Error}$
+- **Pr(>|t|)**: $p$-value = $P(|T| \geq |t| \mid H_0 \text{ true})$
+
+**Interpretation**: Small p-value (e.g., $p < 0.05$) $\Rightarrow$ strong evidence against $H_0$ $\Rightarrow$ conclude $\beta_j \neq 0$
+
+---
+
+## Diagnostic plots summary
+
+```{r diagnostic-plots}
+#| echo: true
+#| code-fold: false
+#| fig-width: 10
+#| fig-height: 8
+
+par(mfrow = c(2, 2))
+plot(model)
+```
+
+Standard R diagnostic plots: (1) Residuals vs Fitted, (2) Q-Q, (3) Scale-Location, (4) Residuals vs Leverage
+
+---
+
+## Conclusion
+
+We have:
+
+1. Fit an OLS regression model (which is the MLE under normality)
+2. Constructed confidence intervals for coefficients
+3. Performed hypothesis tests for coefficients
+4. Checked normality (Q-Q plot, Shapiro-Wilk, KS, AD tests)
+5. Checked homoscedasticity (residual plots, Breusch-Pagan test)
+6. Identified influential observations (Cook's distance, leverage)
+7. Assessed model fit ($R^2$)
+
+This diagnostic process ensures our assumptions hold and inference is valid.
+
+---

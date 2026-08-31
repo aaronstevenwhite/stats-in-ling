@@ -1,0 +1,180 @@
+# Simple Linear Regression
+
+## Observed data
+
+We observe $N$ paired observations:
+
+$$(x_1, y_1), (x_2, y_2), \ldots, (x_N, y_N)$$
+
+where:
+
+- $x_i$ = surprisal of word $i$ (predictor)
+- $y_i$ = log reaction time for word $i$ (response)
+
+**Goal**: Model the relationship between surprisal and log RT.
+
+---
+
+## Distributional assumptions
+
+We make three key assumptions:
+
+1. **Independence**: Observations $(X_i, Y_i)$ are independent across $i$
+   - Reading time for word $i$ doesn't depend on word $j$
+   - Similar to the IID assumptions used in [probability models](../foundations/probability-concepts.qmd) and [maximum-likelihood estimation](../statistical-inference/maximum-likelihood.qmd)
+
+2. **Conditional normality**: $Y_i \mid X_i = x_i \sim \text{Normal}(\beta_0 + \beta_1 x_i, \sigma^2)$
+   - Given surprisal, log RT follows a normal distribution
+   - The mean depends linearly on $x_i$
+
+3. **Homoscedasticity**: $\sigma^2$ is constant for all $x$ values
+   - Variance doesn't change with surprisal level
+
+---
+
+## Connection to IID assumptions
+
+In [maximum-likelihood estimation](../statistical-inference/maximum-likelihood.qmd), we assumed $X_1, X_2, \ldots, X_N \overset{\text{iid}}{\sim} \text{Bern}(\pi)$.
+
+Here, we assume observations are **independent** but not identically distributed:
+
+- $(X_1, Y_1), (X_2, Y_2), \ldots, (X_N, Y_N)$ are independent
+- Each $Y_i \mid X_i$ follows a different normal distribution (different mean)
+- But all share the same form: $\text{Normal}(\beta_0 + \beta_1 x_i, \sigma^2)$
+
+This is **conditional independence** given the predictor values.
+
+---
+
+## Parameterizing the likelihood
+
+Instead of estimating $\mathbb{E}[Y \mid X = x]$ separately for each $x$ value (infinitely many parameters), we assume:
+
+$$\mathbb{E}[Y_i \mid X_i = x_i] = \beta_0 + \beta_1 x_i$$
+
+This **parameterizes** the conditional expectation with just two parameters:
+
+- $\beta_0$ (intercept): Expected log RT when surprisal = 0
+- $\beta_1$ (slope): Change in log RT per 1-bit increase in surprisal
+
+Plus $\sigma^2$ for the variance, giving us **3 parameters total**.
+
+---
+
+## Interpreting the parameters
+
+$\beta_0$ (intercept): Expected log RT for a maximally predictable word (surprisal = 0)
+
+$\beta_1$ (slope): Expected change in log RT for each additional bit of surprisal
+
+If higher surprisal predicts slower reading, we expect $\beta_1 > 0$.
+
+$\sigma^2$: Residual variance—how much log RT varies around the regression line
+
+---
+
+## The likelihood function
+
+By assumption 1 (independence), the joint probability factors as a product:
+
+$$p(y_1, \ldots, y_N \mid x_1, \ldots, x_N, \beta_0, \beta_1, \sigma^2) = \prod_{i=1}^N p(y_i \mid x_i, \beta_0, \beta_1, \sigma^2)$$
+
+By assumption 2 (conditional normality):
+
+$$= \prod_{i=1}^N \text{Normal}(y_i; \beta_0 + \beta_1 x_i, \sigma^2)$$
+
+---
+
+## Expanding the likelihood
+
+Substituting the normal density:
+
+$$\begin{align*}
+p(\mathbf{y} \mid \mathbf{x}, \beta_0, \beta_1, \sigma^2) &= \prod_{i=1}^N \frac{1}{\sqrt{2\pi\sigma^2}} \exp\left(-\frac{(y_i - \beta_0 - \beta_1 x_i)^2}{2\sigma^2}\right) \\
+&= (2\pi\sigma^2)^{-N/2} \exp\left(-\frac{1}{2\sigma^2}\sum_{i=1}^N (y_i - \beta_0 - \beta_1 x_i)^2\right)
+\end{align*}$$
+
+---
+
+## Log-likelihood
+
+Taking the natural logarithm (which preserves the location of the maximum):
+
+$$\begin{align*}
+\ell(\beta_0, \beta_1, \sigma^2) &= \log p(\mathbf{y} \mid \mathbf{x}, \beta_0, \beta_1, \sigma^2) \\
+&= -\frac{N}{2}\log(2\pi) - \frac{N}{2}\log(\sigma^2) - \frac{1}{2\sigma^2}\sum_{i=1}^N (y_i - \beta_0 - \beta_1 x_i)^2
+\end{align*}$$
+
+---
+
+## Maximum likelihood estimation
+
+The MLE is:
+
+$$(\hat\beta_0, \hat\beta_1, \hat\sigma^2) = \arg\max_{\beta_0, \beta_1, \sigma^2} \ell(\beta_0, \beta_1, \sigma^2)$$
+
+**Key insight**: Maximizing $\ell$ with respect to $\beta_0, \beta_1$ is equivalent to **minimizing**:
+
+$$\text{RSS}(\beta_0, \beta_1) = \sum_{i=1}^N (y_i - \beta_0 - \beta_1 x_i)^2$$
+
+This is the **residual sum of squares**.
+
+---
+
+## OLS = MLE under normality
+
+**Ordinary Least Squares (OLS)** chooses $\hat\beta_0, \hat\beta_1$ to minimize RSS.
+
+Under the normality assumption, **OLS is the MLE**.
+
+This parallels the [Bernoulli example](../statistical-inference/maximum-likelihood.qmd), where we showed that the MLE for $\pi$ is the sample mean.
+
+---
+
+## Deriving the MLE (optional)
+
+Taking partial derivatives and setting to zero:
+
+$$\frac{\partial \ell}{\partial \beta_0} = \frac{1}{\sigma^2}\sum_{i=1}^N (y_i - \beta_0 - \beta_1 x_i) = 0$$
+
+$$\frac{\partial \ell}{\partial \beta_1} = \frac{1}{\sigma^2}\sum_{i=1}^N x_i(y_i - \beta_0 - \beta_1 x_i) = 0$$
+
+Solving these yields the OLS formulas.
+
+---
+
+## MLE formulas
+
+The MLEs are:
+
+$$\hat\beta_1 = \frac{\sum_{i=1}^N (x_i - \bar{x})(y_i - \bar{y})}{\sum_{i=1}^N (x_i - \bar{x})^2} = \frac{\text{Cov}(X, Y)}{\text{Var}(X)}$$
+
+$$\hat\beta_0 = \bar{y} - \hat\beta_1 \bar{x}$$
+
+$$\hat\sigma^2 = \frac{1}{N}\sum_{i=1}^N (y_i - \hat\beta_0 - \hat\beta_1 x_i)^2$$
+
+---
+
+## Summary: From assumptions to MLE
+
+1. **Assume**: $Y_i \mid X_i \sim \text{Normal}(\beta_0 + \beta_1 x_i, \sigma^2)$ independently
+2. **Write likelihood**: $p(\mathbf{y} \mid \mathbf{x}, \beta_0, \beta_1, \sigma^2) = \prod_i \text{Normal}(y_i; \beta_0 + \beta_1 x_i, \sigma^2)$
+3. **Take log**: $\ell = -\frac{N}{2}\log(2\pi) - \frac{N}{2}\log(\sigma^2) - \frac{1}{2\sigma^2}\text{RSS}$
+4. **Maximize**: Minimizing RSS gives MLE = OLS
+
+This is the same approach used to estimate the Bernoulli parameter by [maximum likelihood](../statistical-inference/maximum-likelihood.qmd).
+
+---
+
+## Why this approach matters
+
+By deriving OLS from first principles:
+
+1. We understand what **assumptions** justify OLS
+2. We know OLS estimates are MLEs (good statistical properties)
+3. We can extend to **Bayesian inference** by adding priors (next section)
+4. We can check assumptions through **diagnostics** (Section 4)
+
+This rigorous foundation prevents misuse of regression tools.
+
+---

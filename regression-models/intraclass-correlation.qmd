@@ -1,0 +1,115 @@
+---
+title: "Intraclass correlation"
+---
+
+The [random-intercept page](random-intercepts.qmd) showed that responses from the same group share a deviation. The [**intraclass correlation coefficient (ICC)**](https://online.stat.psu.edu/stat502/Lesson06) measures the resulting model-implied correlation for a linear random-intercept model with normally distributed errors and random intercepts.
+
+## Begin with the intercept only model
+
+Suppose
+
+$$
+Y_{ij}=\beta_0+b_j+\varepsilon_{ij},
+$$
+
+with
+
+$$
+b_j\sim\mathcal{N}(0,\tau^2)
+$$
+
+and
+
+$$
+\varepsilon_{ij}\sim\mathcal{N}(0,\sigma^2).
+$$
+
+The response has two sources of variation. The group deviation $b_j$ is shared by every observation in group $j$. The residual $\varepsilon_{ij}$ belongs to one observation.
+
+## Derive the shared covariance
+
+Consider two distinct observations $i$ and $i'$ from group $j$. Their covariance is
+
+$$
+\operatorname{Cov}(Y_{ij},Y_{i'j})
+=\operatorname{Cov}(b_j+\varepsilon_{ij},
+b_j+\varepsilon_{i'j}).
+$$
+
+The residuals are independent of each other and of the group deviation under the model. The only shared term is $b_j$. Thus
+
+$$
+\operatorname{Cov}(Y_{ij},Y_{i'j})=\tau^2.
+$$
+
+Each response has variance
+
+$$
+\operatorname{Var}(Y_{ij})
+=\tau^2+\sigma^2.
+$$
+
+Correlation is covariance divided by the product of the standard deviations. Because the two responses have the same variance, their correlation is
+
+$$
+\operatorname{ICC}
+=\frac{\tau^2}{\tau^2+\sigma^2}.
+$$
+
+The numerator is the between-group variance. The denominator is the response variance after averaging over the random intercept. Thus the ICC is the between-group variance divided by the marginal response variance in this intercept-only model.
+
+## Work through a numerical value
+
+Suppose participant variance is 100 and residual variance is 300. Then
+
+$$
+\operatorname{ICC}
+=\frac{100}{100+300}
+=.25.
+$$
+
+Two trials from the same participant have model-implied correlation $.25$. Equivalently, one quarter of the response variance, conditional on the fixed intercept but marginal over participant deviations, is attributed to stable participant baseline differences under this model.
+
+If participant variance were zero, the ICC would be zero. Sharing a participant would add no response similarity. If residual variance became very small relative to participant variance, the ICC would approach one.
+
+## Estimate it from a fitted model
+
+For a linear random-intercept model fit with `lme4`, the variance components can be extracted and combined:
+
+```r
+variance_table <- as.data.frame(VarCorr(fit_intercepts))
+
+participant_variance <- variance_table$vcov[
+  variance_table$grp == "participant"
+]
+
+residual_variance <- sigma(fit_intercepts)^2
+
+icc_participant <-
+  participant_variance /
+  (participant_variance + residual_variance)
+
+icc_participant
+```
+
+In a crossed participant and item model, the denominator may include participant variance, item variance, and residual variance. The relevant numerator depends on which pair of observations is being compared. Two responses from the same participant but different items share the participant component. Two responses to the same item from different participants share the item component.
+
+## Keep the interpretation model specific
+
+Adding predictors can change both $\tau^2$ and $\sigma^2$. The ICC is thus conditional on the fitted mean structure. An intercept only ICC and an ICC after condition and speaker age have been included need not match.
+
+A model with a varying predictor association also gives pairs different covariances at different predictor values. One constant ICC no longer describes every pair. Likewise, logistic and Poisson mixed models do not have a freely estimated normally distributed residual on the response scale. Their ICC definitions require additional scale choices.
+
+This model dependence is not a defect. It means that the ICC summarizes the particular probability model being used. Report the model and the variance components alongside the ratio.
+
+## Connect the ICC to replication
+
+When the ICC is positive, repeated observations from one participant contain less independent information than the same number of observations from different participants. More trials can estimate one participant's baseline more precisely. More participants provide replication across the participant population.
+
+The ICC does not declare repeated trials useless. It identifies why row count and participant count answer different information questions.
+
+::: {.callout-note title="Check the shared variance"}
+Two responses share an item but not a participant in a crossed intercept model. Which variance component belongs in their covariance? Why is the full denominator larger than that component?
+:::
+
+The [next page](random-effect-estimates.qmd) examines the partially pooled group deviations returned by the fitted model.

@@ -1,0 +1,143 @@
+---
+title: "Iterative PCA imputation"
+---
+
+Suppose a phonetic study measures several correlated spectral properties for every token. A tracker fails on one measurement, but the remaining measurements place the token near a well defined acoustic direction. Can the observed cells help reconstruct the missing one?
+
+[**Iterative PCA imputation**](https://cran.r-project.org/package=missMDA) repeatedly uses a low rank reconstruction to update missing cells while leaving observed cells fixed. The new object on this page is the update procedure. Principal components and matrix reconstruction have already been introduced.
+
+::: {.callout-note title="Prerequisite: low rank reconstruction"}
+Review [centering and scaling](../factorization/centering-and-scaling.qmd), [principal component analysis](../factorization/principal-component-analysis.qmd), and [reconstruction](../factorization/reconstruction.qmd) before continuing. The imputation procedure uses these operations without redefining them.
+:::
+
+## Define one update
+
+Let $\mathbf{Y}$ be the incomplete data matrix, and let $M$ be the set of its missing cells. Begin with a completed matrix $\mathbf{X}^{(0)}$ by filling each missing cell with an initial value, often the observed mean of its column.
+
+Let $\mathcal{P}_K(\mathbf{X}^{(t)})$ be the centered rank $K$ reconstruction of the current completed matrix. One imputation update is
+
+$$
+X_{ij}^{(t+1)}=
+\begin{cases}
+Y_{ij} & \text{if }(i,j)\notin M,\\
+\left[\mathcal{P}_K(\mathbf{X}^{(t)})\right]_{ij}
+& \text{if }(i,j)\in M.
+\end{cases}
+$$
+
+Observed values return to their measured values after every reconstruction. Only cells in $M$ receive reconstructed values. The procedure stops when the missing cell updates change by less than a stated tolerance or when a maximum number of iterations is reached.
+
+## Work through a rank one matrix
+
+Consider two standardized acoustic measurements with one absent value.
+
+$$
+\mathbf{Y}=
+\begin{pmatrix}
+-1&-1\\
+0&?\\
+1&1
+\end{pmatrix}.
+$$
+
+The observed mean of the second column is $(-1+1)/2=0$, so column mean initialization gives
+
+$$
+\mathbf{X}^{(0)}=
+\begin{pmatrix}
+-1&-1\\
+0&0\\
+1&1
+\end{pmatrix}.
+$$
+
+This matrix already has rank one. Its two columns are identical, and both can be represented by the score vector $(-1,0,1)^\top$. A rank one reconstruction returns the same matrix. The missing middle value is thus updated to zero, and a second iteration makes no change.
+
+The imputed value has a specific interpretation. Under a one dimensional linear representation of these standardized measurements, the middle token lies at score zero, so its second measurement is reconstructed at the centered value zero. The procedure does not claim that zero was observed.
+
+## Implement the iteration in base R
+
+The following function implements the formal update for a centered matrix. If measurements are on incomparable scales, scaling decisions should be made before this function is called, using the principles from the prerequisite page.
+
+```{r}
+pca_impute <- function(x, k = 1, tolerance = 1e-8, max_iterations = 100) {
+  missing <- is.na(x)
+  filled <- x
+
+  for (column in seq_len(ncol(x))) {
+    filled[missing[, column], column] <- mean(x[, column], na.rm = TRUE)
+  }
+
+  for (iteration in seq_len(max_iterations)) {
+    center <- colMeans(filled)
+    centered <- sweep(filled, 2, center, FUN = "-")
+    decomposition <- svd(centered)
+
+    kept <- seq_len(k)
+    scores <- decomposition$u[, kept, drop = FALSE]
+    values <- diag(decomposition$d[kept], nrow = k, ncol = k)
+    loadings <- decomposition$v[, kept, drop = FALSE]
+
+    reconstructed_centered <- scores %*% values %*% t(loadings)
+    reconstructed <- sweep(reconstructed_centered, 2, center, FUN = "+")
+
+    updated <- filled
+    updated[missing] <- reconstructed[missing]
+    change <- max(abs(updated[missing] - filled[missing]))
+    filled <- updated
+
+    if (change < tolerance) {
+      break
+    }
+  }
+
+  filled
+}
+```
+
+Apply the function to the hand worked matrix.
+
+```{r}
+acoustic <- matrix(
+  c(-1, 0, 1, -1, NA, 1),
+  nrow = 3,
+  ncol = 2
+)
+
+completed <- pca_impute(acoustic, k = 1)
+completed
+
+completed[!is.na(acoustic)] == acoustic[!is.na(acoustic)]
+```
+
+The final comparison checks the defining constraint: every originally observed cell remains unchanged. A production implementation should also return the iteration count, final change, centering values, and chosen rank so that convergence and preprocessing can be audited.
+
+## The rank controls the reconstruction
+
+The number of retained components $K$ controls which relations can inform a missing cell. Too small a value can remove real variation by forcing the matrix into an overly simple representation. Too large a value can reproduce unstable details of the initialized matrix.
+
+This page does not choose $K$ from the same missing cells it reconstructs. The next page masks observed cells, fits the complete imputation without those values, and uses reconstruction error to evaluate candidate settings. The choice must be made without allowing the hidden values to influence the fitted reconstruction.
+
+## Imputed values remain estimates
+
+A completed matrix may look indistinguishable from an observed matrix in software. The two kinds of cells are not epistemically equivalent. An observed cell contains a measurement. An imputed cell contains a prediction under a low rank assumption, a centering decision, a chosen $K$, and an initialization procedure.
+
+Using one completed matrix in a later analysis treats these predictions as fixed. This generally understates the uncertainty created by not observing the values. A procedure that propagates imputation uncertainty would require additional machinery beyond the single reconstruction introduced here. The data should retain an indicator distinguishing measured and imputed cells.
+
+## PCA imputation can remove unusual measurements
+
+PCA imputation can remove unusual but real measurements when they do not follow the leading linear components. A rare vowel category, a nonlinear acoustic relation, or an extreme value may be pulled toward the dominant pattern.
+
+This failure is especially concerning when extreme values are more likely to be missing. The low rank procedure may make the completed data look regular precisely because it replaces absent extremes with central predictions. Good numerical convergence does not diagnose this substantive error.
+
+::: {.callout-note title="Check the reconstruction"}
+1. Which cells may change after each low rank reconstruction?
+2. Why does the missing entry in the hand worked matrix remain zero after one update?
+3. What assumption allows observed acoustic columns to inform a missing cell?
+4. Why should an imputation indicator remain in the completed data?
+5. What kind of token is most likely to be pulled toward the dominant PCA structure during imputation?
+:::
+
+## Summing up
+
+Iterative PCA imputation alternates between low rank reconstruction and replacement of the originally missing cells. It preserves observed cells, but its predictions depend on linear low rank structure and a chosen component count. We next evaluate those predictions by [masking values that are actually observed](validating-imputation.qmd).

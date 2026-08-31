@@ -1,0 +1,109 @@
+---
+title: "Random slope models"
+---
+
+The [random-intercept model](random-intercepts.qmd) allowed group baselines to vary while holding one predictor association constant. A random-slope model also lets that association vary across groups.
+
+Suppose every listener hears words in quiet and in noise. The average effect of noise may be positive, but listeners may differ in how strongly noise slows their responses.
+
+A random-intercept model gives listeners different baselines while imposing one common noise association. A [**random-slope model**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) allows that association to vary across listeners.
+
+## Add a listener specific association
+
+Let $X_{ij}=1$ mark noise and $X_{ij}=0$ mark quiet for trial $i$ from listener $j$. Write
+
+$$
+Y_{ij}
+=\beta_0+b_{0j}
++(\beta_1+b_{1j})X_{ij}
++\varepsilon_{ij}.
+$$
+
+The population noise association is $\beta_1$. Listener $j$ has association
+
+$$
+\beta_1+b_{1j}.
+$$
+
+Model the slope deviations with
+
+$$
+b_{1j}\sim\mathcal{N}(0,\tau_1^2).
+$$
+
+The standard deviation $\tau_1$ describes between-listener variation in the noise association.
+
+## Compare fitted listener lines
+
+Suppose the population noise association is $\beta_1=.20$ on the log response time scale. Listener A has $b_{1A}=-.05$, while listener B has $b_{1B}=.25$. Their fitted associations are
+
+$$
+.20-.05=.15
+$$
+
+and
+
+$$
+.20+.25=.45.
+$$
+
+Both listeners are predicted to respond more slowly in noise, but the change is larger for listener B. The random intercepts can separately place their quiet baselines at different levels.
+
+The population coefficient $\beta_1$ remains the average modeled association across the listener population. The random slope standard deviation states how incomplete that average is as a description of individual listeners.
+
+## Check that the design contains the contrast
+
+A listener specific noise association is a within listener comparison. Each listener must contribute information in both quiet and noise conditions. If listener A appears only in quiet and listener B appears only in noise, their baseline difference is inseparable from a listener specific noise difference.
+
+The predictor may vary across the complete dataset and still fail to vary within listeners. A random slope for group $j$ requires the relevant predictor contrast within enough levels of that group.
+
+This within-group predictor variation can be checked before fitting:
+
+```r
+with(
+  word_recognition,
+  table(listener, noise_condition)
+)
+```
+
+For a binary condition, inspect whether listeners have observations in both columns. For a continuous predictor, inspect its within listener range. A population association estimated mostly from between listener differences does not support listener specific within listener slopes.
+
+## Fit slope variation without a new correlation
+
+In `lme4`, use separate intercept and slope terms to add slope variation while leaving its correlation with the intercept for the next page:
+
+```r
+library(lme4)
+
+fit_slopes <- lmer(
+  log_rt ~ noise_condition +
+    (1 | listener) +
+    (0 + noise_condition | listener) +
+    (1 | word),
+  data = word_recognition
+)
+```
+
+`(1 | listener)` adds listener baseline variation. `(0 + noise_condition | listener)` adds a listener deviation for the noise association without estimating its correlation with the intercept. `(1 | word)` represents repeated word items.
+
+For a numeric predictor, `(1 + predictor || listener)` is a compact alternative that requests uncorrelated intercept and slope variation. Factor predictors can require explicit numeric contrasts for this syntax to produce the intended terms.
+
+## See how the dependence changes
+
+Two trials from listener $j$ share $b_{0j}$. They also contain $b_{1j}X_{ij}$ and $b_{1j}X_{i'j}$. The contribution of the slope deviation depends on the predictor values.
+
+Two noise trials share both baseline and noise deviations. A quiet trial and a noise trial share the baseline, but only the noise trial receives the binary slope deviation under treatment coding. Thus one constant within listener correlation no longer describes every trial pair.
+
+This dependence is the probabilistic consequence of random slope variation. A random-intercept-only model leaves persistent differences in listener condition associations in its residual structure.
+
+## Match slope variation to generalization
+
+If noise is manipulated within listeners and the claim concerns a population of listeners, listener slope variation is part of the target. If word types also appear in both quiet and noise, the noise association may vary across words as well. Each proposed random slope requires the relevant predictor contrast within levels of its grouping factor.
+
+Adding a slope is not justified solely because software permits it. The design must supply the contrast, and the scientific claim must require generalization across that grouping population.
+
+::: {.callout-note title="Check the design"}
+Why can noise condition vary across the complete dataset while failing to vary within listeners? What table would reveal the problem before fitting?
+:::
+
+The [next page](random-effect-correlations.qmd) introduces a possible relation between group baselines and group slopes.

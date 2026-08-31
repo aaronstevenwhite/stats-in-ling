@@ -1,0 +1,185 @@
+---
+title: "Comparing two independent means"
+---
+
+The [paired design page](paired-observations.qmd) used covariance between linked measurements. When two groups contain different independently sampled speakers, that covariance is absent. Suppose one group of speakers produces vowels in dialect A and a different group produces vowels in dialect B.
+
+$$
+\Delta=\mu_A-\mu_B.
+$$
+
+The estimator is the difference between the two sample means:
+
+$$
+\widehat{\Delta}=\overline{Y}_A-\overline{Y}_B.
+$$
+
+Because the groups contain different speakers, there is no within-speaker difference to calculate. Uncertainty about $\widehat{\Delta}$ comes from both sample means.
+
+## Add independent sampling variances
+
+For independent groups,
+
+$$
+\begin{aligned}
+\operatorname{Var}(\widehat{\Delta})
+&=\operatorname{Var}(\overline{Y}_A-\overline{Y}_B)\\
+&=\operatorname{Var}(\overline{Y}_A)
++\operatorname{Var}(\overline{Y}_B).
+\end{aligned}
+$$
+
+The minus sign disappears because multiplying a random variable by $-1$ does not change its variance. Independence makes the covariance term zero.
+
+Estimate each population variance from its group:
+
+$$
+\widehat{\operatorname{SE}}(\widehat{\Delta})
+=
+\sqrt{
+\frac{s_A^2}{n_A}
++
+\frac{s_B^2}{n_B}
+}.
+$$
+
+This is the standard error in [**Welch's two-sample t-test**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/t.test.html). The two variance contributions can differ. The test does not assume that the population variances are equal.
+
+## Calculate an F1 contrast
+
+Suppose the group summaries are
+
+$$
+\overline{y}_A=510\text{ Hz},
+\quad
+s_A=60\text{ Hz},
+\quad
+n_A=20
+$$
+
+and
+
+$$
+\overline{y}_B=550\text{ Hz},
+\quad
+s_B=90\text{ Hz},
+\quad
+n_B=15.
+$$
+
+The observed estimate is
+
+$$
+\widehat{\delta}=510-550=-40\text{ Hz}.
+$$
+
+The two estimated variance contributions are
+
+$$
+\frac{60^2}{20}=180
+$$
+
+and
+
+$$
+\frac{90^2}{15}=540.
+$$
+
+Thus
+
+$$
+\widehat{\operatorname{SE}}(\widehat{\Delta})
+=\sqrt{180+540}
+=\sqrt{720}
+\approx26.833\text{ Hz}.
+$$
+
+For $H_0:\Delta=0$, the observed statistic is
+
+$$
+t_{\mathrm{obs}}
+=\frac{-40-0}{26.833}
+\approx-1.491.
+$$
+
+## Approximate the degrees of freedom
+
+Welch's two-sample t-test uses
+
+$$
+\nu
+\approx
+\frac{
+\left(s_A^2/n_A+s_B^2/n_B\right)^2
+}{
+\frac{(s_A^2/n_A)^2}{n_A-1}
++
+\frac{(s_B^2/n_B)^2}{n_B-1}
+}.
+$$
+
+The value need not be an integer. For these data, $\nu\approx23.005$. The two-sided p value is approximately $.150$, and the 95% confidence interval is approximately
+
+$$
+[-95.51,15.51]\text{ Hz}.
+$$
+
+The interval includes contrasts in both directions. These data do not estimate the direction precisely under this procedure.
+
+```{r}
+#| label: verify-welch-summary
+#| echo: true
+
+mean_a <- 510
+mean_b <- 550
+sd_a <- 60
+sd_b <- 90
+n_a <- 20
+n_b <- 15
+
+estimate <- mean_a - mean_b
+variance_a <- sd_a^2 / n_a
+variance_b <- sd_b^2 / n_b
+se <- sqrt(variance_a + variance_b)
+df <- (variance_a + variance_b)^2 /
+  (variance_a^2 / (n_a - 1) + variance_b^2 / (n_b - 1))
+t_observed <- estimate / se
+p_value <- 2 * pt(-abs(t_observed), df = df)
+interval <- estimate + c(-1, 1) * qt(.975, df = df) * se
+
+stopifnot(abs(se - 26.832816) < .000001)
+stopifnot(abs(df - 23.005405) < .000001)
+c(estimate = estimate, se = se, df = df, p = p_value,
+  lower = interval[1], upper = interval[2])
+```
+
+For row-level data with variables `f1` and `dialect`, R uses Welch's two-sample t-test by default:
+
+```r
+t.test(f1 ~ dialect, data = vowel_tokens)
+```
+
+## Do not add an equal-variance assumption
+
+Student's two-sample t-test assumes $\sigma_A^2=\sigma_B^2$ and pools the sample variances before calculating a standard error. That equality is an additional model claim. It does not follow from having two groups.
+
+Welch's two-sample t-test remains appropriate when the variances differ and generally sacrifices little precision when they happen to be equal. A preliminary variance test does not supply a linguistic reason to adopt the pooled model.
+
+## Match the procedure to the design
+
+If the same speakers produced both dialect styles, the observations would be paired. Treating those observations as independent would discard within-speaker covariance. Conversely, matching unrelated speakers by row number would invent pairing.
+
+The layout of a spreadsheet does not determine whether observations are paired. Recruitment and measurement determine whether observations are paired or independent.
+
+::: {.callout-note title="Problem-set reading"}
+[PS1, *Task 4: diagnose the independence error*](../problem-sets/ps1/ps1.qmd#task-4-diagnose-the-independence-error-20-points) compares an independent-samples analysis with the paired analysis required by the recording design. It is included because the same measurements make the difference between those procedures concrete.
+:::
+
+## Check your understanding
+
+1. Why are the two sampling variance contributions added?
+2. Which group contributes more uncertainty in the worked example?
+3. What extra assumption does the pooled procedure make?
+4. How would the data structure change if every speaker produced both conditions?
+
+The next page turns from continuous means to association in a small table with [Fisher's exact test](fishers-exact-test.qmd).

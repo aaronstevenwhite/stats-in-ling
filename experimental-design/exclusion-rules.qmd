@@ -1,0 +1,98 @@
+---
+title: "Exclusion rules"
+---
+
+Experiments sometimes produce observations that should not enter the target analysis. A microphone may fail during a production trial. A participant may press the same key throughout a judgment task. A response time may be long because the participant was interrupted. These cases differ in their causes, but each requires a decision about whether an enrolled participant or recorded trial belongs to the analyzed set.
+
+The inclusion and exclusion criteria map enrolled observations to the retained analysis set. These criteria are part of the design because they determine which population of observations the final comparison represents. They should be stated before inspecting the condition effect whenever that is possible.
+
+## Formalize retention as a variable
+
+Let $R_i=1$ when observation $i$ is retained and $R_i=0$ when it is excluded. An analysis of retained responses estimates a quantity conditional on $R_i=1$. This indicator anticipates the [missingness indicators](../missing-data/missingness-patterns.qmd) used later in the course, though exclusion and missing measurement are not the same event. For a two condition mean difference, the retained-sample quantity is
+
+$$
+\Delta_{R=1}
+=E[Y_i\mid Z_i=1,R_i=1]
+-E[Y_i\mid Z_i=0,R_i=1].
+$$
+
+This is not automatically the same as the condition difference over all enrolled trials. If retention is related to condition or to the unobserved response, the retained observations may represent different subsets of the two conditions.
+
+The notation makes the role of the rule explicit. Exclusion is not merely a cleaning operation applied before the real analysis. It helps define the estimand.
+
+## Separate measurement failure from behavior
+
+A microphone dropout is a measurement failure. It may leave no usable acoustic response. A long response time is an observed behavior. It may reflect an interruption, but it may also be part of the phenomenon if the manipulation increases processing difficulty.
+
+This distinction should be stated in terms of the measurement process. If a waveform contains no signal because the device did not record, the intended response is unavailable. If a participant takes 4,000 milliseconds to respond, a response was measured. Removing that value changes which behavior is represented.
+
+A later response model may accommodate a long right tail without deleting valid observations. For current purposes, the design task is narrower: define which events count as technical failures, which values count as measured behavior, and which claim follows after either kind of removal.
+
+## Work through condition dependent retention
+
+Suppose five grammatical trials and five ungrammatical trials are planned in a small reading experiment. All grammatical trials produce a response. Two ungrammatical trials time out.
+
+| condition | retained response times | timeouts |
+|:--|:--|--:|
+| grammatical | 500, 510, 520, 530, 540 | 0 |
+| ungrammatical | 520, 530, 540 | 2 |
+
+Among retained trials, the mean grammatical response time is 520 milliseconds and the mean ungrammatical response time is 530 milliseconds. The retained difference is only 10 milliseconds. But 40 percent of the ungrammatical trials produced timeouts, compared with none of the grammatical trials.
+
+The complete case mean thus answers a narrow question: among trials that produced a response before the timeout, how did mean response time differ? It cannot support the claim that the manipulation had little effect on processing. The missing responses are themselves condition dependent evidence about task difficulty.
+
+We can retain the response and retention summaries separately.
+
+```{r}
+trials <- data.frame(
+  condition = rep(c("grammatical", "ungrammatical"), each = 5),
+  response_time = c(500, 510, 520, 530, 540, 520, 530, 540, NA, NA)
+)
+
+trials$retained <- !is.na(trials$response_time)
+
+with(trials, table(condition, retained))
+aggregate(
+  response_time ~ condition,
+  data = trials,
+  FUN = mean,
+  na.action = na.omit
+)
+```
+
+The table of `retained` values should be interpreted before the retained means. It shows whether the analysis set is similarly constituted across conditions.
+
+## Define rules without using the desired effect
+
+Suppose response times above 2,000 milliseconds are removed only after the analyst notices that they weaken the expected condition difference. The observed outcome has then been used to select observations that support that outcome. A confidence interval or posterior interval from the final retained set does not include uncertainty introduced by trying multiple cutoffs.
+
+Choosing an exclusion rule after inspecting its effect on the condition contrast biases the analysis toward a preferred result. Prespecification helps because the rule is chosen without knowledge of the realized contrast. When prior information is insufficient to justify one cutoff, the analysis can report a primary rule and a limited set of substantively defensible sensitivity analyses. The alternatives should be chosen because they represent different measurement assumptions, not because one produces the preferred result.
+
+## Check every relevant margin
+
+Exclusions should be tabulated by condition, participant, item, and relevant demographic or linguistic group. A participant rule may remove all observations from one speaker. A trial rule may remove particular words. Either can change the represented sample even if overall retention is high.
+
+The exclusion rate can also be an outcome. Failure to produce a response may reflect task difficulty rather than missing measurement. Describing only the retained response distribution would hide that part of the manipulation's effect.
+
+## Report the observation flow
+
+A reconstructible report gives counts at each stage.
+
+1. State how many participants and trials were planned or recruited.
+2. State how many completed the relevant procedure.
+3. Give the count removed by each participant rule.
+4. Give the count removed by each trial rule.
+5. Give the final count by condition and repeated unit.
+
+Each observation should have one recorded reason for its status, including retention. This record permits alternative rules to be evaluated without reconstructing decisions from an already filtered file.
+
+::: {.callout-note title="Audit the analysis set"}
+1. What population of observations is described by $\Delta_{R=1}$?
+2. Why is a microphone dropout different from a long but measured response time?
+3. What does a higher timeout rate in one condition imply about a comparison of retained response times?
+4. Why does trying several cutoffs create uncertainty that the final interval does not contain?
+:::
+
+## Summing up
+
+The inclusion and exclusion criteria map enrolled observations to the responses used in the comparison. Because retention can depend on condition and behavior, exclusion helps define the estimand rather than merely tidying the table. Once assignment, condition structure, counterbalancing, and retention have been specified, [power by simulation](power-by-simulation.qmd) can evaluate how the complete planned procedure behaves under explicit assumptions.

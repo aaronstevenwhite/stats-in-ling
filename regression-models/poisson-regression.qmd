@@ -1,0 +1,162 @@
+---
+title: "Poisson regression"
+---
+
+The earlier chapters introduced the [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd), and the generalized-linear-model sequence introduced the [log link](link-functions.qmd). Poisson regression combines these components for count responses.
+
+Suppose each row records a speaker turn, and the response counts filled pauses such as *uh* and *um*. Some turns contain no filled pause, others contain one, and a few contain several. A predictor records a centered measure of planning difficulty. The linguistic question is whether the expected number of filled pauses changes with that predictor.
+
+The response is not continuous and cannot be negative. A straight line for the expected count can nevertheless cross below zero. [**Poisson regression**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) avoids this problem by combining a Poisson response with a log link. The Poisson distribution describes the count variation. The log link keeps its expected value positive while retaining an additive linear predictor.
+
+## State the response model
+
+Let $Y_i$ be the number of filled pauses in turn $i$. Poisson regression begins with
+
+$$
+Y_i\sim\operatorname{Poisson}(\lambda_i),
+$$
+
+where
+
+$$
+\mathbb{E}[Y_i\mid x_i]=\lambda_i
+\qquad\text{and}\qquad
+\operatorname{Var}(Y_i\mid x_i)=\lambda_i.
+$$
+
+The parameter $\lambda_i$ is the conditional expected count. It is not required to be an integer. An expected value of 2.4 means that repeated turns with the represented predictor value would average 2.4 filled pauses under the model.
+
+The equality between conditional mean and conditional variance is a substantive part of the Poisson model. Regression will let both quantities change with $x_i$, but it will not let them change independently.
+
+## Use the log link
+
+The expected count must be positive, while a linear predictor can be any real number. Poisson regression writes
+
+$$
+\log\lambda_i=\beta_0+\beta_1x_i.
+$$
+
+Exponentiating both sides gives
+
+$$
+\lambda_i=\exp(\beta_0+\beta_1x_i).
+$$
+
+The exponential is always positive. Thus every value of the linear predictor yields a valid expected count. As in logistic regression, the link applies to a conditional parameter rather than to the observed response. We do not take the logarithm of each observed count, so a recorded zero creates no special problem.
+
+## Work through a small change
+
+Suppose
+
+$$
+\beta_0=\log2
+\qquad\text{and}\qquad
+\beta_1=.20.
+$$
+
+At the centered predictor value $x=0$,
+
+$$
+\lambda(0)=\exp(\log2)=2.
+$$
+
+At $x=1$,
+
+$$
+\lambda(1)
+=\exp(\log2+.20)
+=2e^{.20}
+\approx2.44.
+$$
+
+At $x=2$,
+
+$$
+\lambda(2)
+=\exp(\log2+.40)
+=2e^{.40}
+\approx2.98.
+$$
+
+The expected count rises by about .44 in the first step and .54 in the second. The additive change is constant on the log scale, not the count scale.
+
+## Interpret the slope as a rate ratio
+
+Compare expected counts one predictor unit apart:
+
+$$
+\begin{aligned}
+\frac{\lambda(x+1)}{\lambda(x)}
+&=\frac{\exp[\beta_0+\beta_1(x+1)]}
+        {\exp(\beta_0+\beta_1x)}\\
+&=e^{\beta_1}.
+\end{aligned}
+$$
+
+For $\beta_1=.20$,
+
+$$
+e^{.20}\approx1.22.
+$$
+
+A one unit increase in planning difficulty multiplies the expected filled pause count by about 1.22. Equivalently, it raises the expected count by about 22 percent. It does not add .20 filled pauses.
+
+If $\beta_1$ is negative, the ratio lies between zero and one. For $\beta_1=-.40$,
+
+$$
+e^{-.40}\approx.67.
+$$
+
+The expected count is multiplied by .67, which is a decrease of about 33 percent. Describing this as a 67 percent decrease would confuse the remaining proportion with the amount lost.
+
+## Fit and predict in R
+
+```r
+fit_pauses <- glm(
+  filled_pauses ~ planning_difficulty,
+  family = poisson(link = "log"),
+  data = speaker_turns
+)
+```
+
+The formula supplies the linear predictor. `poisson(link = "log")` supplies the response distribution and link. The fitted coefficient table is on the log expected count scale.
+
+Exponentiate the slope to obtain the rate ratio:
+
+```r
+exp(coef(fit_pauses)["planning_difficulty"])
+```
+
+Then obtain expected counts at concrete predictor values:
+
+```r
+new_turns <- data.frame(planning_difficulty = c(-1, 0, 1))
+
+predict(
+  fit_pauses,
+  newdata = new_turns,
+  type = "response"
+)
+```
+
+These response scale predictions should accompany the ratio when the audience needs to understand the practical size of the association. A 22 percent increase can describe a change from .05 to .061 expected pauses or a change from 5 to 6.1. The ratio is the same, while the expected count difference is not.
+
+## The observation window is part of the count
+
+Speaker turns can differ in duration. A five minute stretch of speech offers more opportunities for filled pauses than a five second turn. If the window varies, a count model without exposure can mistake opportunity for a linguistic association.
+
+The present page assumes equal exposure so that the new technique remains Poisson regression with a log link. The [next page](exposure-offsets.qmd) adds known observation time to the linear predictor. This addition changes the target from an expected count in a common window to an expected rate.
+
+## Check the Poisson variation
+
+Even with equal exposure, speakers may vary more than the Poisson distribution permits. Filled pauses may cluster within speakers or conversational episodes, and unmodeled turn types may create extra variation. A mean prediction can look reasonable while the fitted distribution produces too few zeros and too few large counts.
+
+This is not repaired by interpreting the slope differently. It is a response distribution failure. Later pages introduce ways to detect extra Poisson variation and models that relax the equality of conditional mean and variance.
+
+::: {.callout-note title="Check the ratio"}
+If $\beta_1=-.40$, calculate $e^{\beta_1}$. State both the remaining proportion and the percentage decrease in the expected count. Then explain why neither number is an additive change in filled pauses.
+:::
+
+## What Poisson regression adds
+
+Poisson regression models a nonnegative count with a Poisson distribution and keeps its expected value positive through a log link. Coefficients are additive on the log expected count scale and multiplicative on the count scale. The model also retains the Poisson mean and variance relation. The [offset page](exposure-offsets.qmd) next handles rows with different amounts of opportunity for the counted event.

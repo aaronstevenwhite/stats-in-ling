@@ -1,0 +1,101 @@
+---
+title: "Mass matrices and posterior geometry"
+---
+
+The [preceding HMC transition](hamiltonian-monte-carlo.qmd) used the same momentum scale in every parameter direction. That choice works naturally for a round posterior whose parameters vary on comparable scales. It can work poorly when one parameter varies over tenths and another varies over tens.
+
+One leapfrog step size must then serve directions with substantially different posterior widths. The mass matrix allows HMC to account for those differences in posterior scale and correlation.
+
+The [**mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) gives HMC a constant scale and orientation for its momentum. This page develops that one geometric role and explains what Stan can learn during warmup.
+
+## Generalize the kinetic energy
+
+Let $M$ be a symmetric positive definite matrix, and draw the auxiliary momentum from a mean zero multivariate normal distribution with covariance $M$:
+
+$$
+p\sim\mathcal{N}(0,M).
+$$
+
+The kinetic energy becomes
+
+$$
+K(p)
+=
+\frac{1}{2}p^{\mathsf T}M^{-1}p.
+$$
+
+The position equation and its leapfrog update now use
+
+$$
+\frac{\mathrm{d}q}{\mathrm{d}t}
+=
+M^{-1}p
+$$
+
+and
+
+$$
+q_{t+1}
+=
+q_t+\epsilon M^{-1}p_{t+\frac12}.
+$$
+
+Thus $M^{-1}$ converts momentum into velocity through the parameter space. The HMC transition on the preceding page is the special case $M=I$.
+
+## Match velocity to posterior scale
+
+The velocity is $v=M^{-1}p$. Because $p$ has covariance $M$, the velocity has covariance
+
+$$
+\operatorname{Cov}(v)
+=
+M^{-1}M M^{-1}
+=
+M^{-1}.
+$$
+
+This relationship explains why the inverse mass matrix should roughly match posterior covariance. Directions with wider posterior variation then receive wider typical velocities, while narrower directions receive smaller typical velocities.
+
+Consider two independent parameters with posterior standard deviations 10 and 1. A unit inverse mass matrix gives their velocities the same standard deviation. By contrast,
+
+$$
+M^{-1}
+=
+\begin{pmatrix}
+100 & 0\\
+0 & 1
+\end{pmatrix}
+$$
+
+gives the first velocity a standard deviation of 10 and the second a standard deviation of 1. A common integration time can then move a comparable fraction of each parameter's posterior width.
+
+The mass matrix does not change the posterior density. It changes how the numerical trajectory moves through the coordinates used to express that density.
+
+## Distinguish three matrix structures
+
+HMC implementations commonly use one of three structures:
+
+1. A [**unit mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) treats every direction as uncorrelated and equally scaled.
+2. A [**diagonal mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) assigns a separate scale to every parameter but does not represent correlations.
+3. A [**dense mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) can represent both separate scales and global linear correlations.
+
+Suppose two parameters form a narrow diagonal ellipse. A diagonal matrix can adjust the horizontal and vertical scales, but it cannot rotate the velocity distribution toward the long axis of that ellipse. A dense matrix can represent that orientation through its off diagonal entries.
+
+This distinction concerns global geometry. One constant dense matrix may represent a tilted ellipse, but it cannot remove curvature that changes from one posterior region to another.
+
+## Learn the matrix during warmup
+
+Stan estimates a regularized inverse mass matrix during warmup. Its default diagonal structure estimates separate marginal scales, while an optional dense structure also estimates global correlations.
+
+Because the mass matrix is learned from chain states, adaptation could in principle change the target distribution. Stan confines that adaptation to warmup and discards those draws. The retained sampling phase uses a fixed learned matrix, so the posterior target remains the one defined by the model.
+
+Adaptation is not a guarantee of useful geometry. Short warmup, weak identification, or strongly changing local curvature can leave a constant matrix poorly matched to the posterior. The fitted chains must still be checked.
+
+## Check your understanding
+
+1. Which matrix determines the covariance of the momentum, $M$ or $M^{-1}$?
+2. Why does the inverse mass matrix govern the scale of the velocity?
+3. What posterior feature can a dense matrix represent that a diagonal matrix cannot?
+4. Why must mass matrix adaptation stop before retained sampling begins?
+
+The next page explains how the [No-U-Turn Sampler](no-u-turn-sampler.qmd) chooses a trajectory length after its geometric scales have been set.

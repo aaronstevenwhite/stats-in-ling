@@ -1,0 +1,280 @@
+---
+title: "Measuring natural parts judgments"
+---
+
+Consider two predicate instances from the Universal Decompositional Semantics data.
+
+1. *The broker called back shortly after I spoke to you.*
+2. *Around what time they eat each of their meals.*
+
+The event structure annotation asks whether the situation described by a predicate has natural parts. All three annotators answered no for *called*. All three answered yes for *eat*. This difference concerns the internal temporal structure of the two situations. An eating event can often be divided into smaller eating events. A particular calling event need not support the same division.
+
+That interpretation is only a starting point. The observations are responses from particular annotators to predicate instances in context. They are not direct observations of event structure, and they do not establish a lexical distinction between *call* and *eat*. This page develops a measurement model that keeps those distinctions in view.
+
+The analysis uses the [binary response model](../regression-models/logistic-regression.qmd) and [crossed random intercepts](../regression-models/random-intercepts.qmd) introduced earlier. It estimates an item propensity and an annotator response tendency from the raw binary annotations. The model introduces no conditional follow up response, confidence score, or linguistic predictor. Those additions would create new identification questions before the basic measurement has been checked.
+
+::: {.callout-note title="Reading: Gantt, Glass, and White (2022)"}
+[Gantt, Glass, and White, *Decomposing and recomposing event structure*](https://aclanthology.org/2022.tacl-1.2/).
+
+Read the sections describing the event structure annotation and the decompositional representation. The paper explains what the natural parts question contributes to an analysis of event structure and how it controls which later questions an annotator receives. This page asks a narrower statistical question: what can the released raw yes and no responses support before those later questions are modeled?
+:::
+
+## Begin with the recorded response
+
+Let $Y_{ij}$ be annotator $j$'s response to predicate instance $i$. We code yes as 1 and no as 0:
+
+$$
+Y_{ij}\in\{0,1\}.
+$$
+
+This is the only response variable in the model. A yes response sends the annotator to questions about the duration and similarity of the parts. A no response sends the annotator to questions about the duration and dynamicity of the whole situation. The response thus has a substantive interpretation within the annotation instrument.
+
+The target is also narrow. We want the conditional probability of yes for one predicate instance when the annotator random intercept is set to zero. This is a location on the log-odds scale, not a probability averaged over the annotator population. We do not yet want a score for the part similarity question, because that response is available only after a yes. We also do not want to turn the released normalized value into an observed response. It is an estimate produced from the annotations.
+
+This separation gives us three objects:
+
+1. The raw annotation is $Y_{ij}$.
+2. The item propensity is a latent quantity for predicate instance $i$.
+3. The released normalized value is a useful external comparison.
+
+Only the first object enters the likelihood as data.
+
+## Inspect the released annotation design
+
+The audit pins version 0.3.2 of the official `decomp` Python package. Its raw `natural_parts` file contains 45,965 responses to 33,106 predicate instances. Most training instances have one annotation. The development and test partitions contain 6,414 multiply annotated instances, which are the useful portion of the release for separating item and annotator variation.
+
+The teaching extract is selected without using response values. The procedure first retains annotators with at least 140 responses in the complete multiply annotated development and test data. It then retains items connected to at least two of those annotators. A fixed hash of the item identifiers selects 1,000 items while keeping at least 50 responses for every retained annotator.
+
+The resulting design has the following dimensions.
+
+| quantity | count |
+|:---|---:|
+| predicate instances | 1,000 |
+| annotators | 12 |
+| raw responses | 2,955 |
+| no responses | 2,296 |
+| yes responses | 659 |
+
+The 1,000 item nodes and 12 annotator nodes form one connected graph. This matters because an annotator's responses can be compared with responses from other annotators through shared items. Without such paths, item and annotator locations could not be placed in one coordinate system.
+
+::: {.callout-tip title="Pinned extraction"}
+The source is the official `decomp` 0.3.2 wheel. Its SHA256 checksum is `f93dd0e893d4e726ce71da12e8793170a525184766acb34bd749dbac1a073079`.
+
+The raw member is `decomp/data/2.0/raw/sentence/annotations/event_structure_natural_parts.json`. Its SHA256 checksum is `52b1afe44ab86dda1f77b68245ccb0c9ab9fa05f22867b2bf3ec7a31eb9b95f9`.
+
+The selection script, complete provenance record, and CC BY SA 4.0 license are stored under `research/dataset-audits/uds/` in the course repository.
+:::
+
+## See why raw proportions are not enough
+
+For one item, the raw proportion of yes responses is
+
+$$
+\bar Y_i=\frac{1}{n_i}\sum_{j=1}^{n_i}Y_{ij}.
+$$
+
+This proportion is easy to compute. The two opening items have proportions 0 and 1. But each is based on only three responses. A proportion of 1 from three responses is not the same evidence as a proportion of 1 from thirty responses.
+
+The annotator composition also differs across items. In the teaching extract, observed annotator yes rates range from about .02 to .43. These raw rates partly reflect which items each person saw, so they are not yet estimates of a pure annotator tendency. They do show why an item judged by three relatively affirmative annotators should not be treated as directly comparable to an item judged by three relatively negative annotators.
+
+Pooling every response by item would remove the annotator identities. Keeping one fixed item proportion would also act as if every item had been measured equally precisely. The model should retain the individual responses and represent both sources of variation.
+
+## Add the item propensity
+
+Let $u_i$ be the deviation for item $i$, and let $\alpha$ be the population location. If items were the only repeated unit, we could write
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij})
+$$
+
+and
+
+$$
+\operatorname{logit}(\pi_{ij})=\alpha+u_i.
+$$
+
+The fitted Stan model begins with independent standard-normal variables and centers their realized values:
+
+$$
+z_i^{\text{item}}\sim\mathcal{N}(0,1),
+\qquad
+u_i=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right).
+$$
+
+This parameterization makes the fitted item deviations sum to zero. The parameter $\sigma_{\text{item}}$ is their scale parameter on the log odds scale. A larger value allows stronger differences among items. Because centering makes the realized deviations dependent, $\sigma_{\text{item}}$ is not exactly their finite-sample standard deviation.
+
+The shared scale and standard-normal distribution produce the [partial pooling](../regression-models/random-effects.qmd) developed earlier. An item with three unanimous responses can move away from zero, but its estimate remains more regularized than a raw proportion of 0 or 1. The model does not claim that all items are identical. It uses the complete collection to estimate how far a sparsely measured item can reasonably move.
+
+## Add the annotator location
+
+Now let $a_j$ be annotator $j$'s random intercept. The model is
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
+$$
+
+$$
+\operatorname{logit}(\pi_{ij})
+=\alpha+u_i+a_j,
+$$
+
+$$
+z_i^{\text{item}}\sim\mathcal{N}(0,1),
+\qquad
+u_i=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right),
+$$
+
+and
+
+$$
+z_j^{\text{annotator}}\sim\mathcal{N}(0,1),
+\qquad
+a_j=\sigma_{\text{annotator}}
+\left(z_j^{\text{annotator}}-\bar z^{\text{annotator}}\right).
+$$
+
+A positive $a_j$ raises the probability of a yes response across the items seen by annotator $j$. A negative value lowers it. The parameter $\sigma_{\text{annotator}}$ is the scale of stable location variation among annotators on the log odds scale.
+
+Both sets of deviations sum to zero in the fitted model. Under this convention, $\alpha$ is the log odds when the item and annotator deviations are zero. The conditional item probability
+
+$$
+\operatorname{logit}^{-1}(\alpha+u_i)
+$$
+
+is the yes probability for item $i$ with the annotator random intercept set to zero.
+
+This probability describes a coordinate in the model. It is not the marginal probability obtained by integrating over the annotator distribution, and it does not describe a new person sampled by averaging demographic properties. It also need not equal the raw yes proportion, because the inverse logit is nonlinear and the observed responses are unevenly distributed across annotators.
+
+## Complete the Bayesian model
+
+The fitted model uses the following priors:
+
+$$
+\alpha\sim\mathcal{N}(0,2.5^2),
+$$
+
+$$
+\sigma_{\text{item}}\sim\operatorname{HalfNormal}(\text{scale}=2),
+$$
+
+and
+
+$$
+\sigma_{\text{annotator}}\sim\operatorname{HalfNormal}(\text{scale}=2).
+$$
+
+These priors are regularizing on the log odds scale. They allow substantial variation while discouraging the scale parameters from drifting to implausibly large values when an item has only a few responses.
+
+The complete Stan program is stored at `research/dataset-audits/uds/uds_natural_parts.stan`. Its likelihood is compact:
+
+```stan
+response ~ bernoulli_logit(
+  alpha + item_effect[item] + annotator_effect[annotator]
+);
+```
+
+The short likelihood is the endpoint of the model construction, not its beginning. Its indices encode the scientific claim that every response depends on both a predicate instance and an annotator.
+
+## Recover the quantities before fitting UDS
+
+The recovery study uses the exact item and annotator incidence pattern from the teaching extract. It generates responses with
+
+$$
+\alpha=-2.1,
+\qquad
+\sigma_{\text{item}}=1.6,
+\qquad
+\sigma_{\text{annotator}}=1.6.
+$$
+
+These values produce an imbalanced response distribution with substantial item and annotator variation. Each of 12 simulated datasets is fit with two chains, 400 warmup iterations per chain, and 400 retained draws per chain.
+
+Before the run, the audit set six substantive limits. The median absolute intercept error had to be at most .25. Median absolute relative error had to be at most 15 percent for the item scale and 25 percent for the annotator scale. Median recovery correlations had to reach .60 for item effects, .90 for annotator effects, and .65 for conditional item probabilities with the annotator random intercept set to zero. The diagnostic screen also required no divergent transitions and a key parameter $\widehat R$ no greater than 1.05 in any recovery fit.
+
+The model passed this screen.
+
+| recovery quantity | result | required value |
+|:---|---:|---:|
+| median absolute intercept error | .103 | at most .25 |
+| median absolute relative item scale error | 6.1% | at most 15% |
+| median absolute relative annotator scale error | 11.7% | at most 25% |
+| median item effect correlation | .662 | at least .60 |
+| median annotator effect correlation | .958 | at least .90 |
+| median item probability correlation | .682 | at least .65 |
+| largest key parameter $\widehat R$ | 1.016 | at most 1.05 |
+| divergent transitions | 0 | 0 |
+
+The item result deserves care. Three binary responses do not precisely locate every item. One of the 12 item effect correlations was .589, and the median was .662. The design supports a regularized item ordering well enough for this teaching analysis, but it does not turn each item propensity into a precise lexical fact.
+
+## Fit the released responses
+
+Only after recovery passed did the audit fit the released responses. The real fit used four chains, 800 warmup iterations per chain, and 800 retained draws per chain. It produced no divergent transitions. The largest $\widehat R$ among the three population parameters was 1.004, and the largest among the item and annotator effects was 1.010.
+
+The population summaries are:
+
+| parameter | posterior median | 95% posterior interval |
+|:---|---:|:---|
+| $\alpha$ | -2.999 | [-3.381, -2.653] |
+| $\sigma_{\text{item}}$ | 2.077 | [1.766, 2.425] |
+| $\sigma_{\text{annotator}}$ | 2.050 | [1.427, 3.260] |
+
+Neither variation estimate is near zero. Predicate instances differ substantially in their natural parts responses, and annotators show substantial stable location differences after item variation is represented.
+
+Do not read $\alpha=-2.999$ as the logit of the raw yes proportion. The raw yes proportion is .223, whose logit is about -1.25. The intercept instead locates an item and annotator whose deviations are both zero. The observed average mixes different item and annotator deviations through a nonlinear link.
+
+The fitted conditional item probabilities with the annotator random intercept set to zero make this distinction concrete. Their fifth percentile is .012, their median is .032, and their ninety fifth percentile is .309. The two opening items lie farther into the tails:
+
+| predicate instance | raw yes proportion | posterior median probability |
+|:---|---:|---:|
+| *called* in *The broker called back* | .00 | .009 |
+| *eat* in *what time they eat each meal* | 1.00 | .800 |
+
+The posterior probabilities do not reproduce the raw endpoints. They combine each item's three responses with the estimated item population and the response tendencies of the annotators who saw it. This is partial pooling doing the measurement work for which it was introduced.
+
+## Check the response process
+
+A fitted item ordering is not enough. As in the earlier chapter on [posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd), replicated datasets should resemble the response features that motivated the model.
+
+The observed yes rate is .223. Across 400 posterior predictive replications, the central 95 percent interval for the yes rate is [.208, .239], with median .223.
+
+The observed proportion of items containing both a yes and a no response is .440. The corresponding predictive interval is [.412, .473], with median .442.
+
+Both observed summaries fall inside their predictive intervals. The second result matters especially. A model could match the overall yes rate while producing too little or too much disagreement within items. The fitted model reproduces both features with separate item and annotator variation.
+
+## Compare with the released normalized values
+
+The official release also supplies one normalized `natural_parts` value per item. Those values are not responses in the fitted binary model, so they were not used during fitting. They provide a useful comparison after fitting.
+
+The Spearman correlation between the posterior median item probabilities and the released normalized values is .818. The two procedures thus produce similar, but not identical, item orderings.
+
+This association is not a test in which one analysis must defeat the other. The released values use a broader normalization procedure, while the fitted analysis uses a deliberately small binary model. Agreement suggests that the binary response model captures much of the released ordering. The remaining differences show where annotator composition, shrinkage, or modeling choices can matter.
+
+## State what the model does not establish
+
+The binary item-annotator model passed its declared recovery and predictive checks, but its scope remains limited.
+
+1. The teaching extract contains 1,000 of the 6,414 multiply annotated development and test items. Its deterministic selection preserves connectivity and ignores the responses, but it is not a random sample of all UDS predicates.
+2. Most items have three responses. Individual item probabilities remain strongly regularized, even when their posterior ordering is useful in aggregate.
+3. The annotator term represents only a stable location shift. It does not represent differences in discrimination, response consistency, or interpretation.
+4. The raw confidence serialization does not match the documented confidence scale. The audit excludes confidence rather than assigning it an uncertain interpretation.
+5. The model does not estimate part similarity, duration, dynamicity, or a relation between the two branches of the annotation. Each addition would require its own response model and recovery study.
+6. The item is a predicate instance in context. The result should not be restated as a context free property of a verb lemma.
+
+These limits are part of the result. They identify the analysis supported by the released design and the analyses that still require work.
+
+::: {.callout-note title="Check the binary response model"}
+1. Why is the released normalized value not an observed response in this likelihood?
+2. What does the connected annotator and item graph make possible?
+3. Why can an item with three yes responses have a posterior probability below 1?
+4. What does $\sigma_{\text{annotator}}$ represent?
+5. Why does recovery of the item ordering not make every item estimate precise?
+6. Which new response would require a separate model before it could enter this analysis?
+:::
+
+## Summing up
+
+The model makes four distinctions explicit. First, a raw yes or no annotation is evidence about event structure rather than event structure itself. Second, predicate instances vary in their propensity to receive a yes response. Third, annotators vary in their stable response locations. Fourth, the released normalized values are a comparison for the fitted item measurements rather than inputs to their likelihood.
+
+The parameter-recovery simulation shows that the procedure can recover the intended population scales and regularized latent orderings under the model. The released fit then reproduces both the overall yes rate and within item disagreement. This supports one narrow measurement analysis of natural parts judgments while leaving the conditional branches for a later model.

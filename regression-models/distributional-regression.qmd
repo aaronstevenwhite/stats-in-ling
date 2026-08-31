@@ -1,0 +1,225 @@
+---
+title: "Modeling conditional scale"
+---
+
+The [heteroscedasticity page](heteroscedasticity.qmd) diagnosed changes in conditional variance. Distributional regression represents such changes directly by giving more than one parameter of the response distribution its own predictor equation.
+
+Ordinary linear regression usually gives predictors to the conditional mean and holds the conditional standard deviation fixed. If response variability is theoretically relevant, we can give the scale parameter its own predictor model.
+
+Let
+
+$$
+Y_i\sim\mathcal{N}(\mu_i,\sigma_i^2).
+$$
+
+Model the mean as usual:
+
+$$
+\mu_i
+=
+\beta_0+\beta_1x_i.
+$$
+
+Now model the log standard deviation:
+
+$$
+\log\sigma_i
+=
+\gamma_0+\gamma_1x_i.
+$$
+
+This is [**distributional regression**](https://paulbuerkner.com/brms/articles/brms_distreg.html). Different parameters of the response distribution receive separate predictor equations.
+
+On this page, the new step is narrow: the conditional standard deviation receives
+one predictor. The mean and spread equations remain distinct, even when they use
+the same predictor.
+
+## Keep the scale positive
+
+The standard deviation must be positive. A straight line can be negative, so we
+model its logarithm and exponentiate:
+
+$$
+\sigma_i
+=
+\exp(\gamma_0+\gamma_1x_i).
+$$
+
+Suppose
+
+$$
+\gamma_0=\log100
+\qquad\text{and}\qquad
+\gamma_1=-.20.
+$$
+
+At $x=0$,
+
+$$
+\sigma(0)=100.
+$$
+
+At $x=1$,
+
+$$
+\sigma(1)=100e^{-.20}\approx81.9.
+$$
+
+A one-unit predictor increase multiplies the conditional standard deviation by $e^{-.20}\approx.819$, an 18.1% decrease.
+
+For a two-unit increase, the multiplier is
+
+$$
+e^{2(-.20)}=e^{-.40}\approx.670.
+$$
+
+The conditional standard deviation decreases by about 33.0 percent across that
+two-unit contrast. The change is multiplicative because the scale equation is
+additive on $\log\sigma_i$.
+
+The coefficient $\gamma_1$ is not a change in the response mean. The mean coefficient remains $\beta_1$.
+
+This gives two separate questions:
+
+1. Does the center of the response distribution change with $x$?
+2. Does the spread around that center change with $x$?
+
+$\beta_1$ answers the first, while $\gamma_1$ answers the second. Interpreting one
+as the other confuses location with scale.
+
+## Calculate two conditional distributions
+
+Suppose the mean model has
+
+$$
+\beta_0=6.2
+\qquad\text{and}\qquad
+\beta_1=-.08,
+$$
+
+while the scale model has
+
+$$
+\gamma_0=\log(.20)
+\qquad\text{and}\qquad
+\gamma_1=-.20.
+$$
+
+At $x=0$,
+
+$$
+Y\mid x=0\sim\mathcal{N}(6.2,.20^2).
+$$
+
+At $x=2$, the conditional mean is
+
+$$
+6.2-.08(2)=6.04,
+$$
+
+and the conditional standard deviation is
+
+$$
+.20e^{-.20(2)}\approx.134.
+$$
+
+Thus
+
+$$
+Y\mid x=2\sim\mathcal{N}(6.04,.134^2).
+$$
+
+The second distribution has both a lower center and a narrower spread. One
+equation does not stand in for the other.
+
+We can verify the calculations directly:
+
+```{r}
+#| label: calculate-distributional-predictions
+#| echo: true
+x <- c(0, 2)
+
+conditional_mean <- 6.2 - .08 * x
+conditional_sd <- .20 * exp(-.20 * x)
+
+data.frame(
+  x = x,
+  conditional_mean = conditional_mean,
+  conditional_sd = conditional_sd
+)
+```
+
+## Fit separate formulas
+
+In `brms`, the mean and scale formulas can be written explicitly:
+
+```r
+fit_distributional <- brm(
+  bf(
+    log_rt ~ frequency + duration,
+    sigma ~ frequency
+  ),
+  family = gaussian(),
+  data = lexical_data
+)
+```
+
+The second formula predicts the conditional standard deviation on its log scale. A custom Stan model writes the same two equations before the observation statement.
+
+In `brms`, the scale formula is interpreted on the log scale for a Gaussian
+family. Thus a positive frequency coefficient in the `sigma` formula multiplies
+residual spread upward, while a negative coefficient multiplies it downward.
+The coefficient table should be translated into values of $\sigma_i$ at
+theoretically relevant predictor values.
+
+The mean and scale formulas need priors in a Bayesian fit. A prior on
+$\gamma_1$ can be inspected by drawing scale curves across the observed
+frequency range. Priors that routinely imply residual standard deviations near
+zero or many times the response range need reconsideration.
+
+## Read predictions as distributions
+
+Distributional regression should be checked by simulating complete responses, not only by plotting fitted means. At low and high frequency, compare the observed and predicted center, spread, and tails.
+
+```r
+predicted <- posterior_predict(
+  fit_distributional,
+  newdata = prediction_grid
+)
+```
+
+A successful scale model should reproduce the change in conditional spread that motivated it. A lower information criterion without the intended variance pattern would not establish that the model solved the scientific problem.
+
+Useful checks compare observations and replicated responses within predictor
+regions. For low and high frequency, calculate a spread statistic such as the
+standard deviation or an interquantile range. Then ask whether the observed
+contrast falls within the distribution produced by the model.
+
+The mean model must be checked at the same time. A curved mean that is forced to
+be linear can make residual spread appear to change because some predictor
+regions have larger systematic misses. Adding a predictor to the scale equation of a misspecified mean can
+absorb those misses without representing the intended source of variability.
+
+The scale equation may then absorb systematic errors in the mean equation. Model
+criticism should first ask whether the residual center remains near zero, then
+ask whether its spread changes.
+
+## Avoid giving every parameter every predictor
+
+The scale formula needs a linguistic or measurement rationale. Adding all mean predictors to all distributional parameters can make the model weakly identified and difficult to interpret.
+
+For a frequency hypothesis, compare a constant-scale model with one prespecified frequency term. Later extensions can add participant or item variation when the design supports it.
+
+The predictor also needs enough observations across its range to estimate
+spread. A mean can be estimated from relatively few observations at a predictor
+value, but local variance is harder to learn. Sparse edges of the range may
+leave $\gamma_1$ strongly dependent on its prior.
+
+::: {.callout-note title="Read the scale equation"}
+1. Why is a log link used for $\sigma_i$?
+2. Which coefficient describes the change in the conditional mean?
+3. What posterior predictive pattern would show that the scale model is useful?
+4. Calculate the multiplier on $\sigma$ for a three-unit increase when
+   $\gamma_1=.10$.
+5. Explain how a scale equation can absorb systematic errors in a misspecified mean equation.
+:::

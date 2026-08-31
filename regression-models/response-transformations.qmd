@@ -1,0 +1,195 @@
+---
+title: "Transforming a response"
+---
+
+The [straight-line mean](simple-linear-regression.qmd) does not determine the scale on which the response should be modeled. Reaction times are positive and often right skewed. Most responses cluster in a relatively narrow fast range, while a smaller number extend far into the slow tail. An ordinary linear regression fitted to raw milliseconds can consequently predict negative values and leave strongly skewed residuals.
+
+One possible response is to transform the measurement before fitting the model. For a positive response $Y_i$, define
+
+$$
+Z_i=\log Y_i.
+$$
+
+The regression is then a model for the conditional mean of log response time:
+
+$$
+Z_i
+=
+\beta_0+\beta_1x_i+\epsilon_i,
+\qquad
+\epsilon_i\sim\mathcal{N}(0,\sigma^2).
+$$
+
+The logarithm is the new concept. The linear regression machinery is unchanged.
+
+The transformation changes the scale on which the model treats effects as additive. On the raw scale, a linear model treats
+equal millisecond differences as comparable. On the log scale, it treats equal
+ratios as comparable.
+
+## See what the logarithm does
+
+Compare three response times:
+
+| milliseconds | natural log |
+|---:|---:|
+| 400 | 5.99 |
+| 800 | 6.68 |
+| 1600 | 7.38 |
+
+Doubling from 400 to 800 milliseconds adds about $.69$ on the log scale. Doubling again from 800 to 1600 adds the same amount. Equal ratios on the original scale become equal differences on the log scale.
+
+This property makes a linear coefficient multiplicative after back-transformation.
+
+The reverse is also true. Equal differences on the log scale become equal
+ratios on the original scale. Since
+
+$$
+\log(2y)-\log(y)=\log 2,
+$$
+
+doubling any positive response produces the same log difference. But adding 400
+milliseconds does not. The change from 400 to 800 is a doubling, while the
+change from 800 to 1200 is only a factor of 1.5.
+
+## Interpret a coefficient as a ratio
+
+Suppose $x_i$ marks a high-surprisal word and
+
+$$
+\beta_1=.08.
+$$
+
+The expected log response differs by $.08$. Exponentiating gives
+
+$$
+e^{.08}\approx1.083.
+$$
+
+Thus the fitted geometric mean response is about 8.3 percent larger in the
+high-surprisal condition, under the model.
+
+For a small coefficient, $100\beta_1$ is a rough percentage approximation. Reporting $100(e^{\beta_1}-1)$ gives the exact multiplicative interpretation.
+
+If $\beta_1=-.10$, then
+
+$$
+e^{-.10}\approx.905.
+$$
+
+The fitted geometric mean is multiplied by about $.905$, a decrease of about
+9.5 percent. The approximation $100\beta_1=-10$ percent is close but not exact.
+
+For a two-unit predictor contrast, the ratio is
+
+$$
+e^{2\beta_1}.
+$$
+
+Coefficients remain expressed per predictor unit even after the response has
+been transformed.
+
+## Check the transformation in R
+
+```{r}
+#| label: inspect-log-response-transformation
+#| echo: true
+response_time <- c(400, 800, 1600)
+
+data.frame(
+  response_time = response_time,
+  log_response_time = log(response_time),
+  recovered_response_time = exp(log(response_time))
+)
+```
+
+Exponentiating recovers the original positive measurements up to numerical
+precision. The transformation is one-to-one on positive values, so no ordering
+information is lost. Its spacing changes.
+
+The positivity restriction matters. A response of zero has log value
+$-\infty$, and a negative response has no real-valued logarithm. A log response
+model thus requires a measurement whose meaningful support is strictly
+positive.
+
+## Do not back-transform the mean mechanically
+
+If
+
+$$
+\log Y\sim\mathcal{N}(\mu,\sigma^2),
+$$
+
+then
+
+$$
+\mathbb{E}[Y]=e^{\mu+\sigma^2/2},
+$$
+
+not merely $e^\mu$. The quantity $e^\mu$ is the median of the implied lognormal distribution.
+
+Why does the mean differ? Exponentiation is nonlinear. Large positive log-scale
+deviations increase raw responses more than equally large negative deviations
+decrease them. The right tail thus pulls the raw-scale mean above $e^\mu$.
+
+Suppose
+
+$$
+\mu=6
+\qquad\text{and}\qquad
+\sigma=.30.
+$$
+
+Then the raw-scale median is
+
+$$
+e^6\approx403.4,
+$$
+
+while the raw-scale mean is
+
+$$
+e^{6+.30^2/2}
+=e^{6.045}
+\approx421.9.
+$$
+
+The difference grows with $\sigma$. A single exponentiated fitted mean does not
+capture it.
+
+This distinction matters when predictions are returned to milliseconds. A model for mean log time is not automatically a model for mean raw time.
+
+The quantity $e^{\widehat\mu}$ cannot automatically be interpreted as a raw-scale mean. That interpretation silently replaces a median-like
+quantity with a mean. The correction depends on the modeled residual
+distribution and its variance.
+
+## Treat the transformation as part of the model
+
+A transformation changes the response scale, residual pattern, coefficient interpretation, and predictive target. It should not be selected only because a histogram looks more symmetric.
+
+The model should be checked on both scales. A satisfactory log-scale residual plot can coexist with poor predictions of the slow raw-time tail. Conversely, a raw-scale family such as a lognormal or shifted distribution may represent the measurement process more directly.
+
+This is not a contest in which the most symmetric histogram wins. The scale of additivity should
+match the theoretical comparison and the response-generating process. If a
+processing account predicts proportional slowing, a log scale may state that
+claim directly. If it predicts an additive millisecond cost, a log response
+changes the target.
+
+## Report the modeled quantity
+
+A complete coefficient interpretation states both scales. For instance: "A
+one-bit surprisal increase was associated with a $.08$ increase in expected log
+reading time, corresponding to an 8.3 percent multiplicative change in the
+fitted geometric mean." This statement does not call the exponentiated value a
+raw-scale mean.
+
+Predicted raw observations can instead be generated from the complete log-scale
+response model and summarized on the raw scale. That procedure retains residual
+variation rather than exponentiating only the conditional mean.
+
+::: {.callout-note title="Track the response scale"}
+1. What original-scale relationship becomes additive after taking logs?
+2. If $\beta_1=-.10$, calculate the fitted multiplicative change.
+3. Why is $e^{\widehat{\mu}}$ not generally the predicted raw-scale mean?
+4. What happens when a response equals zero?
+5. Explain why exponentiating a fitted log-scale mean does not automatically give the raw-scale mean.
+:::

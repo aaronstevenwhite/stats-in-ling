@@ -1,0 +1,118 @@
+---
+title: "Exact intervals for a binomial probability"
+---
+
+The [confidence interval page](confidence-intervals.qmd) used a normal approximation for an estimator with an approximately normal sampling distribution. A binomial proportion near a boundary can require a different construction. Suppose an annotator marks 18 of 20 sampled tokens as instances of a construction. The population probability that a sampled token receives this label is $\pi$, and the observed estimate is
+
+$$
+\widehat{\pi}=\frac{18}{20}=.90.
+$$
+
+An interval for $\pi$ must reflect the limited information in twenty binary observations. A large observed proportion does not by itself imply a narrow interval.
+
+## See the problem with a normal interval
+
+The [**Wald interval**](https://online.stat.psu.edu/stat504/Lesson02) inserts the observed proportion into a normal approximation and estimated standard error formula:
+
+$$
+\widehat{\pi}
+\mathbin{\pm}
+1.96\sqrt{
+\frac{\widehat{\pi}(1-\widehat{\pi})}{n}
+}.
+$$
+
+For 18 successes in 20 trials, the estimated standard error is
+
+$$
+\sqrt{\frac{.90(.10)}{20}}
+\approx.0671.
+$$
+
+The resulting interval is
+
+$$
+.90\mathbin{\pm}1.96(.0671)
+\approx[.7685,1.0315].
+$$
+
+The upper endpoint exceeds one, even though a probability cannot. At 20 successes in 20 trials, the estimated standard error would be zero and the interval would collapse to a point. These failures arise because the normal approximation does not represent the finite and bounded binomial sampling distribution well near a boundary.
+
+## Invert binomial tail tests
+
+Let
+
+$$
+K\sim\operatorname{Binomial}(n,\pi).
+$$
+
+The observed count is $k=18$. The [**Clopper-Pearson confidence interval**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/binom.test.html) finds parameter values that would not place this count in an extreme binomial tail.
+
+For a 95% interval, $\alpha=.05$. The lower endpoint $\pi_L$ solves
+
+$$
+\mathbb{P}_{\pi_L}(K\geq18)=\frac{\alpha}{2}=.025.
+$$
+
+If $\pi$ were smaller than $\pi_L$, observing at least 18 successes would be even less probable. Those smaller parameter values are excluded when the lower confidence bound is constructed from the upper tail of $K$.
+
+The upper endpoint $\pi_U$ solves
+
+$$
+\mathbb{P}_{\pi_U}(K\leq18)=\frac{\alpha}{2}=.025.
+$$
+
+If $\pi$ were larger than $\pi_U$, observing no more than 18 successes would be even less probable. Those larger parameter values are excluded when the upper confidence bound is constructed from the lower tail of $K$.
+
+R performs both inversions with `binom.test()`:
+
+```{r}
+#| label: exact-binomial-interval
+#| echo: true
+
+wald_se <- sqrt(.9 * .1 / 20)
+wald_interval <- .9 + c(-1, 1) * 1.96 * wald_se
+exact_interval <- binom.test(18, 20)$conf.int
+
+stopifnot(wald_interval[2] > 1)
+stopifnot(isTRUE(all.equal(
+  as.numeric(exact_interval),
+  c(0.6830172859809176, 0.9876514728297052),
+  tolerance = 1e-10
+)))
+
+rbind(wald = wald_interval, exact = exact_interval)
+```
+
+The exact interval is approximately
+
+$$
+[.6830,.9877].
+$$
+
+This interval is much wider than a casual reading of $.90$ might suggest. With only twenty independent observations, population probabilities from roughly $.68$ to $.99$ remain compatible with the procedure.
+
+## Qualify the word exact
+
+Here, *exact* means that coverage is calculated from the finite-sample binomial distribution rather than from a large-sample normal approximation. It does not mean that coverage equals exactly $.95$ at every value of $\pi$.
+
+Binomial counts are discrete. As a result, an equal-tail procedure cannot usually attain precisely $.95$ coverage for every parameter value. The Clopper-Pearson interval tends to cover at least $.95$ and may cover more. It is thus conservative under the binomial model.
+
+Exact also does not mean narrow, uniquely correct, or free of assumptions. Other binomial interval procedures make different coverage and width tradeoffs.
+
+## Separate exact calculation from model adequacy
+
+The procedure assumes a fixed number of trials, a common success probability, and independent Bernoulli outcomes. Twenty tokens from one document may share topic, author, register, or local discourse context. Their labels may thus be dependent or have different probabilities.
+
+An exact tail calculation does not guarantee that the sampling model is adequate. The probability calculation can be exact under the binomial model while the binomial model is inappropriate for the linguistic sampling process.
+
+The parameter also concerns the population sampling process. The proportion in the observed file is already known to be $.90$. The interval does not express uncertainty about that observed proportion.
+
+## Check your understanding
+
+1. Why can the normal interval exceed one?
+2. What tail probability defines the lower endpoint of a 95% Clopper-Pearson interval?
+3. What is exact about the procedure, and what remains model dependent?
+4. Why can 20 annotations from one document supply less information than 20 independently sampled documents?
+
+The [bootstrap interval](bootstrap-confidence-intervals.qmd) replaces analytic tail inversion with a resampled estimate distribution.

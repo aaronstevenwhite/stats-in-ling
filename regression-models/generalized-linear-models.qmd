@@ -1,0 +1,189 @@
+---
+title: "Components of a generalized linear model"
+---
+
+A [**generalized linear model**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214), or [**GLM**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214), combines a response distribution from the exponential family, a linear predictor, and a link function. The [preceding page](link-functions.qmd) introduced the link and inverse link. The [next page on the exponential family](exponential-family.qmd) states the formal restriction on the response distribution. For now, normal, Bernoulli, and Poisson distributions supply the examples.
+
+Build the model in three steps. The
+response family states what one response can be and how its variance relates to its mean, the linear predictor states how
+predictors combine, and the inverse link maps that combination to a valid
+conditional mean.
+
+## Step 1: choose the response family
+
+The response family must match the possible values of $Y$.
+
+| response | possible family |
+|---|---|
+| continuous real-valued measurement | normal |
+| binary choice | Bernoulli |
+| nonnegative count | Poisson |
+
+The family also specifies how the conditional variance relates to the conditional mean.
+
+For a Bernoulli response, the mean is a probability $\pi_i$ and the variance is
+$\pi_i(1-\pi_i)$. For a Poisson response, the mean and variance are both
+$\lambda_i$. The family thus contributes more than the range of possible
+observations.
+
+## Step 2: recall the linear predictor
+
+As introduced on the [design-matrix page](design-matrices.qmd), the [**linear predictor**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) is
+
+$$
+\eta_i
+=\beta_0+\beta_1x_{i1}+\cdots+\beta_px_{ip}.
+$$
+
+Because the coefficients and predictor values are real numbers, $\eta_i$ can take any value on the real line.
+
+The coefficients are additive on this scale. Increasing $x_{i1}$ by one changes $\eta_i$ by $\beta_1$ while other predictors are held fixed.
+
+The linear predictor does not itself need to satisfy the response constraints.
+It is an intermediate representation. A value of $\eta_i=3$ is neither a
+probability nor an expected count until an inverse link interprets it.
+
+## Step 3: use the inverse link
+
+Let
+
+$$
+\mu_i=\mathbb{E}[Y_i\mid\mathbf{x}_i].
+$$
+
+The [inverse-link function](link-functions.qmd) maps the unconstrained linear predictor into the mean values allowed by the response family:
+
+$$
+\mu_i=g^{-1}(\eta_i).
+$$
+
+Equivalently,
+
+$$
+g(\mu_i)=\eta_i.
+$$
+
+For ordinary linear regression, the identity inverse link gives
+
+$$
+g^{-1}(\eta)=\eta.
+$$
+
+The conditional mean can be any real value, so no transformation is needed.
+
+For a Bernoulli response, the inverse link must map the real line into $(0,1)$. For a count response, it must map into positive expected counts.
+
+## Assemble a Bernoulli GLM
+
+Suppose $Y_i=1$ marks an *in* completion and $Y_i=0$ marks a *for* completion.
+Let $x_i$ be a centered duration measure. A Bernoulli GLM with an inverse-logit
+mapping is
+
+$$
+Y_i\mid x_i\sim\operatorname{Bernoulli}(\pi_i),
+$$
+
+$$
+\eta_i=\beta_0+\beta_1x_i,
+$$
+
+and
+
+$$
+\pi_i=\frac{1}{1+e^{-\eta_i}}.
+$$
+
+Take $\beta_0=-.40$ and $\beta_1=.70$. At $x=0$,
+
+$$
+\eta(0)=-.40
+$$
+
+and
+
+$$
+\pi(0)=\frac{1}{1+e^{.40}}\approx.401.
+$$
+
+At $x=2$,
+
+$$
+\eta(2)=-.40+.70(2)=1.00
+$$
+
+and
+
+$$
+\pi(2)=\frac{1}{1+e^{-1}}\approx.731.
+$$
+
+The duration contrast changes the linear predictor by $1.4$ and the completion
+probability by about $.330$ over this particular interval.
+
+```{r}
+#| label: calculate-bernoulli-glm-means
+#| echo: true
+x <- c(0, 2)
+eta <- -.40 + .70 * x
+pi <- plogis(eta)
+
+data.frame(x = x, eta = eta, probability = pi)
+```
+
+Each row now has a complete response distribution. At $x=0$, the model assigns
+probability about $.401$ to response 1 and $.599$ to response 0. It does not
+assign probability to values between them.
+
+## Keep the two scales visible
+
+A coefficient describes an additive change on the $\eta$ scale. The corresponding response-scale change depends on the inverse link.
+
+With a nonlinear inverse link, the same coefficient-sized change in $\eta$ can produce different probability changes at different starting values.
+
+Thus every GLM interpretation should state whether it concerns
+
+1. the linear-predictor scale; or
+2. the response-mean scale.
+
+The distinction is particularly important for a nonlinear inverse link. The
+coefficient $\beta_1=.70$ is a constant change in $\eta$ per duration unit. It
+does not say that probability increases by $.70$, and it does not imply one
+constant probability difference at every starting value.
+
+## Do not omit the response distribution
+
+Writing only
+
+$$
+\pi_i=\operatorname{logit}^{-1}(\beta_0+\beta_1x_i)
+$$
+
+describes the conditional mean but leaves the observation statement implicit.
+The full GLM also says that $Y_i$ is Bernoulli given that mean. This statement
+supplies the conditional variance and the likelihood used for inference.
+
+A mean equation is not a complete probability model. Omitting the response distribution makes it difficult to see whether the
+family matches the measurement or which variation assumptions the fit uses.
+
+## Check each part separately
+
+These three model components suggest three checks:
+
+1. Does the family assign probability only to possible observations?
+2. Does the linear predictor contain the comparisons required by the theory?
+3. Does the inverse link turn every possible $\eta$ into a valid mean?
+
+A model can pass one check and fail another. A Poisson family has count support,
+but a linear predictor may omit exposure. A valid inverse logit keeps
+probabilities bounded, but the predictor may encode an uninterpretable category
+contrast.
+
+The next pages examine a common mathematical form for response families and the
+data summaries those families retain.
+
+::: {.callout-note title="Check the ranges"}
+1. Why can $\eta_i$ remain unconstrained even when $\mu_i$ must be a probability?
+2. Recalculate the displayed Bernoulli prediction at $x=1$.
+3. Which component of a generalized linear model supplies the mean-variance relation?
+4. Explain why a conditional mean equation is not a complete probability model.
+:::

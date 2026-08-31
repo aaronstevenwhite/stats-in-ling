@@ -1,0 +1,166 @@
+---
+title: "When ordinary linear regression cannot model the response"
+---
+
+The [ordinary linear regression pages](simple-linear-regression.qmd) allowed the response to take any real value when its errors are normally distributed. Recall from the page on [discrete random variables](../random-variables-and-distributions/discrete-random-variables.qmd) that a distribution's **support** is the set of values its random variable can take. Real-valued support is suitable for some continuous measurements, but it conflicts with binary responses and counts.
+
+The conflict has two parts. First, the response distribution assigns probability
+to values the measurement cannot take. Second, its constant conditional variance
+does not represent how variation changes with the [conditional mean](regression-models.qmd).
+
+## Try a straight line for a binary response
+
+Suppose $Y=1$ marks an *in* completion and $Y=0$ marks a *for* completion. The
+conditional mean is a probability:
+
+$$
+\mathbb{E}[Y\mid X=x]
+=\mathbb{P}(Y=1\mid X=x)
+=\pi(x).
+$$
+
+Fit the straight-line mean
+
+$$
+\pi(x)=.40+.15x.
+$$
+
+At $x=2$, it gives $.70$. At $x=5$, it gives
+
+$$
+.40+.15(5)=1.15.
+$$
+
+A probability of 1.15 is impossible. The same line eventually predicts values
+below zero when $x$ becomes sufficiently negative. Restricting the observed
+predictor range may hide these failures in one sample, but it does not change the
+fact that the mean function itself is unbounded.
+
+```{r}
+#| label: inspect-linear-probability-failure
+#| echo: true
+x <- c(-4, -2, 0, 2, 5)
+linear_probability <- .40 + .15 * x
+
+data.frame(x = x, predicted_probability = linear_probability)
+```
+
+At $x=-4$, the fitted value is $-.20$. At $x=5$, it is $1.15$. Neither is a
+possible Bernoulli mean.
+
+The constant-variance assumption of ordinary linear regression also conflicts with a binary response. For a
+Bernoulli variable,
+
+$$
+\operatorname{Var}(Y\mid X=x)
+=\pi(x)[1-\pi(x)].
+$$
+
+When the conditional mean changes, the conditional variance changes with it.
+One constant conditional variance cannot represent this relation. For instance,
+when $\pi=.50$,
+
+$$
+\operatorname{Var}(Y)=.50(1-.50)=.25.
+$$
+
+When $\pi=.95$,
+
+$$
+\operatorname{Var}(Y)=.95(1-.95)=.0475.
+$$
+
+Binary observations vary most when success and failure are equally likely. They
+vary less when one outcome is nearly certain. The mean and variance cannot be
+specified independently as they are in an ordinary linear regression with constant normally distributed errors.
+
+## Try ordinary linear regression for a count
+
+Suppose $Y$ is the number of relative clauses in a document. Counts take values
+
+$$
+0,1,2,3,\ldots
+$$
+
+and cannot be negative.
+
+A normal distribution assigns some probability below zero regardless of where
+its mean is placed. The mismatch is especially severe for small expected counts.
+Suppose the fitted mean is $.4$ clauses with residual standard
+deviation 1. The model assigns substantial probability to negative values and
+to noninteger values such as $.6$. Both are outside the response support.
+
+Count variation also often grows with the expected count. A constant normal
+conditional variance does not encode that relationship. The Poisson distribution,
+for instance, has
+
+$$
+\mathbb{E}[Y]=\lambda
+$$
+
+and
+
+$$
+\operatorname{Var}(Y)=\lambda.
+$$
+
+An expected count of 2 has variance 2, while an expected count of 20 has variance
+20. Whether this particular equality is adequate must be checked, but it begins
+with the right nonnegative integer support.
+
+## Distinguish a response from an encoded number
+
+Encoding categories as numbers does not make them normally distributed measurements. If
+three response categories are coded 0, 1, and 2, the code does not establish
+that the distance from 0 to 1 equals the distance from 1 to 2. Nor does it allow
+the response to take values such as 1.4.
+
+The storage format does not determine the measurement support. A response model must follow what the values mean, not
+merely how they are stored.
+
+The same point applies to a binary response coded 0 and 1. Its mean is a
+probability, but individual observations remain two categories. A normal
+distribution over arbitrary real values does not become appropriate because the
+codes are numeric.
+
+## Identify the two repairs
+
+We need a regression model that
+
+1. uses a response distribution with the correct support; and
+2. keeps the modeled conditional mean inside that support.
+
+For a binary response, a [Bernoulli distribution](../random-variables-and-distributions/bernoulli-distribution.qmd) supplies the support $\{0,1\}$.
+For a count, a [Poisson](../random-variables-and-distributions/poisson-distribution.qmd) or [negative-binomial distribution](../random-variables-and-distributions/negative-binomial-distribution.qmd) supplies nonnegative
+integers.
+
+A transformation can connect the unconstrained [linear predictor](design-matrices.qmd) to a valid
+probability or positive expected count. The [next page](link-functions.qmd) gives this transformation its standard name and develops it. The first repair addresses the possible
+observations. The second addresses the possible conditional means. These should
+not be collapsed.
+
+## Choose the family from the measurement
+
+The response family should be selected before looking for a significant
+coefficient. Ask what one observation is, which values it can take, and how its
+variation may depend on its mean.
+
+For a binary choice, one observation is a success or failure. For a token count,
+one observation is a nonnegative integer attached to a declared exposure. For a
+continuous acoustic measurement, one observation may lie on a positive or real
+scale. These measurement statements constrain the model before predictors enter.
+
+Choosing ordinary linear regression and then trying to make the response fit its assumptions reverses the required reasoning. The
+family should follow the response-generating claim.
+
+::: {.callout-note title="Check the mismatch"}
+1. Why is the problem with ordinary linear regression for a binary response more fundamental than a
+   histogram that merely looks nonnormal?
+2. Calculate Bernoulli variance at $\pi=.10$ and $\pi=.50$.
+3. Why does coding ordered categories as 0, 1, and 2 not create a continuous
+   response?
+4. Explain why the possible response values and the relation between conditional mean and variance should be stated before choosing a familiar model family.
+:::
+
+The [next page](link-functions.qmd) develops the transformation that keeps a
+conditional mean inside its allowed range.

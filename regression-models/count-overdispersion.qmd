@@ -1,0 +1,109 @@
+---
+title: "Checking Poisson dispersion"
+---
+
+The [Poisson-regression page](poisson-regression.qmd) imposed equality between the conditional mean and conditional variance. The [deviance-residual page](deviance-residuals.qmd) then showed why count discrepancies should be scaled relative to their fitted means. We now use that scaling to check the Poisson variance restriction.
+
+A Poisson regression specifies both a conditional mean and a conditional variance. If an observation has expected count $\lambda_i$, then
+
+$$
+\operatorname{E}(Y_i\mid\mathbf{x}_i)=\lambda_i
+$$
+
+and
+
+$$
+\operatorname{Var}(Y_i\mid\mathbf{x}_i)=\lambda_i.
+$$
+
+The equality of the mean and variance is not a general fact about counts. It is a restriction imposed by the Poisson distribution. The [Poisson-distribution page](../random-variables-and-distributions/poisson-distribution.qmd) introduced **overdispersion** for variation beyond this restriction. Here we diagnose it after predictors have supplied a different fitted mean for each observation.
+
+This page introduces one diagnostic question: does the fitted Poisson distribution represent the amount of conditional variation in the observations?
+
+## Focus on conditional variation
+
+Suppose several comparable corpus samples each have an expected count of 4. A Poisson model also assigns those samples a variance of 4 and a standard deviation of 2. Counts close to 4 should be common. Counts such as 0 and 12 should be much less common.
+
+Now suppose the observed samples contain many zeros alongside several counts above 15. Their unconditional variance may be large because the samples differ in genre, length, or predictor values. That fact alone does not diagnose the model. We must first compare each observation with the mean predicted for its own covariate values.
+
+Overdispersion occurs when the conditional count variation is systematically larger than the fitted Poisson distributions allow.
+
+## Scale each discrepancy
+
+The raw residual is
+
+$$
+y_i-\widehat{\lambda}_i.
+$$
+
+Its size is hard to compare across observations. A discrepancy of 4 is large when the expected count is 1, but modest when the expected count is 100. The [**Pearson residual**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) divides the raw discrepancy by the Poisson standard deviation:
+
+$$
+r_{P,i}
+=\frac{y_i-\widehat{\lambda}_i}
+{\sqrt{\widehat{\lambda}_i}}.
+$$
+
+Consider two observations. The first has observed count 5 and fitted mean 1. The second has observed count 104 and fitted mean 100. Both raw residuals equal 4. Their Pearson residuals differ:
+
+$$
+r_{P,1}=\frac{5-1}{\sqrt{1}}=4,
+$$
+
+$$
+r_{P,2}=\frac{104-100}{\sqrt{100}}=.4.
+$$
+
+The first observation is four fitted standard deviations above its mean. The second is less than one half of a fitted standard deviation above its mean. Scaling reveals which discrepancy is surprising under the model.
+
+## Summarize the residual variation
+
+A common descriptive summary is the [**Pearson estimate of dispersion**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234):
+
+$$
+\widehat{\phi}
+=\frac{\sum_{i=1}^{n}r_{P,i}^{2}}{n-p},
+$$
+
+where $p$ is the number of fitted coefficients. The denominator is the residual degrees of freedom.
+
+If the Poisson variance is a reasonable description and the sample is sufficiently informative, the ratio should be near one. A value much larger than one means that the squared standardized discrepancies are collectively too large. A value below one indicates less residual variation than the Poisson model assigns.
+
+```r
+pearson_residual <- residuals(fit, type = "pearson")
+
+dispersion_ratio <-
+  sum(pearson_residual^2) / df.residual(fit)
+
+dispersion_ratio
+```
+
+There is no universal cutoff separating adequate and inadequate models. An estimate of 1.05 and an estimate of 8 do not raise the same concern, but their evidential meaning also depends on the number of observations, the fitted means, and the dependence among observations. Treat the Pearson estimate of dispersion as a diagnostic summary rather than an automatic decision rule.
+
+## Locate the mismatch
+
+One ratio cannot show where the mismatch occurs. A model may fit most observations well while failing for one register or one range of expected counts. We should inspect the Pearson residuals against fitted values and against the predictors already in the model.
+
+```r
+plot(
+  fitted(fit),
+  residuals(fit, type = "pearson"),
+  xlab = "Fitted count",
+  ylab = "Pearson residual"
+)
+abline(h = 0, lty = 2)
+```
+
+A widening band suggests that the variance grows faster than the Poisson mean. A systematic curve suggests that the conditional mean is misspecified. A cluster of large residuals attached to one known subset suggests that the subset needs separate investigation.
+
+These patterns matter because overdispersion describes a failure of the fitted variance relation, not its cause. Omitted predictors, an incorrect functional relation, dependence among observations, a different count distribution, or a second process that generates zeros may all produce excess conditional variation. The Pearson estimate of dispersion does not choose among those explanations.
+
+## Keep diagnosis separate from repair
+
+The appropriate conclusion from a large Pearson estimate of dispersion is narrow: the fitted Poisson variance appears too small for the observed conditional variation. We should then inspect the location of the mismatch and ask which part of the data-generating process the model omitted.
+
+The next pages introduce possible repairs one at a time. A quasi-Poisson model changes the variance multiplier. A negative binomial model changes the response distribution. A zero-inflated model represents two routes to zero. None is licensed by a large Pearson estimate of dispersion alone.
+
+::: {.callout-note title="Check the diagnosis"}
+A Poisson model has a dispersion ratio of 6. What has the diagnostic established? What has it not established about the source of the extra variation?
+:::

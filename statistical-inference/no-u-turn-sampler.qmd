@@ -1,0 +1,70 @@
+---
+title: "The No-U-Turn Sampler"
+---
+
+A static [HMC transition](hamiltonian-monte-carlo.qmd) requires a fixed number of leapfrog steps. The [mass matrix](mass-matrix-geometry.qmd) sets scale and orientation, but it does not choose the number of steps. Too few steps leave the proposal near its starting point. Too many steps may continue after the trajectory has begun to return toward that point.
+
+The appropriate number of leapfrog steps may vary across transitions, so one fixed choice can waste computation or produce short moves.
+
+The [**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) chooses the trajectory length dynamically. This page explains how the tree grows, why the turning criterion stops it, and how a proposal is selected from the resulting states.
+
+## Grow a balanced trajectory tree
+
+NUTS begins with the current parameter value and a freshly drawn momentum. It applies the same leapfrog updates used by HMC, extending the numerical path forward or backward in simulated time.
+
+The candidate states are organized as a balanced binary tree. Each increase in tree depth doubles the number of leapfrog states in the completed tree. A depth increase can thus produce a substantially longer path without requiring a fixed leapfrog count before the transition begins.
+
+Tree growth does not mean that the sampler branches into several posterior draws. The tree is a computational structure for constructing one transition. NUTS ultimately selects one parameter state as the next draw.
+
+## Stop when the path turns back
+
+Let $q^{-}$ and $q^{+}$ denote the parameter values at the two ends of a trajectory, and define the displacement
+
+$$
+\Delta q=q^{+}-q^{-}.
+$$
+
+An endpoint version of the turning check asks whether either endpoint momentum points back across the existing displacement. With mass matrix $M$, the relevant signs are represented by
+
+$$
+\Delta q^{\mathsf T}M^{-1}p^{-}
+$$
+
+and
+
+$$
+\Delta q^{\mathsf T}M^{-1}p^{+}.
+$$
+
+When one becomes negative, motion at that endpoint has begun to reverse relative to the span of the trajectory. Extending much farther would tend to retrace an explored region rather than produce a more distant proposal.
+
+Stan applies a related criterion recursively to completed subtrees as well as to the full tree. The endpoint picture supplies the geometric intuition, while the recursive checks prevent a turn inside one branch from being hidden by the complete path.
+
+## Select one state from the path
+
+NUTS does not automatically keep the last leapfrog state. Doing so would make the transition depend on an endpoint chosen by the stopping event.
+
+Instead, Stan selects among eligible trajectory states using multinomial weights based on their Hamiltonian energies. States with lower Hamiltonian values receive more weight. Exact integration would keep these energies equal, so the weighting accounts for differences introduced by the numerical path.
+
+This selection addresses the same approximation problem that motivated the Metropolis correction for a static HMC endpoint, but it does so across a dynamically constructed trajectory.
+
+The resulting draw is one state from the tree. The remaining states are computational candidates and do not enter the retained chain as additional iterations.
+
+## Separate NUTS from warmup adaptation
+
+NUTS chooses trajectory length within every transition. Warmup adaptation estimates different quantities before retained sampling begins, including the step size and inverse mass matrix.
+
+This distinction matters. A well estimated step size can make each leapfrog update accurate without deciding how many updates a particular trajectory needs. A well estimated mass matrix can align velocities with global posterior geometry without deciding when a trajectory has turned back.
+
+Stan reports tree depth as `treedepth__` and the leapfrog count as `n_leapfrog__`. The setting `max_treedepth` places a computational cap on tree growth. Reaching that cap once is not by itself evidence of a failed fit, but repeated saturation suggests that the cap may be truncating many trajectories before the turning criterion stops them.
+
+Increasing the cap only permits more work. It does not repair inaccurate leapfrog integration, poor mass matrix geometry, or weak parameter identification.
+
+## Check your understanding
+
+1. Why can one fixed leapfrog count be inefficient across HMC transitions?
+2. What quantity doubles when NUTS increases the tree depth by one?
+3. Why does NUTS select a state from the tree rather than always using its final endpoint?
+4. What does repeated `max_treedepth` saturation suggest, and what does it fail to diagnose?
+
+The next page turns from the sampler to [implementing a model in Stan](stan.qmd).

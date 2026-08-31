@@ -1,0 +1,127 @@
+---
+title: "Writing a joint model"
+---
+
+Suppose several annotators give binary judgments about whether each event description is compatible with a proposed inference. A data-generating process says that each item has an unobserved propensity and that each response is drawn from the probability implied by that propensity. The process is interpretable, but it is not yet a probability model that can be fitted.
+
+A [**joint probability model**](https://bruno.nicenboim.me/bayescogsci/ch-custom.html) assigns one probability factor to every random step in the data-generating process. This is the [product rule](../foundations/probability-factorization.qmd) applied to the annotation process. The product states which quantities are conditionally independent and which observations share an unobserved item value.
+
+## Begin with the simplest response process
+
+Let item $i$ have an unobserved log-odds value $\theta_i$. For current purposes, all annotators use the same [logistic response mapping](../regression-models/logistic-regression.qmd). The probability of an affirmative response is
+
+$$
+\pi_i=\operatorname{logit}^{-1}(\theta_i),
+$$
+
+and each recorded response follows
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_i).
+$$
+
+As in the earlier account of [random effects and partial pooling](../regression-models/random-effects.qmd), the item values follow a population distribution,
+
+$$
+\theta_i\sim\mathcal{N}(\mu_\theta,\tau_\theta^2).
+$$
+
+This population distribution has already been motivated in the grouped model sequence. Here it supplies the item generating step needed for the joint distribution. Stable annotator tendencies are introduced on the next page rather than hidden inside this first model.
+
+## Translate steps into factors
+
+Let $\mathcal O$ be the set of observed item and annotator pairs. For observed responses $\mathbf{y}$ and item values $\boldsymbol\theta$, the joint distribution is
+
+$$
+p(\mathbf{y},\boldsymbol\theta
+\mid\mu_\theta,\tau_\theta)
+=
+\prod_i p(\theta_i\mid\mu_\theta,\tau_\theta)
+\prod_{(i,j)\in\mathcal O}p(y_{ij}\mid\theta_i).
+$$
+
+The first product corresponds to generating each item value. The second corresponds to generating every recorded annotation conditional on its item's value. Writing the product over $\mathcal O$ allows different items to be seen by different annotators. The repeated occurrence of $\theta_i$ in the response factors records the fact that responses to one item share that latent item value.
+
+The order of the products does not describe temporal order. Multiplication is commutative. The conditional arguments inside each factor carry the dependency claim.
+
+## Work through two items
+
+Suppose item 1 has affirmative probability $.75$ and receives responses 1 and 1. Item 2 has affirmative probability $.50$ and receives responses 1 and 0. Conditional on the item probabilities, the response contribution is
+
+$$
+\begin{aligned}
+p(1,1,1,0\mid\pi_1=.75,\pi_2=.50)
+&=(.75)(.75)(.50)(1-.50)\\
+&=.140625.
+\end{aligned}
+$$
+
+The two responses to item 1 use the same $.75$ probability. The two responses to item 2 use the same $.50$ probability. This is how the joint expression records shared item structure without treating the item mean as another observation.
+
+To complete the joint density, multiply this response contribution by the density assigned to each $\theta_i$. Since $\theta_1=\operatorname{logit}(.75)$ and $\theta_2=\operatorname{logit}(.50)=0$, the item factors are
+
+$$
+p(\theta_1\mid\mu_\theta,\tau_\theta)
+p(\theta_2\mid\mu_\theta,\tau_\theta).
+$$
+
+## Compute the joint log density in base R
+
+```{r}
+joint_log_density <- function(y, item, theta, mu_theta, tau_theta) {
+  response_probability <- plogis(theta[item])
+
+  response_terms <- dbinom(
+    x = y,
+    size = 1,
+    prob = response_probability,
+    log = TRUE
+  )
+
+  item_terms <- dnorm(
+    x = theta,
+    mean = mu_theta,
+    sd = tau_theta,
+    log = TRUE
+  )
+
+  sum(response_terms) + sum(item_terms)
+}
+
+y <- c(1, 1, 1, 0)
+item <- c(1, 1, 2, 2)
+theta <- qlogis(c(.75, .50))
+
+joint_log_density(
+  y = y,
+  item = item,
+  theta = theta,
+  mu_theta = 0,
+  tau_theta = 1
+)
+```
+
+`theta[item]` repeats the appropriate item value for each response row. `dbinom()` calculates the four conditional response terms, while `dnorm()` calculates one population term for each item value. The function evaluates the joint density at supplied parameter values. It does not fit them.
+
+## Separate observations from summaries
+
+The raw annotations appear in the conditional response product. An item mean calculated from those same annotations is a deterministic summary of the responses, not a new independent measurement.
+
+For item 1, the raw responses $(1,1)$ determine the mean 1. Multiplying the joint model by a second likelihood term for that mean would count the same responses twice. The mean may be used in a descriptive or predictive check, but it should not reenter as independent data.
+
+## Do not count deterministic summaries twice
+
+Including a response and its deterministic summary as separate observations double counts the evidence. The resulting model appears to have more evidence than the annotation protocol produced. Its intervals may be too narrow, and its fit can be dominated by a summary already implied by the raw data.
+
+The duplication can be detected by tracing each likelihood term to the random step and recorded event it represents. If two factors point to the same recorded responses without a second measurement process, one of them is duplicated.
+
+::: {.callout-note title="Check the joint model"}
+1. Which product generates latent item values?
+2. Which term makes two responses to item 1 share information?
+3. Why does the order of multiplication not state the dependency structure?
+4. Why is an item mean not an additional response when the raw annotations already enter the likelihood?
+:::
+
+## Summing up
+
+A joint model translates each random step into one probability factor. Its conditional arguments state which observations share unobserved quantities. Tracing each factor to a recorded event prevents deterministic summaries from being counted twice. We next extend the response step with a stable [annotator effect](annotator-effects.qmd).

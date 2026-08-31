@@ -1,0 +1,240 @@
+---
+title: "The exponential family"
+---
+
+The [generalized-linear-model page](generalized-linear-models.qmd) stated that a standard generalized linear model uses an exponential-family response. We now define that family. Normal, Bernoulli, and Poisson distributions look different, but they can all be written in a common form.
+
+The exponential-family form lets us separate the observed response, a transformed parameter,
+and any dispersion term. This representation does not make the distributions identical. It shows which
+mathematical roles they share.
+
+## The common form
+
+A distribution belongs to the [**exponential family**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) if its density or mass function can be written as
+
+$$
+p(y\mid\theta,\phi)
+=
+\exp\left(
+\frac{y\theta-b(\theta)}{a(\phi)}+c(y,\phi)
+\right).
+$$
+
+The symbols have specific jobs:
+
+1. $y$ is the observed response.
+2. $\theta$ is the natural parameter.
+3. $\phi$ is a dispersion parameter when the family has one.
+4. $b(\theta)$ determines the mean and variance.
+5. $c(y,\phi)$ contains terms that do not involve $\theta$.
+
+This notation is abstract because it must cover several distributions. We will make it concrete with the Bernoulli distribution.
+
+The natural parameter $\theta$ need not equal a familiar mean parameter. It is
+the parameter value that makes the observed response enter linearly in the
+exponent. The function $b(\theta)$ then provides the normalization needed for
+the probabilities or density to sum or integrate to one.
+
+## Rewrite the Bernoulli distribution
+
+For $y\in\{0,1\}$,
+
+$$
+p(y\mid\pi)=\pi^y(1-\pi)^{1-y}.
+$$
+
+Taking logs gives
+
+$$
+\log p(y\mid\pi)
+=
+y\log\pi+(1-y)\log(1-\pi).
+$$
+
+Collect the terms involving $y$:
+
+$$
+\log p(y\mid\pi)
+=
+y\log\frac{\pi}{1-\pi}+\log(1-\pi).
+$$
+
+Thus the natural parameter is
+
+$$
+\theta=\log\frac{\pi}{1-\pi},
+$$
+
+which is the log odds. The Bernoulli canonical link will arise from this same quantity.
+
+To identify the remaining pieces, solve for $\pi$ in terms of $\theta$:
+
+$$
+\pi=\frac{e^\theta}{1+e^\theta}.
+$$
+
+Then
+
+$$
+\log(1-\pi)=-\log(1+e^\theta),
+$$
+
+so
+
+$$
+\log p(y\mid\theta)
+=y\theta-\log(1+e^\theta).
+$$
+
+For the Bernoulli family,
+
+$$
+b(\theta)=\log(1+e^\theta),
+$$
+
+there is no separately estimated dispersion parameter, and $c(y)=0$ under this
+representation.
+
+## Why this family is useful
+
+For this form,
+
+$$
+\mathbb{E}[Y]=b'(\theta)
+$$
+
+and
+
+$$
+\mathrm{Var}(Y)=a(\phi)b''(\theta).
+$$
+
+The conditional variance is thus tied to the conditional mean in a family-specific way. The function that expresses this relation is the [**variance function**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214). Bernoulli variance is $\pi(1-\pi)$. Poisson variance is $\lambda$. Normal variance is governed by a separate dispersion parameter.
+
+For the Bernoulli form,
+
+$$
+b'(\theta)
+=\frac{e^\theta}{1+e^\theta}
+=\pi.
+$$
+
+The first derivative recovers the mean. The second derivative is
+
+$$
+b''(\theta)
+=\frac{e^\theta}{(1+e^\theta)^2}
+=\pi(1-\pi),
+$$
+
+which recovers the variance. The mean-variance relation is thus encoded in the
+same $b$ function.
+
+This relation is one reason the response distribution matters. Choosing a family is not merely choosing the range of possible outcomes. It also chooses a mean variance relation.
+
+## Write the Poisson exponential-family form
+
+For count $y\in\{0,1,2,\ldots\}$,
+
+$$
+p(y\mid\lambda)
+=\frac{e^{-\lambda}\lambda^y}{y!}.
+$$
+
+Taking logs gives
+
+$$
+\log p(y\mid\lambda)
+=y\log\lambda-\lambda-\log(y!).
+$$
+
+Set
+
+$$
+\theta=\log\lambda.
+$$
+
+Since $\lambda=e^\theta$, the log mass becomes
+
+$$
+\log p(y\mid\theta)
+=y\theta-e^\theta-\log(y!).
+$$
+
+Thus
+
+$$
+b(\theta)=e^\theta
+$$
+
+and
+
+$$
+c(y)=-\log(y!).
+$$
+
+Both the first and second derivatives of $b(\theta)$ equal $e^\theta=\lambda$.
+This yields the Poisson equality of mean and variance.
+
+## Connect natural parameters to canonical links
+
+A [**canonical link**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) sets the linear predictor equal to the natural parameter.
+For the Bernoulli family,
+
+$$
+\eta=\theta=\log\frac{\pi}{1-\pi},
+$$
+
+so the canonical link is the logit. For the Poisson family,
+
+$$
+\eta=\theta=\log\lambda,
+$$
+
+so the canonical link is the log link.
+
+Canonical links make the predictor enter the exponential-family form through its natural parameter.
+They are not required by the response support. Another monotone link can map to
+the same allowed mean range while producing a noncanonical model.
+
+Not every generalized linear model must use its canonical link. Canonical links often simplify
+estimation and interpretation, but the model choice remains separate.
+
+## The family does not include every useful distribution
+
+The negative binomial is often represented in an exponential family form under a fixed dispersion parameter, but regression practice usually estimates that dispersion. Mixtures, zero inflated models, and ordered beta models require additional structure. Thus, generalized linear modeling provides a useful architecture, not a catalog of every model linguists may need.
+
+Membership in the exponential family also does not establish that a family is adequate for a
+particular response. A Poisson likelihood has count support, but a linguistic
+count can still have more variation than its mean. Mathematical convenience
+does not replace measurement and predictive checks.
+
+## Verify the derivatives numerically
+
+At $\theta=0$, the Bernoulli mean is $.5$ and variance is $.25$. At
+$\theta=\log4$, the mean is $.8$ and variance is $.16$:
+
+```{r}
+#| label: verify-exponential-family-derivatives
+#| echo: true
+theta <- c(0, log(4))
+bernoulli_mean <- exp(theta) / (1 + exp(theta))
+bernoulli_variance <- bernoulli_mean * (1 - bernoulli_mean)
+
+data.frame(
+  theta = theta,
+  mean = bernoulli_mean,
+  variance = bernoulli_variance
+)
+```
+
+This calculation makes the mean-variance coupling concrete before any
+regression predictors are added.
+
+::: {.callout-note title="Recover the exponential-family form"}
+1. Which term determines the mean and variance through its derivatives?
+2. What is the Bernoulli natural parameter?
+3. Why does choosing a response family also choose a variance relation?
+4. Identify $b(\theta)$ for the Poisson family.
+5. Explain why a generalized linear model need not use the canonical link.
+:::

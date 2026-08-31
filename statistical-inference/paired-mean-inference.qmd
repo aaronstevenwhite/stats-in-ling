@@ -1,0 +1,183 @@
+---
+title: "Inference for a paired mean difference"
+---
+
+A [paired design](paired-observations.qmd) yields one observed difference $D_s$ for each pair. The remaining question is inferential: what do the observed differences tell us about the average difference in the population represented by the design?
+
+The [**paired t-test**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=308) applies the [one-sample t procedure](one-sample-t-inference.qmd) to $D_1,\ldots,D_S$. It does not analyze the two condition columns separately. Pairing has already converted the original measurements into the response relevant to the contrast.
+
+::: {.callout-note title="Reading: Hillenbrand et al. (1995)"}
+Read [*Acoustic characteristics of American English vowels*](https://doi.org/10.1121/1.411872), focusing on the speaker sample, recording procedure, and formant measurements. The reading is included because each recorded speaker contributes measurements for multiple vowel categories. That repeated speaker design determines why the within-speaker formant difference, rather than an independent comparison of two vowel columns, bears on the Problem Set 1 contrast.
+:::
+
+## The target and estimator
+
+Let
+
+$$
+\mu_D = \mathbb{E}[D]
+$$
+
+be the population mean of the within-pair difference $D=Y_A-Y_B$. The sample estimator is
+
+$$
+\overline{D}=\frac{1}{S}\sum_{s=1}^S D_s.
+$$
+
+The sign of $\overline{D}$ inherits the subtraction order. A negative estimate means that condition $A$ is lower on average than condition $B$.
+
+The sample standard deviation of the differences is
+
+$$
+s_D
+=
+\sqrt{
+\frac{1}{S-1}
+\sum_{s=1}^S (D_s-\overline{D})^2
+},
+$$
+
+and the estimated standard error of the mean difference is
+
+$$
+\widehat{\operatorname{SE}}(\overline{D})
+=
+\frac{s_D}{\sqrt{S}}.
+$$
+
+Note that $S$ is the number of pairs. The calculation does not use $2S$ as though each original measurement supplied an independent condition contrast.
+
+## A t interval for the mean difference
+
+If the pair differences are independently sampled from a normal population, then
+
+$$
+T
+=
+\frac{\overline{D}-\mu_D}{s_D/\sqrt{S}}
+\sim
+t(S-1).
+$$
+
+The [Student's t distribution](../random-variables-and-distributions/student-t-distribution.qmd) appears because the population scale of the differences is unknown and estimated by $s_D$. A central $(1-\alpha)$ confidence interval for $\mu_D$ is
+
+$$
+\overline{D}
+\;\pm\;
+t_{1-\alpha/2,S-1}
+\frac{s_D}{\sqrt{S}},
+$$
+
+where $t_{1-\alpha/2,S-1}$ is the corresponding t quantile. For a 95% interval, $\alpha=.05$.
+
+Consider the four synthetic acoustic differences from the preceding page:
+
+$$
+(-69,-58,-82,-37).
+$$
+
+Their mean is $-61.5$ Hz, and their standard deviation is approximately $19.1$ Hz. Thus
+
+$$
+\widehat{\operatorname{SE}}(\overline{D})
+=
+\frac{19.1}{\sqrt{4}}
+\approx 9.55\text{ Hz}.
+$$
+
+With three degrees of freedom, the .975 t quantile is approximately $3.18$. Thus, the 95% interval is
+
+$$
+-61.5 \pm 3.18(9.55)
+=
+[-91.9,-31.1]\text{ Hz}.
+$$
+
+This small constructed sample yields a wide interval because four pairs supply little information about variation among pairs. The entire interval is negative, but its width still shows substantial uncertainty about the magnitude of the average contrast.
+
+## The corresponding hypothesis test
+
+For the point null hypothesis $H_0:\mu_D=0$, the test statistic is
+
+$$
+t_{\mathrm{obs}}
+=
+\frac{\overline{D}}{s_D/\sqrt{S}}.
+$$
+
+A two-sided p value is the probability, under $H_0$ and the t reference distribution, of obtaining a statistic at least as far from zero as $t_{\mathrm{obs}}$:
+
+$$
+p
+=
+2\Pr\left(T_{S-1}\geq |t_{\mathrm{obs}}|\right).
+$$
+
+The confidence interval and two-sided test encode the same comparison when they use the same model and $\alpha$: the .05 test rejects zero exactly when the 95% interval excludes zero. But the interval carries more information because it reports the effect direction, plausible magnitudes under the procedure, and uncertainty in the response's original units.
+
+The p value is not the probability that $H_0$ is true, nor is it the probability that a replication will reverse the result. It is a probability of test-statistic extremity conditional on the null model.
+
+## Computing the procedure in R
+
+The manual calculation makes the unit visible.
+
+```{r}
+#| label: paired-manual
+#| eval: false
+
+d <- c(-69, -58, -82, -37)
+
+n_pairs <- length(d)
+mean_d <- mean(d)
+sd_d <- sd(d)
+se_d <- sd_d / sqrt(n_pairs)
+t_critical <- qt(.975, df = n_pairs - 1)
+ci <- mean_d + c(-1, 1) * t_critical * se_d
+
+c(mean = mean_d, se = se_d, lower = ci[1], upper = ci[2])
+```
+
+When the data remain in two aligned vectors, `t.test()` performs the same procedure.
+
+```{r}
+#| label: paired-t-test
+#| eval: false
+
+y_a <- c(312, 347, 290, 401)
+y_b <- c(381, 405, 372, 438)
+
+t.test(y_a, y_b, paired = TRUE)
+```
+
+The alignment is part of the input. R subtracts the first element of `y_b` from the first element of `y_a`, and so on. Sorting the two vectors independently would destroy the pairs while still returning a numerical result. A safer workflow joins observations by the pair identifier, checks that each pair has one value in each condition, and only then constructs the difference.
+
+## Paired and independent standard errors
+
+An analysis that ignores pairing estimates the variance of the difference between two sample means using separate marginal variances. The paired procedure instead uses the observed variance of $D$:
+
+$$
+s_D^2=s_A^2+s_B^2-2s_{AB},
+$$
+
+where $s_{AB}$ is the sample covariance within pairs. Positive covariance makes the paired standard error smaller because stable pair baselines have been removed. This is not an automatic reward for choosing `paired = TRUE`; it is the consequence of using the covariance that the design supplies.
+
+The two analyses also invoke different sampling stories. The paired procedure imagines sampling pairs and observing both conditions for each. An independent procedure imagines sampling one collection for $A$ and a separate collection for $B$. Only one story can match the actual design.
+
+## What the procedure assumes
+
+The normality assumption concerns the pair differences, not each condition separately. With many pairs, inference for the mean is often not very sensitive to moderate nonnormality, though strong skew, outliers, or a small number of pairs can matter. Thus, a plot of $D_s$ is more relevant than two separate histograms of $Y_A$ and $Y_B$.
+
+The procedure also assumes that the *pairs* are independent under the sampling model. Two measurements within a pair are expected to be dependent; that is why they were paired. Dependence among different pairs, such as several lexical items from the same speaker, requires a richer representation.
+
+Finally, the population must match the sample. A narrow interval for speakers recruited from one community does not create a probability sample of all English speakers. The interval quantifies uncertainty under the stated sampling model; the generalization claim still requires a defensible connection between observed speakers and the population of interest.
+
+## Check the inferential claim
+
+1. Why does the paired standard error divide by $\sqrt{S}$ rather than $\sqrt{2S}$?
+2. If all speakers have high measurements in both conditions, how does the resulting positive covariance affect $s_D$?
+3. Which distribution should be inspected for the normality assumption: $Y_A$, $Y_B$, or $D$?
+4. What operation must be performed before calling `t.test(..., paired = TRUE)` on data stored in long form?
+
+## What the interval tells us
+
+Paired t inference is one-sample inference on within-pair differences. The estimate is $\overline{D}$, its standard error is $s_D/\sqrt{S}$, and a t reference distribution accounts for estimating the scale of the differences. This procedure is the focal method in [PS1](../assignments/index.qmd), where the pairing follows from speakers producing both vowel categories.

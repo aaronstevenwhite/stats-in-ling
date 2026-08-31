@@ -1,0 +1,121 @@
+---
+title: "Cross-chain agreement"
+---
+
+The [trace plot page](checking-markov-chains.qmd) used visual overlap to assess cross chain agreement. The $\widehat{R}$ statistic summarizes that comparison numerically. Suppose four MCMC chains target a parameter $\Theta$ representing a syntactic complexity effect in a reading time model.
+
+The [**$\widehat{R}$ statistic**](https://mc-stan.org/rstan/reference/Rhat.html) compares between-chain variation with within-chain variation. Values near one are consistent with chain agreement. Values above one indicate that chain identity still predicts the sampled value.
+
+## Build the basic variance comparison
+
+Let there be $M$ chains with $N$ draws each. Write $\overline{\beta}_m$ for the mean of chain $m$ and $s_m^2$ for its sample variance.
+
+The average within-chain variance is
+
+$$
+W
+=
+\frac{1}{M}
+\sum_{m=1}^Ms_m^2.
+$$
+
+The scaled between-chain variance is
+
+$$
+B
+=
+N
+\operatorname{Var}
+(\overline{\beta}_1,\ldots,\overline{\beta}_M).
+$$
+
+A combined variance estimate is
+
+$$
+\widehat{V}
+=
+\frac{N-1}{N}W
++
+\frac{1}{N}B.
+$$
+
+The basic variance-ratio diagnostic is
+
+$$
+\widehat{R}
+=
+\sqrt{\frac{\widehat{V}}{W}}.
+$$
+
+When chain means are separated, $B$ increases and so does $\widehat{R}$.
+
+## Calculate two cases
+
+The following function implements this basic calculation for a matrix with one chain per column.
+
+```{r}
+#| label: basic-rhat-calculation
+#| echo: true
+
+basic_rhat <- function(draw_matrix) {
+  n <- nrow(draw_matrix)
+  m <- ncol(draw_matrix)
+  within <- mean(apply(draw_matrix, 2, var))
+  between <- n * var(colMeans(draw_matrix))
+  variance_plus <- ((n - 1) / n) * within + between / n
+  sqrt(variance_plus / within)
+}
+
+set.seed(556)
+n <- 1000
+agreeing <- matrix(rnorm(4 * n), nrow = n, ncol = 4)
+separated <- sweep(
+  matrix(rnorm(4 * n), nrow = n, ncol = 4),
+  2,
+  c(-2, -2, 2, 2),
+  "+"
+)
+
+rhat_agreeing <- basic_rhat(agreeing)
+rhat_separated <- basic_rhat(separated)
+
+stopifnot(abs(rhat_agreeing - 1) < .01)
+stopifnot(rhat_separated > 2)
+c(agreeing = rhat_agreeing,
+  separated = rhat_separated)
+```
+
+The calculation makes the comparison visible. Current software uses improved versions rather than this elementary formula.
+
+## Understand splitting and ranking
+
+A chain can drift from low to high values while retaining the same overall mean as another drifting chain. Splitting each chain into an early half and a late half turns that within-chain change into disagreement among sequences.
+
+Modern $\widehat{R}$ also rank-normalizes the draws before forming the comparison. Ranking improves behavior for skewed and heavy-tailed distributions. The reported diagnostic is commonly called [**rank-normalized split $\widehat{R}$**](https://mc-stan.org/rstan/reference/Rhat.html).
+
+Students should use the software diagnostic for fitted models. The hand calculation above supplies the logic that the modern procedure refines.
+
+## Interpret a failure narrowly
+
+A high $\widehat{R}$ supports a focused conclusion: the chains do not provide mutually consistent draws for that quantity. It does not identify one guaranteed repair. More iterations may help slow exploration, while difficult posterior geometry or weak identification may require a different parameterization or model.
+
+An $\widehat{R}$ value near one is not a convergence certificate. Chains can agree in the same incomplete region, and agreement says little about information lost to dependence. The statistic must be considered with traces and later efficiency diagnostics.
+
+$\widehat{R}$ is parameter specific. Agreement for one population parameter does not establish agreement for every scale parameter, transformed contrast, or predicted probability.
+
+## Keep the target distinction
+
+$\widehat{R}$ evaluates the Monte Carlo approximation. It does not measure posterior uncertainty, effect magnitude, or model adequacy. A parameter may have a wide posterior and excellent $\widehat{R}$, or a narrow apparent distribution and poor $\widehat{R}$.
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) asks for the largest split $\widehat R$ across the reported population and scale parameters. One acceptable parameter diagnostic cannot stand in for agreement across the complete fitted model.
+:::
+
+## Check your understanding
+
+1. What makes the between-chain term large?
+2. Why are chains split before the modern calculation?
+3. What does $\widehat{R}$ near one fail to establish?
+4. Why must transformed quantities be checked as well as original parameters?
+
+The next page studies dependence within a chain through [autocorrelation](autocorrelation.qmd).

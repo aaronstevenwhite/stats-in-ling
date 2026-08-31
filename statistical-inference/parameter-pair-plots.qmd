@@ -1,0 +1,87 @@
+---
+title: "Reading pairs plots of posterior draws"
+---
+
+A [trace plot](checking-markov-chains.qmd) shows one parameter across iterations. A [**pairs plot**](https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html) shows two parameters jointly across posterior draws. Its shape can reveal posterior dependence that slows computation or makes a particular parameterization difficult to interpret.
+
+## Construct two parameterizations
+
+Suppose a phonetic model has mean vowel durations $\mu_A$ and $\mu_B$ in two conditions. Define the overall location and condition contrast as
+
+$$
+m=\frac{\mu_A+\mu_B}{2}
+$$
+
+and
+
+$$
+d=\mu_A-\mu_B.
+$$
+
+The inverse transformation is
+
+$$
+\mu_A=m+\frac{d}{2},
+\qquad
+\mu_B=m-\frac{d}{2}.
+$$
+
+If posterior uncertainty about the overall location is much larger than uncertainty about the contrast, $\mu_A$ and $\mu_B$ move together. Their pair plot forms a positive diagonal band. The $(m,d)$ parameterization separates shared location from the theoretically relevant difference.
+
+## Simulate the geometry
+
+```{r}
+#| label: mean-contrast-pair-geometry
+#| echo: true
+
+set.seed(774)
+draw_count <- 5000
+m <- rnorm(draw_count, mean = 200, sd = 8)
+d <- rnorm(draw_count, mean = -10, sd = 3)
+mu_a <- m + d / 2
+mu_b <- m - d / 2
+
+cor_means <- cor(mu_a, mu_b)
+cor_location_contrast <- cor(m, d)
+
+old_par <- par(mfrow = c(1, 2))
+plot(mu_a, mu_b, pch = 16, cex = .25,
+     xlab = "condition A mean", ylab = "condition B mean")
+plot(m, d, pch = 16, cex = .25,
+     xlab = "overall location", ylab = "condition contrast")
+par(old_par)
+
+stopifnot(cor_means > .8)
+stopifnot(abs(cor_location_contrast) < .05)
+c(condition_means = cor_means,
+  location_and_contrast = cor_location_contrast)
+```
+
+The two displays contain the same posterior information. Only the coordinates differ. A useful parameterization can make the geometry and linguistic target easier to see without changing fitted predictions.
+
+## Read common shapes
+
+A roughly circular cloud suggests weak dependence for that pair. A diagonal ellipse suggests that combinations along one direction remain plausible. A curved or funnel-shaped cloud suggests that uncertainty in one parameter changes with another.
+
+These descriptions do not identify a cause by themselves. Limited data support, scale parameters, parameter constraints, and redundant parameterizations can create different shapes.
+
+## Overlay computational warnings
+
+Pair plots can mark iterations associated with [divergent transitions](divergent-transitions.qmd). If marked draws cluster in a narrow end of a joint distribution, the display locates a region that the sampler may not explore reliably.
+
+The plot should be targeted. A matrix containing hundreds of parameter pairs becomes unreadable. Begin with quantities singled out by the model structure or another diagnostic.
+
+## Avoid the parameter-causation reading
+
+Posterior correlation says that the observed data and model permit parameter combinations along a shared direction. It does not say that one parameter causes the other. A diagonal cloud thus does not establish a causal relation between parameters.
+
+Nor does a compact cloud establish model fit. It describes uncertainty under the fitted model. Observed-data adequacy requires comparing model predictions with relevant linguistic summaries.
+
+## Check your understanding
+
+1. Why are $\mu_A$ and $\mu_B$ positively associated in the constructed example?
+2. What distinct quantities do $m$ and $d$ represent?
+3. Why does reparameterization leave the underlying posterior information unchanged?
+4. What can a divergence overlay show that a plain pair plot cannot?
+
+The next page computes [generated quantities](generated-quantities.qmd) from saved joint draws.

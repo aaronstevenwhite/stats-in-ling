@@ -1,0 +1,316 @@
+---
+title: "Can corpus distributions predict clause selection?"
+---
+
+Clause embedding verbs differ in the complements they permit. *Think* occurs naturally with a declarative clause, as in *Someone thought that something happened*. *Wonder* occurs naturally with an interrogative clause, as in *Someone wondered whether something happened*. *Persuade* instead favors an object followed by an infinitive, as in *Someone persuaded someone to do something*.
+
+These differences define a verb's [**selectional profile**](https://doi.org/10.5334/gjgl.1001). The question on this page is whether a verb's distribution in a large corpus predicts that profile.
+
+We will build the analysis in four stages. First, we will define the corpus predictor and acceptability response. Second, we will state two linguistic hypotheses that distinguish a complete distribution from a compressed distribution. Third, we will compare those representations on verbs excluded from fitting. Finally, we will inspect where the predictions succeed and fail.
+
+::: {.callout-note title="Reading: White and Rawlins (2020)"}
+Read Sections 1, 2.4, 5, and 6 and Appendix C of [White and Rawlins, *Frequency, acceptability, and selection: A case study of clause-embedding*](https://doi.org/10.5334/gjgl.1001).
+
+Section 1 motivates the relation between corpus frequency and selection. Section 2.4 states the frequency and abstraction hypotheses. Section 5 tests direct distributional predictors, while Section 6 tests compressed abstractions of the corpus distributions. Appendix C compares response normalization procedures. The reading is included because these parts separate the linguistic claim from the particular statistical implementation used to test it.
+:::
+
+## Start with the linguistic observations
+
+MegaAcceptability contains judgments for 1,000 English clause embedding verbs in 50 surface syntactic frames. Each original verb by frame cell received five judgments on a scale from 1 to 7. The frames vary several properties of the complement, including clause type, tense, the presence of an object, and the eventive or stative interpretation of an infinitive.
+
+The intersection with the usable VALEX inventory contains 958 verbs. Restricting the raw judgments to those verbs, omitting ten missing responses, and retaining participants who reported being native speakers of American English leaves 238,917 responses from 727 participants. Every analysis below uses that fixed intersection.
+
+Consider five cells from the dataset.
+
+| verb | frame | sentence |
+|---|---|---|
+| *think* | `NP Ved that S` | Someone thought that something happened. |
+| *persuade* | `NP Ved NP to VP[+eventive]` | Someone persuaded someone to do something. |
+| *wonder* | `NP Ved whether S` | Someone wondered whether something happened. |
+| *try* | `NP Ved to VP[+eventive]` | Someone tried to do something. |
+| *promise* | `NP Ved to VP[+eventive]` | Someone promised to do something. |
+
+The notation abstracts away from the particular nouns and embedded predicates in the stimuli. `NP Ved whether S`, for instance, records a past tense matrix verb followed by an interrogative clause. This makes the response matrix about complement selection rather than about one particular sentence.
+
+Let $y_{vk}$ denote the normalized acceptability of verb $v$ in MegaAcceptability frame $k$. One row of the response matrix is then
+
+$$
+\mathbf{y}_v
+=
+\begin{bmatrix}
+y_{v1} & y_{v2} & \cdots & y_{v,50}
+\end{bmatrix}.
+$$
+
+The complete response matrix $\mathbf{Y}$ has one row for each retained verb and 50 columns. This is the object we want to predict.
+
+::: {.callout-tip title="Reasoning check"}
+If we instead placed individual ratings in the rows, would a row still represent a selectional profile?
+
+No. A row would represent one participant's response to one sentence. Constructing a verb profile requires us to say how those responses are combined and how participant use of the response scale is handled.
+:::
+
+## Interpret the normalized response scale
+
+Participants may use the seven response categories differently. One participant may use almost the complete scale, while another may concentrate responses between 3 and 6. Treating their raw numbers as if they shared an origin and unit may preserve variation in response habits that is not part of verb selection. We will use the training based transformation developed in [centering and scaling](centering-and-scaling.qmd).
+
+For a particular training set of verbs, let $\bar r_{p,\mathcal T}$ be participant $p$'s mean rating and let $s_{p,\mathcal T}$ be the corresponding standard deviation. We transform each rating using
+
+$$
+z_{pi}
+=
+\frac{r_{pi}-\bar r_{p,\mathcal T}}
+     {s_{p,\mathcal T}}.
+$$
+
+We then average the transformed ratings within each verb by frame cell. A normalized value of 1 means that the responses to that cell were, on average, one participant specific standard deviation above the participants' training means. A value of 0 marks the relevant participant baselines. It does not mark a boundary between grammatical and ungrammatical sentences.
+
+This interpretation also explains why a difference of one normalized unit is not a difference of one point on the original response scale. The normalized scale is relative. Its origin and unit come from the training responses.
+
+The training qualification matters. If a test verb helped determine a participant's mean or standard deviation, its response would affect its own normalization before prediction. To avoid [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage), fit the participant transformation on training verbs and apply those fixed values to test responses.
+
+One participant had a zero training standard deviation in one of the 300 normalization fits used below. The prespecified fallback used the overall training mean and standard deviation for that participant. No participant lacked training responses. Thus the fallback repaired an undefined division without consulting a validation or test response.
+
+::: {.callout-warning title="What this normalization does not establish"}
+The responses are ordinal. Subtracting a mean and dividing by a standard deviation treats adjacent response categories as equally spaced for this preprocessing step. That is an approximation, not a trial level model of ordinal judgments.
+
+White and Rawlins use a more elaborate ordinal normalization. Across the 47,900 verb by frame cells used here, the training style transformation fitted to the complete retained sample correlates 0.946 with their released normalized values. The simpler transformation tracks the released profiles closely enough for this factorization application, while allowing every fitted quantity to remain inside its training fold.
+:::
+
+## Construct the corpus predictor
+
+VALEX is a corpus derived lexicon of verb subcategorization frequencies. For each verb, it records counts for syntactic patterns such as a sentential complement, an infinitival complement, an object, or no detected complement. The released analysis distinguishes 109 frame and class combinations among the verbs shared with MegaAcceptability.
+
+Let $c_{vj}$ be the VALEX count for verb $v$ in corpus frame $j$. Raw counts mix two kinds of information: the total number of corpus occurrences for the verb and the allocation of those occurrences across frames. The analysis concerns the allocation, so we convert each count to a within verb proportion:
+
+$$
+x_{vj}
+=
+\frac{c_{vj}}
+     {\sum_{h=1}^{109} c_{vh}}.
+$$
+
+The row
+
+$$
+\mathbf{x}_v
+=
+\begin{bmatrix}
+x_{v1} & x_{v2} & \cdots & x_{v,109}
+\end{bmatrix}
+$$
+
+is the verb's normalized VALEX frame distribution. Its entries are nonnegative and sum to one.
+
+The following table collapses the VALEX class distinctions only to make three profiles readable. The fitted model retains all 109 original columns.
+
+| verb | largest corpus frame | proportion | next largest corpus frame | proportion |
+|---|---|---:|---|---:|
+| *think* | sentential complement | 0.501 | no detected complement | 0.322 |
+| *persuade* | infinitival complement with subject | 0.533 | noun phrase | 0.237 |
+| *try* | verbal infinitive | 0.646 | no detected complement | 0.157 |
+
+These are theoretically relevant predictors. The high sentential complement proportion for *think* and the high infinitival proportion for *try* encode distributional facts that a theory of selection should connect to their acceptability profiles. The predictor is not merely verb frequency, word length, or an arbitrary vector supplied to the model.
+
+::: {.callout-tip title="Reasoning check"}
+Why not use the total VALEX count as the only predictor?
+
+Total count measures how often a verb was observed. It does not say which complements the verb occurred with. Two verbs can have the same total count and very different distributions across sentential, infinitival, and nominal frames.
+:::
+
+## State the two hypotheses
+
+The first hypothesis concerns the complete direct profile.
+
+First, the complete 109 dimensional VALEX distribution for a verb may predict its 50 dimensional MegaAcceptability profile.
+
+This hypothesis concerns generalization to verbs, not filling a randomly hidden cell for a verb already seen during fitting. A successful test must thus exclude complete verbs.
+
+The second hypothesis concerns abstraction.
+
+Second, a lower dimensional representation of the VALEX distribution may predict the MegaAcceptability profile better than the complete distribution.
+
+The motivation for the second hypothesis is that raw corpus frames may divide evidence too finely. Several observed frames might express a shared syntactic or semantic distinction. If PCA recovers that shared structure, a small number of scores might preserve the predictive regularity while discarding frame specific noise.
+
+Compression alone does not constitute linguistic abstraction. PCA orders directions by variation in the VALEX matrix, not by their relation to a theory of clause selection. The comparison tests whether this particular shallow abstraction improves prediction. It cannot show that the selected components are grammatical primitives.
+
+## Change only the predictor representation
+
+The direct model uses the complete row $\mathbf{x}_v$. For each of the 50 response columns, [ridge regression](../regression-models/ridge-regression.qmd) predicts normalized acceptability from the same 109 predictors. Writing all response columns together gives
+
+$$
+\widehat{\mathbf{Y}}_{\mathrm{direct}}
+=
+\mathbf{1}\boldsymbol{\beta}_0^{\mathsf T}
++
+\mathbf{X}\mathbf{B}.
+$$
+
+This matrix expression is just 50 ridge regressions sharing a predictor matrix and penalty. It does not introduce a different response model.
+
+The factor model changes one part of the procedure. We center the VALEX columns using the training verbs, fit [PCA](principal-component-analysis.qmd) to those training rows, and retain the first $K$ scores:
+
+$$
+\mathbf{Z}_K
+=
+\left(
+\mathbf{X}
+-
+\mathbf{1}\boldsymbol{\mu}_{\mathcal T}^{\mathsf T}
+\right)
+\mathbf{V}_{\mathcal T,K}.
+$$
+
+Ridge regression then predicts the same response matrix from $\mathbf{Z}_K$:
+
+$$
+\widehat{\mathbf{Y}}_{\mathrm{factor}}
+=
+\mathbf{1}\boldsymbol{\gamma}_0^{\mathsf T}
++
+\mathbf{Z}_K\mathbf{G}.
+$$
+
+The models have the same verbs, the same responses, the same loss, and the same type of ridge regression. Their difference is whether the ridge regression receives 109 direct proportions or $K$ PCA scores. This isolates the comparison between the complete distribution and its lower dimensional representation.
+
+## Keep every fitted choice inside the training data
+
+The outer evaluation uses five repetitions of [ten fold grouped cross validation](../model-criticism-and-prediction/grouped-cross-validation.qmd). Each outer fold excludes complete verbs. Within its training verbs, five fold validation applies the [component selection procedure](choosing-components.qmd) to the factor model. It selects the ridge penalty for the direct model and jointly selects the retained rank and ridge penalty for the factor model.
+
+The fitting sequence for one outer fold is:
+
+1. Set aside the outer test verbs.
+2. Split the remaining verbs into inner training and validation sets.
+3. Fit participant normalization on the inner training responses.
+4. Fit PCA centering and component directions on the inner training VALEX rows.
+5. Evaluate each fixed rank and ridge candidate on the inner validation verbs.
+6. Select the candidates with the lowest inner validation squared loss.
+7. Refit normalization, PCA, and ridge regression on all outer training verbs.
+8. Evaluate the selected procedures once on the outer test verbs.
+
+The ridge candidates are $0.01$, $0.1$, $0.2$, $0.5$, $1$, $2$, $5$, and $10$. The rank candidates are $2$, $5$, $10$, $20$, $30$, $40$, and $50$. These sets were fixed before the outer results were inspected.
+
+Why must PCA be fitted again inside every inner split? Suppose an inner validation verb has an unusual concentration in one VALEX frame. If that row helps determine the component direction, its distribution has already influenced its own representation. The later ridge fit does not remove this [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage).
+
+::: {.callout-tip title="Reasoning check"}
+May we compute one PCA from all 958 verbs because the PCA does not use acceptability?
+
+No. The target is prediction for a new verb. Its VALEX row is part of the information withheld under that target. Using the row to fit the component directions gives the factor model access to the test verb before evaluation.
+:::
+
+## Define the predictive score
+
+The baseline predicts the training mean separately for each of the 50 MegaAcceptability frames. It knows that some frames tend to receive higher judgments than others, but it does not use the identity or VALEX profile of the test verb.
+
+For a fitted model $m$, define out-of-sample $R^2$ relative to the frame-mean baseline as
+
+$$
+R^2_m
+=
+1
+-
+\frac{
+\sum_i (y_i-\widehat y_{m,i})^2
+}{
+\sum_i (y_i-\widehat y_{\mathrm{base},i})^2
+}.
+$$
+
+A value of 0 means that the model matches the frame mean baseline. A positive value means that the verb specific prediction removes some of the baseline squared error. A negative value means that it does worse than the baseline.
+
+The difference
+
+$$
+\Delta R^2
+=
+R^2_{\mathrm{factor}}
+-
+R^2_{\mathrm{direct}}
+$$
+
+tests the second hypothesis. Positive values favor compression. Negative values favor the complete distribution.
+
+Uncertainty is computed with the [bootstrap](../statistical-inference/bootstrap-confidence-intervals.qmd) by resampling verbs. Each sampled verb contributes all of its frames and all five outer predictions. This preserves the paired comparison between representations and respects the verb as the held-out unit.
+
+## Evaluate the hypotheses
+
+Before this analysis, we decided that the first hypothesis would count as supported only if direct out-of-sample $R^2$ reached at least 0.20, its verb bootstrap interval lay above zero, and $R^2$ was positive in every repetition. We treated the difference between representations as stable if its interval excluded zero or lay completely between $-0.01$ and $0.01$.
+
+| representation | out-of-sample $R^2$ | 95 percent verb interval |
+|---|---:|---:|
+| direct VALEX profile | 0.246 | [0.224, 0.266] |
+| 50 component VALEX profile | 0.239 | [0.218, 0.259] |
+| factor minus direct | -0.0066 | [-0.0100, -0.0029] |
+
+The direct model meets all three criteria. Its repetition-specific $R^2$ ranges from 0.238 to 0.250, so the result does not depend on one favorable division of the verbs.
+
+The factor model does not support the second hypothesis. Inner validation selected 50 components in all 50 outer folds, which is the largest permitted factor rank. Even that representation has an out-of-sample $R^2$ that is 0.0066 lower than the direct profile, and the difference is negative in all five repetitions. The result is small but stable.
+
+This is an informative failure of compression. The direct corpus distribution predicts new selectional profiles, but the PCA directions with the most corpus variation do not preserve all of the information useful for that prediction.
+
+::: {.callout-tip title="Reasoning check"}
+Does selecting 50 components show that English clause selection has 50 latent dimensions?
+
+No. It shows that 50 was the best candidate rank for this predictor, response, loss, and candidate set. Since it was also the largest candidate, the validation results suggest that additional VALEX directions may remain useful. They do not identify a true number of grammatical dimensions.
+:::
+
+## Locate the model's success and failure
+
+An overall score can hide a theoretically organized error. White and Rawlins observe that direct corpus prediction is especially weak when an object precedes a finite clause. We fixed that comparison before inspecting the new pilot.
+
+| frame family | number of frames | direct $R^2$ | factor $R^2$ | factor minus direct |
+|---|---:|---:|---:|---:|
+| finite clause without object | 5 | 0.254 | 0.238 | -0.0156 |
+| finite clause with direct object | 5 | 0.083 | 0.084 | 0.0010 |
+| finite declarative | 4 | 0.212 | 0.202 | -0.0105 |
+| finite interrogative | 6 | 0.203 | 0.192 | -0.0116 |
+| eventive infinitive | 3 | 0.268 | 0.264 | -0.0035 |
+| stative infinitive | 3 | 0.285 | 0.278 | -0.0065 |
+
+The object contrast is much larger than the declarative, interrogative, or infinitival contrasts. Direct out-of-sample $R^2$ falls from 0.254 for finite clauses without an object to 0.083 for their matched object frames. At the individual frame level, direct $R^2$ is 0.037 for `NP Ved NP whether S`, 0.061 for `NP Ved NP whichNP S`, and 0.109 for `NP Ved NP that S`. Their counterparts without an object have values of 0.249, 0.290, and 0.270.
+
+PCA does not repair this family level failure. Its $R^2$ is only 0.0010 higher for the five object frames and 0.0156 lower for the matched frames without an object. Thus the stable overall loss and the small local gain are compatible: compression discards useful information in the frames that already work, and restores very little where the direct mapping fails.
+
+White and Rawlins connect the object pattern to communicativity. A verb such as *persuade* may license a finite clause after an object because the object refers to a recipient of communicated content. Corpus cooccurrence can register the surface sequence without directly representing that semantic relation. The error pattern is consistent with this proposal, though it does not isolate communicativity from animacy, discourse, or errors in automatic corpus analysis.
+
+## Read a few held-out predictions
+
+The following values average the five held-out predictions for the fixed example verbs. Positive observed values indicate responses above the relevant participant training baselines.
+
+| verb and frame | observed | direct | factor |
+|---|---:|---:|---:|
+| *think* with `that S` | 1.21 | 1.55 | 1.58 |
+| *persuade* with `NP to VP[+eventive]` | 1.65 | 1.59 | 1.58 |
+| *wonder* with `whether S` | 2.77 | 3.95 | 4.01 |
+| *try* with `to VP[+eventive]` | 1.44 | 2.54 | 2.57 |
+| *promise* with `to VP[+eventive]` | 1.83 | 1.13 | 1.10 |
+| *persuade* with `NP that S` | 1.02 | -0.07 | -0.07 |
+
+The *persuade* infinitive is predicted closely, while its object plus finite clause is missed by more than one normalized unit. The contrast shows why a profile level score and a frame family diagnostic are both needed. The model has learned something about *persuade*, but it has not learned every route by which the verb licenses a content clause.
+
+The overprediction for *wonder* and *try* raises a second issue. Ridge predictions are not constrained to the range of observed cell means. More importantly, a large error for a high acceptability cell can coexist with correct ordering elsewhere in the 50 dimensional profile. The squared error score evaluates both ordering and calibration. A different loss would define a different predictive target.
+
+## What the application establishes
+
+The analysis supports three conclusions.
+
+1. VALEX complement distributions contain information about the acceptability profiles of verbs excluded from fitting.
+2. PCA compression does not improve this mapping. Nested validation consistently retains the largest candidate rank, and the selected factor model performs slightly worse than the direct profile.
+3. Prediction remains especially weak for an object followed by a finite clause. The error is organized by a theoretically relevant construction rather than spread uniformly across the response matrix.
+
+These conclusions are narrower than a claim that selection reduces to frequency. VALEX is a noisy corpus measurement, MegaAcceptability is an aggregate judgment measurement, and ridge regression estimates a predictive association. The remaining object frame error may point to semantic information absent from the corpus frame inventory, but the present comparison does not identify that information.
+
+The live question is thus more specific than whether abstraction matters. Which representation of communicativity, argument structure, or event structure predicts the object plus finite clause contrast without sacrificing the direct distributional signal in the other frames? Answering that question would require a new theoretically specified predictor and a new held-out comparison. It cannot be answered by renaming the present principal components.
+
+## Check the reasoning
+
+1. What does one row of the VALEX matrix represent?
+2. Why are VALEX counts converted to within verb proportions?
+3. What is the held-out unit, and which linguistic claim makes that unit appropriate?
+4. Which quantities must be refitted inside an inner training split?
+5. What is held constant between the direct and factor models?
+6. Why does a selected rank of 50 not identify 50 grammatical categories?
+7. Which frame family produces the most pronounced direct prediction failure?
+8. Does a small stable loss for PCA imply that no abstract representation could improve the mapping?
+
+The final question is the main scope check. This analysis rejects one shallow predictive compression, not abstraction in general. A future abstraction must earn its interpretation through theoretically defined inputs, fold safe fitting, and improved prediction on verbs that did not determine it.

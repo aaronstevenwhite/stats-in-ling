@@ -1,0 +1,416 @@
+# Overdispersion and Random Effects
+
+## Connecting count regression to mixed-effects models
+
+**Count regression**: Overdispersion in count data
+
+- Poisson assumes $\text{Var}(Y) = \mathbb{E}[Y] = \lambda$
+- Real data often show $\text{Var}(Y) > \lambda$ (overdispersion)
+- Solutions: quasi-Poisson, negative binomial
+
+**Mixed-effects models**: Random effects as a solution to overdispersion
+
+- Overdispersion often caused by **clustering** and **heterogeneity**
+- Random effects **explicitly model** these sources of extra variation
+- Random effects **quantify** how much overdispersion comes from grouping
+
+**Key insight**: Overdispersion and random effects are two perspectives on the same phenomenon.
+
+---
+
+## Sources of overdispersion
+
+**1. Clustering**: Observations within groups are correlated
+
+- Example: Verbs within a VerbNet class are more similar to each other
+- Creates positive within-group correlation
+- Violates independence assumption
+
+**2. Heterogeneity**: Unmeasured factors vary across groups
+
+- Example: Individual verbs have idiosyncratic frequency preferences
+- Some verbs highly frequent, others rare
+- Not captured by fixed effects alone
+
+**3. Dependence**: Repeated measures from same units
+
+- Example: Multiple frames for the same verb
+- Observations from same verb are not independent
+
+**All three create extra-Poisson variation**: $\text{Var}(Y) > \mathbb{E}[Y]$
+
+---
+
+## Three approaches to overdispersion
+
+**Approach 1: Quasi-Poisson** (see [Poisson regression](poisson-regression.qmd))
+
+$$\text{Var}(Y_i) = \phi \lambda_i$$
+
+- Scales standard errors by $\sqrt{\phi}$ (dispersion parameter)
+- Doesn't model the **source** of overdispersion
+- Just acknowledges it exists and adjusts inference
+
+**Approach 2: Negative binomial** (see [Poisson regression](poisson-regression.qmd))
+
+$$Y_i \sim \text{NegBin}(\mu_i, \theta)$$
+
+- Adds extra variance parameter $\theta$
+- Variance-mean relationship: $\text{Var}(Y_i) = \mu_i + \frac{\mu_i^2}{\theta}$
+- Models overdispersion but doesn't identify its source
+
+**Approach 3: Random effects**
+
+$$\log(\lambda_{ij}) = \mathbf{x}_{ij}^T \boldsymbol{\beta} + u_i, \quad u_i \sim N(0, \sigma_u^2)$$
+
+- **Explicitly models** the source: group-level variation
+- **Quantifies** overdispersion via $\sigma_u^2$
+- Allows **generalization** beyond observed groups
+
+---
+
+## Variance decomposition in Poisson GLMM
+
+For a Poisson GLMM with random intercepts:
+
+$$\log(\lambda_{ij}) = \beta_0 + \mathbf{x}_{ij}^T \boldsymbol{\beta} + u_i$$
+
+where $u_i \sim N(0, \sigma_u^2)$.
+
+**Total variance** has two components:
+
+1. **Poisson variance**: $\text{Var}(Y_{ij} \mid u_i) = \lambda_{ij}$ (inherent randomness)
+2. **Random effects variance**: $\text{Var}(u_i) = \sigma_u^2$ (group-level heterogeneity)
+
+**Marginal variance** (unconditional on random effects):
+
+$$\text{Var}(Y_{ij}) = \mathbb{E}[\text{Var}(Y_{ij} \mid u_i)] + \text{Var}[\mathbb{E}(Y_{ij} \mid u_i)]$$
+
+The second term captures extra variation due to random effects → **explains overdispersion**.
+
+---
+
+## Plot 1: Variance decomposition
+
+```{r variance-decomposition-overdispersion}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 7
+
+# Create visualization of variance components
+variance_components <- tibble(
+    Model = c("Poisson\n(No REs)", "Poisson\n(No REs)",
+              "Poisson GLMM\n(Verb REs)", "Poisson GLMM\n(Verb REs)"),
+    Component = c("Assumed Variance\n(Poisson)", "Observed Variance",
+                  "Poisson Variance", "Random Effect\nVariance"),
+    Variance = c(1, 47.6, 1, 46.6),  # Stylized based on actual deviance/df ratios
+    Type = c("Assumed", "Observed", "Poisson", "RE")
+)
+
+ggplot(variance_components, aes(x = Model, y = Variance, fill = Component)) +
+    geom_bar(stat = "identity", position = "stack", alpha = 0.8) +
+    scale_fill_manual(values = c(
+        "Assumed Variance\n(Poisson)" = "gray80",
+        "Observed Variance" = "coral",
+        "Poisson Variance" = "gray80",
+        "Random Effect\nVariance" = "steelblue"
+    )) +
+    geom_text(aes(label = sprintf("%.1f", Variance)),
+              position = position_stack(vjust = 0.5), size = 6, fontface = "bold") +
+    labs(x = "", y = "Variance",
+         title = "Variance Decomposition: Poisson vs. Poisson GLMM",
+         subtitle = "Random effects explicitly partition variance, explaining overdispersion",
+         fill = "") +
+    theme_minimal(base_size = 16) +
+    theme(legend.position = "top")
+```
+
+**Left**: Poisson assumes variance = mean, but observed variance >> assumed.
+
+**Right**: GLMM partitions variance into Poisson (inherent) + random effects (overdispersion).
+
+---
+
+## Comparing three approaches
+
+Let's compare quasi-Poisson, negative binomial, and Poisson GLMM on the VALEX data:
+
+```{r compare-approaches}
+#| echo: true
+#| code-fold: false
+
+# Load models (V0 and V2 already fitted)
+# V0: Poisson GLM
+# V2: Poisson GLMM
+
+# Fit quasi-Poisson
+v1 <- glm(count ~ frame + verbnet_class,
+          family = quasipoisson,
+          data = valex_model)
+
+# Fit negative binomial
+library(MASS)
+v_nb <- glm.nb(count ~ frame + verbnet_class,
+               data = valex_model)
+
+# Compare dispersion
+cat("Dispersion comparison:\n")
+cat(sprintf("Poisson (V0): deviance/df = %.2f\n", deviance(v0) / df.residual(v0)))
+cat(sprintf("Quasi-Poisson (V1): φ = %.2f\n", summary(v1)$dispersion))
+cat(sprintf("Negative binomial (V_NB): θ = %.2f\n", v_nb$theta))
+cat(sprintf("Poisson GLMM (V2): deviance/df = %.2f\n", deviance(v2) / df.residual(v2)))
+```
+
+---
+
+## Plot 2: Dispersion reduction across models
+
+```{r dispersion-reduction}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 7
+
+# Dispersion metrics
+dispersion_data <- tibble(
+    Model = c("Poisson\n(V0)", "Quasi-Poisson\n(V1)", "Negative Binomial\n(V_NB)", "Poisson GLMM\n(V2)"),
+    Dispersion = c(
+        deviance(v0) / df.residual(v0),
+        summary(v1)$dispersion,
+        deviance(v_nb) / df.residual(v_nb),
+        deviance(v2) / df.residual(v2)
+    ),
+    Type = c("Overdispersed", "Adjusted SEs", "Extra Parameter", "Random Effects")
+) %>%
+    mutate(Model = factor(Model, levels = Model))
+
+ggplot(dispersion_data, aes(x = Model, y = Dispersion, fill = Type)) +
+    geom_bar(stat = "identity", alpha = 0.8) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "red", linewidth = 1) +
+    geom_text(aes(label = sprintf("%.2f", Dispersion)),
+              vjust = -0.5, size = 6, fontface = "bold") +
+    annotate("text", x = 1.5, y = 1.5, label = "Target: deviance/df ≈ 1",
+             color = "red", size = 5) +
+    scale_fill_manual(values = c("Overdispersed" = "coral",
+                                  "Adjusted SEs" = "orange",
+                                  "Extra Parameter" = "gold",
+                                  "Random Effects" = "steelblue")) +
+    labs(x = "", y = "Dispersion (deviance / df)",
+         title = "Overdispersion Across Model Types",
+         subtitle = "Random effects dramatically reduce overdispersion by modeling its source",
+         fill = "Approach") +
+    theme_minimal(base_size = 16) +
+    theme(legend.position = "top") +
+    ylim(0, max(dispersion_data$Dispersion) * 1.1)
+```
+
+**Key result**: Poisson GLMM (V2) achieves best dispersion control by modeling verb-level variation.
+
+---
+
+## How much overdispersion do random effects explain?
+
+**Quantifying overdispersion reduction**:
+
+Overdispersion in V0 (no REs):
+
+$$\phi_{\text{V0}} = \frac{\text{deviance}}{\text{df}} \approx 47.6$$
+
+Dispersion after adding verb REs (V2):
+
+$$\phi_{\text{V2}} = \frac{\text{deviance}}{\text{df}} \approx 2.3$$
+
+**Proportion of overdispersion explained**:
+
+$$\frac{\phi_{\text{V0}} - \phi_{\text{V2}}}{\phi_{\text{V0}} - 1} = \frac{47.6 - 2.3}{47.6 - 1} \approx 0.97$$
+
+**Interpretation**: Random effects explain ~97% of overdispersion! Almost all extra variation is due to verb-level heterogeneity.
+
+---
+
+## Plot 3: Predicted vs. observed variance
+
+```{r predicted-observed-variance}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 7
+
+# Calculate predicted means and observed variances by frame
+# Use valex_model (same data v0 was fitted on)
+variance_by_frame <- valex_model %>%
+    group_by(frame) %>%
+    summarize(
+        mean_obs = mean(count, na.rm = TRUE),
+        var_obs = var(count, na.rm = TRUE),
+        n = n(),
+        .groups = "drop"
+    ) %>%
+    filter(n >= 2, !is.na(var_obs)) %>%  # Need at least 2 obs to calculate variance
+    filter(var_obs < quantile(var_obs, 0.95, na.rm = TRUE))  # Remove extreme outliers for visualization
+
+# Plot: Poisson prediction (var = mean) vs observed
+ggplot(variance_by_frame, aes(x = mean_obs, y = var_obs)) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "coral",
+                linewidth = 1.5, alpha = 0.7) +
+    geom_point(size = 3, color = "steelblue", alpha = 0.7) +
+    annotate("text", x = 50, y = 50, label = "Poisson assumption:\nVar = Mean",
+             color = "coral", size = 5, hjust = 0) +
+    annotate("text", x = 100, y = 1500,
+             label = "Observed: Var >> Mean\n(Overdispersion)",
+             color = "steelblue", size = 5, hjust = 0) +
+    labs(x = "Observed Mean Count", y = "Observed Variance",
+         title = "Variance vs. Mean by Syntactic Frame",
+         subtitle = "Poisson assumes Var = Mean (red line) | Reality: Var >> Mean (points above line)") +
+    theme_minimal(base_size = 14)
+```
+
+**Observation**: Variance dramatically exceeds mean—clear evidence of overdispersion.
+
+---
+
+## Plot 4: Residuals comparison (all three approaches)
+
+```{r residuals-three-approaches}
+#| echo: false
+#| fig-width: 14
+#| fig-height: 6
+
+# Calculate residuals
+valex_model$resid_v0 <- residuals(v0, type = "deviance")
+valex_model$resid_v1 <- residuals(v1, type = "deviance")
+valex_model$resid_v2 <- residuals(v2, type = "deviance")
+
+# Create combined data
+resid_combined <- tibble(
+    Model = rep(c("Poisson\n(V0)", "Quasi-Poisson\n(V1)", "Poisson GLMM\n(V2)"),
+                each = nrow(valex_model)),
+    Residuals = c(valex_model$resid_v0, valex_model$resid_v1, valex_model$resid_v2)
+) %>%
+    mutate(Model = factor(Model, levels = c("Poisson\n(V0)", "Quasi-Poisson\n(V1)", "Poisson GLMM\n(V2)")))
+
+ggplot(resid_combined, aes(x = Model, y = Residuals, fill = Model)) +
+    geom_violin(alpha = 0.7) +
+    geom_boxplot(width = 0.2, fill = "white", outlier.alpha = 0.2) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+    scale_fill_manual(values = c("coral", "orange", "steelblue")) +
+    labs(x = "", y = "Deviance Residuals",
+         title = "Residual Distributions Across Three Approaches",
+         subtitle = "Poisson GLMM achieves smallest, most symmetric residuals") +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "none") +
+    ylim(-10, 10)
+```
+
+**V0**: Extreme outliers (overdispersion unaccounted for)
+
+**V1**: Same residuals as V0 (just adjusts SEs, doesn't improve fit)
+
+**V2**: Much tighter, symmetric distribution (random effects improve fit)
+
+---
+
+## Plot 5: QQ plots comparison
+
+```{r qq-plots-comparison}
+#| echo: false
+#| fig-width: 14
+#| fig-height: 5
+
+# Create QQ plots
+p1 <- ggplot(valex_model, aes(sample = resid_v0)) +
+    stat_qq() +
+    stat_qq_line(color = "red") +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles",
+         title = "Poisson (V0)",
+         subtitle = "Heavy tails indicate overdispersion") +
+    theme_minimal(base_size = 12)
+
+p2 <- ggplot(valex_model, aes(sample = resid_v1)) +
+    stat_qq() +
+    stat_qq_line(color = "red") +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles",
+         title = "Quasi-Poisson (V1)",
+         subtitle = "Same as V0 (adjusts SEs only)") +
+    theme_minimal(base_size = 12)
+
+p3 <- ggplot(valex_model, aes(sample = resid_v2)) +
+    stat_qq() +
+    stat_qq_line(color = "red") +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles",
+         title = "Poisson GLMM (V2)",
+         subtitle = "Much closer to diagonal") +
+    theme_minimal(base_size = 12)
+
+gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+**V2 QQ plot**: Residuals much closer to normal distribution—better model specification.
+
+---
+
+## When to use each approach
+
+**Quasi-Poisson**: Quick fix
+
+- Adjusts standard errors for overdispersion
+- Doesn't model source of overdispersion
+- Use when you don't care about group structure
+- Cannot compare models via AIC/BIC
+
+**Negative binomial**: Flexible distribution
+
+- Extra variance parameter
+- Models overdispersion without specifying source
+- Use when overdispersion is intrinsic (not due to clustering)
+- Good for count data with high variance
+
+**Poisson GLMM**: Mechanistic modeling
+
+- Explicitly models source of overdispersion (clustering/heterogeneity)
+- Allows generalization beyond observed groups
+- Quantifies group-level variation
+- Use when you have grouping structure and want to generalize
+- Preferred when theory suggests clustering
+
+---
+
+## Connections to Problem Set 3
+
+**Problem Set 3**: Heteroscedasticity in MALD data
+
+- Variance in RT decreased with word frequency
+- Modeled via `varPower()` in `gls()`: $\text{Var}(\epsilon_i) = \sigma^2 |x_i|^{2\delta}$
+- Variance as a function of a continuous predictor
+
+**Today**: Random effects for clustered data
+
+- Variance differs across groups (participants, items, verbs)
+- Modeled via random intercepts: $u_i \sim N(0, \sigma_u^2)$
+- Variance as a function of grouping factors
+
+**Connection**: Both model heterogeneity in variance
+
+- PS3: Conditional heteroscedasticity (variance depends on X)
+- Today: Group-level heterogeneity (variance differs across groups)
+
+**Unified framework**: Distributional regression (both mean and variance modeled)
+
+---
+
+## Summary: Overdispersion and random effects
+
+**Key insights**:
+
+1. Overdispersion often caused by **clustering** and **heterogeneity**
+2. Random effects **explicitly model** these sources
+3. Random effects **quantify** how much variance is due to grouping
+4. Three approaches: quasi-Poisson (adjust SEs), negative binomial (extra parameter), Poisson GLMM (model source)
+
+**VALEX results**:
+
+- Poisson GLM: severe overdispersion (φ ≈ 48)
+- Poisson GLMM: reduced overdispersion (φ ≈ 2.3)
+- Random effects explain ~97% of overdispersion
+
+**Recommendation**: Use Poisson GLMM when you have grouping structure—models source of overdispersion and allows generalization.
+
+---

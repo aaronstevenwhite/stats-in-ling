@@ -1,0 +1,244 @@
+---
+title: "K-means clustering"
+---
+
+Suppose each speaker is represented by two standardized language-use measures. We want to divide the speakers into $K$ groups so that speakers assigned to the same group lie near a shared profile. The group labels are not observed in advance. The calculation uses the [scaled Euclidean geometry](distance-and-scaling.qmd) fixed on the preceding page.
+
+[**K-means clustering**](https://online.stat.psu.edu/stat505/Lesson14) represents each group by a centroid and assigns every row to exactly one centroid. It alternates between assigning rows to the nearest centroid and replacing each centroid with the mean of its assigned rows.
+
+We first state the loss optimized by the algorithm. We then carry out one full assignment and update cycle for four points, show why the mean is the correct update, and implement the same procedure in R. Finally, we identify the hard-membership geometry imposed by the method.
+
+## Define assignments and centroids
+
+Let $\mathbf{x}_i\in\mathbb{R}^p$ be row $i$. For a chosen number of groups $K$, let
+
+$$
+z_i\in\{1,\ldots,K\}
+$$
+
+be the cluster assigned to row $i$, and let
+
+$$
+\boldsymbol{\mu}_k\in\mathbb{R}^p
+$$
+
+be the centroid of cluster $k$.
+
+K-means minimizes the within-cluster sum of squared Euclidean distances:
+
+$$
+W
+=
+\sum_{i=1}^{N}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_{z_i}
+\right\rVert^2.
+$$
+
+Each row contributes its squared distance to the centroid of its assigned cluster. A smaller value means that the fitted clusters have a smaller within-cluster sum of squares under the chosen distance and scaling.
+
+## Begin with four rows and two centroids
+
+Consider four hypothetical speaker profiles:
+
+$$
+\mathbf{x}_1=(0,0),
+\qquad
+\mathbf{x}_2=(0,2),
+$$
+
+$$
+\mathbf{x}_3=(5,4),
+\qquad
+\mathbf{x}_4=(5,6).
+$$
+
+Start with proposed centroids
+
+$$
+\boldsymbol{\mu}_1=(0,0)
+\qquad\text{and}\qquad
+\boldsymbol{\mu}_2=(5,6).
+$$
+
+These are initial values, not observed labels.
+
+## Carry out the assignment step
+
+For each row, compare squared distances to both centroids. Squared distance is sufficient because the square root preserves the ordering.
+
+For $\mathbf{x}_1$,
+
+$$
+\lVert\mathbf{x}_1-\boldsymbol{\mu}_1\rVert^2=0
+$$
+
+and
+
+$$
+\lVert\mathbf{x}_1-\boldsymbol{\mu}_2\rVert^2
+=
+(0-5)^2+(0-6)^2
+=
+61.
+$$
+
+Thus, $\mathbf{x}_1$ is assigned to cluster 1. The remaining comparisons are
+
+| row | squared distance to centroid 1 | squared distance to centroid 2 | assignment |
+|:--|--:|--:|--:|
+| $\mathbf{x}_1$ | 0 | 61 | 1 |
+| $\mathbf{x}_2$ | 4 | 41 | 1 |
+| $\mathbf{x}_3$ | 41 | 4 | 2 |
+| $\mathbf{x}_4$ | 61 | 0 | 2 |
+
+The assignment step chooses the smaller value in each row of the table. For fixed centroids, this choice minimizes each observation's contribution to $W$.
+
+## Carry out the update step
+
+Replace each centroid with the coordinatewise mean of its assigned rows. Cluster 1 contains $\mathbf{x}_1$ and $\mathbf{x}_2$:
+
+$$
+\boldsymbol{\mu}_1^{\mathrm{new}}
+=
+\frac{(0,0)+(0,2)}{2}
+=
+(0,1).
+$$
+
+Cluster 2 contains $\mathbf{x}_3$ and $\mathbf{x}_4$:
+
+$$
+\boldsymbol{\mu}_2^{\mathrm{new}}
+=
+\frac{(5,4)+(5,6)}{2}
+=
+(5,5).
+$$
+
+Under the initial centroids, the total within-cluster loss is
+
+$$
+W^{\mathrm{old}}
+=
+0+4+4+0
+=
+8.
+$$
+
+Under the updated centroids, every row is one squared unit from its centroid:
+
+$$
+W^{\mathrm{new}}
+=
+1+1+1+1
+=
+4.
+$$
+
+The update has reduced the loss while keeping the assignments fixed.
+
+## Why the centroid is a mean
+
+Consider one coordinate of one fixed cluster with values $x_1,\ldots,x_n$. Its squared loss around a proposed center $\mu$ is
+
+$$
+Q(\mu)
+=
+\sum_{i=1}^{n}(x_i-\mu)^2.
+$$
+
+Differentiate with respect to $\mu$:
+
+$$
+\frac{\mathrm{d}Q}{\mathrm{d}\mu}
+=
+-2\sum_{i=1}^{n}(x_i-\mu).
+$$
+
+Setting the derivative to zero gives
+
+$$
+\sum_{i=1}^{n}x_i-n\mu=0,
+$$
+
+so
+
+$$
+\mu
+=
+\frac{1}{n}
+\sum_{i=1}^{n}x_i.
+$$
+
+The same argument applies to every coordinate. Thus, the coordinatewise mean minimizes squared distance for fixed assignments.
+
+## Alternate until the partition stabilizes
+
+After the update, assign every row again using the new centroids. In the worked example, the assignments remain $(1,1,2,2)$. Recomputing the means returns the same centroids, so the algorithm has converged.
+
+Each assignment step cannot increase $W$ because every row chooses its closest current centroid. Each update step cannot increase $W$ because every centroid becomes the mean of its assigned rows. The loss decreases or stays fixed until the procedure reaches a local solution.
+
+The K-means algorithm alternates these two steps until the assignments stop changing or the reduction in within-cluster loss falls below a specified tolerance.
+
+## Fit the procedure in R
+
+```{r}
+#| eval: false
+
+X_small <- matrix(
+  c(
+    0, 0,
+    0, 2,
+    5, 4,
+    5, 6
+  ),
+  nrow = 4,
+  byrow = TRUE
+)
+
+set.seed(214)
+
+fit_k2 <- kmeans(
+  X_small,
+  centers = 2,
+  nstart = 50
+)
+
+fit_k2$cluster
+fit_k2$centers
+fit_k2$tot.withinss
+```
+
+The `cluster` vector contains one hard assignment per row. The `centers` matrix contains one centroid per cluster. The `tot.withinss` value is $W$.
+
+The argument `nstart = 50` fits the algorithm from 50 initial centroid sets and keeps the solution with the smallest within-cluster loss. It addresses initialization sensitivity without changing the objective.
+
+## Initial values can change the solution
+
+The K-means objective may have several local minima. Alternating updates cannot increase the loss, but they need not reach the smallest possible loss across every partition.
+
+K-means can converge to a [**local minimum**](https://online.stat.psu.edu/stat505/Lesson14). A single initialization may yield a partition that another starting point improves. Several starts reduce the risk, and the final loss should be compared across starts.
+
+A fixed random seed makes one computation reproducible. It does not make the selected start globally optimal. Reproducibility and optimization quality are different properties.
+
+## Know the imposed geometry
+
+K-means assigns every row to exactly one group and measures fit by squared Euclidean distance to a centroid. It tends to favor compact groups with roughly similar spread in the chosen coordinate system.
+
+Overlapping vowel categories or gradient speaker profiles may not have this structure. A poor K-means partition does not show that the linguistic objects lack organization. It shows that a hard centroid partition under this distance does not represent them well.
+
+Cluster numbers are also arbitrary. Swapping labels 1 and 2 leaves the partition and loss unchanged. Interpret centroids and associated rows, not the numerical label itself.
+
+## Check the alternating updates
+
+1. Which squared distances assign $\mathbf{x}_3$ to cluster 2 in the worked example?
+2. Why does the update move centroid 1 from $(0,0)$ to $(0,1)$?
+3. What is the within-cluster loss after the update?
+4. Why does the mean minimize squared loss for fixed assignments?
+5. What does `nstart = 50` protect against, and what does it not guarantee?
+6. Which membership assumption is made by assigning every speaker to exactly one cluster?
+
+## Before comparing values of $K$
+
+K-means alternates nearest-centroid assignments with mean updates to reduce within-cluster squared distance. The fitted partition depends on the representation, Euclidean geometry, group count, and initialization. The [next page](within-cluster-loss.qmd) examines how fitted compactness changes as the declared number of centroids increases.

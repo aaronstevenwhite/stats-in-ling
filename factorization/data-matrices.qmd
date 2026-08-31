@@ -1,0 +1,201 @@
+---
+title: "Linguistic data matrices"
+---
+
+Suppose we have acoustic measurements for four vowel tokens. Each token has a first formant, a second formant, and a third formant. Before we can look for shared structure among those measurements, we need to decide what counts as one object and what information represents it.
+
+A matrix representation places one kind of linguistic object in the rows and one kind of measured property in the columns. This is the earlier [unit-of-analysis decision](../foundations/linguistic-data.qmd) written in matrix form. We used the same matrix construction when [representing objects for clustering](../latent-structure/representing-objects.qmd). Here we retain it so that the row and column choices remain explicit before introducing factorization.
+
+We begin by writing down the row and column maps. We then build a small matrix by hand and in R. Finally, we consider two representation failures that no factorization can repair after the matrix has been constructed.
+
+## Define the array and its indices
+
+Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is
+
+$$
+\mathbf{X}\in\mathbb{R}^{n\times p}.
+$$
+
+Its entries are
+
+$$
+x_{ij}
+=
+\text{the value of variable }j\text{ for object }i.
+$$
+
+The complete row for object $i$ is
+
+$$
+\mathbf{x}_i^{\mathsf T}
+=
+\begin{bmatrix}
+x_{i1} & x_{i2} & \cdots & x_{ip}
+\end{bmatrix}.
+$$
+
+The complete column for variable $j$ is
+
+$$
+\mathbf{x}_{\cdot j}
+=
+\begin{bmatrix}
+x_{1j} & x_{2j} & \cdots & x_{nj}
+\end{bmatrix}^{\mathsf T}.
+$$
+
+These two views answer different questions. A row asks how one object is represented across variables. A column asks how one variable changes across objects.
+
+## Build a vowel matrix by hand
+
+Suppose the measurements are
+
+| token | F1 | F2 | F3 |
+|:--|--:|--:|--:|
+| token 1 | 500 | 1500 | 2200 |
+| token 2 | 550 | 1450 | 2150 |
+| token 3 | 300 | 2300 | 3000 |
+| token 4 | 320 | 2250 | 2950 |
+
+Placing tokens in rows and formants in columns gives
+
+$$
+\mathbf{X}=
+\begin{bmatrix}
+500 & 1500 & 2200\\
+550 & 1450 & 2150\\
+300 & 2300 & 3000\\
+320 & 2250 & 2950
+\end{bmatrix}.
+$$
+
+This is a $4\times 3$ matrix because it represents four tokens using three measurements. The entry in row 3 and column 1 is
+
+$$
+x_{31}=300.
+$$
+
+Its interpretation comes from both index maps: token 3 has an F1 measurement of 300 Hz. The number 300 does not carry that interpretation on its own.
+
+The third row is
+
+$$
+\mathbf{x}_3^{\mathsf T}
+=
+\begin{bmatrix}
+300 & 2300 & 3000
+\end{bmatrix},
+$$
+
+which is the acoustic representation of token 3 under this design. The first column is
+
+$$
+\mathbf{x}_{\cdot 1}
+=
+\begin{bmatrix}
+500 & 550 & 300 & 320
+\end{bmatrix}^{\mathsf T},
+$$
+
+which records how F1 varies across the four tokens.
+
+## The rows define the objects
+
+A row might instead represent a speaker. We could average all of a speaker's token measurements and place those averages in one row. The resulting matrix would still have formant columns, but it would describe variation among speakers rather than variation among tokens.
+
+This change is not a harmless rearrangement. Suppose one speaker produces two F1 values, 400 and 600. Their speaker mean is
+
+$$
+\frac{400+600}{2}=500.
+$$
+
+A speaker-level row retains the mean 500 but discards the fact that the two tokens differed by 200 Hz. A token-level analysis can represent that within-speaker difference. A speaker-level analysis cannot recover it from the average.
+
+The row definition thus determines the observational unit. It also determines what kinds of variation the matrix still contains.
+
+## The columns define the representation
+
+Two tokens may appear similar when represented by formants and dissimilar when represented by duration and voice quality. Neither result is the similarity between the tokens in the abstract. Each is similarity with respect to a particular collection of measurements.
+
+This point matters when columns repeat information. Suppose we include duration in milliseconds and a second column equal to twice duration. For two tokens with durations 100 and 120, the rows would contain
+
+$$
+\begin{bmatrix}100&200\end{bmatrix}
+\qquad\text{and}\qquad
+\begin{bmatrix}120&240\end{bmatrix}.
+$$
+
+Both columns encode the same underlying measurement. A later matrix method will faithfully give that duplicated information two coordinates. It cannot infer that the analyst did not intend to count duration twice.
+
+Thus, column selection is part of the linguistic representation rather than a neutral software step.
+
+## Construct the matrix in R
+
+The matrix can be entered row by row.
+
+```{r}
+#| eval: false
+
+X <- matrix(
+  c(
+    500, 1500, 2200,
+    550, 1450, 2150,
+    300, 2300, 3000,
+    320, 2250, 2950
+  ),
+  nrow = 4,
+  byrow = TRUE
+)
+
+rownames(X) <- paste0("token_", 1:4)
+colnames(X) <- c("F1", "F2", "F3")
+
+dim(X)
+X["token_3", "F1"]
+X["token_3", ]
+X[, "F1"]
+```
+
+The `matrix()` call creates the numerical array. The row and column labels record the index maps that give its entries a linguistic interpretation. Stable identifiers are safer than relying on row positions after filtering or joining.
+
+## Write a representation record
+
+Before applying a matrix operation, write down the following information.
+
+1. State what one row represents.
+2. State how the represented objects were selected.
+3. State what each column measures.
+4. Identify columns derived from the same underlying measurement.
+5. State the population or collection to which the represented objects belong.
+
+This record prevents a later component plot from quietly changing its unit of interpretation. If rows are tokens, a component score locates tokens. If rows are languages, it locates languages. The algebra does not change that unit.
+
+## Information omitted from the matrix cannot be recovered
+
+A flexible factorization cannot determine which duplicated or poorly chosen columns are theoretically intended. It only represents the numerical relations supplied in $\mathbf{X}$.
+
+The same limitation applies to premature aggregation. Once token measurements have been replaced by speaker means, no matrix decomposition can reconstruct the discarded token variation. The repair must occur when the matrix is designed.
+
+Matrix operations can reorganize the information present in the array, but they cannot recover information removed before the array was built.
+
+::: {.callout-note title="Data documentation: PHOIBLE 2.0"}
+Read the PHOIBLE 2.0 [download and citation page](https://phoible.org/download) and the FAQ sections ["Why do some languages have multiple entries in PHOIBLE?"](https://phoible.org/faq#why-do-some-languages-have-multiple-entries-in-phoible), ["Random sampling: one inventory per isocode/glottocode"](https://phoible.org/faq#random-sampling-one-inventory-per-isocodeglottocode), and ["What are the different sources in PHOIBLE?"](https://phoible.org/faq#what-are-the-different-sources-in-phoible).
+
+The download page identifies the release that should be cited. The three FAQ sections explain why one language may have several contributed inventories, how a one-inventory sampling rule changes the row set, and how source collections differ. The documentation is included because the row definition and source diagnostic must be fixed before a language by segment matrix can be interpreted.
+:::
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Task 3](../problem-sets/ps5/ps5.qmd#task-3-construct-the-language-by-segment-matrix-10-points) constructs a binary language by segment matrix from PHOIBLE inventories. A cell value can be interpreted only after the row selection, retained segment set, and meaning of absence have been fixed.
+:::
+
+## Check the representation
+
+1. In the vowel matrix, what does $x_{42}$ measure?
+2. How does the target of description change if rows are speakers rather than tokens?
+3. Which information is lost when two token values are replaced by their speaker mean?
+4. Why does including duration and twice duration give one measurement two coordinates?
+5. What should be recorded before interpreting a row score from any later factorization?
+
+## Before changing the coordinates
+
+A linguistic data matrix maps objects to rows, measurements to columns, and individual measurements to cells. This representation fixes the unit and information available to every later operation. The [next page](centering-and-scaling.qmd) changes the origin and unit of each column while keeping this row and column design fixed.

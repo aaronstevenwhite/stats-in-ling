@@ -1,0 +1,116 @@
+---
+title: "Grouped cross-validation"
+---
+
+The page on [what must be new at prediction time](prediction-targets.qmd) distinguished omitted trials from omitted participants, items, and passages. The [cross-validation page](cross-validation.qmd) noted that random row folds can place several trials from the same participant, tokens of the same word, or positions from the same passage in both training and test data. When a complete group must be absent during fitting, this overlap contradicts the predictive question.
+
+[**Grouped K-fold cross-validation**](https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data) assigns whole groups to folds. All observations sharing the grouping identifier receive the same fold label. The fitting and scoring algorithm remains cross-validation, while the partition ensures that a group does not appear in both training and test data.
+
+::: {.callout-note title="Reading: Futrell et al. (2018), Sections 3.1 and 3.3"}
+[Futrell et al., *The Natural Stories Corpus*](https://aclanthology.org/L18-1012/).
+
+Read Sections 3.1, *Text*, and 3.3, *Self-Paced Reading Data*.
+
+**Why this reading?** These sections establish the corpus structure used on this page: 181 readers contribute observations at positions nested in 485 sentences and ten stories. The paper supplies the linguistic data structure, not a grouped-validation method. That structure makes the choice among omitted rows, readers, sentences, and stories concrete.
+:::
+
+::: {.callout-note title="Reading for Problem Set 2: Luke and Christianson (2016, 2018)"}
+Read [*Limits on lexical prediction during reading*](https://doi.org/10.1016/j.cogpsych.2016.06.002) together with the data description in [*The Provo Corpus*](https://doi.org/10.3758/s13428-017-0908-4). The first reading supplies the lexical and graded prediction contrast. The second describes the passages, readers, eye movements, and predictability norms. They are included here because a passage-held-out score is interpretable only after both the theoretical predictors and the held-out grouping variable have been fixed.
+:::
+
+## Constructing grouped folds
+
+Let $g(i)$ be the group containing observation $i$. Grouped cross-validation requires
+
+$$
+g(i)=g(j)
+\quad\Longrightarrow\quad
+\operatorname{fold}(i)=\operatorname{fold}(j).
+$$
+
+When complete passages are omitted, $g(i)$ is the passage identifier. When complete speakers are omitted, it is the speaker identifier. A simple R construction assigns folds to unique groups and joins those assignments back to rows.
+
+```{r}
+#| eval: false
+
+groups <- unique(dat$passage_id)
+set.seed(214)
+group_fold <- sample(rep(1:5, length.out = length(groups)))
+names(group_fold) <- groups
+
+fold <- unname(group_fold[as.character(dat$passage_id)])
+stopifnot(all(tapply(fold, dat$passage_id, function(x) length(unique(x))) == 1))
+```
+
+The final assertion is part of the analysis. A fold variable that looks grouped can still contain a join or coercion error.
+
+## Leave-one-group-out evaluation
+
+When the number of groups is manageable, [**leave-one-group-out cross-validation**](https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data) uses each group as its own test set. With $G$ passages, it fits $G$ models and yields one collection of predictions for each passage.
+
+This design has two advantages. First, every group receives a prediction from all other groups. Second, the per-group scores remain visible; a mean cannot conceal that a model helps a few passages and harms many others.
+
+It also has limitations. If $G$ is small, the score varies over only a small set of held-out groups. And if one group is unusual, its fitted model omits a large and distinctive part of the data. These are properties of the available evidence rather than reasons to revert to row folds.
+
+## Grouped scores describe grouped populations
+
+Suppose passage $p$ contains $n_p$ word positions and has mean loss
+
+$$
+\overline{L}_p
+=
+\frac{1}{n_p}
+\sum_{i:g(i)=p}
+L(y_i,\widehat{y}_i).
+$$
+
+A passage-weighted score is
+
+$$
+\frac{1}{G}\sum_{p=1}^G \overline{L}_p.
+$$
+
+Each passage receives equal weight. A position-weighted score instead pools every position before averaging. The latter may be a useful corpus summary, but its uncertainty should not treat positions from one passage as independent passage transfers.
+
+The group is thus used twice: first to construct the split, and second to summarize the variation relevant to the claim.
+
+## Crossing several grouping dimensions
+
+Linguistic datasets often cross readers and items. Holding out readers evaluates new readers on observed items. Holding out items evaluates new items for observed readers. Holding out both requires a design in which test observations contain neither training readers nor training items.
+
+These are not ordered versions of one procedure. They ask different questions, and the hardest question need not be the most relevant. A speech technology deployed to returning users may care about new utterances from adapted speakers. A linguistic claim about a construction may care about new speakers and new lexical items.
+
+When groups are nested, the higher-level grouping variable controls the split. Sentence positions nest within passages, so a passage-level split automatically removes its sentences and positions. Splitting sentences across folds does not evaluate prediction for an omitted passage because other sentences from the same passage remain in training.
+
+## Group leakage through derived predictors
+
+Moving rows together does not prevent every form of group leakage. A predictor may have been estimated using responses from all groups before the split.
+
+For instance, a word-position mean reading time computed over all readers leaks test-reader responses into an evaluation of omitted readers. A speaker-normalized acoustic measure computed from the held-out speaker's full recordings may be permissible after adaptation but not before adaptation. An item difficulty score estimated from all judgments leaks test-participant responses into the score unless the analysis explicitly permits that external calibration.
+
+Thus grouped folds must be applied before response-derived features are estimated. Independently collected lexical norms may be available for new passages, while reading-time summaries from those passages are not.
+
+## Similar scores are possible
+
+Grouped and random scores can be similar. This does not show that grouping was unnecessary. If the fitted relation generalizes well to omitted groups, new-group performance should be similar to performance on omitted rows from represented groups.
+
+The grouped split earns its place because it evaluates the claimed unit. A visible performance drop is one possible result, not an acceptance criterion for the method. Conversely, a large drop may reflect genuine distribution shift, omitted group structure, or a preprocessing error. Per-group inspection is needed to distinguish them.
+
+::: {.callout-note title="Problem Set 3 connection"}
+[Problem Set 3, Task 4](../problem-sets/ps3/ps3-dative-alternation.qmd#task-4-test-transfer-to-omitted-verbs-25-points) holds out complete verb types before fitting two dative models. The response is a token headed by a verb absent from training. A random row split would retain other tokens of the held-out verb and would answer a different question about other tokens of represented verbs.
+:::
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 4](../problem-sets/ps4/ps4.qmd#task-4-add-embedding-environment) evaluates factivity and embedding models with folds grouped by discourse. Rating-level leave-one-out prediction would retain sister ratings of the same discourse and evaluate another rating from a represented discourse, not a discourse absent during fitting.
+:::
+
+## Check the grouping variable
+
+1. Why is a sentence split insufficient when a complete passage must be absent during fitting?
+2. In crossed participant by item data, what question is evaluated by holding out participants while retaining observed items?
+3. Give a response-derived predictor that could leak even when all rows from a test group move together.
+4. If grouped and random RMSE are nearly equal, what can and cannot be concluded?
+
+## Before comparing models
+
+Grouped cross-validation moves all observations from a group into the same fold. The group defines both what is withheld and the level at which predictive variation is summarized. Similar random and grouped scores may be a substantive success, but they do not make the predictive questions interchangeable. The [next page](comparing-predictive-loss.qmd) compares models using paired losses for each held-out group.

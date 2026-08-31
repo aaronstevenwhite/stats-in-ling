@@ -1,0 +1,181 @@
+---
+title: "Residuals"
+---
+
+The [fitting page](frequentist-linear-regression.qmd) used observed minus fitted discrepancies in the least-squares objective. We now inspect those discrepancies observation by observation.
+
+For observation $i$, the fitted line supplies an estimated conditional mean
+
+$$
+\widehat{y}_i
+=\widehat{\beta}_0+\widehat{\beta}_1x_i.
+$$
+
+The [**residual**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is the observed response minus this fitted value:
+
+$$
+e_i=y_i-\widehat{y}_i.
+$$
+
+The residual is an observation-level discrepancy. It records what remains after
+subtracting the model's prediction for that observation.
+
+The direction of the subtraction matters. We subtract the fitted value from the
+observed response, not the observed response from the fitted value. This
+convention makes a positive residual an observation above the fitted line.
+
+## Calculate three residuals
+
+For the six constructed observations, the fitted equation is
+
+$$
+\widehat y_i=5.629+.0714x_i.
+$$
+
+The first three residuals are approximately:
+
+| observation | observed $y_i$ | fitted $\widehat{y}_i$ | residual $e_i$ |
+|---:|---:|---:|---:|
+| 1 | 5.7800 | 5.7714 | $.0086$ |
+| 2 | 5.8200 | 5.8429 | $-.0229$ |
+| 3 | 5.9300 | 5.9143 | $.0157$ |
+
+A positive residual places the observation above its fitted mean. A negative residual places it below.
+
+The magnitude records how poorly the conditional mean predicts that observation on the response scale.
+
+For observation 2,
+
+$$
+e_2
+=5.8200-5.8429
+\approx-.0229.
+$$
+
+The fitted conditional mean is about $.0229$ log-time units above the observed
+response. The residual does not say that the fitted value is wrong by the same
+amount for all words with 3 bits of surprisal. It describes this observation.
+
+## Compute them from the fitted model
+
+```{r}
+#| label: calculate-reading-time-residuals
+#| echo: true
+reading_times <- data.frame(
+  surprisal = 2:7,
+  log_rt = c(5.78, 5.82, 5.93, 5.99, 6.05, 6.13)
+)
+
+fit <- lm(log_rt ~ surprisal, data = reading_times)
+reading_times$residual <- residuals(fit)
+reading_times
+```
+
+Equivalently,
+
+```{r}
+#| label: verify-reading-time-residuals
+#| echo: true
+reading_times$log_rt - fitted(fit)
+```
+
+The equality of the two vectors verifies that residuals are observed responses minus fitted values. We can also attach fitted values
+to see all three quantities together:
+
+```{r}
+#| label: inspect-fitted-values-and-residuals
+#| echo: true
+transform(
+  reading_times,
+  fitted = fitted(fit),
+  reconstructed_response = fitted(fit) + residuals(fit)
+)
+```
+
+The reconstructed response equals the observed response in every row because
+
+$$
+y_i=\widehat y_i+e_i.
+$$
+
+This identity holds by the definition of a residual. It does not depend on the
+normality assumption.
+
+## Residuals are not error terms
+
+The ordinary linear regression model contains unobserved errors
+
+$$
+\varepsilon_i=Y_i-\mathbb{E}[Y_i\mid X_i].
+$$
+
+These errors are defined relative to the unknown true conditional mean. Residuals are defined relative to the fitted mean estimated from the same sample.
+
+Thus $e_i$ is observable after fitting, while $\varepsilon_i$ is a model quantity we do not directly observe. Residuals provide evidence about the error assumptions, but they are not identical to the errors.
+
+Suppose the true conditional mean at $x_i$ were $5.90$, the fitted mean were
+$5.88$, and the observed response were $5.94$. The unobserved error would be
+
+$$
+\varepsilon_i=5.94-5.90=.04,
+$$
+
+while the residual would be
+
+$$
+e_i=5.94-5.88=.06.
+$$
+
+The two values differ because the fitted mean differs from the true mean. With
+more informative data and an adequate model, residual patterns may approximate
+error patterns more closely. They never become the same object by definition.
+
+## A zero sum is not a fit check
+
+In ordinary least squares with an intercept,
+
+$$
+\sum_i e_i=0.
+$$
+
+This equality follows from the fitting procedure. It can hold even when residuals trace a strong curve or widen systematically with fitted values.
+
+For the constructed fit:
+
+```{r}
+#| label: verify-zero-residual-sum
+#| echo: true
+sum(residuals(fit))
+```
+
+The output may be a tiny nonzero value because computers approximate real-number
+arithmetic. A value near $10^{-16}$ is numerical noise, not a meaningful failure
+of the zero-sum property.
+
+The zero sum also does not imply that positive and negative residuals are small.
+Residuals of $1$, $-1$, $10$, and $-10$ sum to zero while containing large
+observation-level discrepancies. The sum loses the sizes and their ordering
+across predictors.
+
+## Preserve the response scale
+
+A raw residual has the response's units. Here it is measured in log-time units.
+If the response were vowel duration in milliseconds, a raw residual would be in
+milliseconds. This makes residual size interpretable only relative to the
+response scale and the scientific setting.
+
+Comparing raw residual magnitudes across models with different response
+transformations can thus be misleading. The numerical scale has changed. On
+this page, all interpretations remain on the fitted log-reading-time scale.
+
+The [next page](checking-linear-regression.qmd) plots residuals to reveal patterns that their sum conceals.
+
+::: {.callout-note title="Check the sign"}
+1. An observed log reading time is 6.20 and its fitted mean is 6.05. Calculate
+   and interpret the residual.
+2. If the true conditional mean were 6.00, what would the corresponding error
+   be? Why does it differ from the residual?
+3. Explain why a zero residual sum cannot establish that all residuals are
+   small.
+4. What units does a raw residual inherit?
+:::

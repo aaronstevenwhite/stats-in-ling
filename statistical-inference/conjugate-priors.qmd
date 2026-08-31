@@ -1,0 +1,159 @@
+---
+title: "Conjugate priors"
+---
+
+The [posterior distribution page](posterior-distributions.qmd) normalized a finite update by summing over the parameter values. A conjugate prior allows some continuous updates to be normalized by recognizing a familiar distribution family. Suppose a phonological study records whether a word-final coronal stop is deleted.
+
+$$
+X_i\mid\Pi=\pi
+\sim
+\operatorname{Bernoulli}(\pi).
+$$
+
+The parameter $\Pi$ is the deletion probability for the population and sampling context defined by the study. This page introduces a prior family that makes the posterior update algebraic.
+
+## Write the beta prior
+
+Recall the [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) on the unit interval. Choose
+
+$$
+\Pi\sim\operatorname{Beta}(2,2).
+$$
+
+The beta density is
+
+$$
+p(\pi)
+=
+\frac{1}{B(\alpha,\beta)}
+\pi^{\alpha-1}(1-\pi)^{\beta-1},
+\qquad 0<\pi<1.
+$$
+
+For $\alpha=2$ and $\beta=2$, the density is symmetric around $.50$ and has less density near zero and one. Its mean is
+
+$$
+\mathbb{E}[\Pi]
+=\frac{\alpha}{\alpha+\beta}
+=\frac{2}{4}
+=.50.
+$$
+
+When deriving the posterior, terms that do not depend on $\pi$ can be absorbed into a proportionality constant:
+
+$$
+p(\pi)\propto\pi^{2-1}(1-\pi)^{2-1}.
+$$
+
+## Write the likelihood from counts
+
+Suppose the sample contains $s=14$ deletions and $f=6$ realized stops. The Bernoulli likelihood is
+
+$$
+p(\mathbf{x}\mid\pi)
+=\prod_{i=1}^{20}
+\pi^{x_i}(1-\pi)^{1-x_i}.
+$$
+
+Collecting equal powers gives the likelihood kernel
+
+$$
+p(\mathbf{x}\mid\pi)
+\propto
+\pi^{14}(1-\pi)^6.
+$$
+
+The sequence order does not enter this model. Only the number of deletions and realizations enters the kernel.
+
+## Multiply and recognize the posterior family
+
+Bayes' rule gives
+
+$$
+\begin{aligned}
+p(\pi\mid\mathbf{x})
+&\propto
+p(\mathbf{x}\mid\pi)p(\pi)\\
+&\propto
+\pi^{14}(1-\pi)^6
+\pi^{2-1}(1-\pi)^{2-1}\\
+&=
+\pi^{16-1}(1-\pi)^{8-1}.
+\end{aligned}
+$$
+
+This is the kernel of a beta density. Thus
+
+$$
+\Pi\mid\mathbf{x}
+\sim
+\operatorname{Beta}(16,8).
+$$
+
+In general, a $\operatorname{Beta}(\alpha,\beta)$ prior and Bernoulli data with $s$ successes and $f$ failures produce
+
+$$
+\Pi\mid\mathbf{x}
+\sim
+\operatorname{Beta}(\alpha+s,\beta+f).
+$$
+
+The beta distribution is a [**conjugate prior**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) for the Bernoulli likelihood because the posterior remains in the beta family.
+
+## Calculate posterior summaries
+
+The posterior mean is
+
+$$
+\mathbb{E}[\Pi\mid\mathbf{x}]
+=\frac{16}{16+8}
+=\frac{2}{3}
+\approx.667.
+$$
+
+The observed proportion is $14/20=.70$. The posterior mean lies between the prior mean $.50$ and the observed proportion. The posterior interval is also available directly from beta quantiles.
+
+```{r}
+#| label: beta-bernoulli-update
+#| echo: true
+
+alpha_prior <- 2
+beta_prior <- 2
+successes <- 14
+failures <- 6
+
+alpha_posterior <- alpha_prior + successes
+beta_posterior <- beta_prior + failures
+posterior_mean <- alpha_posterior /
+  (alpha_posterior + beta_posterior)
+posterior_interval <- qbeta(
+  c(.025, .975),
+  alpha_posterior,
+  beta_posterior
+)
+
+stopifnot(alpha_posterior == 16)
+stopifnot(beta_posterior == 8)
+stopifnot(abs(posterior_mean - 2 / 3) < 1e-12)
+
+c(mean = posterior_mean,
+  lower = posterior_interval[1],
+  upper = posterior_interval[2])
+```
+
+## Do not treat the shapes as literal observations
+
+The update resembles adding two prior successes and two prior failures. This [**pseudocount**](https://web.stanford.edu/group/sisl/public/dmu.pdf) interpretation is useful for the algebra, but $\alpha$ and $\beta$ are not literal unobserved tokens. The beta shape parameters determine a density. Their substantive interpretation comes from the probabilities and predictions that density implies.
+
+Conjugacy is likewise a computational property, not a reason to choose the prior. A beta prior may be easy to update while placing implausible mass on deletion rates. Prior predictive simulation, introduced on the next page in the sequence, checks that implication on the observation scale.
+
+The posterior remains conditional on the Bernoulli model. If deletion probabilities vary by speaker or segmental context, the simple update does not represent that structure.
+
+## Check your understanding
+
+1. Begin with $\operatorname{Beta}(3,7)$ and observe eight deletions and two realizations. What is the posterior?
+2. What is the mean of that posterior?
+3. What property makes the beta prior conjugate here?
+4. Why does conjugacy not establish that a prior is linguistically appropriate?
+
+The next page in the sequence checks priors with [prior predictive distributions](prior-predictive-distributions.qmd).

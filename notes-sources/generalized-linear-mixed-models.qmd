@@ -1,0 +1,375 @@
+# Generalized Linear Mixed Effects Models
+
+## From GLM to GLMM
+
+So far, we've studied **linear mixed effects models** with Normal responses.
+
+But what about:
+
+- **Binary outcomes** (grammaticality judgments, choice data)?
+- **Count data** (word frequencies, occurrence counts)?
+- **Non-normal distributions** in general?
+
+**Solution**: Generalized Linear Mixed Effects Models (**GLMMs**)
+
+GLMMs extend the [GLM framework](generalized-linear-models.qmd) by adding random effects to the systematic component.
+
+---
+
+## The GLM framework (recap)
+
+Recall that [generalized linear models](generalized-linear-models.qmd) have three components:
+
+1. **Random component**: $Y_i \mid \mathbf{x}_i \sim f(\mu_i, \phi)$
+   - Response follows a distribution from the exponential family
+   - Mean $\mu_i$ depends on predictors
+
+2. **Systematic component**: $\eta_i = \mathbf{x}_i^T \boldsymbol{\beta}$
+   - Linear predictor combines fixed effects
+
+3. **Link function**: $g(\mu_i) = \eta_i$
+   - Connects mean to linear predictor
+   - Ensures mean stays in valid range
+
+**Examples**:
+
+- Logistic regression: $\log\left(\frac{\pi_i}{1-\pi_i}\right) = \eta_i$
+- Poisson regression: $\log(\lambda_i) = \eta_i$
+
+---
+
+## Extending GLMs: Adding random effects
+
+GLMMs extend the **systematic component** by adding random effects:
+
+$$\eta_{ij} = \mathbf{x}_{ij}^T \boldsymbol{\beta} + \mathbf{z}_{ij}^T \boldsymbol{\alpha}_i$$
+
+where:
+
+- $\mathbf{x}_{ij}^T \boldsymbol{\beta}$: Fixed effects (systematic component)
+- $\mathbf{z}_{ij}^T \boldsymbol{\alpha}_i$: Random effects (varying by group $i$)
+- $\boldsymbol{\alpha}_i \sim N(\mathbf{0}, \boldsymbol{\Sigma})$: Random effects distribution
+
+**Three components remain**:
+
+1. **Random**: $Y_{ij} \mid \mathbf{x}_{ij}, \boldsymbol{\alpha}_i \sim f(\mu_{ij}, \phi)$
+2. **Systematic**: $\eta_{ij} = \mathbf{x}_{ij}^T \boldsymbol{\beta} + \mathbf{z}_{ij}^T \boldsymbol{\alpha}_i$
+3. **Link**: $g(\mu_{ij}) = \eta_{ij}$
+
+---
+
+## GLM → GLMM diagram
+
+```{r glm-glmm-diagram}
+#| echo: false
+#| fig-width: 14
+#| fig-height: 7
+
+library(ggplot2)
+library(grid)
+library(gridExtra)
+
+# Create text annotations for comparison
+glm_text <- data.frame(
+    x = c(1, 1, 1),
+    y = c(3, 2, 1),
+    label = c(
+        "1. Random: Y ~ f(μ, φ)",
+        "2. Systematic: η = Xβ",
+        "3. Link: g(μ) = η"
+    ),
+    hjust = 0
+)
+
+glmm_text <- data.frame(
+    x = c(1, 1, 1),
+    y = c(3, 2, 1),
+    label = c(
+        "1. Random: Y | α ~ f(μ, φ)",
+        "2. Systematic: η = Xβ + Zα",
+        "3. Link: g(μ) = η"
+    ),
+    hjust = 0
+)
+
+p1 <- ggplot(glm_text, aes(x = x, y = y, label = label)) +
+    geom_text(size = 6, hjust = 0, fontface = "bold", color = "coral") +
+    xlim(0.5, 4) +
+    ylim(0.5, 3.5) +
+    labs(title = "GLM (Generalized Linear Model)",
+         subtitle = "Fixed effects only") +
+    theme_void() +
+    theme(plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+          plot.subtitle = element_text(size = 14, hjust = 0.5))
+
+p2 <- ggplot(glmm_text, aes(x = x, y = y, label = label)) +
+    geom_text(size = 6, hjust = 0, fontface = "bold", color = "steelblue") +
+    xlim(0.5, 4) +
+    ylim(0.5, 3.5) +
+    labs(title = "GLMM (Generalized Linear Mixed Model)",
+         subtitle = "Fixed effects + random effects") +
+    theme_void() +
+    theme(plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+          plot.subtitle = element_text(size = 14, hjust = 0.5))
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+**Key difference**: Systematic component includes random effects $\mathbf{z}_{ij}^T \boldsymbol{\alpha}_i$.
+
+---
+
+## Example: Logistic GLMM
+
+**Scenario**: Grammaticality judgments (binary: 0 = unacceptable, 1 = acceptable) from multiple participants.
+
+**GLM (logistic regression)**:
+
+$$\log\left(\frac{\pi_{ij}}{1-\pi_{ij}}\right) = \beta_0 + \beta_1 x_{ij}$$
+
+- Ignores participant variation
+- Assumes all participants have same response pattern
+
+**GLMM (logistic mixed model)**:
+
+$$\log\left(\frac{\pi_{ij}}{1-\pi_{ij}}\right) = \beta_0 + \beta_1 x_{ij} + u_i$$
+
+where $u_i \sim N(0, \sigma_u^2)$ is participant $i$'s random intercept.
+
+- Participants differ in baseline acceptance rates
+- Generalizes to new participants
+
+---
+
+## Example: Poisson GLMM
+
+**Scenario**: Counts of verb-frame cooccurrences, with verbs nested within semantic classes.
+
+**GLM (Poisson regression)**:
+
+$$\log(\lambda_{ij}) = \beta_0 + \beta_1 x_{ij,\text{frame}} + \beta_2 x_{ij,\text{class}}$$
+
+- Fixed effects for frame and class
+- Ignores within-class variation among verbs
+
+**GLMM (Poisson mixed model)**:
+
+$$\log(\lambda_{ijk}) = \beta_0 + \beta_1 x_{ijk,\text{frame}} + \beta_2 x_{ijk,\text{class}} + \alpha_j$$
+
+where $\alpha_j \sim N(0, \sigma_u^2)$ is verb $j$'s random intercept.
+
+- Verbs within a class vary in frequency preferences
+- Generalizes beyond observed verbs
+
+---
+
+## Conditional vs. marginal interpretation
+
+GLMMs have two perspectives on fixed effects:
+
+**Conditional (subject-specific)**:
+
+- Fixed effects are interpreted **conditional on** random effects
+- "For a given participant/item, how does X affect Y?"
+- Example: "Within a specific verb, how does frame affect count?"
+
+**Marginal (population-average)**:
+
+- Fixed effects are interpreted **averaging over** random effects
+- "On average across all participants/items, how does X affect Y?"
+- Example: "On average across all verbs, how does frame affect count?"
+
+**Important**: For non-linear link functions (logit, log), conditional ≠ marginal!
+
+- Conditional effects are typically larger in magnitude
+- Use GEE (Generalized Estimating Equations) for marginal effects
+
+---
+
+## Plot: Conditional vs. marginal effects
+
+```{r conditional-marginal-plot}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 7
+
+# Simulate logistic GLMM data
+set.seed(42)
+n_subjects <- 10
+n_obs_per_subject <- 50
+
+# Subject random intercepts
+subject_intercepts <- rnorm(n_subjects, mean = 0, sd = 1.5)
+
+# Simulate data
+sim_data <- expand_grid(
+    subject = 1:n_subjects,
+    obs = 1:n_obs_per_subject
+) %>%
+    mutate(
+        x = rnorm(n(), mean = 0, sd = 1),
+        alpha_i = subject_intercepts[subject],
+        # Conditional (subject-specific) logit
+        logit_cond = -0.5 + 1.5 * x + alpha_i,
+        prob_cond = plogis(logit_cond),
+        y = rbinom(n(), size = 1, prob = prob_cond)
+    )
+
+# Fit models
+library(lme4)
+glmm_model <- glmer(y ~ x + (1|subject), data = sim_data, family = binomial)
+
+# Subject-specific curves
+p1 <- ggplot(sim_data, aes(x = x, y = prob_cond, group = subject)) +
+    geom_line(alpha = 0.5, color = "steelblue", linewidth = 1) +
+    labs(x = "Predictor X", y = "P(Y = 1)",
+         title = "Conditional (Subject-Specific) Effects",
+         subtitle = "Each line = one subject | Slope = 1.5 (conditional effect)") +
+    theme_minimal(base_size = 14) +
+    ylim(0, 1)
+
+# Marginal curve (averaging over subjects)
+marginal_pred <- sim_data %>%
+    group_by(x_bin = cut(x, breaks = 20)) %>%
+    summarize(
+        x_mean = mean(x),
+        prob_marginal = mean(y),
+        .groups = "drop"
+    )
+
+p2 <- ggplot(marginal_pred, aes(x = x_mean, y = prob_marginal)) +
+    geom_point(size = 3, color = "coral") +
+    geom_smooth(method = "loess", se = TRUE, color = "darkred", fill = "pink", alpha = 0.3) +
+    labs(x = "Predictor X", y = "P(Y = 1)",
+         title = "Marginal (Population-Average) Effect",
+         subtitle = "Averaged over all subjects | Slope < 1.5 (attenuated)") +
+    theme_minimal(base_size = 14) +
+    ylim(0, 1)
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+**Key point**: Non-linearity of link function causes marginal effect to be smaller than conditional.
+
+---
+
+## Estimation: Laplace approximation
+
+GLMMs do not have closed-form solutions. Estimation requires numerical approximation.
+
+**Likelihood**:
+
+$$L(\boldsymbol{\beta}, \boldsymbol{\Sigma}) = \prod_{i=1}^N \int f(y_i \mid \boldsymbol{\alpha}_i, \boldsymbol{\beta}) \, f(\boldsymbol{\alpha}_i \mid \boldsymbol{\Sigma}) \, d\boldsymbol{\alpha}_i$$
+
+- Integral over random effects (high-dimensional!)
+- No closed form for non-normal responses
+
+**Laplace approximation**:
+
+- Approximates the integral using a second-order Taylor expansion
+- Fast, but can be inaccurate for small sample sizes or extreme probabilities
+- Used by `lme4::glmer()`
+
+**Alternatives**:
+
+- **Adaptive Gauss-Hermite quadrature**: More accurate but slower
+- **MCMC (Bayesian)**: Gold standard, fully explores posterior (Stan, brms)
+
+---
+
+## Fitting GLMMs in R: lme4
+
+```{r glmer-syntax}
+#| echo: true
+#| eval: false
+
+library(lme4)
+
+# Logistic GLMM
+glmer(binary_outcome ~ predictor + (1|group),
+      data = df, family = binomial)
+
+# Poisson GLMM
+glmer(count_outcome ~ predictor + (1|group),
+      data = df, family = poisson)
+
+# Negative binomial GLMM (overdispersion)
+glmer.nb(count_outcome ~ predictor + (1|group),
+         data = df)
+```
+
+**Family options**:
+
+- `binomial`: Logistic regression
+- `poisson`: Poisson regression
+- Use `glmer.nb()` for negative binomial (handles overdispersion)
+
+---
+
+## Convergence issues
+
+GLMMs are complex models. Common issues:
+
+**Convergence warnings**:
+
+- "Model failed to converge"
+- "Model is nearly unidentifiable"
+
+**Causes**:
+
+- Too many random effects for available data
+- Random effects variance near zero (singular fit)
+- Optimization stuck in local optimum
+
+**Solutions**:
+
+1. Simplify random effects structure
+2. Center/scale predictors
+3. Increase iterations: `control = glmerControl(optimizer = "bobyqa")`
+4. Try different optimizers
+5. Use Bayesian methods (brms) for more robust estimation
+
+---
+
+## Overdispersion in GLMMs
+
+Recall from [Poisson regression](poisson-regression.qmd): the Poisson model assumes $\text{Var}(Y) = \mathbb{E}[Y] = \lambda$.
+
+**Overdispersion**: $\text{Var}(Y) > \lambda$ due to:
+
+- Clustering (observations within groups are similar)
+- Heterogeneity (unmeasured factors vary across groups)
+
+**Random effects address overdispersion**:
+
+- Model the clustering/heterogeneity explicitly
+- Random effects "soak up" extra variance
+
+**Result**: Adding random effects can reduce/eliminate overdispersion.
+
+**Next section**: Demonstrate this with VALEX verb-frame data.
+
+---
+
+## Summary: GLMM theory
+
+**GLMMs extend GLMs** by adding random effects to the systematic component:
+
+$$\eta_{ij} = \mathbf{x}_{ij}^T \boldsymbol{\beta} + \mathbf{z}_{ij}^T \boldsymbol{\alpha}_i$$
+
+**Three components**:
+
+1. Random: Exponential family distribution
+2. Systematic: Fixed effects + random effects
+3. Link: Connects mean to linear predictor
+
+**Interpretation**:
+
+- Conditional (subject-specific) vs. marginal (population-average)
+- Non-linear links cause these to differ
+
+**Estimation**: Laplace approximation (lme4) or MCMC (Stan/brms)
+
+**Next**: Poisson GLMM example with VALEX data
+
+---

@@ -1,0 +1,183 @@
+---
+title: "The chi-squared test of independence"
+---
+
+The [Fisher's exact test page](fishers-exact-test.qmd) constructed a finite conditional reference distribution for a two by two table. The chi squared test of independence instead uses a large sample reference approximation. Suppose a corpus classifies 300 referring expressions by grammatical role and form.
+
+| | pronoun | full noun phrase | total |
+|---|---:|---:|---:|
+| subject | 120 | 30 | 150 |
+| object | 80 | 70 | 150 |
+| total | 200 | 100 | 300 |
+
+The [**chi-squared test of independence**](https://openstax.org/books/introductory-business-statistics-2e/pages/11-4-test-of-independence) compares each observed cell count with the count expected if grammatical role and referring-expression form were independent.
+
+## Construct one expected count
+
+Under independence,
+
+$$
+\mathbb{P}(\text{subject and pronoun})
+=
+\mathbb{P}(\text{subject})
+\mathbb{P}(\text{pronoun}).
+$$
+
+The marginal probabilities estimated from the table are
+
+$$
+\widehat{\mathbb{P}}(\text{subject})
+=\frac{150}{300}=.5
+$$
+
+and
+
+$$
+\widehat{\mathbb{P}}(\text{pronoun})
+=\frac{200}{300}=\frac{2}{3}.
+$$
+
+Multiplying this joint probability by the grand total gives the expected subject-pronoun count:
+
+$$
+E_{11}
+=300(.5)\left(\frac{2}{3}\right)
+=100.
+$$
+
+The same calculation can be written directly from the margins:
+
+$$
+E_{ij}
+=
+\frac{
+(\text{row }i\text{ total})
+\times
+(\text{column }j\text{ total})
+}{
+\text{grand total}
+}.
+$$
+
+The expected table under independence is
+
+| | pronoun | full noun phrase | total |
+|---|---:|---:|---:|
+| subject | 100 | 50 | 150 |
+| object | 100 | 50 | 150 |
+| total | 200 | 100 | 300 |
+
+The expected table has the same margins as the observed table. Only the allocation within rows differs.
+
+## Add the cell discrepancies
+
+Pearson's statistic is
+
+$$
+X^2
+=
+\sum_i\sum_j
+\frac{(O_{ij}-E_{ij})^2}{E_{ij}}.
+$$
+
+Every cell contributes a nonnegative quantity. For the subject-pronoun cell,
+
+$$
+\frac{(120-100)^2}{100}=4.
+$$
+
+For the subject-full-noun-phrase cell,
+
+$$
+\frac{(30-50)^2}{50}=8.
+$$
+
+The object row contributes the same two values:
+
+$$
+\frac{(80-100)^2}{100}=4
+$$
+
+and
+
+$$
+\frac{(70-50)^2}{50}=8.
+$$
+
+Thus
+
+$$
+X^2=4+8+4+8=24.
+$$
+
+Larger values record larger aggregate discrepancies from the independence table.
+
+## Determine the reference distribution
+
+For a table with $r$ rows and $c$ columns, the chi-squared reference distribution has
+
+$$
+\nu=(r-1)(c-1)
+$$
+
+degrees of freedom. Here,
+
+$$
+\nu=(2-1)(2-1)=1.
+$$
+
+Once the margins are fixed, only one cell can vary freely. Its value determines the other three counts, which gives the same one degree of freedom seen in the formula.
+
+The upper-tail probability is
+
+```{r}
+#| label: chi-squared-reference-table
+#| echo: true
+
+reference_table <- matrix(
+  c(120, 30,
+     80, 70),
+  nrow = 2,
+  byrow = TRUE
+)
+
+result <- chisq.test(reference_table, correct = FALSE)
+expected <- result$expected
+contributions <- (reference_table - expected)^2 / expected
+p_value <- pchisq(24, df = 1, lower.tail = FALSE)
+
+stopifnot(isTRUE(all.equal(as.numeric(expected), c(100, 100, 50, 50))))
+stopifnot(isTRUE(all.equal(sum(contributions), 24)))
+stopifnot(abs(p_value - 9.63357e-07) < 0.000000000001)
+
+expected
+contributions
+c(chisq = unname(result$statistic), p = p_value)
+```
+
+The p value is approximately $9.63\times10^{-7}$. The observed allocation would be highly unusual under the approximate independence reference model.
+
+## Localize the discrepancy
+
+The total statistic is omnibus. It shows that the complete table departs from independence, but it does not say that every imaginable comparison differs.
+
+The signed differences reveal the pattern. Subjects have 20 more pronouns and 20 fewer full noun phrases than expected. Objects show the reverse. Because each deviation is squared in $X^2$, the total statistic itself discards direction.
+
+An omnibus rejection does not identify which cells produce the association. Inspect observed counts, expected counts, and signed residuals to state where the association lies.
+
+## Check the approximation and independence
+
+The chi-squared reference distribution is a large-sample approximation. It tends to work better when expected cell counts are not sparse. Every expected count here is at least 50, so sparsity is not the main concern.
+
+Observation independence is separate. Repeated expressions from the same speaker or document can be dependent even when all expected counts are large. Large counts do not repair clustered sampling.
+
+For a sparse two-by-two table, [Fisher's exact test](fishers-exact-test.qmd) supplies a finite-sample conditional calculation. If multiple predictors, interactions, or repeated units matter, a regression model can represent more of the linguistic structure than either table test.
+
+## Check your understanding
+
+1. Calculate the expected object-pronoun count from the margins.
+2. Why does a two-by-two table have one degree of freedom once its margins are fixed?
+3. Which cells contribute most to $X^2$, and why?
+4. Why can document clustering invalidate the test even when every expected count is large?
+
+The next section develops [posterior distributions](posterior-distributions.qmd), which represent uncertainty about parameter values using a different inferential framework.

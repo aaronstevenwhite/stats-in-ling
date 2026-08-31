@@ -1,0 +1,158 @@
+---
+title: "Influence"
+---
+
+The [preceding page](leverage-and-influence.qmd) defined leverage from predictor position alone. But an unusual
+position need not change the fitted coefficients. [**Influence**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) measures the
+extent to which a fitted result depends on a particular observation.
+
+Influence asks a case-deletion question: how much would the
+fit change if observation $i$ were not used? This question combines the
+observation's predictor position with the mismatch between its response and the
+fitted conditional mean.
+
+## Compare two edge observations
+
+Consider predictor values
+
+$$
+\mathbf{x}=(2,3,4,5,11).
+$$
+
+The point at $x=11$ has high leverage. Now consider two possible responses for
+that point.
+
+In dataset A, the responses are
+
+$$
+\mathbf{y}_A=(6.1,6.4,6.5,6.8,8.0).
+$$
+
+In dataset B, only the last response changes:
+
+$$
+\mathbf{y}_B=(6.1,6.4,6.5,6.8,10.5).
+$$
+
+The last observation has the same leverage in both datasets because the
+predictor values are identical. But it should affect the fitted slope much more
+in dataset B because its response lies farther from the relation supported by
+the four central observations.
+
+## Ask the deletion question directly
+
+We can fit each dataset with and without the edge observation:
+
+```{r}
+#| label: compare-case-deleted-slopes
+#| echo: true
+dataset_a <- data.frame(
+  x = c(2, 3, 4, 5, 11),
+  y = c(6.1, 6.4, 6.5, 6.8, 8.0)
+)
+
+dataset_b <- transform(
+  dataset_a,
+  y = c(6.1, 6.4, 6.5, 6.8, 10.5)
+)
+
+fit_a <- lm(y ~ x, data = dataset_a)
+fit_b <- lm(y ~ x, data = dataset_b)
+
+fit_a_without_edge <- lm(y ~ x, data = dataset_a[-5, ])
+fit_b_without_edge <- lm(y ~ x, data = dataset_b[-5, ])
+
+rbind(
+  a_full = coef(fit_a),
+  a_without_edge = coef(fit_a_without_edge),
+  b_full = coef(fit_b),
+  b_without_edge = coef(fit_b_without_edge)
+)
+```
+
+Removing the edge observation changes the dataset B slope much more. This is a
+direct answer to the case-deletion question for one coefficient.
+
+## Summarize case deletion with Cook's distance
+
+Refitting a model after deleting every observation can produce many coefficient
+comparisons. Cook's distance summarizes the overall change in fitted values when
+observation $i$ is deleted:
+
+$$
+D_i
+=\frac{e_i^2}{p\widehat\sigma^2}
+\frac{h_{ii}}{(1-h_{ii})^2},
+$$
+
+where $e_i$ is the residual, $h_{ii}$ is the leverage,
+$\widehat\sigma^2$ is the fitted residual variance, and $p$ is the number of
+estimated coefficients.
+
+The formula exposes the two ingredients. A larger residual increases influence,
+and larger leverage increases influence. Neither ingredient alone guarantees a
+large Cook's distance.
+
+```{r}
+#| label: compare-cooks-distance
+#| echo: true
+cbind(
+  x = dataset_a$x,
+  leverage = hatvalues(fit_a),
+  cooks_a = cooks.distance(fit_a),
+  cooks_b = cooks.distance(fit_b)
+)
+```
+
+The last observation has the same leverage in both columns but a different
+Cook's distance. Its response determines whether the unusual predictor position
+substantially changes the fit.
+
+## Treat a large value as a question
+
+A large Cook's distance identifies an observation that deserves investigation.
+It does not decide that the observation is invalid. The useful sequence is:
+
+1. verify the measurement, transcription, and coding;
+2. check whether the observation belongs to the population targeted by the study;
+3. inspect which coefficient or fitted region changes under deletion; and
+4. report whether the theoretical conclusion depends on the observation.
+
+These steps answer different questions. A miscoded value can be corrected. A
+valid but unusual token cannot be deleted merely because it changes the result.
+
+Deleting an observation only because it produces an inconvenient effect estimate changes the sample using information about the desired
+conclusion. It can make the reported uncertainty much too small.
+
+## Connect influence to linguistic sampling
+
+Suppose a study of a rare syntactic construction contains one verb with many
+tokens in an unusual frame. Row-level Cook's distances ask about individual
+tokens. But the theoretical result may depend on the verb as a group. Deleting
+one token at a time may then make every value look modest even though deleting
+the verb changes the conclusion.
+
+The diagnostic unit should match the sampling claim. If the intended
+generalization concerns verbs, a verb-level deletion analysis is informative. If
+it concerns speakers, a speaker-level analysis is informative. This principle
+does not require a multilevel model, though later models represent these grouped
+sources of variation directly.
+
+## Report the sensitivity
+
+An influence analysis is most useful when it reports the quantity that changes.
+For instance: "Deleting verb V changed the frame coefficient from .42 to .17,
+while deleting any other verb changed it by less than .04." This statement lets
+the reader evaluate the concentration of evidence.
+
+A statement that "no influential observations were found" is weaker unless the
+analysis defines the diagnostic, the unit of deletion, and the consequence that
+was examined.
+
+::: {.callout-note title="Answer the case-deletion question"}
+1. Why can two observations with the same leverage have different influence?
+2. Which two quantities enter Cook's distance?
+3. Why does a large Cook's distance not by itself license deletion?
+4. If the scientific generalization concerns verbs, why might deleting one row
+   at a time answer the wrong question?
+:::

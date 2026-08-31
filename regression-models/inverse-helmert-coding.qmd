@@ -1,0 +1,179 @@
+---
+title: "Earlier-versus-later Helmert contrasts"
+---
+
+The [Helmert-coding page](helmert-coding.qmd) constructed a sequence in which each later level was compared
+with the average of earlier levels. We can reverse the grouping question. At
+each step, compare an earlier level with the average of the levels that follow
+it.
+
+This contrast family is usually called [**reverse Helmert contrasts**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/contrast.html). Some sources use *inverse Helmert contrasts*. The displayed matrix, rather than the label alone, determines the interpretation.
+
+Suppose a stress factor has three ordered levels: primary stress, secondary
+stress, and unstressed. A phonetic hypothesis might compare primary stress with
+the average of the two weaker categories, then compare secondary stress with
+unstressed.
+
+One unscaled reverse Helmert matrix is
+
+$$
+\begin{array}{c|rr}
+&C_1&C_2\\\hline
+\text{primary}&2&0\\
+\text{secondary}&-1&1\\
+\text{unstressed}&-1&-1
+\end{array}.
+$$
+
+The first column compares primary stress with the average of secondary and
+unstressed. The second compares secondary stress with unstressed.
+
+## Derive the coefficient meanings
+
+The linear predictor is
+
+$$
+\eta_i=\beta_0+\beta_1C_{1i}+\beta_2C_{2i}.
+$$
+
+Substituting each row gives
+
+$$
+\eta_{\text{primary}}=\beta_0+2\beta_1,
+$$
+
+$$
+\eta_{\text{secondary}}=\beta_0-\beta_1+\beta_2,
+$$
+
+and
+
+$$
+\eta_{\text{unstressed}}=\beta_0-\beta_1-\beta_2.
+$$
+
+The primary-minus-weaker-average comparison is
+
+$$
+\begin{aligned}
+\eta_{\text{primary}}
+-\frac{\eta_{\text{secondary}}+\eta_{\text{unstressed}}}{2}
+&=(\beta_0+2\beta_1)-(\beta_0-\beta_1)\\
+&=3\beta_1.
+\end{aligned}
+$$
+
+The secondary-minus-unstressed comparison is
+
+$$
+\eta_{\text{secondary}}-\eta_{\text{unstressed}}=2\beta_2.
+$$
+
+The coefficients encode the reverse Helmert comparisons after accounting for column scaling. Dividing
+the first column by 3 and the second by 2 would make each coefficient equal the
+corresponding raw mean difference.
+
+## When the comparisons are meaningful
+
+ELCs are useful when a theory distinguishes one leading category from a set of
+categories ordered below it. For the stress example, the first hypothesis groups
+secondary and unstressed as weaker than primary stress. The second asks whether
+the two weaker categories are themselves different.
+
+This interpretation requires more than a meaningful order. It requires the
+particular nested groupings encoded by the columns. Applying reverse Helmert contrasts to an unordered
+set of dialects would create arbitrary comparisons. Applying them to an ordered
+factor is also unmotivated if the theory asks for different groupings.
+
+Ordering alone does not justify reverse Helmert contrasts. Order makes the comparison sequence possible. It does not make
+that sequence theoretically relevant.
+
+## Inspect predictions as a check
+
+No full-rank contrast matrix changes the fitted mean for each factor level when
+the same complete model is used. After fitting, reconstruct the level means and
+verify that the coefficient interpretation matches the matrix.
+
+```{r}
+#| label: construct-earlier-versus-later-contrasts
+#| echo: true
+stress_data <- data.frame(
+  stress = factor(
+    c("primary", "secondary", "unstressed"),
+    levels = c("primary", "secondary", "unstressed")
+  )
+)
+
+elc <- matrix(
+  c(2, -1, -1,
+    0,  1, -1),
+  nrow = 3,
+  ncol = 2
+)
+
+colnames(elc) <- c("primary_vs_weaker", "secondary_vs_unstressed")
+rownames(elc) <- levels(stress_data$stress)
+
+contrasts(stress_data$stress) <- elc
+contrasts(stress_data$stress)
+```
+
+Constructing the matrix explicitly makes the sign and grouping visible. A
+package function may use the opposite sign, a different scaling, or the opposite
+naming convention. Do not infer the coefficient meaning from a function name
+alone.
+
+## Reconstruct a numerical example
+
+Suppose the fitted duration means are 120 milliseconds for primary stress, 92
+for secondary stress, and 76 for unstressed syllables. The first reverse Helmert comparison is
+
+$$
+120-\frac{92+76}{2}=36.
+$$
+
+Under the unscaled matrix,
+
+$$
+\beta_1=\frac{36}{3}=12.
+$$
+
+The second reverse Helmert comparison is
+
+$$
+92-76=16,
+$$
+
+so
+
+$$
+\beta_2=\frac{16}{2}=8.
+$$
+
+The intercept is the unweighted average of the three means:
+
+$$
+\beta_0=\frac{120+92+76}{3}=96.
+$$
+
+Substituting $(\beta_0,\beta_1,\beta_2)=(96,12,8)$ into the three design rows
+recovers 120, 92, and 76.
+
+## Keep sign and grouping separate
+
+Multiplying an entire contrast column by $-1$ reverses the sign of its
+coefficient. The fitted category means remain unchanged. Reordering factor
+levels, in contrast, can change which categories are grouped together. These are
+different operations.
+
+For this reason, state the comparison in words and provide the
+matrix. "We used reverse Helmert contrasts" is not enough when the terminology and
+sign convention can vary.
+
+::: {.callout-note title="Recover the reverse Helmert coefficients"}
+1. What does the second reverse Helmert contrast compare in the displayed three-level factor?
+2. Why is the primary-minus-weaker-average difference equal to $3\beta_1$?
+3. Verify the three fitted means using $(96,12,8)$.
+4. Explain why an ordered factor does not by itself justify reverse Helmert contrasts.
+5. Why should a report provide the matrix in addition to a contrast-family name?
+:::

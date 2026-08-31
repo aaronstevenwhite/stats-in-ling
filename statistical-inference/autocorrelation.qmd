@@ -1,0 +1,100 @@
+---
+title: "Autocorrelation in a Markov chain"
+---
+
+The $\widehat{R}$ page compared different chains. We now use the [correlation concept introduced earlier](../random-variables-and-distributions/correlation.qmd) to describe dependence across iterations within one [Markov chain](markov-chains.qmd). Suppose one chain contains saved draws for a consonant duration parameter:
+
+$$
+.10,.12,.13,.15,.14,.18,\ldots
+$$
+
+Adjacent values are similar because the sampler moves through the posterior gradually. The [**autocorrelation**](https://mc-stan.org/docs/2_31/reference-manual/effective-sample-size.html) measures the association between a sequence and a shifted copy of itself.
+
+## Construct lagged pairs
+
+At lag one, align every draw except the last with the following draw:
+
+| draw at $s$ | draw at $s+1$ |
+|---:|---:|
+| $.10$ | $.12$ |
+| $.12$ | $.13$ |
+| $.13$ | $.15$ |
+| $.15$ | $.14$ |
+| $.14$ | $.18$ |
+
+The correlation between these columns is the empirical lag-one autocorrelation.
+
+For a stationary chain, the population autocorrelation at lag $t$ is
+
+$$
+\rho_t
+=
+\operatorname{Cor}
+(\Theta^{(s)},\Theta^{(s+t)}).
+$$
+
+Lag one compares adjacent draws. Lag ten compares draws separated by ten transitions. A chain of length 1,000 supplies 999 lag-one pairs and 990 lag-ten pairs.
+
+## Read the autocorrelation function
+
+The sequence
+
+$$
+\rho_1,\rho_2,\rho_3,\ldots
+$$
+
+is the [**autocorrelation function**](https://mc-stan.org/docs/2_31/reference-manual/effective-sample-size.html) (ACF). Rapid decay toward zero suggests that dependence weakens over a small number of transitions. Slow decay means that information about one draw persists across many later draws.
+
+An autoregressive sequence supplies a controlled illustration:
+
+$$
+X_s=.85X_{s-1}+\varepsilon_s.
+$$
+
+Its theoretical autocorrelation is $\rho_t=.85^t$.
+
+```{r}
+#| label: autocorrelation-duration-coefficient
+#| echo: true
+
+set.seed(829)
+draws <- as.numeric(
+  arima.sim(model = list(ar = .85), n = 5000)
+)
+empirical_acf <- as.numeric(
+  acf(draws, lag.max = 10, plot = FALSE)$acf
+)
+
+stopifnot(abs(empirical_acf[2] - .85) < .05)
+data.frame(
+  lag = 0:10,
+  empirical = empirical_acf,
+  theoretical = .85^(0:10)
+)
+```
+
+The entry at lag zero is one because a sequence is perfectly correlated with itself. The following entries estimate dependence across increasing separation.
+
+## Separate target correctness from efficiency
+
+High autocorrelation does not by itself imply the wrong stationary distribution. A transition can preserve the correct posterior while moving through it slowly. The problem is efficiency for a finite run.
+
+When adjacent draws are nearly repetitions, 5,000 saved values contain less information about a posterior mean than 5,000 independent target draws. Strong positive autocorrelation thus increases Monte Carlo error for a fixed raw draw count.
+
+Negative autocorrelation can instead make alternating draws offset one another and may improve precision for some averages. The complete autocorrelation pattern matters, not only the lag-one value.
+
+Autocorrelation does not by itself make a stationary chain invalid or a Monte Carlo estimate biased. It primarily changes the variance of Monte Carlo estimates when the chain explores the target. Failure to reach a target region is a different problem.
+
+## Do not thin by default
+
+Keeping every tenth draw reduces visible autocorrelation in the stored sequence, but it also discards information. Unless storage or downstream computation is limiting, retaining draws and accounting for their dependence is usually more informative than routine thinning.
+
+## Check your understanding
+
+1. How many aligned pairs enter lag 25 for a chain of length 1,000?
+2. What does slow ACF decay show about saved draws?
+3. Why can a correct chain still have high autocorrelation?
+4. Why does thinning not create new information?
+5. Why can two chains with the same lag-one autocorrelation still have different long-lag efficiency?
+
+The [effective-sample-size page](effective-sample-size.qmd) translates the dependence pattern into an information-equivalent draw count.

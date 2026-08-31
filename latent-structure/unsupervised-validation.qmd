@@ -1,0 +1,256 @@
+---
+title: "Validation without outcome labels"
+---
+
+The earlier chapters on [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd) and [cross-validation](../model-criticism-and-prediction/cross-validation.qmd) assumed an observed response. A clustering has no observed cluster label that the fitting procedure is meant to predict. We still need a quantity that learned structure can predict for rows excluded from fitting.
+
+For K-means, the fitted centroids predict each held-out row by its nearest training centroid. The squared distance to that centroid is the held-out nearest-centroid loss. It asks whether centroids learned from training objects provide a compact representation of new objects under the same distance and scaling.
+
+We first define one held-out prediction and calculate it by hand. We then place preprocessing and centroid fitting inside a validation loop, compare candidate group counts through paired row losses, and separate computational repetitions from linguistic sampling units.
+
+## Predict a held-out row
+
+Let
+
+$$
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_1,
+\ldots,
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_K
+$$
+
+be centroids estimated from the training rows. A held-out row $\mathbf{x}_i$ is assigned to the nearest fixed centroid:
+
+$$
+\widehat{z}_i
+=
+\underset{k\in\{1,\ldots,K\}}{\operatorname{argmin}}
+\left\lVert
+\mathbf{x}_i-
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_k
+\right\rVert^2.
+$$
+
+Its loss is
+
+$$
+L_i
+=
+\min_k
+\left\lVert
+\mathbf{x}_i-
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_k
+\right\rVert^2.
+$$
+
+The row does not update the centroids before it is scored. It is represented by structure learned from other rows.
+
+## Work through one new speaker
+
+Suppose two training centroids are
+
+$$
+\widehat{\boldsymbol{\mu}}_1=(0,1)
+\qquad\text{and}\qquad
+\widehat{\boldsymbol{\mu}}_2=(5,5).
+$$
+
+A held-out speaker has scaled profile
+
+$$
+\mathbf{x}_{\mathrm{test}}=(1,2).
+$$
+
+Its squared distance to centroid 1 is
+
+$$
+(1-0)^2+(2-1)^2
+=
+1+1
+=
+2.
+$$
+
+Its squared distance to centroid 2 is
+
+$$
+(1-5)^2+(2-5)^2
+=
+16+9
+=
+25.
+$$
+
+The predicted assignment is cluster 1, and the held-out nearest-centroid loss is 2. The assignment is part of producing the prediction. The evaluation target is the numerical loss, since no observed cluster label is available.
+
+## Keep preprocessing inside the training fold
+
+Suppose the raw features require standardization. For each validation split, estimate
+
+$$
+\bar{x}^{\mathrm{train}}_m
+\qquad\text{and}\qquad
+s^{\mathrm{train}}_m
+$$
+
+from the training rows only. Transform both sets using those training values:
+
+$$
+z^{\mathrm{train}}_{im}
+=
+\frac{x^{\mathrm{train}}_{im}-\bar{x}^{\mathrm{train}}_m}
+{s^{\mathrm{train}}_m}
+$$
+
+and
+
+$$
+z^{\mathrm{test}}_{im}
+=
+\frac{x^{\mathrm{test}}_{im}-\bar{x}^{\mathrm{train}}_m}
+{s^{\mathrm{train}}_m}.
+$$
+
+Then fit centroids to the transformed training rows and score transformed test rows against those fixed centroids.
+
+This sequence prevents [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage). Test rows cannot influence the origin, scale, or centers used to evaluate them.
+
+## Implement one validation split
+
+```{r}
+#| eval: false
+
+train_center <- colMeans(X[train, , drop = FALSE])
+train_scale <- apply(
+  X[train, , drop = FALSE],
+  2,
+  sd
+)
+
+X_train <- sweep(
+  X[train, , drop = FALSE],
+  2,
+  train_center,
+  "-"
+)
+
+X_train <- sweep(
+  X_train,
+  2,
+  train_scale,
+  "/"
+)
+
+X_test <- sweep(
+  X[test, , drop = FALSE],
+  2,
+  train_center,
+  "-"
+)
+
+X_test <- sweep(
+  X_test,
+  2,
+  train_scale,
+  "/"
+)
+```
+
+Fit the K-means model on `X_train`.
+
+```{r}
+#| eval: false
+
+set.seed(214)
+
+fit_train <- kmeans(
+  X_train,
+  centers = K,
+  nstart = 50
+)
+```
+
+Compute squared distance from every test row to every training centroid.
+
+```{r}
+#| eval: false
+
+squared_distance <- sapply(
+  seq_len(K),
+  function(k) {
+    rowSums(
+      sweep(
+        X_test,
+        2,
+        fit_train$centers[k, ],
+        "-"
+      )^2
+    )
+  }
+)
+
+test_loss <- apply(
+  squared_distance,
+  1,
+  min
+)
+```
+
+The vector `test_loss` retains one held-out loss per row. Keeping these pointwise values allows paired model comparisons and group-level aggregation.
+
+## Compare candidate values of $K$
+
+The same held-out row can receive loss under $K=2$ and $K=3$. Define the paired difference
+
+$$
+d_i
+=
+L_{i,K=3}-L_{i,K=2}.
+$$
+
+A negative value favors three centroids for row $i$. A positive value favors two.
+
+Suppose one row has loss 2.0 under $K=2$ and 1.5 under $K=3$. Its difference is
+
+$$
+d_i=1.5-2.0=-0.5.
+$$
+
+The third centroid reduces nearest-centroid loss for this row by half a squared unit. The aggregate comparison should summarize such paired differences at the sampling unit required by the claim.
+
+## Match the split to the new unit
+
+If each row is one independent participant and the target is another participant from the represented population, row-level folds may be appropriate. If several rows come from one household, site, or speaker, those related rows should move together whenever that group must be new.
+
+Otherwise, training data may contain another record from the supposedly held-out group. The score then evaluates another record from a represented group.
+
+The absence of response labels does not remove the need to define the unit that must be new at evaluation time.
+
+## Do not treat repeated folds as new samples
+
+Repeating cross-validation across seeds can reveal sensitivity to the split. It does not create new speakers. The folds reuse rows, and their training sets overlap.
+
+A t test over 100 seed-level mean losses would make uncertainty shrink because the analyst repeated the computation. It would not represent variation across newly sampled linguistic units.
+
+Use repeated splits for algorithmic sensitivity. Use pointwise losses, aggregation at the declared group, a group bootstrap, or an explicit sampling model for inferential uncertainty.
+
+## Lower nearest-centroid loss is not category recovery
+
+Lower held-out centroid loss means that training centroids represent new rows more compactly under the declared geometry. It does not show that the clusters correspond to natural speaker types or phonological categories.
+
+External variables withheld from fitting may help interpret the learned assignments. Stability across samples may show that the representation recurs. These checks add evidence, but neither converts a centroid into a linguistic category by definition.
+
+Clustering without a gold label cannot be validated against category truth. That does not make every form of validation impossible. The held-out nearest-centroid target evaluates a stated consequence of the centroids without assuming that the true categories are known.
+
+## Check the held-out target
+
+1. Which centroid predicts the held-out row $(1,2)$ in the worked example?
+2. Why is its loss 2 rather than 25?
+3. Which means and standard deviations transform the test rows?
+4. What does a negative paired difference $d_i=L_{i,3}-L_{i,2}$ mean?
+5. Why must all rows from one household move together when evaluating a household absent during fitting?
+6. Why do 100 repeated splits not provide 100 independent samples of speakers?
+7. What does lower held-out nearest-centroid loss establish, and what category claim does it not establish?
+
+## Before introducing probability components
+
+Held-out nearest-centroid loss evaluates whether K-means centroids learned from training rows place excluded rows near a training centroid. The calculation retains K-means geometry and assigns each row to its nearest center. The [next page](gaussian-mixtures.qmd) replaces that geometry with a probability model in which components can have different spreads and every observation receives density from every component.

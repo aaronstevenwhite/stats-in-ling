@@ -1,0 +1,209 @@
+---
+title: "Silhouette widths"
+---
+
+The [within-cluster sum of squares](within-cluster-loss.qmd) measures distance from each row to its assigned centroid. It does not ask whether that row lies just as close to another cluster. A speaker can be near one centroid and still sit on the boundary between two groups.
+
+A [**silhouette width**](https://stat.ethz.ch/R-manual/R-devel/library/cluster/html/silhouette.html) compares the row's average distance within its assigned cluster with its average distance to the nearest alternative cluster. It is a row-level diagnostic of cohesion relative to separation.
+
+We first define the two distances that enter the score. We then calculate positive and negative silhouettes by hand, implement the diagnostic in R, and explain why a high silhouette remains relative to the chosen distance and scaling.
+
+## Define within-cluster cohesion
+
+Let $C(i)$ be the cluster containing row $i$. The average distance from row $i$ to the other rows in that cluster is
+
+$$
+a(i)
+=
+\frac{1}{|C(i)|-1}
+\sum_{
+j\in C(i),\ j\neq i
+}
+d(\mathbf{x}_i,\mathbf{x}_j).
+$$
+
+A small $a(i)$ means that row $i$ lies near the other rows assigned to its cluster. The quantity is the row's mean intra-cluster distance.
+
+The definition uses distances between rows rather than distance to the centroid. Thus, it can be applied to a declared partition even when the grouping method did not use centroids.
+
+## Define the nearest alternative
+
+For another cluster $C$, calculate row $i$'s average distance to all rows in that cluster:
+
+$$
+d(i,C)
+=
+\frac{1}{|C|}
+\sum_{j\in C}
+d(\mathbf{x}_i,\mathbf{x}_j).
+$$
+
+The nearest alternative-cluster distance is
+
+$$
+b(i)
+=
+\min_{C\neq C(i)}d(i,C).
+$$
+
+A large $b(i)$ means that even the closest competing cluster lies far from row $i$. The comparison uses the nearest alternative because a partition is only as separated as its most plausible competitor for that row.
+
+## Combine cohesion and separation
+
+The silhouette is
+
+$$
+s(i)
+=
+\frac{b(i)-a(i)}
+{\max\{a(i),b(i)\}}.
+$$
+
+Its value lies between $-1$ and 1. If $b(i)\geq a(i)$, then
+
+$$
+s(i)
+=
+1-\frac{a(i)}{b(i)},
+$$
+
+which lies between 0 and 1. If $a(i)>b(i)$, then
+
+$$
+s(i)
+=
+\frac{b(i)}{a(i)}-1,
+$$
+
+which lies between $-1$ and 0.
+
+Positive values indicate that the row is closer on average to its assigned cluster. Negative values indicate that another cluster is closer on average. Values near zero indicate an ambiguous boundary under the declared distance.
+
+## Calculate a positive silhouette
+
+Suppose a speaker's average distance to the assigned cluster is
+
+$$
+a(i)=0.8,
+$$
+
+and the average distance to the nearest alternative cluster is
+
+$$
+b(i)=2.0.
+$$
+
+Since $b(i)$ is larger, the denominator is 2.0:
+
+$$
+\begin{aligned}
+s(i)
+&=
+\frac{2.0-0.8}{2.0}\\
+&=
+\frac{1.2}{2.0}\\
+&=0.60.
+\end{aligned}
+$$
+
+The speaker is substantially closer to the assigned group than to the nearest alternative under this distance.
+
+## Calculate a negative silhouette
+
+Now suppose
+
+$$
+a(i)=1.5
+\qquad\text{and}\qquad
+b(i)=1.2.
+$$
+
+The denominator is 1.5, so
+
+$$
+\begin{aligned}
+s(i)
+&=
+\frac{1.2-1.5}{1.5}\\
+&=
+\frac{-0.3}{1.5}\\
+&=-0.20.
+\end{aligned}
+$$
+
+The negative score says that, on average, this row lies closer to another cluster than to its assigned cluster. It identifies a row for inspection. It does not automatically justify moving the row, since the fitted objective and the silhouette use different summaries.
+
+## Compute the scores in R
+
+The `cluster` package combines a declared partition with a distance matrix.
+
+```{r}
+#| eval: false
+
+distance_matrix <- dist(
+  X_scaled,
+  method = "euclidean"
+)
+
+sil <- cluster::silhouette(
+  fit_k2$cluster,
+  distance_matrix
+)
+
+head(sil)
+```
+
+The result stores each row's assigned cluster, nearest alternative cluster, and silhouette width. The sample mean is
+
+```{r}
+#| eval: false
+
+mean(sil[, "sil_width"])
+```
+
+Plot the row-level values rather than reporting only this mean.
+
+```{r}
+#| eval: false
+
+plot(sil)
+```
+
+A moderate mean may hide one cluster containing many negative values. Those rows may mark overlap, an unsuitable distance, or a partition driven by a few dense regions.
+
+## Handle singleton clusters carefully
+
+If row $i$ is the only member of its assigned cluster, $a(i)$ has no other row to average. A common convention assigns silhouette zero to a singleton.
+
+This convention should not be interpreted as evidence that the singleton lies on an ordinary boundary. It says that within-cluster cohesion is undefined from pairwise neighbors. A candidate partition with many singleton clusters may require direct inspection rather than reliance on its mean silhouette.
+
+For a singleton cluster, the numerical convention does not create within-cluster evidence where no within-cluster pair exists.
+
+## The score depends on distance and scaling
+
+Every $a(i)$ and $b(i)$ is calculated from the chosen distances. Changing column scaling changes the pairwise distances and may change the nearest alternative cluster.
+
+Suppose raw token counts dominate a language-use matrix. A high silhouette may then describe separation almost entirely along token count. Standardizing the columns may produce a different conclusion. Neither score is independent of the representation.
+
+A high silhouette width retains a precise interpretation: rows are cohesive and separated under this particular distance and scaling. The linguistic claim should retain that condition.
+
+## Compact separation is not the only category shape
+
+Silhouettes tend to reward compact groups separated by gaps. Linguistic categories may overlap systematically, vary in spread, or form a continuum while still supporting a useful theory.
+
+Thus, the candidate with the largest mean silhouette is best only among the tried partitions under this score. It does not establish that the world contains exactly that number of discrete groups.
+
+External variables can help interpret the partition, while held-out validation can ask whether the learned centers represent new rows. Neither question is answered by the fitted silhouette alone.
+
+## Check cohesion and separation
+
+1. What does $a(i)$ average?
+2. Why does $b(i)$ use the nearest alternative cluster?
+3. What does a silhouette of $-0.20$ suggest about the row's average distances?
+4. Why can a mean silhouette hide a poorly represented cluster?
+5. How does a change in scaling alter the silhouette calculation?
+6. Why is a singleton silhouette of zero a convention rather than evidence of ordinary boundary membership?
+
+## Before holding out rows
+
+A silhouette compares each row's cohesion with its nearest alternative under a declared distance. It diagnoses the fitted partition one row at a time but remains tied to the same observations and geometry used to form the groups. The [next page](unsupervised-validation.qmd) asks whether centroids estimated from training rows reconstruct rows excluded from fitting.

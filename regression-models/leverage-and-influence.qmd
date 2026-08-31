@@ -1,0 +1,154 @@
+---
+title: "Leverage"
+---
+
+The [residual diagnostics](checking-linear-regression.qmd) ask whether responses depart from fitted means in systematic ways. Leverage instead concerns where each observation falls among the predictor values used to fit the line.
+
+Residual size tells us whether a response lies far from its fitted conditional
+mean. It does not tell us whether the observation occupies an unusual position
+on the predictor. [**Leverage**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) measures the second property.
+
+This distinction matters because an observation at the edge of the predictor
+range can help determine the fitted slope even when its response lies close to
+the fitted line. Leverage quantifies this unusual predictor position.
+
+## Compare positions on one predictor
+
+Consider five words with predictor values
+
+$$
+\mathbf{x}=(2,3,4,5,11).
+$$
+
+The sample mean is
+
+$$
+\bar x=5.
+$$
+
+The word at $x=11$ is six units above the mean, while the word at $x=4$ is one
+unit below it. The first word occupies a more unusual design position, regardless
+of its observed response.
+
+For simple linear regression with an intercept, observation $i$ has leverage
+
+$$
+h_{ii}
+=\frac{1}{n}
++\frac{(x_i-\bar x)^2}
+{\sum_{j=1}^n(x_j-\bar x)^2}.
+$$
+
+The first term gives every observation the same baseline leverage. The second
+term increases with squared distance from the predictor mean.
+
+For the five predictor values,
+
+$$
+\sum_{j=1}^5(x_j-\bar x)^2
+=(-3)^2+(-2)^2+(-1)^2+0^2+6^2
+=50.
+$$
+
+The leverage at $x=4$ is
+
+$$
+h
+=\frac15+\frac{(-1)^2}{50}
+=.22.
+$$
+
+The leverage at $x=11$ is
+
+$$
+h
+=\frac15+\frac{6^2}{50}
+=.92.
+$$
+
+The edge observation has very high leverage because its predictor value is far
+from the center of this design.
+
+## Calculate every leverage value
+
+```{r}
+#| label: calculate-simple-leverage
+#| echo: true
+x <- c(2, 3, 4, 5, 11)
+n <- length(x)
+
+leverage_by_hand <-
+  1 / n + (x - mean(x))^2 / sum((x - mean(x))^2)
+
+data.frame(x = x, leverage = leverage_by_hand)
+sum(leverage_by_hand)
+```
+
+With an intercept and one predictor, the leverage values sum to 2. This is the
+number of fitted coefficients. Their average is thus $2/n$, which gives a
+useful reference for identifying observations far above the design's usual
+leverage.
+
+The reference is descriptive, not an automatic deletion rule. A high-leverage
+observation may be exactly the observation needed to study the edge of a
+linguistically relevant range.
+
+## Retrieve leverage from a fitted model
+
+Leverage depends only on the predictor values used to fit the model. We can
+attach any response values to verify the software calculation:
+
+```{r}
+#| label: retrieve-fitted-leverage
+#| echo: true
+design_example <- data.frame(
+  x = x,
+  y = c(6.1, 6.4, 6.5, 6.8, 8.0)
+)
+
+fit <- lm(y ~ x, data = design_example)
+
+cbind(
+  by_hand = leverage_by_hand,
+  from_model = hatvalues(fit)
+)
+```
+
+The columns agree. If we changed all five responses but kept the predictor
+values fixed, the leverage values would remain unchanged.
+
+## Separate leverage from residual size
+
+An observation may have high leverage and a small residual. The point at $x=11$
+could lie almost exactly on the fitted line while still anchoring its right end.
+In contrast, a point near $x=5$ could have a very unusual response and a large
+residual while occupying an ordinary predictor position.
+
+This gives two separate questions:
+
+1. Is the response far from its fitted conditional mean?
+2. Is the predictor value far from the center of the observed design?
+
+Residuals answer the first. Leverage answers the second. A large residual and high leverage are thus different properties of an observation.
+
+## Interpret high leverage in a linguistic design
+
+Suppose the predictor is corpus frequency. A genuinely rare word may have high
+leverage after log frequency is entered into a small sample. Its position is not
+necessarily a recording error. It may instead reveal that the sample contains
+little information near that end of the frequency range.
+
+The first response should be to inspect the design and the observation's
+provenance. Is the value coded correctly? Does it belong to the target
+population? Is the edge of the range theoretically relevant? Only then should
+we ask how strongly it affects the fitted coefficients.
+
+That final question is influence, which the [next page](influence.qmd) introduces
+using case deletion.
+
+::: {.callout-note title="Locate the unusual design position"}
+1. Calculate the leverage for $x=5$ in the five-value example.
+2. Why can leverage be calculated without looking at the responses?
+3. Construct a case with high leverage and a small residual.
+4. Explain why residual magnitude and leverage answer different questions.
+:::

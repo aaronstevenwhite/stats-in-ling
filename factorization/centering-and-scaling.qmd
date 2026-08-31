@@ -1,0 +1,238 @@
+---
+title: "Centering and scaling"
+---
+
+A linguistic data matrix may combine variables with different origins and units. Formant frequencies may be measured in hertz, duration in milliseconds, and ratings on a seven point scale. We have already used centering to change a [predictor's reference point](../regression-models/centering-predictors.qmd) and used standardization before calculating [distances](../latent-structure/distance-and-scaling.qmd). This page briefly recalls those operations and then expresses them for a complete matrix.
+
+Centering changes a column's origin. Scaling changes its unit. Together they define the coordinate system in which later matrix structure will be measured.
+
+This page develops both operations as parts of one column transformation. We first calculate them for three durations, then express them for a complete matrix, and finally implement a training-based transformation that can be applied unchanged to new observations.
+
+## Centering changes the origin
+
+Let column $j$ contain $n$ observations. Its sample mean is
+
+$$
+\bar{x}_j
+=
+\frac{1}{n}
+\sum_{i=1}^{n}x_{ij}.
+$$
+
+The centered entry is
+
+$$
+x^c_{ij}=x_{ij}-\bar{x}_j.
+$$
+
+Suppose a duration column contains 100, 120, and 140 milliseconds. Its mean is
+
+$$
+\bar{x}
+=
+\frac{100+120+140}{3}
+=
+120.
+$$
+
+Subtracting this mean gives
+
+$$
+\begin{bmatrix}
+100\\120\\140
+\end{bmatrix}
+-
+\begin{bmatrix}
+120\\120\\120
+\end{bmatrix}
+=
+\begin{bmatrix}
+-20\\0\\20
+\end{bmatrix}.
+$$
+
+Zero now means the observed column mean. A value of $-20$ means 20 ms below that mean, and a value of 20 means 20 ms above it.
+
+Centering does not reduce the differences among the observations. The original range was $140-100=40$ ms, and the centered range is $20-(-20)=40$ ms. The operation changes the reference point from zero milliseconds to the sample mean.
+
+## Express centering for a matrix
+
+Collect the $p$ column means in
+
+$$
+\boldsymbol{\mu}^{\mathsf T}
+=
+\begin{bmatrix}
+\bar{x}_1&\bar{x}_2&\cdots&\bar{x}_p
+\end{bmatrix}.
+$$
+
+Let $\mathbf{1}_n$ be an $n$-element column vector of ones. Repeating the mean row $n$ times gives $\mathbf{1}_n\boldsymbol{\mu}^{\mathsf T}$. The centered matrix is thus
+
+$$
+\mathbf{X}_c
+=
+\mathbf{X}
+-
+\mathbf{1}_n\boldsymbol{\mu}^{\mathsf T}.
+$$
+
+Every column of $\mathbf{X}_c$ has sample mean zero. The row and column meanings remain unchanged. Only the column origins move.
+
+## Scaling changes the unit
+
+The sample standard deviation of column $j$ is
+
+$$
+s_j
+=
+\sqrt{
+\frac{1}{n-1}
+\sum_{i=1}^{n}
+(x_{ij}-\bar{x}_j)^2
+}.
+$$
+
+For the duration values, the sum of squared centered values is
+
+$$
+(-20)^2+0^2+20^2=800.
+$$
+
+Thus, the sample variance is $800/(3-1)=400$, and the sample standard deviation is 20 ms. Dividing the centered values by 20 gives
+
+$$
+\begin{bmatrix}
+-20/20\\0/20\\20/20
+\end{bmatrix}
+=
+\begin{bmatrix}
+-1\\0\\1
+\end{bmatrix}.
+$$
+
+The standardized entry is generally
+
+$$
+z_{ij}
+=
+\frac{x_{ij}-\bar{x}_j}{s_j}.
+$$
+
+The transformed column has sample mean zero and sample standard deviation one. A difference of one unit now means a difference of one observed standard deviation for that variable.
+
+## Express scaling for a matrix
+
+Let $\mathbf{S}$ be the diagonal matrix of column standard deviations:
+
+$$
+\mathbf{S}
+=
+\begin{bmatrix}
+s_1&0&\cdots&0\\
+0&s_2&\cdots&0\\
+\vdots&\vdots&\ddots&\vdots\\
+0&0&\cdots&s_p
+\end{bmatrix}.
+$$
+
+When every $s_j$ is positive, the standardized matrix is
+
+$$
+\mathbf{Z}
+=
+\mathbf{X}_c\mathbf{S}^{-1}.
+$$
+
+Right multiplication by $\mathbf{S}^{-1}$ divides column $j$ by $s_j$. This matrix expression is the same operation carried out in the hand calculation.
+
+## Decide whether equal variance is intended
+
+Suppose one column ranges from 0 to 1 and another ranges from 0 to 3000. Without scaling, squared variation in the second column may dominate merely because its unit is numerically larger. Measuring the second column in kilohertz instead of hertz would change that dominance even though the acoustic observations were identical.
+
+Standardization removes this unit dependence by giving every nonconstant column variance one. But equal variance is itself a modeling decision. If three columns are noisy measurements and one is reliable, standardization gives each noisy column the same initial variance as the reliable column.
+
+Binary variables require similar care. A rare property has a smaller raw variance than a balanced property. Standardizing both gives them equal variance before factorization, which increases the relative weight of the rare property. That may be appropriate, but it should follow from the representation target rather than from a default setting.
+
+Standardization gives every column unit sample variance before the factorization. This weighting decision should be stated explicitly because it determines how much each measured variable can contribute to the fitted components.
+
+## Compute and store the transformation
+
+The base R function `scale()` carries out both operations.
+
+```{r}
+#| eval: false
+
+X_centered <- scale(
+  X,
+  center = TRUE,
+  scale = FALSE
+)
+
+X_standardized <- scale(
+  X,
+  center = TRUE,
+  scale = TRUE
+)
+
+colMeans(X_centered)
+apply(X_standardized, 2, sd)
+```
+
+The fitted means and standard deviations are stored as attributes.
+
+```{r}
+#| eval: false
+
+training_means <- attr(X_standardized, "scaled:center")
+training_sds <- attr(X_standardized, "scaled:scale")
+
+training_means
+training_sds
+```
+
+For a new matrix `X_new`, apply those same values.
+
+```{r}
+#| eval: false
+
+X_new_standardized <- sweep(
+  X_new,
+  MARGIN = 2,
+  STATS = training_means,
+  FUN = "-"
+)
+
+X_new_standardized <- sweep(
+  X_new_standardized,
+  MARGIN = 2,
+  STATS = training_sds,
+  FUN = "/"
+)
+```
+
+Recomputing means and standard deviations on evaluation observations would put those observations in a different coordinate system. It would also create the [data leakage discussed earlier](../model-criticism-and-prediction/training-and-test-data.qmd#leakage) by allowing evaluation observations to affect a fitted transformation. The training coordinate system must remain fixed.
+
+## Handle a constant column deliberately
+
+If a column is constant, then $s_j=0$. Division by zero is undefined, and standardization cannot be carried out for that column.
+
+This is not merely a software inconvenience. A constant measurement supplies no variation among the represented objects. It cannot help distinguish their coordinates. The analysis should remove it or retain it under an explicitly different transformation, depending on the representational purpose.
+
+Removing a constant column changes the linguistic representation, but the removed column contributes the same value to every object in the observed collection. Record that decision rather than letting nonfinite values propagate silently.
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Task 6](../problem-sets/ps5/ps5.qmd#task-6-select-the-rank-on-validation-cells-15-points) centers each segment column by its observed training prevalence. A hidden centered cell is filled with zero, which corresponds to that prevalence on the original scale. Validation and test cells must not contribute to the centering values used to reconstruct them.
+:::
+
+## Check the coordinate system
+
+1. What does zero mean in the centered duration column?
+2. Why does centering preserve the range in the worked calculation?
+3. What measurement decision is made when every column is standardized to variance one?
+4. Why must a new observation use the training means and standard deviations?
+5. What happens when a constant column is divided by its sample standard deviation?
+
+## Before looking for one common pattern
+
+Centering fixes a column's origin, while scaling fixes its unit. The choices determine which variations later matrix operations treat as large. With the coordinate system now explicit, the [next page](rank-one-structure.qmd) asks when one shared row by column pattern is sufficient to generate a complete matrix.

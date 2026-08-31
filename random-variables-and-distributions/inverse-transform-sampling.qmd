@@ -1,0 +1,143 @@
+---
+title: "Sampling with cumulative probability"
+---
+
+The [cumulative distribution function](cumulative-distribution-functions.qmd) records the probability accumulated through each threshold. Inverse transform sampling uses those thresholds to generate values. Suppose a prosodic annotator assigns one of three boundary strengths with probabilities
+
+| boundary label | probability |
+|---|---:|
+| weak | $.50$ |
+| intermediate | $.30$ |
+| strong | $.20$ |
+
+The PMF tells us the target frequencies across repeated draws. To simulate one label, we need a rule that converts a basic pseudorandom value into one of these outcomes.
+
+[**Inverse transform sampling**](https://bookdown.org/rdpeng/advstatcomp/inverse-transform-sampling.html) uses a uniform draw on $(0,1)$ and the target CDF to make that conversion.
+
+## Turn probabilities into intervals
+
+Accumulate the category masses in their declared order.
+
+| boundary label | mass | cumulative endpoint | uniform interval |
+|---|---:|---:|---|
+| weak | $.50$ | $.50$ | $(0,.50]$ |
+| intermediate | $.30$ | $.80$ | $(.50,.80]$ |
+| strong | $.20$ | $1$ | $(.80,1)$ |
+
+Draw
+
+$$
+U\sim\operatorname{Uniform}(0,1).
+$$
+
+If $U=.74$, it falls in $(.50,.80]$, so the simulated label is intermediate. If $U=.92$, it falls in $(.80,1)$, so the label is strong.
+
+The interval widths match the target masses. A uniform draw thus lands in each interval with the required probability.
+
+## State the discrete rule
+
+Let the cumulative endpoints be
+
+$$
+c_1=.50,
+\qquad
+c_2=.80,
+\qquad
+c_3=1.
+$$
+
+Choose the first category $k$ for which
+
+$$
+U\leq c_k.
+$$
+
+The rule maps one uniform value to one target outcome. It also makes the category order part of the implementation, just as it was for a categorical parameter vector.
+
+## Implement the rule in base R
+
+```{r}
+#| eval: false
+draw_boundary <- function(n) {
+  u <- runif(n)
+  label <- c("weak", "intermediate", "strong")
+  endpoint <- c(.50, .80, 1)
+
+  label[vapply(u, function(value) {
+    which(value <= endpoint)[1]
+  }, integer(1))]
+}
+
+draw_boundary(10)
+```
+
+The code follows the definition literally: draw $U$, find the first cumulative endpoint at or above it, and return the corresponding label.
+
+With many draws, the empirical category proportions should approach $.50$, $.30$, and $.20. A large discrepancy may expose an interval or ordering error.
+
+## Extend the rule to a continuous target
+
+Let $F$ be a continuous CDF and let
+
+$$
+F^{-1}(u)=\inf\{x:F(x)\geq u\}
+$$
+
+be its quantile function. If $U$ is uniform on $(0,1)$, then
+
+$$
+X=F^{-1}(U)
+$$
+
+has CDF $F$.
+
+Consider a constructed target CDF on $(0,1)$:
+
+$$
+F(x)=x^2.
+$$
+
+Solve $u=x^2$ for $x$:
+
+$$
+F^{-1}(u)=\sqrt{u}.
+$$
+
+If $U=.36$, the transformed draw is
+
+$$
+X=\sqrt{.36}=.60.
+$$
+
+The transformation stretches and compresses parts of the uniform interval so that the resulting values have the target cumulative probabilities.
+
+```{r}
+#| eval: false
+u <- runif(1000)
+x <- sqrt(u)
+
+mean(x <= .5)
+```
+
+The target CDF gives $F(.5)=.25$, so the simulated proportion at or below $.5$ should be near $.25$ when the number of draws is large.
+
+## What the procedure requires
+
+The target CDF must be valid, and its inverse or generalized inverse must be available. Some families have no convenient analytic inverse, so software may use numerical inversion or another sampling method.
+
+The procedure guarantees the target distribution only when the uniform generator and mapping are implemented correctly. It does not guarantee that the target distribution is a good linguistic model.
+
+## Check the implemented cutpoints
+
+The implemented cumulative endpoints must match the target probability masses. If the first endpoint were coded as $.40$ instead of $.50$, the weak category would be simulated too rarely and the other intervals would change.
+
+Compute cumulative endpoints from the probability vector and check simulated proportions against the target masses.
+
+## Check your understanding
+
+1. Which boundary label is selected by $U=.80$ under the stated endpoint rule?
+2. Why must the final cumulative endpoint equal one?
+3. If $F(x)=x^2$, what value is produced by $U=.81$?
+4. What diagnostic would reveal incorrectly implemented cutpoints in a large discrete simulation?
+
+The mapping produces a pseudorandom realization. The [next page](random-seeds.qmd) explains how to reproduce that realization without confusing reproducibility with model adequacy.

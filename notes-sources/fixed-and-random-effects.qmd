@@ -1,0 +1,359 @@
+# Model Types
+
+## Three types of models
+
+We distinguish three types of models based on how they handle group structure:
+
+1. **Fixed effects models**: All predictors are fixed; groups ignored or included as fixed effects
+2. **Random effects models**: Only random effects (no fixed predictors); ANOVA-style
+3. **Mixed effects models**: Both fixed predictors AND random effects
+
+---
+
+## Fixed effects model
+
+**Definition**: All variation is either explained by fixed predictors or treated as residual.
+
+$$Y_{ij} = \beta_0 + \beta_1 x_{ij} + \epsilon_{ij}$$
+
+**Assumptions**:
+
+- Observations are independent (or independence after conditioning on $x$)
+- All systematic variation captured by $\beta$ coefficients
+- No group structure or grouping ignored
+
+**Example**: Problem Set 3 models
+
+- Aggregated MALD data: one observation per word (averaged over participants)
+- Fixed effects for frequency
+- Grouping structure (participants, items) removed by aggregation
+
+---
+
+## Random effects model
+
+**Definition**: Group means vary, but no fixed predictors beyond the intercept.
+
+$$Y_{ij} = \mu + u_i + \epsilon_{ij}$$
+
+where:
+
+- $\mu$: Overall population mean (grand mean)
+- $u_i \sim N(0, \sigma_u^2)$: Random effect for group $i$
+- $\epsilon_{ij} \sim N(0, \sigma^2)$: Residual error
+
+**Example**: One-way random effects ANOVA
+
+- Measuring RT for different participants, no predictors
+- Question: How much do participants vary?
+- Estimate $\sigma_u^2$ (between-participant variance)
+
+---
+
+## Mixed effects model
+
+**Definition**: Combines fixed predictors (systematic component) and random effects (variance component).
+
+$$Y_{ij} = \beta_0 + \beta_1 x_{ij} + u_i + \epsilon_{ij}$$
+
+where:
+
+- $\beta_0, \beta_1$: Fixed effects (population-level coefficients)
+- $u_i \sim N(0, \sigma_u^2)$: Random intercepts
+- $\epsilon_{ij} \sim N(0, \sigma^2)$: Residual error
+
+**Example**: MALD lexical decision
+
+- Fixed effects: frequency (predictor of interest)
+- Random effects: participants, items (nuisance variation to control for)
+
+---
+
+## Visual comparison: Fixed vs. Mixed
+
+```{r model-type-comparison}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 5
+
+# Load MALD data
+mald <- read_csv("data/mald_trials.csv", show_col_types = FALSE)
+
+# Center predictor
+mald <- mald %>%
+    mutate(log_freq_c = log_freq_subtlex - mean(log_freq_subtlex))
+
+# Subset for visualization
+set.seed(42)
+subjects_subset <- sample(unique(mald$subject), 6)
+mald_subset <- mald %>% filter(subject %in% subjects_subset)
+
+# Fixed effects model (ignores subjects)
+p1 <- ggplot(mald_subset, aes(x = log_freq_c, y = log_rt)) +
+    geom_point(alpha = 0.3, size = 1) +
+    geom_smooth(method = "lm", se = TRUE, color = "red", linewidth = 1.5) +
+    labs(x = "Log Frequency (centered)", y = "Log RT",
+         title = "Fixed Effects Model",
+         subtitle = "Single regression line (ignores participant structure)") +
+    theme_minimal(base_size = 14)
+
+# Mixed effects model (accounts for subjects)
+p2 <- ggplot(mald_subset, aes(x = log_freq_c, y = log_rt, color = subject)) +
+    geom_point(alpha = 0.5, size = 1) +
+    geom_smooth(method = "lm", se = FALSE, linewidth = 0.8) +
+    geom_smooth(aes(group = 1), method = "lm", se = TRUE,
+                color = "black", linewidth = 1.5) +
+    scale_color_brewer(palette = "Set2") +
+    labs(x = "Log Frequency (centered)", y = "Log RT",
+         title = "Mixed Effects Model",
+         subtitle = "Subject-specific intercepts (colored) + population average (black)") +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "none")
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+Mixed model accounts for participant-level variation, improving both fit and inference.
+
+---
+
+## Model comparison: ANOVA and likelihood ratio tests
+
+Once we fit multiple models, how do we compare them?
+
+**ANOVA** = Analysis of Variance
+
+- Statistical method for comparing **nested models**
+- Nested: One model is a special case of another (e.g., M1 ⊂ M3)
+
+**Likelihood ratio test**:
+
+$$\text{LR} = -2(\log L_{\text{simpler}} - \log L_{\text{complex}})$$
+
+- $\text{LR} \sim \chi^2$ with df = difference in number of parameters
+- Null hypothesis: Simpler model is sufficient
+- Reject if $p < \alpha$ → Complex model significantly better
+
+**In R**:
+
+```r
+anova(model_simple, model_complex)
+```
+
+**Example**: Comparing M1 (subject REs) vs M3 (subject + item REs)
+
+---
+
+## When to use each model type
+
+```{r decision-tree}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 7
+
+library(ggplot2)
+library(grid)
+
+# Create corrected decision tree
+tree_data <- tibble(
+    x = c(5, 3, 7, 2, 4, 1.5, 2.5),
+    y = c(7, 5, 5, 3, 3, 1, 1),
+    label = c(
+        "Grouping structure\nin your data?",
+        "Want to generalize\nbeyond observed groups?",
+        "FIXED EFFECTS\nMODEL",
+        "Have predictors\nbeyond group means?",
+        "FIXED EFFECTS\nMODEL\n(groups as fixed)",
+        "MIXED EFFECTS\nMODEL",
+        "RANDOM EFFECTS\nMODEL\n(ANOVA)"
+    ),
+    type = c("question", "question", "answer", "question", "answer", "answer", "answer")
+)
+
+tree_edges <- tibble(
+    x = c(5, 5, 3, 3, 2, 2),
+    y = c(7, 7, 5, 5, 3, 3),
+    xend = c(3, 7, 2, 4, 1.5, 2.5),
+    yend = c(5, 5, 3, 3, 1, 1),
+    label_text = c("YES", "NO", "YES", "NO", "YES", "NO"),
+    label_x = c(4, 6, 2.5, 3.5, 1.75, 2.25),
+    label_y = c(6, 6, 4, 4, 2, 2)
+)
+
+ggplot() +
+    geom_segment(data = tree_edges,
+                 aes(x = x, y = y, xend = xend, yend = yend),
+                 linewidth = 1, color = "gray30") +
+    geom_label(data = tree_edges,
+               aes(x = label_x, y = label_y, label = label_text),
+               size = 4, fill = "white", label.size = 0) +
+    geom_point(data = tree_data,
+               aes(x = x, y = y, color = type, size = type)) +
+    geom_label(data = tree_data,
+               aes(x = x, y = y, label = label, fill = type),
+               size = 4, fontface = "bold", label.padding = unit(0.5, "lines")) +
+    scale_color_manual(values = c("answer" = "darkgreen", "question" = "steelblue")) +
+    scale_fill_manual(values = c("answer" = "lightgreen", "question" = "lightblue")) +
+    scale_size_manual(values = c("answer" = 8, "question" = 10)) +
+    scale_x_continuous(limits = c(0, 8.5)) +
+    scale_y_continuous(limits = c(0, 8)) +
+    labs(title = "Decision Tree: Which Model Type?",
+         subtitle = "Follow the path based on your data structure and research goals") +
+    theme_void(base_size = 14) +
+    theme(legend.position = "none",
+          plot.title = element_text(hjust = 0.5, size = 18, face = "bold"),
+          plot.subtitle = element_text(hjust = 0.5, size = 12))
+```
+
+---
+
+## Fixed effects: When to use
+
+Use **fixed effects** when:
+
+**No group structure**:
+
+- Observations are truly independent
+- No repeated measures or clustering
+
+**Groups are fixed**:
+
+- Small number of groups (e.g., 2-3 experimental conditions)
+- You care about those specific groups, not a larger population
+- Example: Comparing British vs. American English (fixed levels)
+
+**Example**: [Simple linear regression](simple-linear-regression.qmd)
+
+- Self-paced reading with surprisal predicting RT
+- Each word presented once to each participant
+- Participants treated as a single pooled sample (or controlled via fixed effects)
+
+---
+
+## Random effects: When to use
+
+Use **random effects** when:
+
+**Generalizing beyond sample**:
+
+- Groups are a random sample from a population
+- Inferences should extend to new, unseen groups
+- Example: 30 participants from population of speakers
+
+**Many groups**:
+
+- Large number of group levels (>5-10)
+- Estimating fixed effects for each would be inefficient
+
+**Variance is the quantity of interest**:
+
+- Research question: "How much do groups vary?"
+- Example: "How much do dialects vary in vowel duration?"
+
+---
+
+## Mixed effects: When to use
+
+Use **mixed effects** when:
+
+**Both fixed predictors AND grouping structure**:
+
+- You have predictors of interest (fixed effects)
+- AND observations are clustered within groups (random effects)
+
+**Most common in linguistics**:
+
+- **Repeated measures**: Same participants tested multiple times
+- **Crossed effects**: Participants × Items design
+- **Hierarchical structure**: Words nested within semantic classes
+
+**Examples**:
+
+- Lexical decision: Participants respond to multiple words
+- Sentence processing: Multiple sentences per participant
+- Corpus data: Words nested within documents, documents within genres
+
+---
+
+## Residual patterns: Fixed vs. Mixed
+
+```{r residuals-comparison-types}
+#| echo: false
+#| fig-width: 12
+#| fig-height: 5
+
+# Load models
+load("data/model_results/all_models.RData")
+
+# Get residuals
+mald$resid_m0 <- residuals(m0)
+mald$resid_m3 <- residuals(m3)
+
+# Randomly select 10 subjects for clarity
+set.seed(42)
+subjects_sample <- sample(unique(mald$subject), 10)
+
+# M0 residuals by subject
+p1 <- mald %>%
+    filter(subject %in% subjects_sample) %>%
+    ggplot(aes(x = subject, y = resid_m0)) +
+    geom_boxplot(fill = "coral", alpha = 0.6) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+    labs(x = "Subject", y = "Residuals",
+         title = "Fixed Effects Model (M0)",
+         subtitle = "Systematic patterns remain: Some subjects always positive, others negative") +
+    theme_minimal(base_size = 14) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# M3 residuals by subject
+p2 <- mald %>%
+    filter(subject %in% subjects_sample) %>%
+    ggplot(aes(x = subject, y = resid_m3)) +
+    geom_boxplot(fill = "steelblue", alpha = 0.6) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+    labs(x = "Subject", y = "Residuals",
+         title = "Mixed Effects Model (M3)",
+         subtitle = "Random effects absorbed subject-level variation: Residuals centered at 0") +
+    theme_minimal(base_size = 14) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+```
+
+Mixed model removes systematic patterns, satisfying independence assumption.
+
+---
+
+## Model notation summary
+
+**Fixed effects model** (all variation residual):
+
+$$Y_i = \beta_0 + \beta_1 x_i + \epsilon_i$$
+
+**Random effects model** (group means vary):
+
+$$Y_{ij} = \mu + u_i + \epsilon_{ij}, \quad u_i \sim N(0, \sigma_u^2)$$
+
+**Mixed effects model** (both fixed and random):
+
+$$Y_{ij} = \beta_0 + \beta_1 x_{ij} + u_i + \epsilon_{ij}, \quad u_i \sim N(0, \sigma_u^2)$$
+
+**Crossed random effects** (multiple grouping factors):
+
+$$Y_{ijk} = \beta_0 + \beta_1 x_{ijk} + u_i + v_j + \epsilon_{ijk}$$
+
+where $u_i$ and $v_j$ are independent random effects.
+
+---
+
+## Summary: Model types
+
+| Model Type | Formula | Use Case |
+|------------|---------|----------|
+| **Fixed** | $Y_i = \beta_0 + \beta_1 x_i + \epsilon_i$ | No groups; groups as fixed levels |
+| **Random** | $Y_{ij} = \mu + u_i + \epsilon_{ij}$ | Variance of interest; no predictors |
+| **Mixed** | $Y_{ij} = \beta_0 + \beta_1 x_{ij} + u_i + \epsilon_{ij}$ | Fixed predictors + grouping structure |
+
+**Key decision**: Do you want to generalize beyond observed groups? YES → Random effects
+
+---

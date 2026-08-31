@@ -1,0 +1,156 @@
+---
+title: "Posterior predictive checks"
+---
+
+The [posterior predictive distribution page](predictive-distributions.qmd) defined possible responses generated after conditioning on the observed data. The [generated quantities page](generated-quantities.qmd) showed how to simulate those responses in Stan. We now compare them with the observed data. A fitted model can estimate a linguistically interesting parameter and still make implausible predictions about the response.
+
+A [**posterior predictive check**](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html) compares an observed feature with the same feature in data generated from the fitted model. The check asks whether the model can reproduce one consequence relevant to the linguistic claim.
+
+## Generate replicated observations
+
+Let $\theta^{(s)}$ be posterior draw $s$. A posterior replicated dataset is generated in two steps:
+
+$$
+\theta^{(s)}\sim p(\theta\mid y)
+$$
+
+and
+
+$$
+y^{\mathrm{rep},(s)}\sim p(y\mid\theta^{(s)}).
+$$
+
+The first step carries parameter uncertainty from the fitted posterior. The second carries response variation from the observation model. Repeating both steps yields
+
+$$
+y^{\mathrm{rep},(1)},\ldots,y^{\mathrm{rep},(S)}.
+$$
+
+Each replicate has the same represented design as the observed data unless the predictive question deliberately changes it. Predictor values, grouping identifiers, and observation counts are usually held fixed for an in sample check. The response values are newly generated.
+
+The distribution of these replicated datasets is the posterior predictive distribution for the represented observations.
+
+## Choose one discrepancy
+
+A [**discrepancy function**](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html) $T(y)$ reduces a complete dataset to a feature that the model might fail to reproduce. Linguistic examples include:
+
+1. the proportion of slider responses at an endpoint;
+2. the standard deviation of reaction times within a frequency band;
+3. the number of zero construction counts per document;
+4. a difference between two condition means;
+5. the proportion of *no*, *maybe*, and *yes* responses within an embedding environment.
+
+The check compares the observed value
+
+$$
+T(y)
+$$
+
+with the replicated values
+
+$$
+T(y^{\mathrm{rep},(1)}),\ldots,
+T(y^{\mathrm{rep},(S)}).
+$$
+
+The same function must be applied to observed and replicated data. If the observed statistic excludes practice trials or averages within speakers, every replicated statistic must make the same choices.
+
+## Work through a variance check
+
+Suppose the observed standard deviation of low frequency lexical decision responses is 210 milliseconds. The model supplies a matrix `y_rep` with one replicated dataset per row and one observed trial per column.
+
+```r
+low_frequency <- dat$frequency_band == "low"
+
+observed_sd <- sd(dat$rt[low_frequency])
+
+replicated_sd <- apply(
+  y_rep[, low_frequency],
+  1,
+  sd
+)
+
+quantile(replicated_sd, c(.025, .5, .975))
+mean(replicated_sd >= observed_sd)
+```
+
+Suppose the replicated 95 percent interval is 135 to 184 milliseconds and only 3 of 1,000 replicated standard deviations reach 210. The fitted model rarely generates as much low frequency variation as the observed data.
+
+A histogram makes the comparison visible:
+
+```r
+hist(
+  replicated_sd,
+  xlab = "Replicated low frequency standard deviation",
+  main = "Posterior predictive variance check"
+)
+abline(v = observed_sd, lwd = 2)
+```
+
+This result identifies too little predicted variation in the low frequency condition. It does not yet show whether the repair should be a different response distribution, condition specific variation, dependence among observations, or a measurement correction.
+
+## Check complete and targeted features
+
+An overlay of replicated distributions can reveal failures in center, spread, skew, or tails:
+
+```r
+bayesplot::ppc_dens_overlay(
+  y = dat$rt,
+  yrep = y_rep[1:100, ]
+)
+```
+
+The overlay is a broad check. It may show that the observed right tail extends beyond nearly every replicate, but it can also become visually crowded. A targeted discrepancy connects the failure more directly to a claim.
+
+For a bounded response model, a useful sequence is:
+
+1. compare lower endpoint mass;
+2. compare upper endpoint mass;
+3. compare the interior distribution;
+4. repeat the three checks within the focal linguistic conditions.
+
+An overall density can recover aggregate endpoint mass while missing that one condition produces nearly all upper endpoints. The conditional check detects this cancellation.
+
+## Preserve the dependence unit in the check
+
+Repeated linguistic data require group aware discrepancies. Suppose a model allows responses to differ across participants and discourses. A global category proportion may look adequate even when the model understates variation among discourses.
+
+For each observed discourse, calculate its proportion of *yes* responses. Then compute a summary such as the standard deviation across discourse proportions. Apply the same calculation to every replicated dataset.
+
+Comparing the observed and replicated standard deviations asks whether the fitted model produces the observed amount of variation among discourses. Pooling all responses before computing one category proportion would erase the feature under examination.
+
+The grouping choice must match the claim. Participant response style and discourse variation are different model implications and require different discrepancies.
+
+## Do not check only what the fit must match closely
+
+A normal model with its mean estimated from the data will usually reproduce the overall response mean. A Poisson model with its mean estimated from the data can often reproduce the total count. These checks may still catch an implementation error, but they provide weak criticism of the model structure.
+
+A check is weak when it repeats the feature that directly determined a fitted parameter while ignoring unconstrained features. A useful check targets something the model could have missed, such as an endpoint rate, a tail quantile, a within group spread, or a condition specific contrast.
+
+This does not mean that the discrepancy must fail. It means that success should be informative about a plausible failure.
+
+## Interpret failure and success narrowly
+
+A failed check shows that the fitted model rarely reproduces the chosen feature. It does not specify the unique repair, and it does not make every posterior summary meaningless. A mean contrast may remain stable even when the response tails are inadequate, though the model should not be used for tail predictions.
+
+A passed check says that the chosen discrepancy is compatible with the fitted model at the resolution of the available data and simulation. It does not validate every other implication. A model that reproduces endpoint mass can still miss participant response styles, discourse contrasts, or new item predictions.
+
+The conclusion should state which feature was checked. "The model reproduced category proportions across embedding environments" is licensed. "The model fits the data" is too broad.
+
+## Separate model checking from model comparison
+
+A posterior predictive check criticizes one model through its generated observations. It does not automatically choose among several repairs. Two models may both reproduce the selected discrepancy while differing in out-of-sample predictive performance. Conversely, a model with better held out loss may still fail a consequential support check.
+
+Thus model checking and predictive comparison answer related but distinct questions. The first asks what the fitted model cannot reproduce. The second, introduced later in the course, asks which complete procedure predicts a declared target better.
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 6](../problem-sets/ps4/ps4.qmd#task-6-criticize-the-model) compares observed and replicated commitment categories within factivity by embedding cells and across discourses. This comparison matters because an overall category match can conceal a failed theoretical contrast or too little discourse variation.
+:::
+
+::: {.callout-note title="Check the inferential claim"}
+What two quantities must use the same discrepancy function $T$? Give a targeted check for an endpoint heavy slider response. Why does reproducing the overall mean provide weak evidence for a variance model? What grouping summary would reveal understated discourse variation?
+:::
+
+## What posterior predictive checking adds
+
+Posterior predictive checks turn a fitted model into replicated observations and compare one declared feature of those observations with the data. The discrepancy should be tied to the linguistic claim, computed identically for observed and replicated data, and preserve relevant grouping units. Failure identifies a limited model implication that needs repair. Success is equally limited to the feature that was checked.

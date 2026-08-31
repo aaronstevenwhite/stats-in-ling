@@ -1,0 +1,115 @@
+---
+title: "Missingness patterns"
+---
+
+Suppose an acoustic dataset has one row per vowel token and columns for duration, first formant, and third formant. Some third formant measurements are blank. Before deciding why they are blank or how to fill them, we need a representation of where the blanks occur.
+
+For each potential measurement, a [**missingness indicator**](https://stefvanbuuren.name/fimd/sec-MCAR.html) records whether the value was observed. The collection of these indicators is the missingness pattern. Unlike the missing measurements, the indicators are available for every cell. This notation extends the retention indicator used for [exclusion rules](../experimental-design/exclusion-rules.qmd), but it now records whether a measurement is available rather than whether an observed response is retained.
+
+## Define the indicator
+
+Let $Y_{ij}$ be measurement $j$ for token $i$. Define
+
+$$
+R_{ij}=
+\begin{cases}
+1 & \text{if }Y_{ij}\text{ is observed},\\
+0 & \text{if }Y_{ij}\text{ is missing}.
+\end{cases}
+$$
+
+The measurement matrix $\mathbf{Y}$ may contain blanks. The indicator matrix $\mathbf{R}$ does not. It represents each blank as a zero and each observed value as a one.
+
+This coding convention is arbitrary, so it must be stated. We use one for observed and zero for missing throughout the module.
+
+## Work through a small acoustic table
+
+Consider five vowel tokens.
+
+| token | duration | F1 | F3 |
+|:--|--:|--:|--:|
+| t1 | 120 | 310 | 2450 |
+| t2 | 135 | 325 | missing |
+| t3 | 110 | 300 | 2510 |
+| t4 | 160 | missing | missing |
+| t5 | 145 | 340 | 2380 |
+
+The corresponding indicator matrix is
+
+$$
+\mathbf{R}=
+\begin{pmatrix}
+1&1&1\\
+1&1&0\\
+1&1&1\\
+1&0&0\\
+1&1&1
+\end{pmatrix}.
+$$
+
+Read the matrix by column first. Duration has zero missing values, F1 has one, and F3 has two. Then read it by row. Token t4 has two absent measurements, while t2 has one. Finally, read entire row patterns. Three tokens have pattern $(1,1,1)$, one has $(1,1,0)$, and one has $(1,0,0)$.
+
+These summaries answer different questions. Column counts locate measurements with substantial loss. Row counts locate tokens with little observed information. Pattern counts show which measurements tend to be absent together.
+
+## Compute the same summaries in R
+
+```{r}
+acoustic <- data.frame(
+  token = paste0("t", 1:5),
+  duration = c(120, 135, 110, 160, 145),
+  F1 = c(310, 325, 300, NA, 340),
+  F3 = c(2450, NA, 2510, NA, 2380)
+)
+
+measurement_columns <- c("duration", "F1", "F3")
+indicator <- 1L * !is.na(acoustic[measurement_columns])
+
+indicator
+colSums(1L - indicator)
+rowSums(1L - indicator)
+```
+
+`is.na()` returns `TRUE` for a blank, so `!is.na()` returns `TRUE` for an observed cell. Multiplying by one changes the logical values into the stated zero and one coding. Subtracting the indicator from one then produces a count of missing values.
+
+To count complete row patterns, combine each row of the indicator matrix into a label.
+
+```{r}
+pattern <- apply(indicator, 1, paste0, collapse = "")
+table(pattern)
+```
+
+The labels `111`, `110`, and `100` correspond to the three patterns identified by hand. The column order belongs to the definition of each label, so a report should give that order.
+
+## Relate the indicator to observed information
+
+The indicator can be compared with measurements or labels that are observed. Suppose every token also has a vowel label and a recording session. We could tabulate whether F3 is observed within each vowel or session.
+
+```{r}
+acoustic$vowel <- c("i", "a", "i", "a", "i")
+acoustic$session <- c("morning", "morning", "afternoon", "afternoon", "afternoon")
+acoustic$F3_observed <- !is.na(acoustic$F3)
+
+with(acoustic, table(vowel, F3_observed))
+with(acoustic, table(session, F3_observed))
+```
+
+With five tokens, these tables are descriptive rather than stable estimates. Their role is to show which observed dimensions should receive attention in a larger dataset. If missingness differs by vowel, speaker, session, or an observed acoustic measurement, deletion may change the composition of the retained sample.
+
+## A pattern does not identify a missingness mechanism
+
+An observed pattern does not identify the process that caused it. A table of missingness indicators thus cannot by itself establish a causal account of why values are missing.
+
+For instance, F3 may be absent more often for vowel /a/. The tracker might fail because /a/ has acoustic properties that make tracking difficult. The recording session containing more /a/ tokens might instead have used a faulty microphone. Both processes can produce the same observed association between vowel and missingness.
+
+Pattern analysis can rule out a claim that blanks are distributed evenly when strong structure is visible. It cannot establish that unobserved values are unrelated to their probability of being absent. That claim belongs to a missingness mechanism.
+
+::: {.callout-note title="Inspect the pattern"}
+1. What does $R_{ij}=0$ mean under the convention used here?
+2. For the five token table, which token has the least observed acoustic information?
+3. Why do column counts and pattern counts answer different questions?
+4. Give two processes that could make F3 missing more often for one vowel category.
+:::
+
+## Summing up
+
+A missingness indicator turns the locations of absent measurements into fully observed data. Counts by column, row, and joint pattern describe different parts of that structure. The pattern cannot identify its own cause, so the next page states the assumptions made by different [missingness mechanisms](missingness-mechanisms.qmd).

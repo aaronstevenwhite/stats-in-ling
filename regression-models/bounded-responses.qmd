@@ -1,0 +1,111 @@
+---
+title: "Bounded responses"
+---
+
+The generalized-linear-model sequence introduced [support](why-generalized-linear-models.qmd) as the set of values to which a response distribution assigns probability. A similarity slider from *completely identical* to *extremely different* cannot produce a value below its left endpoint or above its right endpoint. The bounds are part of the measurement, not incidental features of one sample. A probability model for the response should represent that fact.
+
+A response whose possible values lie in a known interval $[L,U]$ is a [**bounded response**](https://doi.org/10.1007/s11050-025-09244-9). Percentages, visual-analog scales, proportions, and normalized annotation scores can all be bounded. The concept concerns support: which values the measurement process can produce. It does not yet select a particular likelihood.
+
+## Bounds come from the measurement process
+
+Suppose a participant rates dissimilarity on an integer slider from 0 to 100. The response satisfies
+
+$$
+Y_i\in\{0,1,\ldots,100\}.
+$$
+
+A coarser analysis might treat the slider as approximately continuous and record only
+
+$$
+Y_i\in[0,100].
+$$
+
+The approximation discards the one-point spacing but preserves the legal range. Rescaling produces
+
+$$
+Z_i=\frac{Y_i-L}{U-L}\in[0,1].
+$$
+
+Rescaling does not remove the bounds. It simply expresses them as zero and one.
+
+This distinction matters because an observed zero may have substantive meaning. A participant who selects *completely identical* has used the measurement scale exactly as designed. Replacing that value with .001 to satisfy software changes the recorded response and makes an arbitrary constant part of the analysis.
+
+## Boundary values are outcomes
+
+A bounded response can have no observations at its endpoints, occasional observations there, or large piles at one or both endpoints. We can begin by calculating the proportion of observations equal to $L$ or $U$:
+
+$$
+\widehat{p}_{\partial}
+=\frac{1}{n}\sum_{i=1}^n
+\mathbb{I}(Y_i\in\{L,U\}).
+$$
+
+This proportion describes the response distribution. It is not automatically evidence for a special cognitive state. A high endpoint rate might arise because the scale labels make the endpoints attractive, because some stimuli genuinely elicit categorical responses, or because particular participants use the scale coarsely. Those explanations require design information and conditional checks.
+
+At minimum, inspect endpoint use overall, separately at each endpoint, and by repeated measurement units such as participant and item. An overall rate can hide one participant who responds almost entirely at the endpoints and another who never uses them.
+
+```r
+boundary <- ratings$dissimilarity %in% c(0, 100)
+mean(boundary)
+
+participant_boundary <- aggregate(
+  boundary,
+  list(participant = ratings$participant_id),
+  mean
+)
+```
+
+## What a normal distribution licenses
+
+A normally distributed response has support on the entire real line:
+
+$$
+Y_i\mid\mu_i,\sigma
+\sim\operatorname{Normal}(\mu_i,\sigma).
+$$
+
+For a bounded response, its probability of an impossible value is
+
+$$
+p_{\text{illegal},i}
+=\Phi\left(\frac{L-\mu_i}{\sigma}\right)
++1-\Phi\left(\frac{U-\mu_i}{\sigma}\right),
+$$
+
+where $\Phi$ is the standard-normal CDF. This probability may be negligible when the fitted mean is far from both endpoints and residual variation is small. It may be substantial for a wide response distribution or for means near a boundary. Thus “the scale is roughly continuous” does not by itself justify a normal likelihood. The relevant question is what the fitted distribution predicts.
+
+This illegal-mass calculation checks a particular way the model can fail. It is more informative than asking whether a histogram looks normal. A model that assigns 10% of its predictive mass outside the legal scale has made a visible claim about outcomes that the experiment cannot record.
+
+## Bounded is not censored
+
+Bounds and censoring are distinct measurement stories.
+
+- A bounded slider records a response whose scale ends at $L$ and $U$.
+- A censored measure records only that an underlying value fell below or above a detection threshold.
+
+If a voice-onset-time tracker reports every negative estimate as zero, zero may represent censored latent values. If a participant intentionally chooses the left endpoint of a similarity scale, zero is an observed category at the bound. The same number can thus require different likelihoods because it arose through a different observation process.
+
+## What boundedness does not decide
+
+Knowing that the response is bounded narrows the model space, but several choices remain.
+
+1. If all observations lie strictly inside $(0,1)$, [**beta regression**](https://doi.org/10.1007/s11050-025-09244-9) may represent the interior distribution.
+2. If exact zeros and ones occur, the likelihood needs to assign them positive probability.
+3. If a small number of ordered categories were shown, an ordinal model may better preserve the task.
+4. If the response is a count of successes out of known trials, a binomial likelihood may represent the generating process more directly than a generic bounded model.
+
+These options are not interchangeable fixes. They describe different measurement processes. The next page shows why moving endpoints inward does not make standard beta regression a neutral analysis of slider responses.
+
+::: {.callout-warning title="Do not repair the data before stating the model"}
+Transforming zeros and ones into interior values makes ordinary beta software run, but it removes the empirical question of why participants used the endpoints. State the response support and endpoint process first.
+:::
+
+## Read the model
+
+1. A study reports the proportion of trials on which each child produced a plural. Is the response merely bounded, or does the known number of trials suggest a more specific likelihood?
+2. A confidence slider ranges from 0 to 100, but the interface never permits exactly 0 or 100. Which support should the model use?
+3. An ordinary linear regression fit to a 1 to 7 judgment scale assigns .2% probability outside the scale under its normality assumption. Is that enough to approve the model? Identify one other feature of the measurement process that remains untested.
+
+## Before moving on
+
+A bounded response has known support, and values at its bounds are observed outcomes rather than automatic outliers. Endpoint proportions describe how the bounds were used, while the normal-distribution calculation quantifies one specific support failure. The [next page](why-not-beta-sliders.qmd) traces an inward endpoint transformation through the ordinary beta likelihood.

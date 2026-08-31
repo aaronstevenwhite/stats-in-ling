@@ -1,0 +1,172 @@
+---
+title: "Leaving out one unit at a time"
+---
+
+The [$K$-fold cross-validation page](cross-validation.qmd) rotated several observations through each test fold. [**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) is the special case that makes one observation the test set at a time.
+
+Suppose a small reading-time experiment contains too few observations to place a large portion of the data in a test set. We still want every observed response to be evaluated out of sample, and we would like each fitted model to use nearly all of the remaining data.
+
+The word *observation* is doing important work. One observation may be one row, one participant, one sentence, or one passage, depending on how the data and predictive question are defined. The leave-one-out calculation is meaningful only after the analysis determines which of these counts as one observation.
+
+This page first defines LOO-CV as a special case of cross-validation. It then works through a three-row regression by hand and implements the same procedure in R. Finally, it shows why row-level LOO does not automatically evaluate prediction for a speaker, item, or text absent during fitting.
+
+## Define the rotation
+
+Begin with the simplest case in which rows are the observations left out. Let the data contain $N$ observations. For each row $i$, fit the complete procedure to the data with row $i$ removed. We write the resulting predictor as
+
+$$
+\widehat{f}_{-i}.
+$$
+
+The subscript $-i$ means that observation $i$ did not contribute to fitting. Its out-of-sample prediction is
+
+$$
+\widehat{y}_{-i}=\widehat{f}_{-i}(x_i).
+$$
+
+Given a previously chosen loss function $L$, the leave-one-out risk estimate is
+
+$$
+\widehat{R}_{\mathrm{LOO}}
+=
+\frac{1}{N}
+\sum_{i=1}^{N}
+L(y_i,\widehat{y}_{-i}).
+$$
+
+LOO-CV is thus $K$-fold cross-validation with $K=N$ when each row is one unit. Every row receives one prediction from a model that did not use that row's response.
+
+## Follow three observations by hand
+
+Consider three hypothetical word positions. Let $x$ be word length on a simplified scale, and let $y$ be log reading time.
+
+| row | $x$ | $y$ |
+|---:|---:|---:|
+| 1 | 1 | 1.0 |
+| 2 | 2 | 2.0 |
+| 3 | 3 | 2.5 |
+
+We use a straight-line regression only because it lets us see each fit without software. Each training set contains two points, so its fitted line passes through those points.
+
+First leave out row 1. The line through $(2,2)$ and $(3,2.5)$ has slope $0.5$ and intercept $1$. At $x_1=1$, it predicts
+
+$$
+\widehat{y}_{-1}=1+0.5(1)=1.5.
+$$
+
+The prediction error is $1.0-1.5=-0.5$, so its squared loss is $0.25$.
+
+Next leave out row 2. The line through $(1,1)$ and $(3,2.5)$ has slope $0.75$ and intercept $0.25$. It predicts
+
+$$
+\widehat{y}_{-2}=0.25+0.75(2)=1.75.
+$$
+
+This error is $2.0-1.75=0.25$, and its squared loss is $0.0625$.
+
+Finally leave out row 3. The line through $(1,1)$ and $(2,2)$ has slope $1$ and intercept $0$. It predicts
+
+$$
+\widehat{y}_{-3}=0+1(3)=3.
+$$
+
+The error is $2.5-3=-0.5$, so the squared loss is again $0.25$. Thus, the leave-one-out mean squared error is
+
+$$
+\widehat{R}_{\mathrm{LOO}}
+=
+\frac{0.25+0.0625+0.25}{3}
+=
+0.1875.
+$$
+
+The corresponding root mean squared error is $\sqrt{0.1875}\approx 0.433$. This number is on the scale of the response, which here is the simplified log-time scale.
+
+## Implement the same rotation
+
+The R code follows the definition one row at a time.
+
+```{r}
+#| eval: false
+
+dat <- data.frame(
+  word_length = c(1, 2, 3),
+  log_time = c(1.0, 2.0, 2.5)
+)
+
+prediction <- rep(NA_real_, nrow(dat))
+
+for (i in seq_len(nrow(dat))) {
+  fit_i <- lm(
+    log_time ~ word_length,
+    data = dat[-i, ]
+  )
+
+  prediction[i] <- predict(
+    fit_i,
+    newdata = dat[i, , drop = FALSE]
+  )
+}
+
+squared_loss <- (dat$log_time - prediction)^2
+mean(squared_loss)
+sqrt(mean(squared_loss))
+```
+
+The expression `dat[-i, ]` constructs the training data. The expression `dat[i, , drop = FALSE]` supplies the omitted predictor value at prediction time. No omitted response enters `fit_i`.
+
+For an actual analysis, the loop must contain every fitted decision. If predictors are centered, the center is estimated from `dat[-i, ]`. If a penalty is tuned, the tuning procedure uses only `dat[-i, ]`. LOO-CV evaluates the complete procedure rather than a coefficient formula chosen using all of the responses.
+
+## Decide what one means
+
+Now suppose each participant contributes 100 trials. Row-level LOO removes one trial but leaves 99 trials from the same participant in training. It also tends to leave other responses to the same item in training. This may be appropriate for predicting another trial from observed participants and items.
+
+It does not evaluate prediction for an unadapted participant absent during fitting. For that question, one participant and all of that participant's rows must be omitted together. If there are $S$ participants, the procedure makes $S$ fits:
+
+$$
+\widehat{R}_{\text{leave-subject-out}}
+=
+\frac{1}{S}
+\sum_{s=1}^{S}
+\frac{1}{n_s}
+\sum_{i:g(i)=s}
+L(y_i,\widehat{f}_{-s}(x_i)),
+$$
+
+where $\widehat{f}_{-s}$ is fit without participant $s$. This is often called leave-one-subject-out validation. The new idea is not a different loss or fitting method. It is a different meaning of one.
+
+The same reasoning applies to items and texts. Prediction for an omitted passage requires omitting a complete passage, not one position in that passage. Prediction for an omitted verb requires omitting every token headed by one verb. The [next page](grouped-cross-validation.qmd) develops this grouping decision directly.
+
+## Understand the dependence among fits
+
+In the three-row example, the fitted training sets overlap. With a larger dataset, any two row-level LOO fits share $N-2$ observations. The resulting prediction losses are not independent experiments, even though each response was individually withheld from its own fit.
+
+This dependence does not invalidate the average in $\widehat{R}_{\mathrm{LOO}}$. It does rule out treating $N$ fitted models as $N$ independent repetitions of the study. The relevant uncertainty calculation still depends on the sampling units specified by the scientific claim.
+
+## Compare training size and computation
+
+Each LOO model uses all but one observation. Its training set is thus very similar in size to the complete dataset. This may be useful when the dataset is small.
+
+But the similarity comes at a computational cost. Row-level LOO with 10,000 observations requires 10,000 fits if carried out directly. A complex model may make that cost prohibitive. Five-fold or ten-fold cross-validation uses fewer fits, though each fit omits a larger portion of the observations.
+
+LOO-CV can also be sensitive when one omitted observation has unusual predictor values. That observation may be difficult to predict because the training set supplies little nearby information. This is not automatically a flaw. It may reveal that the fitted relationship is being asked to extrapolate beyond predictor values well represented by the rest of the sample.
+
+## Do not tune on the omitted response
+
+A common failure is to use all rows to choose a transformation, set of predictors, or tuning parameter and then report leave-one-out predictions from that fixed choice. The omitted response has already influenced the procedure, so the prediction is not fully out of sample.
+
+The repair is the same separation used for any cross-validation procedure. Every response-adaptive decision must be repeated inside the training portion. If that decision itself needs held-out evaluation, it requires an inner validation step within the $N-1$ training rows.
+
+This requirement can make literal LOO-CV unattractive for procedures with expensive tuning. In that case, fewer outer folds may provide a more practical evaluation without changing which observations or groups are held out.
+
+## Check the omitted unit
+
+1. How many direct fits are required for row-level LOO with 250 rows?
+2. In the three-row calculation, why is $\widehat{y}_{-2}$ an out-of-sample prediction even though rows 1 and 3 appear in two different fits?
+3. What must be omitted when predicting for an unadapted participant absent during fitting?
+4. Why does row-level LOO usually evaluate another response from represented participants and items in a repeated participant by item experiment?
+5. If a researcher chooses a penalty using all responses before running LOO-CV, which part of the separation has failed?
+
+## Before grouping folds
+
+LOO-CV rotates a one-observation test set so that every observation receives a prediction from a fit that excluded it. The method uses nearly all available data for each fit, but the meaning of one observation must still match the scientific question. The [next page](grouped-cross-validation.qmd) shows how to keep complete speakers, items, passages, or languages together whenever those groups must be absent during fitting.

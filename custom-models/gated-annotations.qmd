@@ -1,0 +1,109 @@
+---
+title: "Gated annotations"
+---
+
+Suppose an annotation protocol first asks whether a described event has a particular property. Only after an affirmative response does the interface ask for the degree to which that property holds. A blank follow up is then structurally missing by design because the instrument never displayed that question. It is not a failed measurement of a displayed question and should not be analyzed as one of the [stochastic missingness mechanisms](../missing-data/missingness-mechanisms.qmd).
+
+A joint model for gated annotations represents the gate response and the conditional follow up as two parts of one observation process. It does not assign a follow up value to a trial on which the annotator was never asked the follow up question.
+
+## Factor the gate and follow up
+
+Let $G_{ij}=1$ when annotator $j$ affirms the gate for item $i$, and let $G_{ij}=0$ otherwise. When $G_{ij}=1$, let $Y_{ij}$ be the follow up response. Write $\pi_{ij}$ for the gate probability and $f_Y(y_{ij}\mid\phi_{ij})$ for the conditional follow up probability or density.
+
+The observed response contribution is defined by the two possible gate values:
+
+$$
+p(g_{ij},y_{ij}^{\mathrm{obs}})
+=
+\begin{cases}
+\pi_{ij}f_Y(y_{ij}\mid\phi_{ij}), & g_{ij}=1,\\
+1-\pi_{ij}, & g_{ij}=0.
+\end{cases}
+$$
+
+When $g_{ij}=1$, the response contributes a gate probability and a follow up factor. When $g_{ij}=0$, it contributes only the probability of a negative gate. The second case never requires evaluating a density at an unrecorded follow up value.
+
+## Work through two annotation records
+
+Suppose the predicted affirmative gate probability is $.70$. For an affirmative gate with follow up category 6, suppose the conditional probability of category 6 is $.25. The joint contribution is
+
+$$
+(.70)(.25)=.175.
+$$
+
+For a negative gate, the contribution is
+
+$$
+1-.70=.30.
+$$
+
+No follow up factor appears in the second calculation. Substituting a numerical zero for the blank would instead assert that the annotator gave the lowest follow up response. The protocol did not produce that event.
+
+The two cases can be calculated with a small function.
+
+```{r}
+gated_log_probability <- function(gate, gate_probability, follow_probability = NA) {
+  if (gate == 1) {
+    log(gate_probability) + log(follow_probability)
+  } else {
+    log1p(-gate_probability)
+  }
+}
+
+affirmative <- gated_log_probability(
+  gate = 1,
+  gate_probability = 0.70,
+  follow_probability = 0.25
+)
+
+negative <- gated_log_probability(
+  gate = 0,
+  gate_probability = 0.70
+)
+
+exp(c(affirmative = affirmative, negative = negative))
+```
+
+The function requires a follow up probability only after an affirmative gate. This mirrors the instrument rather than filling a rectangular response column before the model is defined.
+
+## The follow up target is conditional
+
+An average of observed follow up responses describes cases that passed the gate. Formally, it estimates a quantity such as
+
+$$
+E[Y_{ij}\mid G_{ij}=1].
+$$
+
+It does not estimate an unconditional property across all items unless the model defines what that property means when the gate fails. The conditioning is part of the linguistic target.
+
+For instance, a temporal property may be meaningful only for events that annotators first classify as having a relevant temporal structure. Treating a negative gate as the lowest temporal rating asserts that absence of applicability and a low degree are the same semantic state. The instrument does not license that assertion automatically.
+
+## Dependence still belongs in the joint model
+
+The gate and follow up can share item and annotator quantities introduced on the preceding pages. An item that often passes the gate may also tend to receive high conditional ratings. One annotator may affirm more gates and use higher follow up categories.
+
+Representing such dependence is a later modeling choice within the full joint model. It requires enough affirmative gates to inform the follow up component. If very few responses pass, a rich dependence structure may be weakly identified even when the gate itself is estimated precisely.
+
+## Check the complete response process
+
+A predictive check should reproduce the gate rate and the distribution of follow up responses among affirmative gates. It should also retain item and annotator labels so that systematic failures are not hidden by an overall histogram.
+
+Matching only the observed follow up distribution leaves the selection step unchecked. A model could predict conditional ratings well for the small set of passed gates while badly predicting which items enter that set.
+
+## A skipped response is not a zero
+
+Protocol-generated blanks must not be replaced with numerical zeros. Doing so merges two events: the annotator rejected the gate, and the annotator passed the gate but selected the lowest follow up value.
+
+Retain the gate variable and write the observed response contribution conditionally. A rectangular table can still store `NA` in the follow up column. The joint model, rather than the storage format, determines what that `NA` means.
+
+::: {.callout-note title="Check the gate"}
+1. Which factor contributes when $g_{ij}=0$?
+2. What population does $E[Y_{ij}\mid G_{ij}=1]$ describe?
+3. Why is a protocol generated blank different from a recorded zero?
+4. Which two distributions must a predictive check reproduce?
+5. Why can a low gate rate weaken the follow up model?
+:::
+
+## Summing up
+
+A model for gated annotations gives negative gates a gate probability and affirmative gates both a gate probability and a conditional follow up factor. It preserves the conditional meaning of the follow up rather than treating absence as a low value. Before interpreting the full model, we must check whether its parameters can be [recovered from data generated under the model](parameter-recovery.qmd).

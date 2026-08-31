@@ -1,0 +1,244 @@
+---
+title: "Scores and loadings"
+---
+
+A principal component analysis returns numbers for both sides of the linguistic data matrix. One set locates the row objects in the new coordinate system. The other set describes how the original measurement columns define that system. Confusing the two leads to claims about variables that were computed from observations, or claims about observations that were computed from variables.
+
+[**Scores**](https://online.stat.psu.edu/stat508/Lesson07.html) locate observations. On this page, [**loadings**](https://online.stat.psu.edu/stat508/Lesson07.html) are the entries of the unit-length component directions through the original variables. The two quantities are connected by matrix multiplication, but they answer different questions.
+
+We first derive one score from one row and one direction. We then connect the calculation to complete score and loading matrices, implement the extraction in R, and examine sign, terminology, and metadata-join failures.
+
+## Scores locate row objects
+
+Let $\mathbf{X}_c$ be an $n\times p$ centered matrix and let $\mathbf{V}$ contain its principal component directions. The score matrix is
+
+$$
+\mathbf{Z}
+=
+\mathbf{X}_c\mathbf{V}.
+$$
+
+Entry $z_{ik}$ is the score of observation $i$ on component $k$. If $\mathbf{x}_i^{\mathsf T}$ is centered row $i$ and $\mathbf{v}_k$ is direction $k$, then
+
+$$
+z_{ik}
+=
+\mathbf{x}_i^{\mathsf T}\mathbf{v}_k
+=
+\sum_{j=1}^{p}x^c_{ij}v_{jk}.
+$$
+
+Thus, a score is a weighted sum of one observation's centered measurement values.
+
+## Work one score by hand
+
+Suppose a centered vowel token has two acoustic values
+
+$$
+\mathbf{x}_i^{\mathsf T}
+=
+\begin{bmatrix}
+2&1
+\end{bmatrix},
+$$
+
+and the first component direction is
+
+$$
+\mathbf{v}_1
+=
+\frac{1}{\sqrt{2}}
+\begin{bmatrix}
+1\\1
+\end{bmatrix}.
+$$
+
+The token's first score is
+
+$$
+\begin{aligned}
+z_{i1}
+&=
+\begin{bmatrix}
+2&1
+\end{bmatrix}
+\frac{1}{\sqrt{2}}
+\begin{bmatrix}
+1\\1
+\end{bmatrix}\\
+&=
+\frac{2+1}{\sqrt{2}}\\
+&=
+\frac{3}{\sqrt{2}}\\
+&\approx2.12.
+\end{aligned}
+$$
+
+The positive score means that this token lies in the positive direction defined by the two positive weights. The value 2.12 is not an original acoustic measurement. It is a coordinate in the component system.
+
+If another token has centered row $[-2,-1]$, its score is approximately $-2.12$. The two tokens lie on opposite sides of the mean along the same common direction.
+
+## Loadings describe directions
+
+The entries in $\mathbf{v}_k$ tell us how the original variables are combined to form component $k$. In the worked direction, both variables have weight $1/\sqrt{2}$. They contribute equally and with the same sign.
+
+Compare that direction with
+
+$$
+\widetilde{\mathbf{v}}_1
+=
+\frac{1}{\sqrt{2}}
+\begin{bmatrix}
+1\\-1
+\end{bmatrix}.
+$$
+
+The score under this second direction is
+
+$$
+\widetilde{z}_{i1}
+=
+\frac{2-1}{\sqrt{2}}
+=
+\frac{1}{\sqrt{2}}
+\approx0.71.
+$$
+
+The first direction represents common movement in the two measurements. The second represents a contrast between them. Relative signs and magnitudes define this pattern.
+
+## State which quantity is called a loading
+
+The word *loading* is used for more than one quantity. Some texts and software call the entries $v_{jk}$ of $\mathbf{V}$ loadings. These are unit-length direction weights.
+
+Other sources scale those weights by the component standard deviation. Under that convention, a loading may be written
+
+$$
+\ell_{jk}
+=
+v_{jk}\sqrt{\lambda_k},
+$$
+
+where $\lambda_k$ is the variance of component $k$. The two conventions answer related but nonidentical numerical questions. On this page, *loading* refers to $v_{jk}$, and *scaled loading* refers to $\ell_{jk}$. A printed value cannot be compared across analyses until the convention has been stated.
+
+## Connect scores and directions to the SVD
+
+Recall the [singular value decomposition](singular-value-decomposition.qmd):
+
+$$
+\mathbf{X}_c
+=
+\mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf T}.
+$$
+
+Multiplying by $\mathbf{V}$ gives
+
+$$
+\mathbf{Z}
+=
+\mathbf{X}_c\mathbf{V}
+=
+\mathbf{U}\mathbf{D}.
+$$
+
+Thus, component $k$ has score vector
+
+$$
+\mathbf{z}_{\cdot k}
+=
+d_k\mathbf{u}_k.
+$$
+
+The singular value scales the unit-length left singular vector into observation coordinates. In contrast, the corresponding right singular vector $\mathbf{v}_k$ remains a unit-length direction through the original columns.
+
+This relationship explains why scores and weights have different dimensions. There is one score per row and one weight per column for every retained component.
+
+## Extract the quantities in R
+
+For an object returned by `prcomp()`, the score and direction matrices are stored separately.
+
+```{r}
+#| eval: false
+
+score_matrix <- pca_fit$x
+weight_matrix <- pca_fit$rotation
+
+dim(score_matrix)
+dim(weight_matrix)
+
+head(score_matrix)
+weight_matrix
+```
+
+If `X` contains $n$ rows and $p$ columns, `score_matrix` has $n$ rows. Its columns index components. The `weight_matrix` has $p$ rows, one for each original variable.
+
+To verify one score, multiply a centered row by the corresponding direction.
+
+```{r}
+#| eval: false
+
+X_centered <- scale(
+  X,
+  center = pca_fit$center,
+  scale = FALSE
+)
+
+score_i1 <- X_centered[1, ] %*% weight_matrix[, 1]
+
+c(
+  from_product = score_i1,
+  from_prcomp = score_matrix[1, 1]
+)
+```
+
+If the PCA used scaling, the row must also be divided by the same stored scales before this multiplication. The score formula uses the transformed coordinates on which the component directions were fit.
+
+## Join scores to metadata by identifier
+
+Scores inherit the row order of the matrix supplied to PCA. Linguistic labels often live in a separate table. A safe join uses a stable row identifier.
+
+```{r}
+#| eval: false
+
+score_data <- data.frame(
+  token_id = rownames(score_matrix),
+  PC1 = score_matrix[, 1],
+  PC2 = score_matrix[, 2]
+)
+
+score_data <- merge(
+  score_data,
+  token_metadata,
+  by = "token_id",
+  all.x = TRUE,
+  sort = FALSE
+)
+```
+
+Binding labels by accidental row position may attach the wrong vowel, speaker, language, or database source to each score. The resulting plot can look persuasive because the coordinates are real even though the labels are wrong.
+
+Check identifier uniqueness and the number of matched rows before interpreting labeled score plots. A row-order mismatch can attach scores to the wrong linguistic objects.
+
+## Interpret patterns rather than isolated signs
+
+The SVD sign indeterminacy applies to both scores and loadings. If $\mathbf{v}_k$ changes sign, the corresponding scores also change sign. Relative positions and reconstructions remain the same.
+
+Thus, a claim that one language has a positive score is incomplete without describing the chosen orientation. A more stable claim describes which objects lie together or on opposite sides and which variables point together or apart.
+
+A large loading also does not mean that the variable causes the component. The direction was computed from the variables. Causal language reverses that construction and requires evidence not supplied by PCA.
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Task 8](../problem-sets/ps5/ps5.qmd#task-8-inspect-phonological-and-database-structure-15-points) reads segment loadings together with inventory scores. Loadings describe a direction in the retained segment space, while scores locate selected inventories along that direction. Neither quantity by itself identifies what generated the pattern.
+:::
+
+## Check rows and columns
+
+1. Which quantity locates one observation in component space?
+2. In the worked example, why is the first score $3/\sqrt{2}$?
+3. What pattern is represented by weights with the same sign, and what pattern is represented by opposing signs?
+4. Why must an analysis state its loading convention?
+5. What happens to the scores when the corresponding component direction changes sign?
+6. Why should score metadata be joined by a stable row identifier?
+
+## Before rebuilding the matrix
+
+Scores locate the original row objects, while loadings describe directions through the original columns under the convention stated on this page. Their multiplication is interpretable only under a stated loading convention and a verified metadata alignment. The [next page](reconstruction.qmd) combines scores and component directions to calculate which cells a retained representation restores and which discrepancies it leaves behind.

@@ -1,0 +1,138 @@
+---
+title: "Implementing a model in Stan"
+---
+
+The preceding pages developed [Hamiltonian Monte Carlo](hamiltonian-monte-carlo.qmd) and the [No-U-Turn Sampler](no-u-turn-sampler.qmd). [**Stan**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) is a probabilistic programming language that uses these methods after the analyst declares observed data, unknown parameters, and density contributions.
+
+Consider a constructed study of overt subject pronouns. Code $y_i=1$ when a sampled clause contains an overt subject pronoun and $y_i=0$ otherwise. The statistical model is
+
+$$
+Y_i\mid\Pi=\pi
+\sim
+\operatorname{Bernoulli}(\pi)
+$$
+
+with prior
+
+$$
+\Pi\sim\operatorname{Beta}(2,2).
+$$
+
+The Stan program is
+
+```stan
+data {
+  int<lower=0> n;
+  array[n] int<lower=0, upper=1> y;
+}
+
+parameters {
+  real<lower=0, upper=1> pi;
+}
+
+model {
+  pi ~ beta(2, 2);
+  y ~ bernoulli(pi);
+}
+```
+
+## Declare the observed data
+
+```stan
+data {
+  int<lower=0> n;
+  array[n] int<lower=0, upper=1> y;
+}
+```
+
+The integer `n` is the number of clauses. The array `y` contains `n` observed integers constrained to zero or one. Values in the `data` block are supplied before sampling and remain fixed during posterior computation.
+
+The constraints check allowable data values. If `y` contains a two, Stan rejects the input rather than silently treating it as a Bernoulli outcome.
+
+## Declare the unknown parameter
+
+```stan
+parameters {
+  real<lower=0, upper=1> pi;
+}
+```
+
+The parameter `pi` is unknown and must lie between zero and one. Stan internally transforms constrained parameters to an unconstrained scale for sampling and adjusts the density for that transformation.
+
+The support constraint is not the prior. It says which values are allowable. The beta statement in the model block says how prior density varies across those values.
+
+## Add density contributions
+
+```stan
+model {
+  pi ~ beta(2, 2);
+  y ~ bernoulli(pi);
+}
+```
+
+The first statement adds the beta prior log density for `pi`. The second adds one Bernoulli log likelihood contribution for every element of `y`.
+
+Stan's tilde notation is density notation in the `model` block. It does not simulate `pi` and then simulate `y`. The program is equivalent, up to constants not involving `pi`, to
+
+```stan
+model {
+  target += beta_lpdf(pi | 2, 2);
+  target += bernoulli_lpmf(y | pi);
+}
+```
+
+The variable `target` accumulates the unnormalized log posterior density.
+
+## Prepare a matching data object
+
+Suppose the constructed sample has 12 overt pronouns among 20 clauses.
+
+```{r}
+#| label: stan-data-pronouns
+#| echo: true
+
+y <- c(rep(1L, 12), rep(0L, 8))
+stan_data <- list(n = length(y), y = y)
+
+stopifnot(stan_data$n == 20L)
+stopifnot(sum(stan_data$y) == 12L)
+stopifnot(all(stan_data$y %in% 0:1))
+
+analytic_posterior <- c(alpha = 2 + sum(y),
+                        beta = 2 + length(y) - sum(y))
+analytic_posterior
+```
+
+The [conjugate update derived earlier](conjugate-priors.qmd) gives a $\operatorname{Beta}(14,10)$ benchmark. A successful Stan fit should approximate this posterior within Monte Carlo error. The benchmark checks the implementation for this simple model; most Stan models will not have an analytic comparison.
+
+## Match code to factorization
+
+Stan vectorizes `y ~ bernoulli(pi)`, but the statement still represents
+
+$$
+\sum_{i=1}^n
+\log p(y_i\mid\pi).
+$$
+
+If several clauses come from one speaker, concise vectorization does not remove that dependence. The program has asserted conditional independence by adding separate Bernoulli terms with one common probability.
+
+Translate each density statement back into the product or sum it represents, then ask whether that factorization matches the linguistic sampling process.
+
+## Separate program validity from model adequacy
+
+Stan can parse a program, calculate gradients, and return draws from the declared posterior. None of those outcomes establishes that independent Bernoulli observations are a suitable model for the clauses.
+
+A completed sampling run is not a validated analysis. The analyst still must check computational behavior, prior implications, posterior predictions, and the linguistic correspondence between data rows and modeled units.
+
+Stan supplies the sampling machinery. The analyst supplies the model and the inferential target.
+
+The program should be stored with the exact data transformation and interface call used to fit it. Identical Stan code can target a different posterior when variables are recoded or rows are filtered.
+
+## Check your understanding
+
+1. Why does `y` belong in the `data` block rather than the `parameters` block?
+2. What is the difference between `<lower=0, upper=1>` and `pi ~ beta(2, 2)`?
+3. What does a tilde statement add in the `model` block?
+4. Why can a program run without representing speaker or document dependence?
+
+The next page begins the computational audit by [reading trace plots](checking-markov-chains.qmd).

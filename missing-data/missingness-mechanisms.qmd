@@ -1,0 +1,114 @@
+---
+title: "Missingness mechanisms"
+---
+
+Suppose an eye tracking study measures first pass reading time for words in simple and complex sentences. Some words receive no first pass fixation, so their reading times are absent. A table of missingness indicators can show whether absences are more common in complex sentences. It cannot, by itself, say whether complexity explains the absence or whether the unseen reading time still affects the probability of being observed.
+
+A [**missingness mechanism**](https://stefvanbuuren.name/fimd/sec-MCAR.html) states how the probability of the complete missingness-indicator pattern depends on measurements that are observed and measurements that are missing. The three mechanisms introduced below make different dependence claims. They do not describe three visual arrangements of blank cells. The scalar notation below isolates one missingness indicator so that those dependence claims can be read directly.
+
+## Separate the observed and missing parts
+
+Let $Y$ denote the measurements that would exist in the complete data. For a particular pattern, write $Y_{\mathrm{obs}}$ for the observed part and $Y_{\mathrm{mis}}$ for the missing part. Let $R=1$ when the target measurement is observed and $R=0$ when it is missing, following the [indicator convention](missingness-patterns.qmd) from the preceding page.
+
+The mechanism concerns
+
+$$
+P(R=1\mid Y_{\mathrm{obs}},Y_{\mathrm{mis}}),
+$$
+
+the probability of observation given the complete data. The three labels restrict which quantities this probability may depend on.
+
+## Missing completely at random
+
+Values are [**missing completely at random (MCAR)**](https://stefvanbuuren.name/fimd/sec-MCAR.html) when the observation probability depends on neither observed nor unobserved measurements:
+
+$$
+P(R=1\mid Y_{\mathrm{obs}},Y_{\mathrm{mis}})=P(R=1).
+$$
+
+Imagine that a software failure deletes each trial with the same probability, regardless of sentence complexity, word identity, participant, or reading time. Under this account, observed trials are a random subset of the full trials.
+
+MCAR is a strong claim. Failing to detect an association between missingness and an observed variable does not establish it. A finite dataset may simply provide little information about the association, and the missing values cannot be checked directly.
+
+## Missing at random
+
+Values are [**missing at random (MAR)**](https://stefvanbuuren.name/fimd/sec-MCAR.html) when observation may depend on observed measurements but does not additionally depend on the missing value after those measurements are conditioned on:
+
+$$
+P(R=1\mid Y_{\mathrm{obs}},Y_{\mathrm{mis}})
+=P(R=1\mid Y_{\mathrm{obs}}).
+$$
+
+Suppose skipping is more common in complex sentences, and sentence complexity is observed for every word. Under an MAR account, complexity may change the probability that reading time is absent. Among words with the same observed complexity and other relevant observed properties, however, the unseen reading time does not further change that probability.
+
+The name is potentially misleading. MAR does not say that blanks are scattered uniformly through the table. It permits visible and systematic missingness whenever that structure is explained by observed information.
+
+## Missing not at random
+
+Values are [**missing not at random (MNAR)**](https://stefvanbuuren.name/fimd/sec-MCAR.html) when observation still depends on the unseen value after observed measurements have been considered:
+
+$$
+P(R=1\mid Y_{\mathrm{obs}},Y_{\mathrm{mis}})
+\neq P(R=1\mid Y_{\mathrm{obs}}).
+$$
+
+Suppose very short reading times correspond to skipped or barely fixated words that the apparatus does not record as a first pass fixation. Even among words with the same observed complexity, the missing reading time itself may affect whether a value appears. This is an MNAR account.
+
+The observed data generally do not identify this remaining dependence. Domain knowledge about the measurement process and sensitivity analyses are needed to ask how conclusions change under plausible MNAR departures.
+
+## Work through one visible pattern
+
+Consider six trials.
+
+| trial | complexity | word length | reading time | observed |
+|:--|:--|--:|--:|:--|
+| t1 | simple | 4 | 240 | yes |
+| t2 | simple | 7 | 310 | yes |
+| t3 | simple | 5 | 270 | yes |
+| t4 | complex | 4 | 290 | yes |
+| t5 | complex | 7 | missing | no |
+| t6 | complex | 5 | missing | no |
+
+All three simple trials are observed, compared with one of three complex trials. The observed pattern is compatible with an MAR account in which complexity predicts observation. It is also compatible with an MNAR account in which unusually short or long reading times are difficult to record and happen to occur in complex sentences.
+
+The pattern is not compatible with a deterministic claim that observation is unrelated to sentence complexity in these six trials. But that descriptive fact does not prove that the population mechanism depends on complexity, much less that the dependence is MAR rather than MNAR.
+
+We can compute the visible proportions without claiming a mechanism.
+
+```{r}
+trials <- data.frame(
+  complexity = rep(c("simple", "complex"), each = 3),
+  word_length = c(4, 7, 5, 4, 7, 5),
+  reading_time = c(240, 310, 270, 290, NA, NA)
+)
+
+trials$observed <- !is.na(trials$reading_time)
+
+with(trials, table(complexity, observed))
+aggregate(observed ~ complexity, data = trials, FUN = mean)
+```
+
+The proportions describe $P(R=1\mid\text{complexity})$ in this sample. They contain no direct information about the reading times in t5 and t6. Thus, the calculation can reveal a pattern relevant to MAR, but it cannot distinguish MAR from MNAR.
+
+## Mechanisms can differ by level
+
+An entire participant may be absent because recruitment failed. A session may be incomplete because the eye tracker lost calibration. An individual word may lack a first pass time because it was skipped. Assigning one label to the whole dataset can conceal these different processes.
+
+The analysis should define the indicator and mechanism at the level where absence occurs. Participant absence, session failure, and trial absence may require different assumptions even when their blanks ultimately appear in one rectangular table.
+
+## A plot cannot distinguish MAR from MNAR
+
+A missingness plot alone cannot diagnose MCAR, MAR, or MNAR. The plot contains $R$ and observed measurements. The distinction between MAR and MNAR concerns dependence on $Y_{\mathrm{mis}}$, which the plot cannot display.
+
+This limitation does not make pattern analysis useless. It can challenge MCAR, identify observed variables that should be retained, and guide sensitivity analyses. It cannot turn an unobserved dependence into an observed one.
+
+::: {.callout-note title="Classify the claim"}
+1. Under MCAR, may observation depend on an observed sentence label?
+2. Under MAR, may missingness be visibly associated with sentence complexity?
+3. What additional dependence makes a mechanism MNAR?
+4. Why can the six trial table not distinguish MAR from MNAR?
+:::
+
+## Summing up
+
+A missingness mechanism restricts how observation may depend on observed and unobserved measurements. MCAR removes both dependencies, MAR permits dependence on observed information, and MNAR retains dependence on unseen values. These assumptions determine what may follow when incomplete rows are deleted, which is the focus of [complete case analysis](complete-case-analysis.qmd).

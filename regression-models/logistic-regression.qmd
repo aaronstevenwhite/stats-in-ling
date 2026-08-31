@@ -1,0 +1,170 @@
+---
+title: "Logistic regression"
+---
+
+The earlier pages introduced the [Bernoulli distribution](../random-variables-and-distributions/bernoulli-distribution.qmd), the [components of a generalized linear model](generalized-linear-models.qmd), and [log odds](odds-and-log-odds.qmd). Logistic regression combines those components for a binary response.
+
+Suppose we ask which of two English complement forms a speaker chooses. A token is completed with *in* or *for*, and a predictor records a property of the surrounding context. The response has two possible values, but the scientific question still concerns graded variation. We want to know how the probability of an *in* completion changes with the context.
+
+A linear regression does not respect this response. It can predict values below zero or above one, and it assumes a constant conditional variance around a continuous mean. A binary response instead has a variance determined by its probability. The variance is small near zero and one and largest near one half.
+
+[**Logistic regression**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) handles this problem by combining a Bernoulli response with a logit link between probabilities and an unrestricted linear predictor. This page assembles and interprets that model rather than introducing the Bernoulli distribution or link again.
+
+## Begin with the binary response
+
+Let $Y_i=1$ mark an *in* completion and $Y_i=0$ mark a *for* completion. Each observed response has a Bernoulli distribution:
+
+$$
+Y_i\sim\operatorname{Bernoulli}(\pi_i).
+$$
+
+Its conditional mean and variance are
+
+$$
+\mathbb{E}[Y_i\mid x_i]=\pi_i
+\qquad\text{and}\qquad
+\operatorname{Var}(Y_i\mid x_i)=\pi_i(1-\pi_i).
+$$
+
+The parameter $\pi_i$ is both the expected value of the zero and one response and the probability of an *in* completion. Regression must let this parameter vary with $x_i$ while keeping it between zero and one.
+
+## Put the straight line on the log odds scale
+
+Probabilities are bounded, while a linear predictor can be any real number. Logistic regression connects the two spaces with the logit link:
+
+$$
+\operatorname{logit}(\pi_i)
+=\log\left(\frac{\pi_i}{1-\pi_i}\right)
+=\beta_0+\beta_1x_i.
+$$
+
+The right side is an ordinary straight line. The left side converts a probability into log odds using the [logit link](link-functions.qmd). It does not transform the observed zeros and ones. It transforms the conditional probability that generates them.
+
+To return to the probability scale, use the inverse logit:
+
+$$
+\pi_i
+=\operatorname{logit}^{-1}(\beta_0+\beta_1x_i)
+=\frac{1}{1+\exp[-(\beta_0+\beta_1x_i)]}.
+$$
+
+The inverse logit maps every real linear predictor to a value strictly between zero and one. Thus the model can use a linear relation without producing an invalid probability.
+
+## Work through three predictor values
+
+Suppose $\beta_0=-1$ and $\beta_1=.5$. At $x=0$, the linear predictor is
+
+$$
+\eta(0)=-1+.5(0)=-1.
+$$
+
+The predicted probability is
+
+$$
+\pi(0)=\frac{1}{1+e^1}\approx.269.
+$$
+
+At $x=2$,
+
+$$
+\eta(2)=-1+.5(2)=0
+\qquad\text{and}\qquad
+\pi(2)=.50.
+$$
+
+At $x=4$,
+
+$$
+\eta(4)=-1+.5(4)=1
+\qquad\text{and}\qquad
+\pi(4)\approx.731.
+$$
+
+The predictor increases by two units in both steps. The predicted probability rises by about .231 in each of these particular steps because the endpoints are symmetric around the point where $\eta=0$. That symmetry should not be mistaken for a constant probability slope. Moving two units farther into either tail produces a smaller probability change because the inverse logit flattens near zero and one.
+
+## Interpret the coefficient on its native scale
+
+The slope $\beta_1=.5$ is a .5 increase in log odds for a one unit predictor increase. Exponentiating gives the corresponding odds ratio:
+
+$$
+e^{.5}\approx1.65.
+$$
+
+Thus each one unit increase multiplies the odds of an *in* completion by about 1.65. This multiplier is constant when the model is additive on the log odds scale. The probability difference is not constant because the same odds multiplier acts on different starting odds.
+
+For instance, consider one unit changes at two locations:
+
+| predictor change | starting probability | ending probability | probability change |
+|---:|---:|---:|---:|
+| $0$ to $1$ | $.269$ | $.378$ | $.109$ |
+| $4$ to $5$ | $.731$ | $.818$ | $.087$ |
+
+Both rows represent the same .5 change in log odds and the same 1.65 odds multiplier. They do not represent the same change in probability. A results paragraph should thus state the scale. Saying that the outcome "increases by .5" is incomplete because a binary response cannot increase by .5 in the sense implied by a linear regression coefficient.
+
+## Fit the model in R
+
+Suppose `completion` records `in` or `for`, and `context_score` is the predictor. First make the event coding visible:
+
+```r
+completions$in_response <- as.integer(completions$completion == "in")
+
+table(
+  completion = completions$completion,
+  coded_response = completions$in_response
+)
+```
+
+Then fit the model:
+
+```r
+fit_completion <- glm(
+  in_response ~ context_score,
+  family = binomial(link = "logit"),
+  data = completions
+)
+```
+
+The formula defines the linear predictor. `binomial(link = "logit")` supplies the Bernoulli likelihood and the logit link. The model does not infer which category should count as one from the linguistic labels. That choice entered when `in_response` was constructed.
+
+Response scale predictions make the coding and the nonlinear link concrete:
+
+```r
+new_contexts <- data.frame(context_score = c(0, 2, 4))
+
+predict(
+  fit_completion,
+  newdata = new_contexts,
+  type = "response"
+)
+```
+
+Without `type = "response"`, `predict()` returns values on the link scale. Both outputs are useful, but they answer different questions. Link scale values show the additive model. Response scale values show the predicted linguistic choice probabilities.
+
+## The event coding reverses every sign
+
+Suppose we instead define $Y_i=1$ for a *for* completion. The fitted probabilities become complements of the original probabilities, and the coefficient signs reverse. No observation has changed. Only the modeled event has changed.
+
+Every interpretation should state the event coded as one. A positive coefficient raises the probability of that category. It does not raise the probability of whichever category sounds linguistically prominent in the prose description.
+
+The same issue affects reference levels for categorical predictors. The earlier
+coding pages make those numerical contrasts explicit before a categorical
+logistic model is fitted.
+
+## A fitted association is not yet a causal effect
+
+A logistic coefficient describes a conditional association under the fitted model. If `context_score` was observed in a corpus, tokens at different values may also differ in speaker, genre, lexical item, or other properties. The model does not create random assignment.
+
+This limitation does not make the coefficient useless. It fixes the claim. The model estimates how the conditional probability varies across the represented contexts. A causal interpretation requires a design or a stronger identification argument introduced elsewhere.
+
+::: {.callout-note title="Check the coefficient"}
+If $e^{\beta_1}=2$, what doubles after a one unit increase: probability or odds? Calculate the probability change when the starting probability is .20, and then calculate it when the starting probability is .70.
+:::
+
+## What logistic regression adds
+
+Logistic regression represents a binary linguistic response with a Bernoulli
+distribution and places an additive predictor on the log odds scale. Its
+coefficients describe log odds changes or odds ratios. Its response scale
+predictions describe changes in the probability of the event coded as one. The
+[next page](logistic-regression-example.qmd) applies this model to a categorical
+verb-class predictor.

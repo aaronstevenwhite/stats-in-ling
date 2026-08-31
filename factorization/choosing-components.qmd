@@ -1,0 +1,203 @@
+---
+title: "Choosing the number of components"
+---
+
+A matrix with rank $r$ has $r$ nonzero singular-value terms. Keeping all of them reproduces the fitted matrix, while keeping fewer gives a lower-dimensional representation. The analysis must decide where to stop without using the same outcomes both to choose the rank and to support the final claim.
+
+Selecting the retained rank is a model-selection problem. When the intended use is reconstruction of excluded cells or observations, validation reconstruction loss selects the rank whose fitted representation best predicts a designated validation set. A separate test set remains untouched until the rank has been fixed.
+
+We first formalize this separation. We then select a rank from a small loss table by hand and in R. Finally, we compare held-out reconstruction with visual and observed-variance rules and examine the instability that can arise when several ranks perform similarly.
+
+## Separate fitting, selection, and evaluation
+
+Let $\mathcal{T}$ index entries available for fitting, $\mathcal{V}$ index validation entries, and $\mathcal{S}$ index test entries. These sets are disjoint:
+
+$$
+\mathcal{T}\cap\mathcal{V}=\varnothing,
+\qquad
+\mathcal{T}\cap\mathcal{S}=\varnothing,
+\qquad
+\mathcal{V}\cap\mathcal{S}=\varnothing.
+$$
+
+For each candidate rank $K$, fit the complete rank $K$ reconstruction procedure using only the fitting entries. Denote its prediction for cell $(i,j)$ by
+
+$$
+\widehat{x}^{(\mathcal{T})}_{ij,K}.
+$$
+
+Under squared loss, the validation risk is
+
+$$
+\widehat{R}_{\mathcal{V}}(K)
+=
+\frac{1}{|\mathcal{V}|}
+\sum_{(i,j)\in\mathcal{V}}
+\left(
+x_{ij}-\widehat{x}^{(\mathcal{T})}_{ij,K}
+\right)^2.
+$$
+
+The selected rank is
+
+$$
+\widehat{K}
+=
+\underset{K\in\mathcal{K}}{\operatorname{argmin}}
+\widehat{R}_{\mathcal{V}}(K),
+$$
+
+where $\mathcal{K}$ is the candidate set fixed before inspecting the test outcomes.
+
+Only after choosing $\widehat{K}$ do we evaluate the selected procedure on $\mathcal{S}$. The test loss is not another input to rank selection.
+
+## Work through a validation curve
+
+Suppose four candidate representations produce the following validation losses.
+
+| retained rank $K$ | validation squared loss |
+|---:|---:|
+| 0 | 0.25 |
+| 1 | 0.18 |
+| 2 | 0.14 |
+| 3 | 0.16 |
+
+Rank 0 is a declared baseline that uses no low-rank adjustment. Rank 1 reduces validation loss by
+
+$$
+0.25-0.18=0.07.
+$$
+
+Rank 2 reduces it by another
+
+$$
+0.18-0.14=0.04.
+$$
+
+Rank 3 has lower fitted reconstruction error than rank 2 on the training matrix, but its validation loss rises by
+
+$$
+0.16-0.14=0.02.
+$$
+
+The validation rule thus selects
+
+$$
+\widehat{K}=2.
+$$
+
+This choice does not assert that the true linguistic system has exactly two dimensions. It says that rank 2 gives the lowest estimated validation loss among these candidates for the declared reconstruction task.
+
+## Implement the selection in R
+
+The rank curve can be stored in a data frame.
+
+```{r}
+#| eval: false
+
+rank_curve <- data.frame(
+  rank = c(0L, 1L, 2L, 3L),
+  validation_loss = c(0.25, 0.18, 0.14, 0.16)
+)
+
+selected_row <- which.min(rank_curve$validation_loss)
+selected_rank <- rank_curve$rank[selected_row]
+
+selected_rank
+```
+
+Plotting the complete curve makes near ties and unexpected reversals visible.
+
+```{r}
+#| eval: false
+
+plot(
+  rank_curve$rank,
+  rank_curve$validation_loss,
+  type = "b",
+  xlab = "Retained rank",
+  ylab = "Validation squared loss"
+)
+```
+
+The `which.min()` call implements the formal $\operatorname{argmin}$. The more substantial work occurs before that line: preprocessing, fitting, and reconstruction must be repeated without using validation or test values as fitting information.
+
+## Treat preprocessing as part of the procedure
+
+Suppose the columns are centered before the decomposition. Their means must be estimated from the fitting entries available for that candidate fit. A validation or test value cannot contribute to the origin used to predict itself.
+
+The same rule applies to scaling and any rule used to construct the candidate matrix. The procedure evaluated at rank $K$ includes all fitted choices that produce $\widehat{x}^{(\mathcal{T})}_{ij,K}$.
+
+Computing one decomposition from the complete matrix and then scoring selected entries creates [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage). Those entries are not held out because their values already affected the column transformations and component directions.
+
+## State how cells are weighted
+
+The validation loss should give the intended cells the intended weight. If one kind of cell is much more common than another, an unweighted mean may reward a representation that performs well only on the common kind.
+
+Suppose binary cells are separated into present cells $\mathcal{V}_1$ and absent cells $\mathcal{V}_0$. A balanced squared loss is
+
+$$
+\widehat{R}^{\mathrm{bal}}_{\mathcal{V}}(K)
+=
+\frac{1}{2}
+\left[
+\frac{1}{|\mathcal{V}_1|}
+\sum_{(i,j)\in\mathcal{V}_1}
+\left(1-\widehat{x}_{ij,K}\right)^2
++
+\frac{1}{|\mathcal{V}_0|}
+\sum_{(i,j)\in\mathcal{V}_0}
+\widehat{x}_{ij,K}^2
+\right].
+$$
+
+This score gives presence and absence equal total weight. It estimates a different population average from a loss averaged over all cells in their observed proportions. The choice should be declared before the rank curve is inspected.
+
+## Why observed reconstruction cannot select rank
+
+Observed reconstruction error weakly decreases whenever another singular-value term is added. If the only rule is to minimize error on the fitted matrix, the rule selects the largest permitted rank.
+
+That result follows from the construction rather than from evidence that every retained direction will generalize. A later term may restore a small irregularity unique to the fitted entries. Validation asks whether retaining that term helps predict entries excluded from the fit.
+
+This is why the selected rank may occur before the full matrix rank. Compression creates an empirical tradeoff only when evaluated away from the entries that determined the representation.
+
+## Why a scree bend answers another question
+
+A scree plot displays $d_k^2$ or its proportion of total observed squared variation by component order. It can reveal whether singular values decline sharply or gradually. Looking for a bend is descriptive, but the bend may be ambiguous and does not use excluded reconstruction outcomes.
+
+A fixed cumulative-variance threshold, such as 0.90, is reproducible but conventional. It selects the smallest $K$ that represents a chosen proportion of fitted squared variation. It does not select the rank that best predicts the declared validation cells.
+
+Validation need not always replace a scree plot. If the scientific aim is explicitly descriptive compression of this observed matrix, the singular-value profile may be the relevant object. But if the claim concerns reconstruction of excluded entries or new observations, validation matches that claim more directly.
+
+## Preserve one final evaluation
+
+Once $\widehat{K}$ has been selected, the test set supports one final evaluation of the selected procedure. Comparing many ranks on the test set and reporting the best turns the test outcomes into another validation set.
+
+After selection, one may refit the rank $\widehat{K}$ procedure using the fitting and validation information together, provided the test values remain excluded. This mirrors the [training, validation, and test workflow](../model-criticism-and-prediction/training-and-test-data.qmd#a-test-set-is-not-a-source-of-repeated-decisions) introduced earlier. The refitting rule should be fixed before the test score is seen.
+
+The resulting test loss evaluates the selected procedure, not the entire rank curve. Its interpretation remains tied to the cell sampling and weighting used in the test set.
+
+## Report rank uncertainty and sensitivity
+
+Validation losses may be nearly tied. Suppose ranks 2 and 3 have losses 0.140 and 0.141. Selecting rank 2 is mechanically correct under the minimum rule, but the evidence does not support a strong claim that rank 2 is uniquely best.
+
+Plot the curve and report the relevant differences. If the substantive interpretation changes sharply across nearly tied ranks, that instability is part of the result.
+
+The selected rank may also depend on matrix construction, scaling, and the candidate set. A sensitivity analysis can repeat the declared selection procedure under a small number of theoretically defensible data decisions. It should not search a large collection of choices until one produces a preferred interpretation.
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Task 6](../problem-sets/ps5/ps5.qmd#task-6-select-the-rank-on-validation-cells-15-points) chooses rank from balanced validation loss rather than a visual elbow or an observed variance threshold. [Task 9](../problem-sets/ps5/ps5.qmd#task-9-vary-the-declared-data-decisions-and-license-the-claim-10-points) then checks whether the conclusion changes under two inventory selection rules and three rare segment thresholds. These tasks are included because rank selection and data construction are both parts of the fitted procedure.
+:::
+
+## Check rank selection
+
+1. Which entries determine $\widehat{K}$, and which entries must remain untouched until final evaluation?
+2. Why does observed reconstruction error favor the largest permitted rank?
+3. In the worked curve, how much lower is rank 2 validation loss than rank 3 loss?
+4. What population weighting difference separates balanced cell loss from loss averaged over all observed cells?
+5. Why does a 0.90 variance threshold not estimate held-out reconstruction performance?
+6. What should be reported when several ranks have nearly identical validation losses?
+
+## What rank selection establishes
+
+Validation reconstruction loss chooses the retained rank for a declared held-out reconstruction task without using final test outcomes. The choice applies to the complete fitted procedure, including preprocessing and data construction, and it does not identify a true number of linguistic dimensions. With this separation in place, the factorization can support a scoped claim about reconstruction rather than a claim selected from the same cells used to evaluate it.

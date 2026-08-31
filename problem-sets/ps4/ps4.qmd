@@ -1,0 +1,404 @@
+---
+title: "Problem Set 4: Commitment in naturally occurring discourse"
+subtitle: "Statistical Methods in Linguistics"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
+---
+
+## What this problem set asks
+
+Suppose someone says, *I did not know that it did that*. The complement *it did
+that* is not asserted. Yet a listener may still take the speaker to be committed to
+its truth. When commitment survives an environment that normally removes an
+entailment, the complement is said to [**project**](https://doi.org/10.18148/sub/2019.v23i2.601).
+
+A traditional account begins with the embedding predicate. Predicates such as
+*know* are classified as factive, while predicates such as *think* are classified as
+nonfactive. If this classification fully determines projection, the complement of a
+factive predicate should receive high commitment ratings across discourses. The
+CommitmentBank shows why this prediction is too strong. Factive predicates tend to
+receive higher ratings, but predicates within the same class differ, individual
+discourses differ, and annotators use the scale differently.
+
+The binary factive/nonfactive classification is thus too coarse to determine commitment ratings by itself. The assignment
+asks how much that classification tells us, then asks whether the
+embedding environment tells us more. A multilevel ordinal model lets us answer both
+questions while retaining the seven ordered response categories and representing
+the three sources of repeated observations.
+
+The focal method is the [ordinal mixed model](../../regression-models/ordinal-mixed-models.qmd) introduced in the notes. Prior predictive
+simulation, sampling diagnostics, posterior prediction, posterior predictive
+checking, and grouped predictive comparison are parts of evaluating that one model
+family. They do not introduce additional response models.
+
+::: {.callout-note title="Reading"}
+Read de Marneffe, Simons, and Tonhauser (2019), [“The CommitmentBank:
+Investigating projection in naturally occurring
+discourse”](https://doi.org/10.18148/sub/2019.v23i2.601), focusing on Sections 2,
+3.1, 3.4, and 3.5. The reading is included because it defines the commitment task,
+motivates the factivity and embedding predictors, documents the restriction to
+epistemic modals, and shows that predicate identity leaves substantial variation
+unexplained. We will reuse the data but replace the paper's separate factor tests
+with one prespecified Bayesian model sequence and a fuller dependence structure.
+:::
+
+Before beginning, review [ordinal
+regression](../../regression-models/ordinal-regression.qmd), [ordinal mixed
+models](../../regression-models/ordinal-mixed-models.qmd), [prior
+predictive distributions](../../statistical-inference/prior-predictive-distributions.qmd),
+[Hamiltonian Monte Carlo](../../statistical-inference/hamiltonian-monte-carlo.qmd),
+[R-hat](../../statistical-inference/rhat.qmd), [effective sample
+size](../../statistical-inference/effective-sample-size.qmd), [posterior predictive
+checks](../../statistical-inference/posterior-predictive-checks.qmd), and [Bayesian
+grouped cross-validation](../../model-criticism-and-prediction/grouped-cross-validation.qmd).
+These pages establish the ordinal link and its multilevel extension before this
+problem set applies them to CommitmentBank.
+
+## Begin with the measurement
+
+The response scale has seven ordered categories:
+
+| Rating | Interpretation |
+|---:|---|
+| `-3` | the speaker is certain that the complement is false |
+| `0` | the speaker is uncertain whether the complement is true or false |
+| `3` | the speaker is certain that the complement is true |
+
+The intermediate categories express intermediate ordered judgments. The difference
+between `-3` and `-2` need not equal the difference between `1` and `2`. Thus a normal
+linear model would add a spacing assumption that the task did not establish.
+
+Recall from [ordinal regression](../../regression-models/ordinal-regression.qmd) that an ordinal model asks whether a response falls at or below each boundary.
+With seven categories, there are six boundaries. For boundary $k$, the cumulative
+logit model is
+
+$$
+\operatorname{logit}\left[\Pr(Y_i \leq k)\right]
+= \theta_k - \eta_i,
+\qquad k \in \{-3,-2,-1,0,1,2\}.
+$$
+
+The ordered thresholds $\theta_k$ divide a latent commitment scale into the seven
+observed categories. The linear predictor $\eta_i$ moves an observation along that
+scale. Because $\eta_i$ is subtracted, a positive coefficient lowers the probability
+of falling at or below every boundary and shifts probability toward higher ratings.
+
+One coefficient is shared across all six cumulative logits. This is the
+[proportional-odds assumption introduced earlier](../../regression-models/ordinal-regression.qmd#interpret-one-coefficient-at-both-boundaries). It says that a predictor shifts location on the
+latent scale rather than having a separate effect at every response boundary. We
+will retain this assumption throughout the assignment so that the model sequence
+changes only the linguistic predictors.
+
+## Put the repeated observations into the model
+
+Let rating $i$ come from annotator $a[i]$, discourse $d[i]$, and predicate $v[i]$.
+The linear predictor for the larger model is
+
+$$
+\eta_i
+= \beta_F F_i
++ \boldsymbol{x}_{E_i}^{\mathsf T}\boldsymbol{\beta}_E
++ u_{a[i]} + w_{d[i]} + z_{v[i]},
+$$
+
+with
+
+$$
+u_a \sim \operatorname{Normal}(0,\sigma_a^2),
+\qquad
+w_d \sim \operatorname{Normal}(0,\sigma_d^2),
+\qquad
+z_v \sim \operatorname{Normal}(0,\sigma_v^2).
+$$
+
+The annotator intercept represents a person's general tendency to use higher or
+lower categories. The discourse intercept represents properties of a particular
+passage that every annotator saw. The predicate intercept represents lexical
+differences that remain after the binary factivity classification.
+
+Including factivity and predicate variation is not redundant. The factivity
+coefficient estimates the average difference between the two lexical classes. The
+predicate distribution asks how far individual predicates depart from that class
+average. This distinction makes the inadequacy of a class-only account estimable.
+
+## Prepare the data
+
+The official repository contains corpus passages from three source corpora and does
+not state a separate data license. The course repository thus supplies a
+retrieval script rather than a copy of the data. From the repository root, run:
+
+```sh
+Rscript problem-sets/ps4/scripts/prepare-commitmentbank.R
+```
+
+The script downloads the official participant-level CSV, checks a fixed SHA-256
+checksum, and creates a local analysis table without the passage or prompt text.
+
+```{r}
+library(brms)
+library(loo)
+library(posterior)
+library(ggplot2)
+
+ratings <- read.csv("data/commitmentbank-model.csv")
+
+primary <- ratings[ratings$modal_type %in% c("none", "EP"), ]
+primary$rating <- ordered(primary$rating, levels = -3:3)
+primary$factive <- factor(primary$factive, levels = c("no", "yes"))
+primary$embedding <- factor(
+  primary$embedding,
+  levels = c("conditional", "modal", "negation", "question")
+)
+primary$annotator <- factor(primary$annotator)
+primary$discourse <- factor(primary$discourse)
+primary$predicate <- factor(primary$predicate)
+primary$cell <- interaction(
+  primary$factive,
+  primary$embedding,
+  sep = ": "
+)
+primary <- droplevels(primary)
+
+stopifnot(
+  nrow(primary) == 9599L,
+  nlevels(primary$discourse) == 982L,
+  nlevels(primary$annotator) == 496L,
+  nlevels(primary$predicate) == 45L
+)
+```
+
+The filter follows the paper. Weak epistemic modals can diagnose projection because
+they remove the matrix entailment without adding a non-epistemic interpretation.
+Ability, circumstantial, and deontic modals do not provide the same diagnostic. We
+will restore them only in the predeclared sensitivity analysis.
+
+## Task 1: reconstruct the design (10 points) {#task-1-reconstruct-the-design}
+
+Create one table of rating counts and a second table of discourse counts by
+`factive` and `embedding`. Then answer the following questions.
+
+1. Why is the rating an ordered response rather than a continuous response?
+2. What is repeated within an annotator?
+3. What is repeated within a discourse?
+4. Why can the predicate effect not replace the discourse effect?
+5. Which factivity by environment cells have the weakest discourse support?
+
+State the target of the conditional predictions used later. They describe a rating
+with the annotator, discourse, and predicate random intercepts set to zero. They are
+not probabilities averaged over those random-effect distributions, and they do not
+describe every English speaker or every clause-embedding predicate.
+
+## Task 2: check the priors before fitting the data (15 points) {#task-2-check-the-priors-before-fitting-the-data}
+
+Use the prespecified priors:
+
+```{r}
+prior_set <- c(
+  prior(normal(0, 1.5), class = "Intercept"),
+  prior(normal(0, 1), class = "b"),
+  prior(exponential(1), class = "sd")
+)
+```
+
+The `Intercept` class names the six ordered thresholds in this model. The `b` class
+names the factivity and embedding coefficients. The `sd` class names the three group
+standard deviations.
+
+Define the larger formula now because a prior predictive check should use the model
+whose posterior will later be interpreted.
+
+```{r}
+environment_formula <- bf(
+  rating ~ factive + embedding +
+    (1 | annotator) + (1 | discourse) + (1 | predicate),
+  family = cumulative("logit")
+)
+
+# Fit with sample_prior = "only".
+```
+
+Draw 500 replicated datasets from the prior predictive distribution. Plot the
+overall proportion in each category for every replicate, then place the observed
+proportions on the same plot. Answer three questions.
+
+1. Do the priors permit all seven response categories?
+2. Do they routinely imply that nearly every response occupies one category?
+3. Would you revise the priors before seeing the posterior? Explain the proposed
+   revision or explain why no revision is needed.
+
+Do not choose a prior because it recreates the observed distribution closely. Prior
+predictive checking rules out implications that were unreasonable before the
+outcomes were used for fitting.
+
+## Task 3: fit the factivity model (20 points) {#task-3-fit-the-factivity-model}
+
+The first model asks whether the traditional lexical classification
+predicts the ordered commitment response while partially pooling the three grouping
+units.
+
+```{r}
+factivity_formula <- bf(
+  rating ~ factive +
+    (1 | annotator) + (1 | discourse) + (1 | predicate),
+  family = cumulative("logit")
+)
+
+# Fit the factivity-only model with four chains, 1,000 warmup iterations, and 1,000 retained
+# iterations per chain. Use the prespecified priors, adapt_delta = 0.95, and a
+# fixed seed.
+```
+
+Before interpreting the model, report:
+
+1. the number of divergent transitions;
+2. the largest split R-hat;
+3. the smallest bulk effective sample size among reported population and group-scale
+   parameters; and
+4. the smallest tail effective sample size among those parameters.
+
+Then report the median and 95 percent posterior interval for `factiveyes`. Explain
+its sign using the cumulative probability equation. Finally, report the three group
+standard deviations and inspect the predicate deviations for *know*, *realize*,
+*accept*, and *tell*.
+
+The factivity coefficient and predicate deviations answer different questions. A
+positive class coefficient can coexist with substantial lexical departures. Explain
+how that combination bears on the limits of a class-only account.
+
+## Task 4: add embedding environment (20 points) {#task-4-add-embedding-environment}
+
+Fit the model that adds embedding environment using `environment_formula`. Use
+the same data, priors, random structure, chains, iterations, and seed as the factivity-only model. This is a
+prespecified comparison: the only formula change is the addition of `embedding`.
+
+Perform the same diagnostic audit used for the factivity-only model. Then summarize the three embedding
+coefficients. Conditional antecedents are the reference level, so each coefficient
+compares one environment with a conditional antecedent while holding factivity fixed
+and setting the grouping deviations to their modeled values.
+
+Environment is constant within a discourse. This fact determines how the two models
+must be compared. If we leave out one rating, the remaining ratings of that discourse
+still estimate its discourse intercept. The intercept can then carry information
+that the environment predictor would otherwise supply. A rating-level comparison
+would answer the wrong question.
+
+The prespecified comparison instead uses five folds grouped by discourse and stratified by
+factivity and environment. Every rating of a discourse enters the same fold. Each
+held-out discourse receives one new discourse intercept drawn from the fitted group
+distribution, and that intercept is shared across its ratings. The ten model fits across
+five folds are slow, so you will audit the supplied discourse-level output instead of refitting them.
+
+[Download the grouped comparison
+results](data/commitmentbank-grouped-cv.csv), then read them into R.
+
+```{r}
+grouped_cv <- read.csv("data/commitmentbank-grouped-cv.csv")
+
+stopifnot(
+  nrow(grouped_cv) == 982L,
+  length(unique(grouped_cv$case)) == 982L,
+  setequal(grouped_cv$fold, 1:5)
+)
+```
+
+First verify that each fold contains all eight factivity by environment cells and
+between 194 and 200 discourses. Each value $\ell_{d,m}$ in the supplied file is the
+log predictive density for all ratings in discourse $d$ under model $m$. This is the
+[group-level pointwise quantity](../../model-criticism-and-prediction/grouped-cross-validation.qmd)
+required by the new-discourse target. Then compute
+
+$$
+\Delta = \sum_d \left(\ell_{d,\mathrm{environment}} -
+\ell_{d,\mathrm{factivity}}\right)
+$$
+
+and its discourse-level standard error,
+
+$$
+\operatorname{SE}(\Delta)
+= \sqrt{D\operatorname{Var}\left(\ell_{d,\mathrm{environment}} -
+\ell_{d,\mathrm{factivity}}\right)}.
+$$
+
+Report the difference, its standard error, and their ratio. Explain why one row is
+one discourse rather than one rating. State whether the difference exceeds the
+prespecified two-standard-error threshold. Finally, explain one limitation of the standard
+error: the discourse is the pointwise unit, but the five training sets overlap.
+
+## Task 5: return to response categories (20 points) {#task-5-return-to-response-categories}
+
+Create the eight combinations of factivity and embedding environment. Use
+`posterior_epred()` with `re_formula = NA` to obtain conditional category
+probabilities from the model that includes embedding environment, with every random
+intercept set to zero. Do not call these population-averaged probabilities, because
+they do not integrate over the fitted random-effect distributions.
+
+For each combination, report:
+
+1. the posterior mean and 95 percent interval for each of the seven category
+   probabilities;
+2. the probability of a high commitment response, defined before fitting as
+   $\Pr(Y \geq 2)$; and
+3. the posterior expected rating, used only as a compact summary of the seven
+   probabilities.
+
+Plot the seven category probabilities rather than only the expected ratings. Then
+answer three substantive questions.
+
+1. Does factivity shift probability toward stronger commitment in every
+   environment?
+2. Which environment has the largest probability of negative commitment responses?
+3. Does any environment make the factive and nonfactive distributions identical?
+
+The additive model builds in a common latent factivity shift. It does not build in
+identical response probabilities, because the inverse link and thresholds make the
+probability differences depend on position along the scale.
+
+## Task 6: criticize the model (10 points) {#task-6-criticize-the-model}
+
+Generate posterior predictive datasets from the model that includes embedding environment. Compare observed and replicated
+category proportions overall, by factivity, by embedding environment, and within the
+eight factivity by environment cells. Identify one feature the model reproduces and
+one feature it misses. A fitted coefficient is not a substitute for checking the
+response distribution that the model generates.
+
+Next perform the prespecified sensitivity analysis. Restore all modal types, rebuild the
+factors in the same order, and refit the model that includes embedding environment without changing its formula or priors.
+Compare the factivity and embedding summaries with the primary fit. Focus on the
+modal prediction because every restored item contains a non-epistemic modal.
+
+Explain whether the sensitivity result supports the paper's decision to restrict the
+projection diagnostic to epistemic modals. Do not select whichever fit gives a more
+dramatic coefficient. The two fits answer questions about different inclusion rules.
+
+## Task 7: license the claim (5 points) {#task-7-license-the-claim}
+
+Write a six-to-eight sentence results paragraph that does all of the following:
+
+1. names the ordered response and the two-model sequence;
+2. reports the factivity direction and uncertainty;
+3. reports variation among annotators, discourses, and predicates;
+4. reports the embedding model comparison with its predictive target;
+5. describes the category-level factivity and negation pattern;
+6. reports the modal-filter sensitivity; and
+7. limits the claim to these naturally occurring corpus discourses and the recorded
+   annotators.
+
+Do not say that factivity determines projection. The intended conclusion is narrower:
+factivity supplies a positive but coarse shift, while embedding environment and the
+modeled grouping units account for additional structure in commitment judgments.
+
+## Submission checklist
+
+1. The data checksum passes and no corpus text is submitted.
+2. The response remains an ordered factor with levels `-3` through `3`.
+3. The factivity-only model and the model that adds embedding environment use identical priors and random structures.
+4. Every fitted model receives a diagnostic audit before interpretation.
+5. The grouped comparison uses discourse as its pointwise unit and reports the
+   uncertainty of the difference.
+6. Posterior predictions show category probabilities, not only latent coefficients.
+7. The sensitivity analysis changes only the modal inclusion rule.
+8. The final paragraph states what the corpus sampling does not license.

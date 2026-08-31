@@ -1,0 +1,162 @@
+---
+title: "Importance sampling"
+---
+
+The [preceding page](monte-carlo-integration.qmd) approximated an expectation using draws from the target distribution itself. Importance sampling instead uses draws from a proposal distribution. Suppose the posterior target for the probability of producing a contrastive focus accent is
+
+$$
+p(\theta)
+=
+\operatorname{Beta}(8,4).
+$$
+
+We want the posterior probability that $\Theta>.70$, but suppose direct target draws are unavailable. We can draw from a proposal density $q(\theta)$ and correct the mismatch between proposal and target with weights.
+
+## Rewrite the target expectation
+
+For a function $g$, the target expectation is
+
+$$
+\mathbb{E}_p[g(\Theta)]
+=
+\int g(\theta)p(\theta)\,\mathrm{d}\theta.
+$$
+
+Multiply and divide by a proposal density $q(\theta)$:
+
+$$
+\begin{aligned}
+\mathbb{E}_p[g(\Theta)]
+&=
+\int
+g(\theta)
+\frac{p(\theta)}{q(\theta)}
+q(\theta)
+\,\mathrm{d}\theta\\
+&=
+\mathbb{E}_q
+\left[
+g(\Theta)w(\Theta)
+\right],
+\end{aligned}
+$$
+
+where
+
+$$
+w(\theta)=\frac{p(\theta)}{q(\theta)}
+$$
+
+is the [**importance weight**](https://www.cambridge.org/core/books/inverse-problems-and-data-assimilation/monte-carlo-sampling-and-importance-sampling/AEE4AC4E63548DC6A732013B571841D8). A proposal draw receives a large weight when it falls in a region that is relatively common under the target.
+
+## Use a uniform proposal
+
+Choose
+
+$$
+q(\theta)=\operatorname{Uniform}(0,1).
+$$
+
+Since its density is one on the unit interval, the raw weights are just beta densities evaluated at the uniform draws. When the target density is normalized, an ordinary importance sampling estimate is
+
+$$
+\widehat{I}_S
+=\frac{1}{S}\sum_{s=1}^S w^{(s)}g(\theta^{(s)}).
+$$
+
+We will use the self-normalized form, which divides the weighted sum by the sum of the weights. Define normalized weights
+
+$$
+\widetilde{w}^{(s)}
+=
+\frac{w^{(s)}}{\sum_{r=1}^Sw^{(r)}}.
+$$
+
+The self-normalized estimate is
+
+$$
+\widehat{I}_S
+=
+\sum_{s=1}^S
+\widetilde{w}^{(s)}g(\theta^{(s)}).
+$$
+
+For the tail probability, $g(\theta)=\mathbb{1}[\theta>.70]$.
+
+The self-normalized estimator is generally biased for finite $S$, but it is consistent under standard conditions and also works when the target is known only up to a constant. If
+
+$$
+p(\theta)=\frac{\widetilde{p}(\theta)}{Z},
+$$
+
+form raw weights as
+
+$$
+w^{(s)}
+=
+\frac{\widetilde{p}(\theta^{(s)})}
+{q(\theta^{(s)})}.
+$$
+
+The shared factor $1/Z$ disappears when these weights are divided by their sum. The calculation can thus approximate a normalized target expectation without evaluating $Z$.
+
+```{r}
+#| label: importance-focus-tail
+#| echo: true
+
+set.seed(964)
+draw_count <- 50000
+theta_proposal <- runif(draw_count)
+raw_weight <- dbeta(theta_proposal, 8, 4) /
+  dunif(theta_proposal)
+weight <- raw_weight / sum(raw_weight)
+
+importance_estimate <- sum(weight * (theta_proposal > .70))
+exact_value <- 1 - pbeta(.70, 8, 4)
+
+stopifnot(abs(sum(weight) - 1) < 1e-12)
+stopifnot(abs(importance_estimate - exact_value) < .01)
+
+c(importance = importance_estimate, exact = exact_value)
+```
+
+The normalized weights change an unweighted average under the uniform proposal into a weighted average approximating the beta target.
+
+## Inspect weight concentration
+
+Support is necessary. If $p(\theta)>0$ where $q(\theta)=0$, no proposal draw can represent that target region, and no weight can repair the omission.
+
+Shared support is not sufficient for an efficient calculation. A proposal that puts very little probability in an important target region may produce a few enormous weights and many negligible weights. The estimate then depends on a small number of proposal draws.
+
+One direct summary is the largest normalized weight:
+
+```{r}
+#| label: inspect-importance-weights
+#| echo: true
+
+largest_weight <- max(weight)
+weight_share_top_100 <- sum(sort(weight, decreasing = TRUE)[1:100])
+
+stopifnot(largest_weight < .01)
+c(largest_weight = largest_weight,
+  share_in_largest_100 = weight_share_top_100)
+```
+
+These values do not prove that the estimate is accurate, but they reveal whether a very small part of the simulation dominates it.
+
+## Avoid the proposal-frequency reading
+
+The proposal distribution is a computational device. It does not represent prior beliefs, posterior uncertainty, or a linguistic data-generating process. Frequent proposal draws do not by themselves indicate posterior support. Only the weighted draws approximate the target.
+
+Monte Carlo error also remains. More proposal draws may stabilize the estimate, while a better-matched proposal may improve it more efficiently. Neither change narrows the posterior target or repairs a poor linguistic model.
+
+A realized set of moderate weights does not prove that every important target tail has been represented. Proposal choice should be justified from support and tail behavior, not only from one weight histogram.
+
+## Check your understanding
+
+1. Why does the ratio $p(\theta)/q(\theta)$ correct proposal draws?
+2. What fails if the proposal has zero density in a target region?
+3. Why can a proposal with full support still be inefficient?
+4. Which distribution determines the unweighted draw frequency, and which determines the weighted target estimate?
+
+The next page introduces [Markov chains](markov-chains.qmd), which generate dependent sequences through a transition rule.

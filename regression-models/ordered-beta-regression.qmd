@@ -1,0 +1,132 @@
+---
+title: "Ordered-beta regression"
+---
+
+A bounded response can combine three observable possibilities: the lower endpoint, an interior value, and the upper endpoint. Standard beta regression cannot represent this response space, and [nudging endpoints inward](why-not-beta-sliders.qmd) makes an arbitrary constant part of the likelihood. [**Ordered-beta regression**](https://doi.org/10.1007/s11050-025-09244-9) combines the ordered cutpoints introduced for [ordinal regression](ordinal-regression.qmd) with a [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) for interior responses.
+
+We will construct the likelihood after rescaling the response to $Y_i\in[0,1]$ and treating exact endpoints as genuine outcomes of the measurement process.
+
+::: {.callout-note title="Reading for model criticism: Jatteau et al. (2025), selected paragraphs of Section 2.2"}
+[Jatteau et al., *Final devoicing before it happens: A large-scale study of word-final obstruents in French*](https://doi.org/10.16995/labphon.10855).
+
+Read the definition of the voicing ratio and the paragraph that motivates ordered-beta regression in Section 2.2.
+
+**What the paper records.** The phonetic response can equal zero or one, but its voicing ratio is $K/20$, where $K$ is the number of detection points classified as voiced. The response thus has 21 possible values rather than a continuous interior.
+
+**Why this reading?** The measurement supplies a likelihood boundary case. A binomial or beta-binomial response model follows the recorded count more directly than a continuous interior model. The paper's description of endpoints as modeled separately is also shorthand. The model on this page constrains both endpoints and the interior through one ordered location.
+:::
+
+## One ordered location
+
+Let
+
+$$
+\eta_i=\beta_0+\mathbf{x}_i^\mathsf{T}\boldsymbol\beta
+$$
+
+be a linear predictor and let $\kappa_0<\kappa_1$ be two cutpoints. The model partitions the response into three ordered regions:
+
+$$
+Y_i=0,\qquad 0<Y_i<1,\qquad Y_i=1.
+$$
+
+Using the logistic CDF $F$, the region probabilities can be written as
+
+$$
+\Pr(Y_i=0)=F(\kappa_0-\eta_i),
+$$
+
+$$
+\Pr(0<Y_i<1)
+=F(\kappa_1-\eta_i)-F(\kappa_0-\eta_i),
+$$
+
+and
+
+$$
+\Pr(Y_i=1)=1-F(\kappa_1-\eta_i).
+$$
+
+These three probabilities are nonnegative and sum to one. Increasing $\eta_i$ shifts probability upward: away from zero, through the interior, and toward one. The ordering connects endpoint use to the same latent location that organizes the interior response.
+
+## The interior distribution
+
+Conditional on falling inside the bounds, the response follows a beta distribution. One common parameterization uses
+
+$$
+\mu_i=\operatorname{logit}^{-1}(\eta_i)
+$$
+
+and a positive precision parameter $\phi$:
+
+$$
+Y_i\mid 0<Y_i<1
+\sim\operatorname{Beta}(\mu_i\phi,(1-\mu_i)\phi).
+$$
+
+The conditional interior mean is $\mu_i$. Larger $\phi$ concentrates interior values near that mean; smaller $\phi$ permits greater interior variation.
+
+The full predictive distribution is thus mixed: discrete at zero and one, continuous between them. A histogram alone can obscure this structure because the endpoint bars and interior bins do not represent the same kind of probability.
+
+## Why the ordering is an assumption
+
+Ordered-beta regression is parsimonious because one predictor shifts the lower endpoint, interior location, and upper endpoint in an ordered way. This economy can also fail. Suppose some participants use 100 as a protest response unrelated to the latent continuum, or a floor response arises from a separate detection process. Then a model with distinct endpoint processes may fit better and may correspond more closely to the task.
+
+Thus ordered-beta regression assumes that predictor effects on endpoint use and interior location arise through one ordered latent dimension. This ordering should be checked, not accepted merely because the model permits zeros and ones.
+
+## Coefficients require predictions
+
+An ordered-beta coefficient lives on the latent location scale. Its sign is often useful: a negative same-sense coefficient on a dissimilarity response shifts mass toward lower ratings. Its magnitude, however, does not equal a constant change in the observed mean. The change depends on the starting location, both cutpoints, and the precision.
+
+Interpret the fitted model by comparing predictive distributions. For two conditions, report at least:
+
+1. predicted probability of the lower endpoint;
+2. predicted probability of the upper endpoint;
+3. predicted mean or median on the recorded scale; and
+4. an interval or plot showing interior variation.
+
+These summaries reveal whether a predictor mainly shifts interior responses, changes endpoint use, or does both.
+
+## Fitting the model
+
+The `ordbetareg` package supplies a `brms` interface. A simple model has the same formula structure as other regressions:
+
+```r
+ratings$dissimilarity_01 <- ratings$dissimilarity / 100
+
+fit <- ordbetareg::ordbetareg(
+  dissimilarity_01 ~ same_sense,
+  data = ratings,
+  chains = 4,
+  cores = 4,
+  seed = 20260825
+)
+```
+
+Repeated participants or items require dependence terms already justified by the design. Adding them changes the conditional comparisons and the uncertainty; it is not an optional cosmetic repair.
+
+## Predictive checks
+
+An ordered-beta fit should reproduce more than the overall mean. Check the three parts separately:
+
+1. compare observed and predicted mass at zero;
+2. compare observed and predicted mass at one; and
+3. compare the observed and predicted interior distribution.
+
+Repeat these checks by theoretically relevant conditions and by major dependence units. A model can recover aggregate endpoint mass while missing that some participants never use endpoints and others use them on most trials.
+
+Posterior computation requires the ordinary convergence checks as well. Endpoint flexibility does not rescue divergent transitions, low effective sample sizes, or an unidentified cutpoint.
+
+::: {.callout-note title="The model licenses a distributional interpretation"}
+Ordered-beta regression does not merely keep fitted means inside the scale. It assigns probability to each endpoint and density to every interior value. Interpret and check all three parts.
+:::
+
+## Read the model
+
+1. If a predictor has a negative coefficient for a 0 to 1 dissimilarity response, which direction should zero mass, the interior location, and one mass move?
+2. Give one observation pattern that would challenge the ordered-boundary assumption.
+3. Why is a good fit to the overall endpoint rate insufficient when participants contribute repeated responses?
+
+## Before the application
+
+Ordered-beta regression combines two ordered cutpoints with a beta interior distribution. The ordering makes the model economical, while separate checks of both endpoints and the interior make the assumption observable. The [application page](aspectual-similarity-example.qmd) uses these tools to analyze event-description dissimilarity.

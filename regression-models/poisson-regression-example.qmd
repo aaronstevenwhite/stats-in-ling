@@ -1,0 +1,136 @@
+---
+title: "Poisson regression for linguistic diversity"
+---
+
+The [exposure-offset page](exposure-offsets.qmd) separated an expected rate from the number of opportunities. This application uses the same construction for counts of languages across countries with different geographic areas.
+
+The number of languages spoken in a country is a count. That observation may suggest a Poisson regression, but it does not yet tell us what the regression should compare. Countries differ greatly in geographic area. A large country provides more geographic opportunity for distinct language communities than a small country does. Comparing their raw language counts would mix the proposed ecological effect with this difference in opportunity.
+
+An exposure offset separates the language count from the amount of geographic area in which languages could occur. The resulting analysis asks whether countries with different mean growing seasons have different *rates* of linguistic diversity after geographic area has been held fixed.
+
+::: {.callout-note title="Reading: Winter (2020), Sections 13.3 and 13.4"}
+[Winter, *Analyzing linguistic diversity using Poisson regression* and *Adding exposure variables*, in *Statistics for Linguists*](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf).
+
+**Why this reading?** These sections introduce Nettle's language count data and connect mean growing season to a substantive account of linguistic diversity. They also introduce geographic area as exposure. The analysis below follows that question while correcting a scale mismatch in the printed code.
+:::
+
+## Begin with the linguistic account
+
+Nettle proposes that ecological risk may affect the size and stability of social networks. In an environment with a longer growing season, smaller communities may be able to support themselves with less exchange across groups. That social organization may favor the maintenance of a greater number of languages. In an environment with a shorter growing season, risk sharing may encourage larger networks and reduce that tendency.
+
+This proposal gives us a theory bearing predictor. Mean growing season is not included because it happens to be a numeric column. It represents the ecological contrast that Nettle proposes as one part of an account of linguistic diversity.
+
+Let $Y_i$ be the number of languages in country $i$, let $x_i$ be mean growing season in months, and let $A_i$ be geographic area. We begin with
+
+$$
+Y_i\sim\operatorname{Poisson}(\lambda_i).
+$$
+
+The expected count depends on both exposure and mean growing season:
+
+$$
+\log\lambda_i
+=\log A_i+\beta_0+\beta_1x_i.
+$$
+
+The quantity $\log A_i$ is an offset, so its coefficient is fixed at one. The remaining coefficients describe the expected language rate at a given geographic area.
+
+## Inspect the released variables
+
+The teaching data contain 74 countries and five columns. `Langs` is the number of languages, `MGS` is mean growing season in months, and `Area` is the base ten logarithm of area. `Population` is also stored on a base ten log scale, but it is not part of the present comparison.
+
+```r
+nettle <- read.csv(
+  "https://raw.githubusercontent.com/bodowinter/applied_statistics_book_data/master/nettle_1999_climate.csv"
+)
+
+dim(nettle)
+head(nettle)
+range(nettle$Langs)
+range(nettle$MGS)
+```
+
+There are 74 language counts. They range from 1 to 862. Mean growing season ranges from 0 to 12 months. These summaries confirm that the response and predictor have the meanings required by the comparison, but they do not yet address the scale of exposure.
+
+## Put the offset on the right log scale
+
+The model uses the natural logarithm because `glm()` uses the natural log link for a Poisson regression. The data file stores
+
+$$
+\operatorname{Area}_i=\log_{10}A_i.
+$$
+
+Passing `Area` directly to `offset()` would place a base ten logarithm into a natural log equation. The required conversion follows from
+
+$$
+\log A_i=\log(10)\log_{10}A_i.
+$$
+
+Thus the correct offset is `log(10) * Area`.
+
+```r
+fit <- glm(
+  Langs ~ MGS + offset(log(10) * Area),
+  family = poisson(link = "log"),
+  data = nettle
+)
+
+coef(summary(fit))
+```
+
+The fitted mean growing season coefficient is about $.250$. Its standard error under the Poisson model is about $.005$. We should first interpret the coefficient on the scale of the model:
+
+$$
+\log\lambda(x+1)-\log\lambda(x)=\beta_1.
+$$
+
+A one month increase in mean growing season is associated with a $.250$ increase in the log expected language rate at equal geographic area.
+
+## Return to the response scale
+
+Exponentiating the coefficient gives a rate ratio:
+
+```r
+exp(coef(fit)["MGS"])
+```
+
+The result is about $1.284$. According to this fitted conditional mean, a one month increase in mean growing season is associated with an expected language rate about 1.284 times as large when geographic area is held fixed. This is an increase of about 28 percent.
+
+We can also compare two concrete values. Consider otherwise comparable countries with mean growing seasons of six and seven months. Their expected language rate ratio is
+
+$$
+\frac{\lambda(7)}{\lambda(6)}
+=\exp\{\beta_1(7-6)\}
+=\exp(\beta_1).
+$$
+
+This comparison has the same value, about 1.284. The offset means that we are comparing rates at equal exposure, not predicting that the two countries have equal raw counts.
+
+## See why the base conversion matters
+
+The printed textbook analysis passes the stored `Area` column directly to the offset. We can fit that specification to see what the change of logarithm base alters.
+
+```r
+fit_mismatched <- glm(
+  Langs ~ MGS + offset(Area),
+  family = poisson(link = "log"),
+  data = nettle
+)
+
+c(
+  mismatched = exp(coef(fit_mismatched)["MGS"]),
+  converted = exp(coef(fit)["MGS"])
+)
+```
+
+The mismatched specification gives a rate ratio of about 1.233, while the converted specification gives about 1.284. The qualitative association is the same, but the estimated size is not. The distinction matters because an offset is part of the model rather than a display convenience. Its units determine the comparison made by every coefficient.
+
+## State what the comparison does not establish
+
+The fitted association is consistent with Nettle's predicted direction. It is not, by itself, evidence that growing season causes linguistic diversity. Countries may differ in population history, political organization, mobility, contact, and many other properties related to both climate and language counts. Countries may also be spatially or historically dependent.
+
+The Poisson response adds another assumption: after the modeled predictors are taken into account, the conditional variance equals the conditional mean. We will learn how to check that assumption on the next page. Keeping that criticism separate lets this page answer one question: how should a Poisson regression compare language counts when countries provide different amounts of geographic exposure?
+
+::: {.callout-note title="Check the comparison"}
+Suppose two countries have the same mean growing season, but one has twice the geographic area of the other. Under this model, the larger country has twice the expected language count. Which part of the equation imposes that comparison?
+:::

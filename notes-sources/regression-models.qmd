@@ -1,0 +1,232 @@
+# Regression Models
+
+## Modeling relationships
+
+So far, we have focused on modeling distributions of single variables or collections of independent variables.
+
+In linguistics, we often want to model the relationship between variables—to predict one variable from another.
+
+---
+
+## Example: sentence processing
+
+In psycholinguistics, researchers measure reading times to study how we process sentences in real time.
+
+**Self-paced reading** presents sentences word-by-word on a computer screen. Participants press a button to advance to the next word.
+
+The time between button presses (reaction time) reflects processing difficulty: longer RTs indicate difficulty integrating the current word.
+
+Today we'll use a computational measure—**surprisal**—to predict reading times.
+
+---
+
+## Running example: aspectual coercion
+
+We'll analyze data from a study on Spanish progressive statives.
+
+Stative verbs (know, believe) typically reject the progressive form: *está conociendo* ('is knowing').
+
+But adding a dynamic adverbial makes them acceptable: *está conociendo poco a poco* ('is knowing little by little').
+
+This is aspectual coercion—semantic reinterpretation triggered by context.
+
+---
+
+## Experimental design
+
+The study tested three conditions:
+
+1. **Dynamic Control**: Compatible verb in progressive
+   *Pedro está **pensando** en Dios cada día más...* ('Pedro is thinking...')
+
+2. **Early Coercion**: Stative verb + adverbial immediately after verb
+   *Pedro está **creyendo** cada día más en Dios...* ('Pedro is believing more...')
+
+3. **Late Coercion**: Stative verb + adverbial after object
+   *Pedro está **creyendo** en Dios cada día más...* ('Pedro is believing in God more...')
+
+Participants read sentences word-by-word and answered comprehension questions.
+
+---
+
+# Language Models
+
+## What is a language model?
+
+A **language model** is a probability distribution over strings.
+
+Formally:
+
+- Let $\Sigma$ be a vocabulary (the set of all Spanish words)
+- Let $\Sigma^*$ be the set of all sentences (strings of words from $\Sigma$)
+
+A language model assigns a probability to each sentence $s \in \Sigma^*$:
+
+$$p(s) \quad \text{where} \quad s \in \Sigma^*$$
+
+This is a probability measure on the sample space $\Sigma^*$.
+
+---
+
+## Formal definition of $\Sigma^*$
+
+The set of all strings over vocabulary $\Sigma$ is defined as:
+
+$$\Sigma^* = \bigcup_{n=0}^\infty \Sigma^n$$
+
+where:
+
+- $\Sigma^0 = \{\varepsilon\}$ (the empty string)
+- $\Sigma^1 = \Sigma$ (all single words)
+- $\Sigma^2 = \{w_1 w_2 : w_1, w_2 \in \Sigma\}$ (all 2-word sequences)
+- $\Sigma^3$ (all 3-word sequences), etc.
+
+---
+
+## The autoregressive factorization
+
+How do we compute $p(s)$ for a sentence $s = w_1 w_2 \ldots w_n$?
+
+By the [**chain rule** of probability](../foundations/probability-concepts.qmd):
+
+$$p(w_1, w_2, \ldots, w_n) = p(w_1) \prod_{i=2}^n p(w_i \mid w_1, \ldots, w_{i-1})$$
+
+An **autoregressive language model** computes each conditional probability $p(w_i \mid w_1, \ldots, w_{i-1})$.
+
+That is, it predicts each word given all previous words.
+
+---
+
+## Surprisal
+
+The **surprisal** of word $w_i$ in context is defined as:
+
+$$\text{Surprisal}(w_i) = -\log_2 p(w_i \mid w_1, \ldots, w_{i-1})$$
+
+**Interpretation**: How unexpected is $w_i$ given the preceding context?
+
+- Low probability → High surprisal → Unexpected
+- High probability → Low surprisal → Expected
+
+**Key hypothesis**: More surprising words take longer to read.
+
+---
+
+## Computing surprisal with GPT-2
+
+We use a pretrained Spanish GPT-2 model to compute surprisal values.
+
+For each word in each sentence:
+
+1. Feed the previous words into the model
+2. Get $p(w_i \mid w_1, \ldots, w_{i-1})$
+3. Compute surprisal: $-\log_2 p(w_i \mid \text{context})$
+
+This gives us a continuous predictor for each word's reading time.
+
+---
+
+## Loading the data
+
+```{r load-data}
+#| echo: true
+#| code-fold: false
+
+library(tidyverse)
+
+# Load word-by-word reading times with surprisal values
+word_data <- read_csv("data/word_rt_surprisal.csv",
+                      show_col_types = FALSE)
+
+# Preview the data
+head(word_data, 10)
+```
+
+---
+
+## Data structure
+
+Each row is a single word presentation to a single participant:
+
+- `participant`: Participant ID
+- `sentence`: Full sentence text
+- `condition`: Experimental condition (dynamic control, early coercion, late coercion)
+- `verb`: Critical verb
+- `word`: Current word shown
+- `word_position`: Position in sentence (0-indexed)
+- `rt`: Reaction time in seconds
+- `log_rt`: Natural log of RT
+- `surprisal`: $-\log_2 p(\text{word} \mid \text{context})$ from GPT-2
+
+---
+
+## Distribution of reaction times
+
+```{r plot-rt-distribution}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+
+ggplot(word_data, aes(x = rt)) +
+  geom_histogram(bins = 50, fill = "steelblue", color = "white", alpha = 0.8) +
+  labs(x = "Reaction Time (seconds)",
+       y = "Count",
+       title = "Distribution of Raw Reading Times") +
+  theme_minimal(base_size = 14)
+```
+
+Raw RTs are right-skewed—most words are read quickly, but some take much longer.
+
+---
+
+## Distribution of log reaction times
+
+```{r plot-log-rt-distribution}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+
+ggplot(word_data, aes(x = log_rt)) +
+  geom_histogram(bins = 50, fill = "coral", color = "white", alpha = 0.8) +
+  labs(x = "Log Reaction Time (log seconds)",
+       y = "Count",
+       title = "Distribution of Log Reading Times") +
+  theme_minimal(base_size = 14)
+```
+
+Log transformation produces a more symmetric distribution, closer to normality.
+
+**Why log?** Linear regression assumes normally distributed residuals—log RT is more appropriate.
+
+---
+
+## Visualizing the relationship
+
+```{r plot-data}
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+
+ggplot(word_data, aes(x = surprisal, y = log_rt)) +
+  geom_point(alpha = 0.3, size = 1) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(x = "Surprisal (bits)",
+       y = "Log Reaction Time (log seconds)",
+       title = "Surprisal vs. Reading Time")
+```
+
+There appears to be a positive relationship: higher surprisal predicts slower reading.
+
+---
+
+## The regression question
+
+Given observations of surprisal $X$ and reaction time $Y$, we want to model:
+
+1. How log RT changes as surprisal changes
+2. The strength of the relationship
+3. Uncertainty in our estimates
+
+Linear regression provides a framework for answering these questions.
+
+---

@@ -1,0 +1,134 @@
+---
+title: "Parameter recovery"
+---
+
+Suppose a model for gated annotations fits without warnings and returns an estimate for every item and annotator quantity. Successful computation does not show that the data contain enough information to distinguish those quantities. Several parameter combinations may produce nearly identical response distributions.
+
+A [**parameter recovery**](https://mc-stan.org/learn-stan/case-studies/rasch_and_2pl.html) analysis tests the complete inference procedure on simulated data whose generating values are known. It asks whether the procedure can return those values under its own assumptions and under a design resembling the planned analysis.
+
+## The recovery loop
+
+One recovery replicate contains four steps.
+
+1. Choose generating parameter values and a sample design.
+2. Simulate latent quantities and recorded responses from the custom model.
+3. Fit the planned model to the simulated responses.
+4. Compare the fitted summaries with the generating values.
+
+The fitting step is essential. Inspecting simulated observations alone tests the generator, not the ability of the inference procedure to recover its parameters.
+
+Repeat the loop across many simulated datasets and across parameter settings that affect identifiability. The unit of evaluation is then a generating value paired with an estimate from one complete fit.
+
+## Begin with one binary quantity
+
+Consider a simple gate with true affirmative probability $\pi=.75$. Suppose 20 independent annotations produce 16 affirmatives. The estimated proportion is
+
+$$
+\widehat\pi=\frac{16}{20}=.80,
+$$
+
+so the estimation error in this replicate is
+
+$$
+\widehat\pi-\pi=.80-.75=.05.
+$$
+
+This one error does not estimate bias. It is one draw from the recovery procedure. Recall from [estimator bias](../statistical-inference/estimator-bias.qmd) and [mean squared error](../statistical-inference/mean-squared-error.qmd) that repeated samples are needed to describe the distribution of estimation error.
+
+## Summarize repeated recovery
+
+For simulation $s$, let $\widehat\theta_s$ be the estimate and $\theta_s$ the generating value. Across $S$ simulations, estimated bias is
+
+$$
+\widehat{\operatorname{Bias}}
+=\frac{1}{S}\sum_{s=1}^{S}(\widehat\theta_s-\theta_s),
+$$
+
+and root mean squared error is
+
+$$
+\operatorname{RMSE}
+=\sqrt{\frac{1}{S}\sum_{s=1}^{S}
+(\widehat\theta_s-\theta_s)^2}.
+$$
+
+If the procedure returns intervals, a simulation study estimates its [coverage probability](../statistical-inference/confidence-intervals.qmd#interpret-coverage-across-samples) with the proportion of simulated intervals containing the generating value. For a confidence interval, coverage probability is a repeated-sampling property of the interval procedure. Bayesian posterior intervals can also be checked for simulation-based calibration, but their interpretation for one fitted dataset remains posterior rather than repeated sampling. The code below uses the [exact binomial confidence interval](../statistical-inference/exact-binomial-intervals.qmd) introduced earlier. Bias, root mean squared error, and coverage probability answer different questions. Small average bias can coexist with large errors that cancel across simulations.
+
+## Implement a minimal recovery study
+
+The following code uses the observed affirmative proportion as the estimator and an exact binomial interval. A custom model recovery study replaces these two lines with simulation from and fitting of the complete model.
+
+```{r}
+recover_gate_once <- function(probability, n_annotations) {
+  response <- rbinom(
+    n = n_annotations,
+    size = 1,
+    prob = probability
+  )
+
+  fit <- binom.test(sum(response), length(response))
+
+  data.frame(
+    generating = probability,
+    estimate = mean(response),
+    lower = fit$conf.int[1],
+    upper = fit$conf.int[2]
+  )
+}
+
+set.seed(731)
+
+recovery <- do.call(
+  rbind,
+  replicate(
+    n = 500,
+    expr = recover_gate_once(
+      probability = 0.75,
+      n_annotations = 20
+    ),
+    simplify = FALSE
+  )
+)
+
+recovery$error <- recovery$estimate - recovery$generating
+recovery$covers <- with(
+  recovery,
+  lower <= generating & generating <= upper
+)
+
+c(
+  bias = mean(recovery$error),
+  rmse = sqrt(mean(recovery$error^2)),
+  coverage = mean(recovery$covers)
+)
+```
+
+The simulation fixes the gate probability and sample size, then repeats the generator and fitter 500 times. The resulting summaries are conditional on those choices. They do not describe recovery for rarer gates, fewer annotations, or a larger custom model.
+
+## Test difficult regions
+
+Recovery at one convenient setting provides narrow evidence. A gated model should be tested across gate rates, annotator counts, item counts, item variation, and annotator variation. Values near a boundary deserve particular attention because few responses may reach one branch of the instrument.
+
+For latent item quantities, recovery should be checked under the identifying convention used during fitting. If only item contrasts or ranks are identified, evaluate those targets rather than demanding recovery of an arbitrary absolute origin.
+
+Computation belongs in the record as well. Nonconvergence, divergent transitions, or excessive runtime at one parameter setting are failures of the planned procedure under that setting. Discarding failed fits can make recovery appear better than the procedure actually performs.
+
+## What recovery does and does not establish
+
+Successful recovery shows that the fitter can retrieve parameters when data are generated by the same model. Real annotations may arise from a different response process. [Posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd) and sensitivity analyses address parts of that mismatch.
+
+Failed recovery is more decisive. If the procedure cannot recover a parameter under its own assumptions at the planned sample size, a precise interpretation of that parameter in real data is not supported. The model may need a narrower target, a stronger design, or fewer components. Conversely, successful parameter recovery does not validate the linguistic account. It establishes computational and design adequacy under the assumed generator, not that the generator describes annotators.
+
+The appropriate conclusion is conditional. The procedure recovered a specific quantity over a stated range under a stated design. Any extension from that result to real annotation behavior requires separate evidence.
+
+::: {.callout-note title="Check the recovery claim"}
+1. Why must fitting occur inside every recovery replicate?
+2. Can small average bias coexist with poor recovery in individual simulations?
+3. Which parameter regions are likely to be difficult for a gated model?
+4. What does failed recovery imply for interpretation of a real data estimate?
+5. What does successful recovery fail to establish?
+:::
+
+## Summing up
+
+Parameter recovery pairs known generating values with estimates from the complete planned procedure. Bias, error, coverage, and computational failures describe different aspects of recovery. With this gate in place, the final page combines the preceding components in a narrow [UDS measurement model](uds-measurement-model.qmd).

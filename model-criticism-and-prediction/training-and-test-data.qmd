@@ -1,0 +1,87 @@
+---
+title: "Training and test data"
+---
+
+The [predictive-loss page](predictive-loss.qmd) specified the cost of an error, while the [bias-and-variance page](bias-variance-tradeoff.qmd) defined predictive error across repeated training samples. Separating training data from test data makes one corresponding comparison observable within a dataset.
+
+The residuals of a fitted regression are optimized on the observations used to estimate its coefficients. A more flexible model can often reduce those residuals by adapting to idiosyncrasies that will not recur. Training fit thus cannot by itself estimate predictive loss for new observations.
+
+The [**training set**](https://otexts.com/fpp3/training-test.html) contains the observations used to fit the model. The [**test set**](https://otexts.com/fpp3/training-test.html) contains observations used only to evaluate the fitted procedure. The training set determines every fitted quantity. The test set withholds responses that would be unavailable when an actual future prediction is made.
+
+## The separation rule
+
+Let $D_{\mathrm{train}}$ and $D_{\mathrm{test}}$ be disjoint collections of observations. A fitted predictor is
+
+$$
+\widehat{f}_{\mathrm{train}}
+=
+\operatorname{Fit}(D_{\mathrm{train}}),
+$$
+
+and test loss is
+
+$$
+\widehat{R}_{\mathrm{test}}
+=
+\frac{1}{|D_{\mathrm{test}}|}
+\sum_{i\in D_{\mathrm{test}}}
+L\left(y_i,\widehat{f}_{\mathrm{train}}(x_i)\right).
+$$
+
+The subscript on $\widehat{f}$ is essential. The test responses $y_i$ must not influence the coefficients, feature transformations, model choice, or any other fitted quantity used to produce their predictions.
+
+## Leakage
+
+[**Data leakage**](https://scikit-learn.org/stable/common_pitfalls.html#data-leakage) occurs when information from the test set influences a fitted decision that would have been made without that information in the intended prediction setting. Directly fitting on a test response is one case, but preprocessing can leak more quietly.
+
+- Centering a predictor using the full dataset lets test predictor values affect the training transformation.
+- Imputing a missing test response from a full-data mean uses held-out responses.
+- Selecting predictors by their correlation with the full response consults the test set.
+- Choosing a model because it has the best test score turns the test set into training information for model selection.
+- Estimating a word-position mean from all readers before splitting readers carries test-reader responses into a supposedly held-out response.
+
+Not every use of test predictors is leakage. At prediction time, the values of permitted predictors are usually known. A deterministic transformation fixed before fitting, such as taking the logarithm of word length, can be applied to both sets. The [statement of what is held out](prediction-targets.qmd) must say which information is permitted.
+
+## Split first, then estimate
+
+A reliable workflow treats preprocessing as part of the fitted model.
+
+1. State what must be held out and define the split rule.
+2. Construct the training and test indices.
+3. Estimate transformations, feature selections, and model parameters using training data.
+4. Apply the training-set transformations to test predictors.
+5. Predict test responses once.
+6. Compute the prespecified loss.
+
+Suppose a frequency predictor is standardized. The training mean $\overline{x}_{\mathrm{train}}$ and standard deviation $s_{\mathrm{train}}$ define
+
+$$
+z_i=\frac{x_i-\overline{x}_{\mathrm{train}}}{s_{\mathrm{train}}}
+$$
+
+for both training and test observations. The test set is not separately standardized, because that would place it in a different coordinate system. Nor should the full-data mean be used, because it would make the training representation depend on the held-out sample.
+
+## Why a single split is unstable
+
+A single split uses only part of the data for fitting and may produce an unusually easy or difficult test set. In a small experiment, changing a few observations can reverse a model comparison. The resulting score includes both model performance and the chance composition of one split.
+
+Increasing the test fraction provides more evaluation observations but leaves fewer observations for fitting. Decreasing it has the opposite effect. There is no universally correct proportion. The design should reflect the data size, the observations or groups being held out, and the cost of instability.
+
+Cross-validation, introduced next, rotates the test role so that every observation receives a held-out prediction. It reduces dependence on one arbitrary split, though it does not create more independent groups than the dataset contains.
+
+## A test set is not a source of repeated decisions
+
+If several model variants are compared on the same test set and the best is selected, the reported score is optimistic for the selected model. The test responses have influenced a decision, even if no coefficient was directly fit to them.
+
+One solution is a three-way separation: training data estimate parameters, validation data select among candidate specifications, and test data evaluate the selected procedure once. Another is nested cross-validation, in which each outer training set contains its own inner model-selection loop. Both enforce the same principle: every decision that can adapt to responses must occur without access to the responses used for final scoring.
+
+## Check the separation
+
+1. Why is a residual MSE usually smaller than a test MSE for the same fitted model?
+2. A researcher chooses a spline degree using the test set, then refits the chosen spline on training data. Has leakage occurred?
+3. Should test predictors be standardized using training or test moments? Explain.
+4. What does a three-way split reserve the validation set for?
+
+## Before rotating the split
+
+Separating training and test data allows parameters to be estimated and analytical decisions to be made without using the responses on which predictive loss is computed. Preprocessing belongs inside that separation, and a test set ceases to be a test set once it guides model selection. The [next page](cross-validation.qmd) rotates this separation to obtain held-out predictions for every observation.

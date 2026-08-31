@@ -1,0 +1,130 @@
+---
+title: "Divergent Hamiltonian transitions"
+---
+
+The [Hamiltonian Monte Carlo page](hamiltonian-monte-carlo.qmd) introduced numerical integration, and the [mass matrix page](mass-matrix-geometry.qmd) showed how one constant matrix represents global scale and correlation. When integration error grows beyond a threshold, Stan reports a [**divergent transition**](https://mc-stan.org/docs/reference-manual/mcmc.html).
+
+A divergence is evidence that the sampler may not have followed the target geometry reliably in a particular region. It is not an ordinary rejected proposal and should not be removed from a report by filtering iterations.
+
+## Connect curvature to integration error
+
+Consider a joint posterior with a positive scale parameter $\tau$ and latent deviations
+
+$$
+u_j\sim\operatorname{Normal}(0,\tau).
+$$
+
+When $\tau$ is near zero, all $u_j$ values must also lie near zero. When $\tau$ is larger, the latent deviations can occupy a much wider range. The joint posterior can thus narrow sharply at small $\tau$ and widen at large $\tau$.
+
+This changing width is often called funnel geometry. A leapfrog step size that works in the wide region may be too large in the narrow region, where log density and gradients change rapidly.
+
+The integrator is designed to approximately preserve the Hamiltonian energy
+
+$$
+H(q,p)
+=
+-\log\widetilde{p}(q)
++\frac{1}{2}p^{\mathsf T}M^{-1}p.
+$$
+
+Here $q$ denotes parameters, $p$ denotes auxiliary momentum, and $M$ is a mass matrix. Stan monitors the change in energy along the numerical trajectory. A large change indicates that the discrete path has become an unreliable approximation.
+
+## Read the diagnostic from a fit
+
+With CmdStanR, a fit summary can be inspected with
+
+```r
+fit$cmdstan_diagnose()
+```
+
+The per-iteration indicator is named `divergent__`:
+
+```r
+divergence_draws <- fit$draws("divergent__")
+posterior::summarise_draws(divergence_draws)
+```
+
+The diagnostic is attached to transitions, not to one parameter. A divergence occurs at a joint parameter state, even if it becomes visible only when particular parameter pairs are plotted.
+
+## Locate the affected region
+
+The count of divergences is the first check. Their location is the next one. Color pairs plots of posterior draws by divergence status and ask whether marked iterations concentrate near small scale parameters, extreme correlations, or another narrow region.
+
+```r
+bayesplot::mcmc_pairs(
+  fit$draws(c("tau", "u[1]", "u[2]")),
+  np = bayesplot::nuts_params(fit)
+)
+```
+
+A small percentage can matter if every divergence occurs in the same region. The chain may systematically underexplore precisely that part of the posterior.
+
+## Choose a repair that matches the cause
+
+Increasing `adapt_delta` asks Stan to target a higher acceptance probability and usually leads to a smaller integration step size:
+
+```r
+refit <- model$sample(
+  data = stan_data,
+  adapt_delta = .99
+)
+```
+
+This change can repair modest integration error. It cannot identify a parameter that the data do not constrain, rescale a badly measured predictor, or remove a funnel implied by a difficult parameterization.
+
+### Reparameterize changing curvature
+
+Some posterior geometries remain difficult after step size and mass matrix adaptation. A scale parameter near zero, for instance, can create a narrow region connected to a much wider region. One constant step size and one constant mass matrix may not traverse both regions accurately and efficiently.
+
+A coordinate change can sometimes express the same joint model with more manageable geometry. The centered form writes
+
+$$
+u_j\sim\operatorname{Normal}(0,\tau).
+$$
+
+The corresponding noncentered form writes
+
+$$
+z_j\sim\operatorname{Normal}(0,1)
+$$
+
+and defines
+
+$$
+u_j=\tau z_j.
+$$
+
+For any fixed $\tau$, both forms imply the same distribution for $u_j$. But the sampler explores $(\tau,u_j)$ in the first form and $(\tau,z_j)$ in the second. When $\tau$ approaches zero, the centered effects must collapse toward zero, while the standardized $z_j$ values retain a common scale.
+
+Centering or scaling predictors can similarly change posterior scales and correlations when the complete model is transformed consistently. These changes preserve fitted quantities after conversion back to the original scale, but they may make the numerical coordinates easier to explore.
+
+This repair is not universal. Strongly informed group effects can favor a centered form, and a predictor transformation cannot remove weak identification. Reparameterization should thus respond to the geometry located by the diagnostic.
+
+A useful repair sequence is:
+
+1. Locate the divergent draws.
+2. Inspect predictor scales and parameter identification.
+3. Reparameterize when posterior geometry motivates it.
+4. Increase `adapt_delta` when finer integration is appropriate.
+5. Refit and check every diagnostic again.
+
+Increasing `adapt_delta` is not a universal repair. A smaller step may hide the computational symptom at substantial cost while leaving the structural source intact.
+
+## Keep computation and adequacy separate
+
+Zero divergences is necessary for trusting this aspect of the HMC calculation. It is not sufficient for trusting the complete fit. Chains may still disagree, have low effective sample size, or miss a target region.
+
+And computational success does not establish model adequacy. A well sampled normal model may still predict phonetic measurements poorly or omit a relevant source of dependence.
+
+::: {.callout-note title="Problem Set 4 connection"}
+[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) requires the number of divergent transitions before students interpret factivity. An apparently strong linguistic result cannot be trusted when the sampler systematically misses a difficult region of the joint posterior.
+:::
+
+## Check your understanding
+
+1. What numerical quantity fails to remain approximately stable during a divergence?
+2. Why can divergences cluster near a small group-level scale?
+3. Why might a few localized divergences matter more than their percentage suggests?
+4. When is reparameterization more informative than only increasing `adapt_delta`?
+
+The [pairs-plot page](parameter-pair-plots.qmd) shows how joint draws can reveal the region associated with a computational warning.

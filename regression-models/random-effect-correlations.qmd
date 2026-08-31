@@ -1,0 +1,106 @@
+---
+title: "Correlations among random effects"
+---
+
+The [random-slope page](random-slopes.qmd) gave each group a baseline deviation and an association deviation. The two deviations may themselves be related. Listeners with slower baselines may, for instance, show larger effects of background noise.
+
+A [**random-effects correlation**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) represents this population relation among deviations.
+
+## Write one joint distribution
+
+For listener $j$, collect the intercept and slope deviations in a vector:
+
+$$
+\begin{bmatrix}
+b_{0j}\\
+b_{1j}
+\end{bmatrix}.
+$$
+
+Model the vector with
+
+$$
+\begin{bmatrix}
+b_{0j}\\b_{1j}
+\end{bmatrix}
+\sim
+\mathcal{N}
+\left(
+\begin{bmatrix}0\\0\end{bmatrix},
+\begin{bmatrix}
+\tau_0^2 & \rho\tau_0\tau_1\\
+\rho\tau_0\tau_1 & \tau_1^2
+\end{bmatrix}
+\right).
+$$
+
+The parameter $\rho$ is the correlation between listener intercept deviations and listener slope deviations. The covariance is $\rho\tau_0\tau_1$.
+
+The correlation $\rho$ asks whether groups above or below the population intercept also tend to have slopes above or below the population slope.
+
+## Interpret the sign
+
+Suppose the response is log response time and the predictor marks a difficult condition. A positive intercept-slope correlation means that participants with slower than average baselines tend to have larger than average difficulty associations. A negative correlation means that slower baselines tend to accompany smaller difficulty associations.
+
+If $\rho=0$, the model treats baseline and association deviations as uncorrelated in the group population. It does not say that either variance is zero. Groups may still differ substantially in both quantities.
+
+The sign must be interpreted with the predictor coding. If the difficulty predictor is reversed, every slope changes sign and the correlation changes sign. The underlying fitted lines can remain identical.
+
+## Notice why the intercept definition matters
+
+For a continuous predictor, the random intercept is the group deviation at $X=0$. If zero lies far outside the observed range, the intercept describes an extrapolated baseline. Its correlation with the slope may be difficult to interpret and weakly estimated.
+
+Suppose observed speech rates range from 4 to 8 syllables per second. With the raw predictor, the intercept concerns a rate of zero. Centering at 6 changes the intercept to the fitted response at an observed, meaningful speech rate:
+
+$$
+X_i^{c}=X_i-6.
+$$
+
+The fitted response lines do not change, but the intercept deviations now refer to a different point on those lines. Their correlation with the slopes can change because the baseline itself has changed.
+
+This is not a contradiction. The intercept-slope correlation is parameterization dependent. A report should state the predictor reference point before interpreting it.
+
+## Fit the joint covariance
+
+In `lme4`, a single grouping term with an intercept and slope estimates their covariance:
+
+```r
+fit_correlated <- lmer(
+  log_rt ~ noise_condition +
+    (1 + noise_condition | listener) +
+    (1 | word),
+  data = word_recognition
+)
+```
+
+The listener term estimates $\tau_0$, $\tau_1$, and $\rho$. By contrast, the separate terms on the preceding page estimate both variances without $\rho$.
+
+The correlated model is more flexible. It also requires enough listener levels and enough within listener contrasts to estimate an additional population parameter.
+
+## Recognize weak information
+
+A fitted correlation near $1$ or $-1$ can reflect a strong intercept-slope relation. It can also arise when the covariance structure is too rich for the available groups. Wide uncertainty, small group counts, sparse within group contrasts, or a singular fit make a substantive story premature.
+
+The point estimate should thus be accompanied by the variance estimates and fitting diagnostics. If $\tau_1$ is nearly zero, a slope correlation has little stable variation to relate to the intercept.
+
+## Remove the correlation deliberately
+
+An uncorrelated structure can be appropriate when the intercept-slope correlation is not part of the scientific target or cannot be estimated reliably:
+
+```r
+fit_uncorrelated <- lmer(
+  log_rt ~ noise_condition +
+    (1 | listener) +
+    (0 + noise_condition | listener) +
+    (1 | word),
+  data = word_recognition
+)
+```
+
+This simplification changes the population model. It asserts zero correlation rather than merely hiding a printed value. The decision should follow the design, the target, and the available information.
+
+::: {.callout-note title="Check the baseline"}
+Why can centering a predictor change the intercept slope correlation without changing any fitted regression line? What does a correlation of zero leave free to vary?
+:::
+
+The [next page](singular-fits.qmd) examines covariance structures that collapse to fewer effective dimensions than their formulas request.

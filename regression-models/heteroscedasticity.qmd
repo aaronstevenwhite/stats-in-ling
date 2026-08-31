@@ -1,0 +1,145 @@
+---
+title: "Changing conditional variance"
+---
+
+The [linear-regression checks](checking-linear-regression.qmd) used changes in residual spread to diagnose a failure of the constant-variance assumption. The standard statistical term for such a change in conditional variance is [**heteroscedasticity**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85).
+
+Suppose a phonetic model predicts vowel duration from local articulation rate.
+Durations at slow rates may cluster tightly, while durations at fast rates may
+vary more because speakers use different reduction strategies.
+
+The ordinary linear regression model presented earlier assumes
+
+$$
+Y_i\mid x_i
+\sim
+\mathcal{N}(\mu_i,\sigma^2).
+$$
+
+The conditional mean $\mu_i$ may change with articulation rate, but the conditional standard deviation $\sigma$ is fixed.
+
+Heteroscedasticity means that the conditional variance changes across observations:
+
+$$
+\operatorname{Var}(Y_i\mid x_i)=\sigma_i^2.
+$$
+
+The model is homoscedastic because one $\sigma$ describes every predictor value. Heteroscedasticity is a mismatch between
+that assumption and a response whose conditional spread changes.
+
+## Separate a mean pattern from a variance pattern
+
+Consider two articulation-rate bands.
+
+| rate band | fitted mean duration | residual SD |
+|---|---:|---:|
+| slow | 100 ms | 10 ms |
+| fast | 70 ms | 30 ms |
+
+The difference between 100 and 70 milliseconds is a mean pattern. The
+difference between 10 and 30 milliseconds is a variance pattern. A model can
+represent the first while missing the second.
+
+The two distinctions can be reconstructed from six durations. Suppose the slow
+group contains 90, 100, and 110 milliseconds, while the fast group contains 40,
+70, and 100 milliseconds. Their means are 100 and 70, and their sample standard
+deviations are 10 and 30.
+
+```{r}
+#| label: separate-vowel-means-and-spreads
+#| echo: true
+vowels <- data.frame(
+  rate = rep(c("slow", "fast"), each = 3),
+  duration = c(90, 100, 110, 40, 70, 100)
+)
+
+aggregate(
+  duration ~ rate,
+  data = vowels,
+  FUN = function(x) c(mean = mean(x), sd = sd(x))
+)
+```
+
+Pooling all six responses into one standard deviation would conceal the fact
+that the fast group is three times as variable on this scale.
+
+## Inspect residual spread directly
+
+A residual-versus-fitted plot should be read vertically. At each fitted value, ask how wide the residual cloud is.
+
+```{r}
+#| label: plot-vowel-residual-spread
+#| echo: true
+fit <- lm(duration ~ rate, data = vowels)
+
+plot(
+  fitted(fit),
+  residuals(fit),
+  xlab = "fitted mean",
+  ylab = "residual"
+)
+abline(h = 0, lty = 2)
+```
+
+A fan shape suggests that conditional variance changes with the fitted mean. But
+fitted values can combine several predictors, so residuals should also be plotted
+against theoretically relevant predictors such as articulation rate, boundary
+position, or speaker group.
+
+Group summaries provide a second view:
+
+```{r}
+#| label: summarize-vowel-residual-spread
+#| echo: true
+vowels$residual <- residuals(fit)
+aggregate(residual ~ rate, data = vowels, FUN = sd)
+```
+
+The groups are descriptive. They help locate the pattern but do not define the final variance model.
+
+The grouping choice can create or hide a pattern. Very wide bins mix predictor
+values whose spreads differ. Very narrow bins contain too few observations to
+estimate spread reliably. A residual plot retains the continuous predictor,
+while grouped summaries provide an interpretable second view.
+
+## Understand the inferential consequence
+
+Ordinary least-squares coefficient estimates can remain centered on the intended linear projection under some forms of heteroscedasticity. Their usual standard errors, however, rely on the constant-variance model and can be wrong.
+
+The direction of the error depends on where response spread and predictor
+information occur. If the most extreme predictor values also have the widest
+residual distributions, the slope can be less precise than the homoscedastic calculation
+suggests. There is no rule that heteroscedasticity always makes every standard
+error too small.
+
+The mismatch also matters for prediction. A model with one $\sigma$ may produce intervals that are too wide for common words and too narrow for rare words.
+
+In the vowel example, one pooled $\sigma$ may produce intervals that are too wide
+for slow-rate durations and too narrow for fast-rate durations. The conditional
+means can be approximately correct while the predictive intervals fail in
+opposite directions.
+
+An adequate mean fit does not establish an adequate response distribution. Residual checks must examine both the
+center and vertical spread.
+
+Three repairs answer different questions:
+
+1. heteroscedasticity-consistent standard errors adjust coefficient uncertainty while leaving the variance pattern undescribed;
+2. a response transformation changes the scale on which variance is modeled;
+3. distributional regression models $\sigma_i$ directly.
+
+The next page takes the third approach.
+
+The choice depends on the scientific target. If spread is a nuisance for slope
+uncertainty, an uncertainty correction may be enough. If speaker variability at
+fast rates is theoretically meaningful, a model for $\sigma_i$ answers the more
+direct question.
+
+::: {.callout-note title="Separate center from spread"}
+1. Which table column describes a mean pattern, and which describes a variance pattern?
+2. Why can one residual plot conceal a speaker-specific variance pattern?
+3. Which repair would you choose if variation itself bears on the linguistic claim?
+4. Why does heteroscedasticity not always move every standard error in the same
+   direction?
+5. Explain why an adequate conditional mean does not establish an adequate response distribution.
+:::

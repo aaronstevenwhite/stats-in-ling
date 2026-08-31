@@ -1,0 +1,206 @@
+---
+title: "Comparing nested likelihoods"
+---
+
+The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) showed how a likelihood compares parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other.
+
+Suppose one ordinary linear regression predicts log reading time from word length. A second linear regression adds word surprisal. The second model can reproduce the first whenever the surprisal coefficient is zero. Thus, the two models differ by a specific, testable restriction.
+
+One statistical model is [**nested**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=261) within another when it can be obtained by restricting parameters in the larger model. This parameter-space relation differs from nested grouping in a sampling design, such as trials within speakers. A [**likelihood-ratio test (LRT)**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=261) asks whether relaxing the parameter restriction improves maximized likelihood by more than would usually be expected if the restriction held in the population. It does not ask which model predicts new passages better, and it does not apply to arbitrary pairs of models.
+
+This page develops the comparison in four steps. We first state what nesting requires. We then derive the likelihood-ratio statistic and calculate one reading-time comparison. Finally, we consider the reference distribution, the cases in which it may fail, and the narrower interpretation licensed by the test.
+
+## State the nesting relation
+
+Let $M_0$ be the word-length-only linear regression:
+
+$$
+Y_i\sim\operatorname{Normal}(\mu_i,\sigma^2),
+\qquad
+\mu_i=\beta_0+\beta_1\operatorname{WordLength}_i.
+$$
+
+Let $M_1$ add word surprisal:
+
+$$
+Y_i\sim\operatorname{Normal}(\mu_i,\sigma^2),
+\qquad
+\mu_i=\beta_0+\beta_1\operatorname{WordLength}_i
++\beta_2\operatorname{Surprisal}_i.
+$$
+
+Setting $\beta_2=0$ in $M_1$ gives $M_0$. Every parameter setting available to the smaller model is thus also available to the larger model. We write this relation as
+
+$$
+M_0\subset M_1.
+$$
+
+This nesting statement depends on more than the printed mean formula. The models must also use the same response observations, response distribution, variance specification, and likelihood definition. Models for raw and log reading time are not nested merely because they contain the same predictors.
+
+## Move from a likelihood ratio to a difference
+
+Let $\widehat{L}_0$ and $\widehat{L}_1$ be the maximized likelihoods under $M_0$ and $M_1$. Since the larger model can reproduce every fit available to the smaller model,
+
+$$
+\widehat{L}_1\geq\widehat{L}_0.
+$$
+
+The raw likelihood ratio compares the best fit under the restriction with the best unrestricted fit:
+
+$$
+\frac{\widehat{L}_0}{\widehat{L}_1}.
+$$
+
+This ratio lies between 0 and 1. A value near 1 means that relaxing the restriction adds little fit. A much smaller value means that the larger model assigns substantially more likelihood to the observed responses.
+
+Log likelihood turns the ratio into a difference:
+
+$$
+-2\log
+\left(
+\frac{\widehat{L}_0}{\widehat{L}_1}
+\right)
+=
+-2\left(\log\widehat{L}_0-\log\widehat{L}_1\right)
+=
+2(\ell_1-\ell_0),
+$$
+
+where $\ell_0=\log\widehat{L}_0$ and $\ell_1=\log\widehat{L}_1$. We use
+
+$$
+\Lambda=2(\ell_1-\ell_0)
+$$
+
+as the likelihood-ratio statistic. The factor of two gives the statistic a convenient large-sample reference distribution.
+
+## Calculate one comparison
+
+Suppose the word-length-only model has maximized log likelihood
+
+$$
+\ell_0=-412.6,
+$$
+
+and the model that adds surprisal has
+
+$$
+\ell_1=-408.1.
+$$
+
+The larger model improves log likelihood by
+
+$$
+\ell_1-\ell_0
+=
+-408.1-(-412.6)
+=
+4.5.
+$$
+
+Thus,
+
+$$
+\Lambda
+=
+2(4.5)
+=
+9.
+$$
+
+The larger model must improve the maximized likelihood. The inferential question is whether an improvement of this size is surprising under the restriction $\beta_2=0$.
+
+If the larger model adds one regular parameter and the usual large-sample conditions hold, then
+
+$$
+\Lambda\overset{\cdot}{\sim}\chi^2_1
+$$
+
+under the null hypothesis. The degrees of freedom equal the difference in the number of freely estimated regular parameters. Here that difference is one.
+
+In R, the tail probability is computed by
+
+```{r}
+#| eval: false
+
+pchisq(9, df = 1, lower.tail = FALSE)
+```
+
+The result is about $0.0027$. Under the null model and the approximation just stated, a likelihood-ratio statistic at least as large as 9 would occur in about 0.27 percent of comparable samples.
+
+## Fit and compare the models in R
+
+The model formulas make the restriction visible.
+
+```{r}
+#| eval: false
+
+fit_length <- lm(
+  log_rt ~ word_length,
+  data = reading
+)
+
+fit_surprisal <- lm(
+  log_rt ~ word_length + surprisal,
+  data = reading
+)
+
+ll_0 <- logLik(fit_length)
+ll_1 <- logLik(fit_surprisal)
+
+lrt <- 2 * (as.numeric(ll_1) - as.numeric(ll_0))
+df <- attr(ll_1, "df") - attr(ll_0, "df")
+
+c(
+  statistic = lrt,
+  df = df,
+  p_value = pchisq(lrt, df = df, lower.tail = FALSE)
+)
+```
+
+The comparison is valid only if both fits use the same rows. If `surprisal` is missing for some tokens, the second model may silently drop rows that the first model retains. A safe workflow first constructs the shared analysis dataset and then fits both models to that object.
+
+The coefficient output from `fit_surprisal` answers a different question from the LRT. The coefficient estimates the direction and magnitude of the conditional surprisal association on the log-reading-time scale. The LRT evaluates the joint restriction represented by the model comparison. With one added coefficient these questions are closely related, but with several added coefficients the LRT tests them together.
+
+## Interpret the null hypothesis narrowly
+
+For this comparison, the null hypothesis is
+
+$$
+H_0:\beta_2=0.
+$$
+
+Rejecting that restriction suggests that surprisal improves the fitted likelihood beyond the word-length-only model, conditional on the specified response model and analysis sample. It does not show that the larger model is true. It also does not show that surprisal causes reading-time differences, since causal interpretation requires a design and assumptions beyond the likelihood comparison.
+
+Likewise, failing to reject does not establish that $\beta_2$ is exactly zero. The data may provide little information about the parameter, or the predictor may be measured noisily. The test calibrates one restriction under one model family.
+
+## Know when the reference distribution may fail
+
+The $\chi^2$ approximation assumes that the null value is an interior, regular point of the parameter space and that the parameters are sufficiently identified. Several linguistic models violate these conditions.
+
+Testing whether a random-effect variance equals zero is a standard failure case. A variance cannot be negative, so zero lies on the boundary of the permitted parameter space. The usual $\chi^2$ reference distribution need not apply.
+
+Mixture models present another difficulty because components can become unidentified under a null restriction. Small samples and weakly identified parameters may also make the large-sample approximation poor. In such cases, a simulation-based reference distribution or a method derived for the specific boundary problem may be needed.
+
+Departures from the regular case do not make the likelihood difference uninformative. It remains a description of fitted improvement. What may fail is the simple claim that $\Lambda$ follows a particular $\chi^2$ distribution under the null.
+
+## Do not treat the LRT as predictive validation
+
+The LRT uses the same responses to estimate the models and to compare their maximized likelihoods. It thus answers an in-sample inferential question about a nested restriction.
+
+Cross-validation asks how the complete procedures predict responses excluded from fitting. A model may pass an LRT while producing only a small change in held-out loss. This pattern is possible when a conditional association is estimated precisely but contributes little to prediction relative to other sources of response variation.
+
+The reverse distinction also matters. A predictor may improve held-out prediction through a stable proxy relation without supporting the theoretical mechanism attached to it. Thus, likelihood inference and predictive validation provide different pieces of evidence.
+
+## Check the nested comparison
+
+1. What parameter restriction makes the word-length-and-surprisal model reduce to the word-length-only model?
+2. Why can the larger model never have a lower maximized likelihood than the smaller model?
+3. If a larger model adds three regular parameters, what reference degrees of freedom would the usual LRT use?
+4. Why might fitting the two models on different rows invalidate the comparison?
+5. What part of the usual LRT fails when a random-effect variance is tested against zero?
+6. Why does the reported tail probability not evaluate prediction for a new passage?
+
+## Before adding a general complexity penalty
+
+The LRT compares models connected by a specific restriction. It measures the fitted likelihood gained by relaxing that restriction and calibrates the gain against an approximate null distribution when the regularity conditions hold. The [next page](information-criteria.qmd) considers a different comparison problem: how to penalize improved in-sample fit when candidate models need not be connected by one nested restriction.

@@ -1,0 +1,301 @@
+---
+title: "Reconstruction from components"
+---
+
+A low-dimensional representation is useful only because it leaves some details out. To understand what the representation preserves, we need to map it back into the original columns and measure the cellwise discrepancies that remain.
+
+A [**rank-$K$ approximation**](https://online.stat.psu.edu/stat508/Lesson07.html) combines the first $K$ terms of the singular value decomposition to approximate the original matrix. The residual matrix then records exactly what those terms did not represent.
+
+We first derive the rank $K$ reconstruction from the SVD. We then compute a two-component example by hand, implement the same calculation in R, and distinguish observed variance represented from predictive performance on observations excluded from fitting.
+
+## Reconstruct with the first $K$ terms
+
+Let
+
+$$
+\mathbf{X}
+=
+\mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf T}
+=
+\sum_{k=1}^{r}
+d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}.
+$$
+
+Retaining the first $K$ terms gives the rank $K$ reconstruction
+
+$$
+\widehat{\mathbf{X}}_K
+=
+\sum_{k=1}^{K}
+d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}.
+$$
+
+Equivalently, let $\mathbf{U}_K$ and $\mathbf{V}_K$ contain the first $K$ singular vectors, and let $\mathbf{D}_K$ contain the first $K$ singular values. Then
+
+$$
+\widehat{\mathbf{X}}_K
+=
+\mathbf{U}_K
+\mathbf{D}_K
+\mathbf{V}_K^{\mathsf T}.
+$$
+
+For PCA, the retained score matrix is
+
+$$
+\mathbf{Z}_K
+=
+\mathbf{U}_K\mathbf{D}_K.
+$$
+
+The same reconstruction can thus be written as
+
+$$
+\widehat{\mathbf{X}}_{c,K}
+=
+\mathbf{Z}_K\mathbf{V}_K^{\mathsf T}.
+$$
+
+This version makes the roles visible. Row scores say how strongly each observation expresses a component, and component directions distribute that expression back across the columns.
+
+## Work through a rank one reconstruction
+
+Return to the matrix
+
+$$
+\mathbf{X}
+=
+\begin{bmatrix}
+2&0\\
+0&1
+\end{bmatrix}.
+$$
+
+Its two SVD terms are
+
+$$
+2
+\begin{bmatrix}1\\0\end{bmatrix}
+\begin{bmatrix}1&0\end{bmatrix}
+$$
+
+and
+
+$$
+1
+\begin{bmatrix}0\\1\end{bmatrix}
+\begin{bmatrix}0&1\end{bmatrix}.
+$$
+
+Keeping only the first term gives
+
+$$
+\widehat{\mathbf{X}}_1
+=
+2
+\begin{bmatrix}1\\0\end{bmatrix}
+\begin{bmatrix}1&0\end{bmatrix}
+=
+\begin{bmatrix}
+2&0\\
+0&0
+\end{bmatrix}.
+$$
+
+The first component reconstructs the upper-left cell exactly. It predicts zero for the lower-right cell because the second pattern has been omitted.
+
+## Calculate the residual matrix
+
+The rank $K$ residual matrix is
+
+$$
+\mathbf{E}_K
+=
+\mathbf{X}-\widehat{\mathbf{X}}_K.
+$$
+
+For the rank one example,
+
+$$
+\begin{aligned}
+\mathbf{E}_1
+&=
+\begin{bmatrix}
+2&0\\
+0&1
+\end{bmatrix}
+-
+\begin{bmatrix}
+2&0\\
+0&0
+\end{bmatrix}\\
+&=
+\begin{bmatrix}
+0&0\\
+0&1
+\end{bmatrix}.
+\end{aligned}
+$$
+
+A common summary is the squared Frobenius reconstruction error:
+
+$$
+\lVert\mathbf{E}_K\rVert_F^2
+=
+\sum_i\sum_j e_{ij}^2.
+$$
+
+Here,
+
+$$
+\lVert\mathbf{E}_1\rVert_F^2
+=
+0^2+0^2+0^2+1^2
+=
+1.
+$$
+
+If both components are retained, $\widehat{\mathbf{X}}_2=\mathbf{X}$ and the observed reconstruction error is zero.
+
+## Derive variance represented
+
+The total squared magnitude of $\mathbf{X}$ is
+
+$$
+\lVert\mathbf{X}\rVert_F^2
+=
+2^2+1^2
+=
+5.
+$$
+
+The retained first component contributes $d_1^2=4$. Its proportion of represented squared variation is
+
+$$
+\frac{d_1^2}{d_1^2+d_2^2}
+=
+\frac{4}{4+1}
+=
+0.8.
+$$
+
+The residual proportion is $1/5=0.2$, which matches the squared error divided by the total squared magnitude. More generally, the proportion represented by component $k$ is
+
+$$
+\frac{d_k^2}{\sum_{j=1}^{r}d_j^2}.
+$$
+
+The cumulative proportion for the first $K$ components is
+
+$$
+\frac{\sum_{k=1}^{K}d_k^2}
+{\sum_{j=1}^{r}d_j^2}.
+$$
+
+For centered data, this is the [**proportion of variance explained**](https://online.stat.psu.edu/stat508/Lesson07.html) by the retained components. It describes the centered matrix used to fit the components, not performance on new observations.
+
+## Return from transformed to original coordinates
+
+PCA reconstructs the coordinates on which it was fit. If the matrix was only centered, the rank $K$ reconstruction is $\widehat{\mathbf{X}}_{c,K}$. Add the training column means to recover the original origin:
+
+$$
+\widehat{\mathbf{X}}_K
+=
+\widehat{\mathbf{X}}_{c,K}
++
+\mathbf{1}_n\boldsymbol{\mu}^{\mathsf T}.
+$$
+
+If the columns were standardized, first restore their units and then restore their means:
+
+$$
+\widehat{\mathbf{X}}_K
+=
+\widehat{\mathbf{Z}}_K\mathbf{S}
++
+\mathbf{1}_n\boldsymbol{\mu}^{\mathsf T}.
+$$
+
+Forgetting either step yields predictions in centered or standardized coordinates rather than in the original measurements. The reconstruction may be algebraically correct and linguistically misreported because its units are wrong.
+
+## Implement reconstruction in R
+
+The following code mirrors the matrix formula.
+
+```{r}
+#| eval: false
+
+X_scaled <- scale(
+  X,
+  center = TRUE,
+  scale = TRUE
+)
+
+fit <- svd(X_scaled)
+K <- 2
+
+U_K <- fit$u[, seq_len(K), drop = FALSE]
+D_K <- diag(fit$d[seq_len(K)], nrow = K)
+V_K <- fit$v[, seq_len(K), drop = FALSE]
+
+X_hat_scaled <- U_K %*% D_K %*% t(V_K)
+E_K <- X_scaled - X_hat_scaled
+
+sum(E_K^2)
+```
+
+The inverse transformation uses the means and scales stored by `scale()`.
+
+```{r}
+#| eval: false
+
+column_means <- attr(X_scaled, "scaled:center")
+column_sds <- attr(X_scaled, "scaled:scale")
+
+X_hat <- sweep(
+  X_hat_scaled,
+  MARGIN = 2,
+  STATS = column_sds,
+  FUN = "*"
+)
+
+X_hat <- sweep(
+  X_hat,
+  MARGIN = 2,
+  STATS = column_means,
+  FUN = "+"
+)
+```
+
+Every transformation used for reconstruction should be the one estimated during fitting. Recomputing a new origin or scale changes the representation being evaluated.
+
+## Observed reconstruction is not held-out prediction
+
+Adding a component cannot increase squared reconstruction error on the matrix used to fit the SVD. Each added term restores another orthogonal direction of observed variation. If all rank terms are retained, the observed error reaches zero apart from numerical precision.
+
+Choosing the largest possible $K$ will always look best on the fitted cells because observed reconstruction error decreases monotonically. Later terms may nevertheless represent sample-specific irregularities rather than structure that transfers to held-out cells.
+
+To evaluate reconstruction as prediction, some cells or observations must be excluded from fitting and scored afterward under the [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) introduced earlier. The number of retained components must be chosen without consulting the final evaluation outcomes.
+
+## Variance represented is not linguistic information
+
+A component can account for substantial observed variance because it tracks recording source, sample composition, or a high-variance measurement. A low-variance component can encode a rare but systematic phonological contrast.
+
+Thus, a statement that the first two components explain 80 percent of observed variance is a statement about squared reconstruction under a particular matrix design and transformation. It is not a statement that they preserve 80 percent of the linguistically relevant information.
+
+::: {.callout-note title="Problem Set 5 connection"}
+[Problem Set 5, Task 7](../problem-sets/ps5/ps5.qmd#task-7-evaluate-once-on-the-test-cells-10-points) compares low rank reconstruction with a segment prevalence baseline on balanced hidden cells. Observed variance represented and held out reconstruction gain are different quantities. One describes the fitted matrix, while the other evaluates reconstruction on cells excluded from fitting.
+:::
+
+## Check the rebuilt cells
+
+1. Which rank one term is omitted from $\widehat{\mathbf{X}}_1$ in the worked example?
+2. Why is the squared Frobenius residual equal to 1?
+3. How does $d_k^2$ enter the proportion of observed variation represented?
+4. What must be restored after reconstructing standardized data?
+5. Why can observed reconstruction error only decrease as $K$ grows?
+6. What additional separation is required before reconstruction error can support a held-out predictive claim?
+
+## Before choosing a dimension
+
+Reconstruction maps retained scores and directions back to matrix cells, while the residual matrix shows what was discarded. Observed error measures compression of the fitted matrix and cannot select complexity without optimism. The [next page](choosing-components.qmd) uses held-out reconstruction to choose $K$ before a separate final evaluation.

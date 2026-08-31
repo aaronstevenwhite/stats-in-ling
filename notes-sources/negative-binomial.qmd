@@ -1,0 +1,300 @@
+# Negative Binomial Distribution {.center background-color="#2166ac"}
+
+## More Flexible Distribution
+
+One such distribution that gives us more flexibility in this respect is the **negative binomial distribution**, which is very useful for modeling token frequency in text.
+
+::: {.fragment}
+This distribution effectively generalizes the geometric by allowing us to control the exponent on $\pi$ with a new parameter $r$.
+:::
+
+::: {.fragment}
+$$\text{NegBin}(k; \pi, r) = {k+r-1 \choose r-1}(1-\pi)^{k}\pi^{r}$$
+:::
+
+---
+
+## Normalizing Constant
+
+This added flexibility in turn requires us to add an additional term ${k+r-1 \choose r-1} = \frac{(k+r-1)!}{(r-1)!\,(k)!}$ that ensures that the series $\sum_{k=0}^\infty \text{NegBin}(k; \pi, r)$ converges to $1$.
+
+::: {.fragment}
+The pieces of this term that do not include the value we're computing the probability of–i.e. $\frac{1}{(r-1)!}$–are often called the **normalizing constant**. We will make extensive use of this concept as the course moves forward.
+:::
+
+---
+
+## Relationship to Geometric
+
+When $r = 1$, we of course just get the geometric distribution. As such, if we keep $r = 1$, manipulating $\pi$ will have the same effect we saw above.
+
+```{r}
+#| echo: true
+#| fig-width: 10
+#| fig-height: 6
+
+# When r = 1, NegBin reduces to Geometric
+p <- 0.5
+r <- 1
+k <- 0:9
+
+negbin_r1_data <- tibble(
+  k = k,
+  probability = dnbinom(k, size = r, prob = p)
+)
+
+ggplot(negbin_r1_data, aes(x = k, y = probability)) +
+  geom_point(size = 4, color = "#b2182b") +
+  geom_segment(aes(xend = k, yend = 0), color = "#b2182b", size = 2) +
+  scale_x_continuous(breaks = k) +
+  labs(title = paste("PMF of NegBin(", p, ",", r, ") distribution"),
+       x = "k", y = "Probability") +
+  theme_minimal()
+```
+
+---
+
+## Mass Shifting with Parameter r
+
+As $r$ grows, though, we get very different behavior: $p(k)$ is no longer always greater than $p(k + 1)$. Another way of saying this is that we can use $r$ to shift the probability mass rightward.
+
+```{r}
+#| echo: true
+#| fig-width: 12
+#| fig-height: 8
+
+# Compare different r values
+p <- 0.5
+r_values <- c(1, 5, 10)
+k <- 0:15
+
+negbin_comparison <- map_df(r_values, function(r_val) {
+  tibble(
+    k = k,
+    probability = dnbinom(k, size = r_val, prob = p),
+    r = paste("r =", r_val)
+  )
+})
+
+ggplot(negbin_comparison, aes(x = k, y = probability, color = r)) +
+  geom_point(size = 3) +
+  geom_line(size = 1.2) +
+  facet_wrap(~ r, scales = "free_y") +
+  scale_color_manual(values = c("r = 1" = "#2166ac", 
+                                "r = 5" = "#b2182b", 
+                                "r = 10" = "#4daf4a")) +
+  scale_x_continuous(breaks = seq(0, 15, 3)) +
+  labs(title = "PMF of NegBin(π, r) distribution for different r values",
+       subtitle = paste("π =", p),
+       x = "k", y = "Probability") +
+  theme_minimal() +
+  guides(color = "none")
+```
+
+---
+
+## Effect of π on Mass Shifting
+
+The mass-shifting effect is modulated by $\pi$: it accelerates with small $\pi$...
+
+```{r}
+#| echo: true
+#| fig-width: 12
+#| fig-height: 6
+
+# Effect of different pi values
+r <- 5
+pi_values <- c(0.1, 0.5, 0.9)
+k <- 0:20
+
+pi_comparison <- map_df(pi_values, function(p_val) {
+  tibble(
+    k = k,
+    probability = dnbinom(k, size = r, prob = p_val),
+    pi = paste("π =", p_val)
+  )
+})
+
+ggplot(pi_comparison, aes(x = k, y = probability, color = pi)) +
+  geom_point(size = 2) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("π = 0.1" = "#2166ac", 
+                                "π = 0.5" = "#b2182b", 
+                                "π = 0.9" = "#4daf4a")) +
+  scale_x_continuous(breaks = seq(0, 20, 5)) +
+  labs(title = "Mass-shifting effect modulated by π",
+       subtitle = paste("r =", r),
+       x = "k", y = "Probability") +
+  theme_minimal()
+```
+
+---
+
+## ...but decelerates with large π
+
+```{r}
+#| echo: true
+#| fig-width: 12
+#| fig-height: 6
+
+# Large r with different pi values
+r <- 40
+pi_values <- c(0.5, 0.9)
+k <- 0:60
+
+large_r_comparison <- map_df(pi_values, function(p_val) {
+  tibble(
+    k = k,
+    probability = dnbinom(k, size = r, prob = p_val),
+    pi = paste("π =", p_val)
+  )
+})
+
+ggplot(large_r_comparison, aes(x = k, y = probability, color = pi)) +
+  geom_point(size = 1.5) +
+  geom_line(size = 1) +
+  scale_color_manual(values = c("π = 0.5" = "#b2182b", 
+                                "π = 0.9" = "#4daf4a")) +
+  scale_x_continuous(breaks = seq(0, 60, 10)) +
+  labs(title = "Mass-shifting decelerates with large π",
+       subtitle = paste("r =", r),
+       x = "k", y = "Probability") +
+  theme_minimal()
+```
+
+---
+
+## Real Word Length Distribution
+
+This point can be seen if we look at the distribution of word lengths at the type level in the CMU Pronouncing Dictionary, which contains phonemic transcriptions of English words.
+
+```{python}
+#| echo: true
+#| python.reticulate: false
+import pandas as pd
+from urllib.request import urlopen
+
+cmudict_url = "http://svn.code.sf.net/p/cmusphinx/code/trunk/cmudict/cmudict-0.7b"
+
+with urlopen(cmudict_url) as cmudict:
+    words = [
+        line.split()[1:] for line in cmudict if line[0] != 59
+    ]
+
+# Extract word lengths
+word_lengths = [len(w) for w in words]
+
+# Save to CSV for R processing
+word_data = pd.DataFrame({'word_length': word_lengths})
+word_data.to_csv('data/cmu_word_lengths.csv', index=False)
+
+print(f"Processed {len(word_lengths)} words")
+print(f"Length range: {min(word_lengths)} to {max(word_lengths)} phonemes")
+```
+
+```{r}
+#| echo: true
+#| fig-width: 12
+#| fig-height: 6
+
+# Load the processed CMU data
+cmu_data <- read_csv("data/cmu_word_lengths.csv")
+
+ggplot(cmu_data, aes(x = word_length)) +
+  geom_histogram(bins = 32, fill = "#2166ac", color = "white", alpha = 0.8) +
+  labs(title = "Distribution of word length in phonemes",
+       x = "Word length in phonemes",
+       y = "Count") +
+  theme_minimal()
+```
+
+---
+
+## Application to Word Lengths
+
+We won't talk about how to fit a distribution to some data until later, when we talk about parameter estimation; but the negative binomial distribution can provide a reasonably good description of the empirical distribution of word lengths.
+
+::: {.fragment}
+One way to visualize this is to compare the empirical CDF with the CDF of the best fitting negative binomial.
+:::
+
+---
+
+## Fitting Negative Binomial to Real Data
+
+```{r}
+#| echo: true
+
+# Fit negative binomial distribution to real CMU data
+library(MASS)
+
+word_lengths <- cmu_data$word_length
+
+# Fit negative binomial using method of moments/MLE
+nb_fit <- fitdistr(word_lengths, "negative binomial")
+
+# Extract parameters
+r_fitted <- nb_fit$estimate[["size"]]
+p_fitted <- nb_fit$estimate[["size"]] / (nb_fit$estimate[["size"]] + nb_fit$estimate[["mu"]])
+
+cat(sprintf("Fitted parameters: r = %.2f, p = %.2f\n", r_fitted, p_fitted))
+cat(sprintf("Mean = %.2f, Variance = %.2f\n", 
+            nb_fit$estimate[["mu"]], 
+            nb_fit$estimate[["mu"]] * (1 + nb_fit$estimate[["mu"]]/nb_fit$estimate[["size"]])))
+```
+
+---
+
+## Empirical vs. Fitted Comparison
+
+```{r}
+#| echo: true
+#| fig-width: 12
+#| fig-height: 7
+
+# Create empirical vs fitted CDF comparison
+k_seq <- 1:30
+empirical_cdf <- ecdf(word_lengths)
+fitted_cdf <- pnbinom(k_seq, size = r_fitted, prob = p_fitted)
+
+cdf_data <- tibble(
+  k = k_seq,
+  empirical = empirical_cdf(k_seq),
+  fitted = fitted_cdf
+) %>%
+  pivot_longer(cols = c(empirical, fitted), 
+               names_to = "type", 
+               values_to = "probability")
+
+ggplot(cdf_data, aes(x = k, y = probability, color = type)) +
+  geom_line(size = 1.5) +
+  geom_point(size = 2) +
+  scale_color_manual(
+    values = c("empirical" = "#2166ac", "fitted" = "#b2182b"),
+    labels = c("Empirical CDF", 
+               paste0("Estimated CDF\nNegBin(", round(p_fitted, 2), ", ", round(r_fitted, 2), ")"))
+  ) +
+  labs(title = "CDF of word length in phonemes",
+       x = "Word length in phonemes",
+       y = "Cumulative relative frequency/probability",
+       color = NULL) +
+  theme_minimal()
+```
+
+---
+
+## Poisson as Limiting Case
+
+A limiting case of the negative binomial distribution that you may be familiar with is the **Poisson distribution**.
+
+$$\text{Pois}(k; \lambda) = \frac{\lambda^k\exp(-\lambda)}{k!}$$
+
+::: {.fragment}
+The Poisson distribution arises as:
+$$\text{Pois}(k; \lambda) = \lim_{r \rightarrow \infty} \text{NegBin}
+\left(k; r, \frac{\lambda}{r + \lambda}\right)$$
+:::
+
+::: {.fragment}
+**Note**: We return to the Poisson distribution in [Poisson regression](../regression-models/poisson-regression.qmd), where we use it for parameter estimation.
+:::
