@@ -1,0 +1,814 @@
+---
+title: "Linear regression"
+subtitle: "Statistical Methods in Linguistics"
+author: "Aaron Steven White"
+institute: "University of Rochester"
+date: "2026-10-07"
+date-format: "[October 7 and 14,] YYYY"
+title-slide-attributes:
+  data-background-color: "#113A6A"
+format:
+  revealjs:
+    css: ../shared/theme.css
+    width: 1280
+    height: 720
+    margin: 0
+    self-contained: true
+    embed-resources: true
+    transition: none
+    slide-number: false
+    controls: true
+    progress: true
+    center: false
+    incremental: false
+---
+
+## Big Question {.role-slide}
+
+How does a response distribution change with a linguistic predictor?
+
+## Data {.role-slide}
+
+More surprising words may take longer to read.
+
+But words with the same surprisal still have different reading times.
+
+## Challenge {.role-slide}
+
+A regression must represent both the changing conditional mean and the remaining observation level variation.
+
+## This Module {.role-slide .compact}
+
+1. Define a straight line for one conditional mean.
+2. Fit the line and quantify uncertainty.
+3. Inspect residuals, leverage, and influence.
+4. Add predictors, categorical contrasts, and interactions.
+5. Address correlated predictors and changing conditional variance.
+
+## One predictor {.section-slide}
+
+From conditional means to a complete response model
+
+## Question {.role-slide}
+
+What is the expected log reading time among words with surprisal 4 bits?
+
+## Answer {.role-slide}
+
+A [conditional mean](https://bruno.nicenboim.me/bayescogsci/ch-reg.html) is the center of a response distribution at a specified predictor value:
+
+$$m(x)=\mathbb E[Y\mid X=x].$$
+
+::: {.notes}
+[Sources]
+
+Nicenboim, Schad, and Vasishth, Regression Models: https://bruno.nicenboim.me/bayescogsci/ch-reg.html
+:::
+
+## Answer {.role-slide}
+
+A [regression model](https://bruno.nicenboim.me/bayescogsci/ch-reg.html) specifies how the conditional response distribution changes with predictors.
+
+::: {.notes}
+[Sources]
+
+Nicenboim, Schad, and Vasishth, Regression Models: https://bruno.nicenboim.me/bayescogsci/ch-reg.html
+:::
+
+## Important Point #1 {.role-slide}
+
+The marginal mean averages across the predictor distribution.
+
+The conditional mean describes the response at one predictor value.
+
+## Question {.role-slide}
+
+What is the simplest restriction we can place on the conditional mean function?
+
+## Answer {.role-slide}
+
+[Simple linear regression](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) uses
+
+$$m(x)=\beta_0+\beta_1x.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Interpretation {.role-slide}
+
+$\beta_0$ is the expected response at $x=0$.
+
+$\beta_1$ is the change in the expected response for a one unit increase in $x$.
+
+## Question {.role-slide}
+
+If $m(x)=5.70+.06x$, what are the expected log reading times at surprisal 2 and 7?
+
+## Answer {.role-slide}
+
+$$m(2)=5.82,\qquad m(7)=6.12.$$
+
+The five bit increase corresponds to an expected increase of $.30$.
+
+## Challenge {.role-slide}
+
+The mean function alone assigns no probability to responses above or below the line.
+
+## Answer {.role-slide}
+
+Add normally distributed errors with constant variance:
+
+$$Y_i=\beta_0+\beta_1x_i+\epsilon_i,\qquad \epsilon_i\sim\mathcal N(0,\sigma^2).$$
+
+## Important Point #2 {.role-slide}
+
+A fitted association is not automatically causal.
+
+The design and identifying assumptions determine whether a causal interpretation is available.
+
+## Question {.role-slide}
+
+What if zero is outside the observed predictor range?
+
+## Answer {.role-slide}
+
+[Centering](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=102) subtracts a declared reference value:
+
+$$X_i^c=X_i-c.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 7: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=102
+:::
+
+## Interpretation {.role-slide}
+
+With $c=5$, the new intercept is the expected response at 5 bits.
+
+The fitted predictions and distances among observations do not change.
+
+## Important Point #3 {.role-slide}
+
+Centering changes the origin. Scaling changes the unit.
+
+The reference value must be reported.
+
+## Question {.role-slide}
+
+What if the response is positive and strongly right skewed?
+
+## Possibility {.role-slide}
+
+Model the logarithm of the response:
+
+$$Z_i=\log Y_i.$$
+
+## Interpretation {.role-slide}
+
+An additive difference on the log scale corresponds to a multiplicative ratio on the original scale.
+
+$$e^{\beta_1}$$
+
+is the fitted ratio for a one unit predictor increase.
+
+## Challenge {.role-slide}
+
+The mean of $\log Y$ does not back transform mechanically into the mean of $Y$.
+
+In general, $\mathbb E[Y]\neq e^{\mathbb E[\log Y]}$.
+
+## Upshot {.role-slide}
+
+The response scale, predictor reference, and mean function determine what every coefficient means.
+
+## Fitting and uncertainty {.section-slide}
+
+Choosing a line from observed responses
+
+## Question {.role-slide}
+
+Which candidate line lies closest to the observed responses?
+
+## Answer {.role-slide}
+
+[Least squares](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) minimizes
+
+$$\sum_{i=1}^n(y_i-\widehat y_i)^2.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Method {.role-slide}
+
+1. Choose candidate coefficients.
+2. Compute each fitted conditional mean.
+3. Subtract fitted from observed responses.
+4. Square and add the discrepancies.
+
+## Result #1 {.role-slide}
+
+For one predictor,
+
+$$\widehat\beta_1=\frac{\sum_i(x_i-\bar x)(y_i-\bar y)}{\sum_i(x_i-\bar x)^2},\qquad \widehat\beta_0=\bar y-\widehat\beta_1\bar x.$$
+
+## Important Point #1 {.role-slide}
+
+With normally distributed errors and constant variance, least squares and [maximum likelihood](../../statistical-inference/maximum-likelihood.html) give the same coefficient estimates.
+
+## Question {.role-slide}
+
+How much would the fitted slope vary across repeated samples?
+
+## Answer {.role-slide}
+
+The slope standard error is the standard deviation of its [sampling distribution](../../statistical-inference/properties-of-estimators.html).
+
+This recalls the [earlier definition of a standard error](../../statistical-inference/standard-errors.html).
+
+## Interpretation {.role-slide}
+
+In simple linear regression,
+
+$$\operatorname{SE}(\widehat\beta_1)=\frac{\widehat\sigma}{\sqrt{\sum_i(x_i-\bar x)^2}}.$$
+
+## Important Point #2 {.role-slide}
+
+Precision improves when residual variation is smaller or predictor values are more dispersed.
+
+Precision does not establish model adequacy.
+
+## Question {.role-slide}
+
+How much squared error does the fitted line remove relative to a mean only model?
+
+## Answer {.role-slide}
+
+The [coefficient of determination](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is
+
+$$R^2=1-\frac{\mathrm{SSE}}{\mathrm{SST}}.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Answer {.role-slide}
+
+The [total sum of squares](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is $\mathrm{SST}=\sum_i(y_i-\bar y)^2$.
+
+The [sum of squared errors](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is $\mathrm{SSE}=\sum_i(y_i-\widehat y_i)^2$.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Important Point #3 {.role-slide}
+
+Sample $R^2$ cannot decrease when predictors are added.
+
+It is a within sample comparison, not an out of sample evaluation.
+
+## Question {.role-slide}
+
+How does Bayesian inference change the regression model?
+
+## Answer {.role-slide}
+
+[Bayesian linear regression](https://bruno.nicenboim.me/bayescogsci/ch-reg.html) adds [prior distributions](../../statistical-inference/posterior-distributions.html) for $\beta_0$, $\beta_1$, and $\sigma$.
+
+::: {.notes}
+[Sources]
+
+Nicenboim, Schad, and Vasishth, Regression Models: https://bruno.nicenboim.me/bayescogsci/ch-reg.html
+:::
+
+## Method {.role-slide}
+
+1. State priors in the units of each parameter.
+2. Inspect [prior predictive responses](../../statistical-inference/prior-predictive-distributions.html).
+3. Update with the likelihood.
+4. Interpret [posterior distributions](../../statistical-inference/posterior-distributions.html) through contrasts on the response scale.
+
+## Important Point #4 {.role-slide}
+
+A prior that looks moderate on a coefficient scale may imply implausible responses.
+
+Prior predictive checks reveal that implication before fitting.
+
+## Upshot {.role-slide}
+
+Fitting chooses coefficients. Inferential uncertainty concerns repeated samples or posterior distributions. Neither substitutes for checking the fitted model.
+
+## Checking the fitted line {.section-slide}
+
+Residuals, leverage, and influence
+
+## Question {.role-slide}
+
+What remains for one observation after subtracting its fitted conditional mean?
+
+## Answer {.role-slide}
+
+The [residual](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is
+
+$$e_i=y_i-\widehat y_i.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Important Point #1 {.role-slide}
+
+A residual is observed after fitting.
+
+An error term is an unobserved random variable in the model.
+
+## Challenge {.role-slide}
+
+Residuals may retain curvature, changing spread, asymmetric tails, or serial structure that the fitted model did not represent.
+
+## Answer {.role-slide}
+
+[Residual diagnostics](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) compare model predictions with observed residual patterns.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Method {.role-slide}
+
+For each check, state the model prediction, identify the observable discrepancy, and explain its consequence for the linguistic analysis.
+
+## Question {.role-slide}
+
+Residual spread increases with articulation rate.
+
+Which assumption fails: the linear mean or constant conditional variance?
+
+## Answer {.role-slide}
+
+Constant conditional variance fails.
+
+The pattern alone does not establish that the conditional mean is nonlinear.
+
+## Question {.role-slide}
+
+Which observations occupy unusual positions among the predictor values?
+
+## Answer {.role-slide}
+
+[Leverage](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) measures unusual predictor position.
+
+It does not use residual size.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Interpretation {.role-slide}
+
+For simple linear regression,
+
+$$h_{ii}=\frac{1}{n}+\frac{(x_i-\bar x)^2}{\sum_j(x_j-\bar x)^2}.$$
+
+## Question {.role-slide}
+
+How much would the fitted result change if one observation were omitted?
+
+## Answer {.role-slide}
+
+[Influence](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) measures dependence of a fitted result on a particular observation.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Important Point #2 {.role-slide}
+
+High leverage is not automatically high influence.
+
+Influence combines unusual predictor position with response discrepancy.
+
+## Interpretation {.role-slide}
+
+[Cook's distance](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) summarizes the fitted change under case deletion.
+
+A large value motivates a sensitivity analysis, not automatic deletion.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Regression Diagnostics: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Upshot {.role-slide}
+
+Residuals assess observation level discrepancies. Leverage concerns the design. Influence asks whether a result depends on a particular case.
+
+## Several predictors {.section-slide}
+
+Partial associations and matrix notation
+
+## Question {.role-slide}
+
+How does surprisal relate to reading time when word length is held fixed?
+
+## Answer {.role-slide}
+
+Extend the conditional mean:
+
+$$m(x_1,x_2)=\beta_0+\beta_1x_1+\beta_2x_2.$$
+
+## Answer {.role-slide}
+
+[Partial regression coefficients](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119) describe one modeled association while the other predictors are held fixed.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Multiple Regression: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119
+:::
+
+## Important Point #1 {.role-slide}
+
+Adding a predictor changes the interpretation of the coefficient.
+
+A partial association can differ from the corresponding marginal association.
+
+## Question {.role-slide}
+
+How can one equation represent all observations and coefficients at once?
+
+## Answer {.role-slide}
+
+A [design matrix](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133) places observations in rows and coefficient inputs in columns:
+
+$$\boldsymbol\eta=\mathbf X\boldsymbol\beta.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Categorical Predictors: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133
+:::
+
+## Interpretation {.role-slide}
+
+One row of $\mathbf X$ describes one observation.
+
+One column corresponds to one coefficient, not necessarily one original variable.
+
+## Question {.role-slide}
+
+How does a categorical predictor enter a numerical design matrix?
+
+## Answer {.role-slide}
+
+[Contrast coding](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133) turns category levels into columns whose coefficients represent declared comparisons.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Categorical Predictors: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133
+:::
+
+## Approach {.role-slide}
+
+Treatment coding makes the intercept the fitted mean for a reference category.
+
+Each other coefficient compares one category with that reference.
+
+## Important Point #2 {.role-slide}
+
+Changing a full rank contrast coding changes coefficient meanings.
+
+It does not change the fitted category means.
+
+## Question {.role-slide}
+
+What coding makes the intercept the unweighted average of fitted category means?
+
+## Answer {.role-slide}
+
+[Sum coding](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133) uses contrast columns whose values sum to zero.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Categorical Predictors: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133
+:::
+
+## Important Point #3 {.role-slide}
+
+The unweighted average of fitted category means is not necessarily the sample mean when category counts differ.
+
+## Question {.role-slide}
+
+How can ordered levels be compared through mutually orthogonal columns?
+
+## Answer {.role-slide}
+
+[Helmert coding](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133) compares each level with a specified combination of later levels using orthogonal contrast columns.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Categorical Predictors: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133
+:::
+
+## Question {.role-slide}
+
+What coding compares each later level with the average of earlier levels?
+
+## Answer {.role-slide}
+
+[Reverse Helmert contrasts](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/contrast.html) encode those earlier versus later comparisons.
+
+The displayed matrix determines the sign and grouping.
+
+::: {.notes}
+[Sources]
+
+R stats documentation, Contrast Matrices: https://stat.ethz.ch/R-manual/R-devel/library/stats/html/contrast.html
+:::
+
+## Important Point #4 {.role-slide}
+
+A contrast is meaningful only when its compared level groups answer a linguistic question.
+
+Orthogonality alone does not supply that question.
+
+## Upshot {.role-slide}
+
+Several predictors change the estimand from a marginal to a partial association. The design matrix makes every coefficient comparison explicit.
+
+## Interactions {.section-slide}
+
+When one association depends on another predictor
+
+## Challenge {.role-slide}
+
+An additive model forces the surprisal slope to be identical across experimental conditions.
+
+## Answer {.role-slide}
+
+An [interaction term](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=149) allows one modeled association to depend on another predictor.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Interactions: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=149
+:::
+
+## Method {.role-slide}
+
+$$m(x,c)=\beta_0+\beta_1x+\beta_2c+\beta_3xc.$$
+
+The coefficient $\beta_3$ is a difference between slopes.
+
+## Question {.role-slide}
+
+What is the surprisal slope when $c=0$? What is it when $c=1$?
+
+## Answer {.role-slide}
+
+$$\text{slope at }c=0:\ \beta_1$$
+
+$$\text{slope at }c=1:\ \beta_1+\beta_3$$
+
+## Important Point #1 {.role-slide}
+
+Keep the lower order terms when adding the product term.
+
+Their meanings become conditional on the other predictor being zero.
+
+## Important Point #2 {.role-slide}
+
+An interaction is a property of the modeled conditional mean on a declared scale.
+
+It does not by itself identify a causal mechanism.
+
+## Upshot {.role-slide}
+
+Interpret an interaction through fitted comparisons at meaningful predictor values, not through the product coefficient in isolation.
+
+## Correlated predictors {.section-slide}
+
+What the data can distinguish
+
+## Challenge {.role-slide}
+
+Two predictors may vary together so strongly that many coefficient pairs produce almost the same fitted values.
+
+## Answer {.role-slide}
+
+[Collinearity](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119) is linear overlap among predictors.
+
+Perfect collinearity makes separate coefficients unidentified.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Multiple Regression: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119
+:::
+
+## Important Point #1 {.role-slide}
+
+Strong collinearity can make separate coefficients unstable while fitted predictions remain stable in the observed predictor region.
+
+## Question {.role-slide}
+
+How much does predictor overlap increase a coefficient's sampling variance?
+
+## Answer {.role-slide}
+
+The [variance inflation factor](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119) for predictor $j$ is
+
+$$\operatorname{VIF}_j=\frac{1}{1-R_j^2}.$$
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Multiple Regression: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=119
+:::
+
+## Important Point #2 {.role-slide}
+
+A VIF has no universal cutoff that answers the linguistic question.
+
+Inspect which predictor contrasts the observed design actually supports.
+
+## Question {.role-slide}
+
+Can estimation prefer smaller coefficients when correlated predictors permit many similar fits?
+
+## Answer {.role-slide}
+
+The [residual sum of squares](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
+
+$$\mathrm{RSS}=\sum_i(y_i-\widehat y_i)^2.$$
+
+::: {.notes}
+[Sources]
+
+James et al., An Introduction to Statistical Learning: https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+## Answer {.role-slide}
+
+[Ridge regression](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) minimizes
+
+$$\mathrm{RSS}+\lambda\sum_{j=1}^p\beta_j^2.$$
+
+::: {.notes}
+[Sources]
+
+ISLP Laboratory, Ridge Regression and the Lasso: https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso
+:::
+
+## Answer {.role-slide}
+
+The [regularization parameter](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) $\lambda$ controls the strength of shrinkage.
+
+Predictors should be put on comparable scales before applying the penalty.
+
+::: {.notes}
+[Sources]
+
+ISLP Laboratory, Ridge Regression and the Lasso: https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso
+:::
+
+## Important Point #3 {.role-slide}
+
+Ridge regression stabilizes estimation under overlap.
+
+It does not recover uniquely meaningful effects for perfectly redundant predictors.
+
+## Question {.role-slide}
+
+What remains of one predictor after its linear association with the others is removed?
+
+## Answer {.role-slide}
+
+[Residualization](https://doi.org/10.1016/j.jml.2013.12.003) replaces a predictor by residuals from a regression on the remaining predictors.
+
+::: {.notes}
+[Sources]
+
+Wurm and Fisicaro, What residualizing predictors in regression analyses does: https://doi.org/10.1016/j.jml.2013.12.003
+:::
+
+## Important Point #4 {.role-slide}
+
+A residualized predictor is not a purified linguistic construct.
+
+It is a sample dependent linear discrepancy from a specified auxiliary regression.
+
+## Upshot {.role-slide}
+
+Correlated predictors limit attribution. VIF describes the uncertainty increase, ridge changes estimation, and residualization changes the predictor representation.
+
+## Changing conditional variance {.section-slide}
+
+Modeling scale as well as location
+
+## Question {.role-slide}
+
+What is the standard term for residual spread that changes across predictor values?
+
+## Answer {.role-slide}
+
+[Heteroscedasticity](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is nonconstant conditional variance.
+
+::: {.notes}
+[Sources]
+
+Winter, Statistics for Linguists, Chapter 6: https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85
+:::
+
+## Important Point #1 {.role-slide}
+
+A changing mean and changing variance are different patterns.
+
+Residual spread should be inspected around the fitted conditional mean.
+
+## Challenge {.role-slide}
+
+Ordinary linear regression uses one $\sigma$ for every predictor value.
+
+That restriction can distort uncertainty when the response spread changes systematically.
+
+## Question {.role-slide}
+
+How can a predictor change the scale parameter of the response distribution?
+
+## Answer {.role-slide}
+
+[Distributional regression](https://paulbuerkner.com/brms/articles/brms_distreg.html) assigns separate predictor equations to different distributional parameters.
+
+::: {.notes}
+[Sources]
+
+Bürkner, Distributional Models in brms: https://paulbuerkner.com/brms/articles/brms_distreg.html
+:::
+
+## Method {.role-slide}
+
+$$\mu_i=\beta_0+\beta_1x_i$$
+
+$$\log\sigma_i=\gamma_0+\gamma_1x_i$$
+
+The logarithm keeps $\sigma_i$ positive.
+
+## Interpretation {.role-slide}
+
+$\beta_1$ describes change in the conditional mean.
+
+$e^{\gamma_1}$ describes the multiplicative change in conditional standard deviation.
+
+## Important Point #2 {.role-slide}
+
+Add a predictor equation only for a distributional parameter that the design and theory require.
+
+Flexibility alone is not a reason to model every parameter.
+
+## Interim Discussion {.role-slide}
+
+Linear regression begins with a conditional mean. Each extension changes one part of the model while preserving the meaning of the earlier parts.
+
+## Conclusion {.section-slide}
+
+What the linear model now permits
+
+## Big Question {.role-slide}
+
+How does a response distribution change with a linguistic predictor?
+
+## Answer {.role-slide .compact}
+
+1. A linear regression describes conditional response distributions.
+2. Coefficients require a declared response scale and predictor reference.
+3. Fitting, uncertainty, and model checking answer different questions.
+4. Multiple predictors define partial associations through a design matrix.
+5. Interactions, regularization, and distributional regression each relax one distinct restriction.
+
+## Question {.role-slide}
+
+For the fitted linguistic claim, which response feature changes, with respect to which predictor contrast, and under which model assumptions?
