@@ -10,11 +10,11 @@ The text under each slide heading is the text to say. Directions in brackets are
 
 ## Title slide. Describing what happens
 
-Good afternoon. I am Aaron White, and this is Statistical Methods in Linguistics. The title of this first module is *Describing what happens*. That phrase is going to organize both today's lecture and, more generally, the course. We are going to ask what counts as something that happens, how linguistic data record what happens, and how probability and statistics let us describe those things precisely.
+Good afternoon. I am Aaron White, and this is Statistical Methods in Linguistics. The title of this first module is *Describing what happens*. That phrase is going to organize both today's lecture and, more generally, the course. We are going to ask what counts as something that happens, how linguistic data record what happens, and how probability and statistics let us describe those things precisely. More specifically, we will ask what can happen and how often it happens.
 
 ## Slide 1. Describing what happens precisely
 
-The basic claim for the course is this: probability and statistics is all about describing what happens precisely. We are going to spend a lot of time making each part of that sentence precise. What counts as happening? What exactly is the thing we are describing? And what makes a description precise? Probability gives us a language for stating what can happen. Statistics gives us tools for relating the observations we collect to larger patterns and to the processes that may have produced them.
+The basic claim for the course is this: probability and statistics is all about describing what happens precisely. That means stating what can happen and how often it happens. We are going to spend a lot of time making each part of that claim precise. What counts as happening? What exactly is the thing we are describing? What determines how often it happens? And what makes a description precise? Probability gives us the mathematical objects we need to answer the first three questions. Statistics lets us use observations to learn about the probabilities and processes that interest us.
 
 ## Slide 2. This module
 
@@ -28,61 +28,61 @@ Okay. So before we get into the content, let me say a little about who I am and 
 
 I am Aaron White. I am an associate professor in Linguistics and Computer Science here at Rochester. My office is 511A Lattimore Hall. My website is aaronstevenwhite.io, and that is where you can find my office hour scheduler as well as links to course materials. If you need to meet with me, please use the scheduler rather than trying to catch me in the hallway. I am happy to talk about the course, a problem set, a possible project, or a statistical question arising in other work.
 
-## Slide 5. I study linguistic representations
+## Slide 5. I am a computational semanticist
 
-My research begins with linguistic representations. I study how words and constructions relate to categories of events, entities, and attitudes. For instance, I might ask which kinds of event a verb can describe, which syntactic frames that verb can occur in, or what inferences a speaker tends to draw from a sentence containing that verb. Answering those questions produces several kinds of data, including corpus annotations, behavioral judgments, and large lexical data sets. So the statistical questions in this course are closely connected to the kinds of linguistic questions I work on.
+I am a computational semanticist. I study how words, constructions, and discourses encode events, attitudes, and inferences. One part of my work asks how the meaning of a verb relates to the clauses and other syntactic frames that it can take. Another part asks how event structure can be recovered from annotations of predicates, arguments, and relations among events. A third part asks how speakers update a discourse when a sentence supports an inference with some uncertainty. These projects concern different parts of meaning, but all of them require an explicit account of the linguistic representation and of the observations that bear on it.
 
-## Slide 6. Those data raise statistical questions
+## Slide 6. Statistics connects data to representations
 
-Once we have data, at least four questions arise. [Advance.] First, what exactly did we observe? Was the observation a word token, a judgment, a reading time, or a set of acoustic measurements? [Advance.] Second, what larger object or process do those observations tell us about? A judgment is an observed response, but the object of interest may be the acceptability of a construction. [Advance.] Third, which patterns should a statistical model describe? [Advance.] And fourth, how can we tell whether the model describes those patterns well? These questions are distinct. Much of the course concerns what goes wrong when we answer one of them without answering the others.
+The data in this work include acceptability and inference judgments, corpus distributions, and decompositional semantic annotations. I use probability and statistics to connect patterns in those observations to hypotheses about the representations that could have produced them. For instance, in work on clause-taking verbs, the observations include judgments about many verbs in many syntactic frames. The object of interest is not the list of responses. It is the relationship between a verb's meaning and its syntactic distribution. In work on event structure, the observations are annotations, while the object of interest is a system of recurring event, entity, and relation types. Statistics provides the connection between the observations and the proposed representation.
 
 ## Slide 7. Why take this course?
 
-So why take this course? My answer is the sentence on this slide: probability and statistics is all about describing what happens precisely. Let me give you a sense of how broadly I intend the phrase *what happens*.
+So why take this course? My answer is the claim on this slide: probability and statistics is all about describing what happens precisely. That means stating what can happen and how often it happens. Let me give you a sense of how broadly I intend both parts of that statement.
 
 ## Slide 8. Articulating a sound
 
-One thing that can happen is that a speaker articulates a sound. We might want to describe the exact position of the tongue and lips while the speaker produces a vowel, or how those articulators move through time. In that case, the thing we are describing is the articulatory event itself. Later, when we introduce random variables and distributions, we will ask how a variable can represent measurements taken from events of this kind and how a distribution describes the values that variable can take.
+First, what can happen? A speaker can produce many tongue and lip trajectories while articulating a vowel. The tongue is not fixed at one position for every production of a vowel, and its movement is not identical across speakers or speaking contexts. [Advance.] Second, how often does each possibility happen? We can describe how articulatory trajectories are distributed across vowels, speakers, and contexts. [Advance.] Later, when we introduce random variables and distributions, we will ask how variables represent measurements from these articulatory events and how a probability distribution describes the values those variables can take.
 
 ## Slide 9. Producing an acoustic signal
 
-The acoustic signal is another thing that happens. We might describe a vowel's duration, its first two formants, or the trajectory of those measurements across the vowel. Notice that this is related to articulation but not identical to it. The articulation produces the signal, and our microphone records properties of that signal. During the statistical inference portion of the course, we will ask what a sample of acoustic measurements can tell us about a larger population of productions.
+Now consider the acoustic signal produced by that articulation. What can happen? A vowel token can have different durations, formant values, and formant trajectories. [Advance.] How often does each possibility happen? We can describe how those measurements are distributed across vowels, speakers, and speaking contexts. Notice that the acoustic signal is related to the articulation but is not identical to it. The articulation produces the signal, and a recording gives us measurements of that signal. [Advance.] During the statistical inference portion of the course, we will ask what a sample of those measurements can tell us about a larger population of productions.
 
 ## Slide 10. Reading a sentence
 
-A comprehender reading a sentence is also something that happens. We might measure how long the comprehender spends on a particular word or region. The observations will vary across readers, words, sentences, and passages. When we get to linear regression and prediction, we will ask how linguistic predictors such as word frequency or syntactic structure relate to reading time, and we will ask whether a fitted relation predicts reading times in passages the model has not seen.
+What can happen while a comprehender reads a sentence? The comprehender can spend different amounts of time reading a word or sentence region. [Advance.] How often do those reading-time values occur? We can describe how their distribution varies with theoretically relevant properties such as word frequency and syntactic structure, as well as with readers and passages. [Advance.] When we get to linear regression and prediction, we will use those predictors to describe reading time and then ask whether the fitted relationship predicts values in passages the model has not seen.
 
 ## Slide 11. Choosing a construction
 
-A producer choosing a word or construction is something that happens. Suppose a speaker wants to describe a transfer event. The speaker might use the double object construction, as in *give the child the book*, or the prepositional dative, as in *give the book to the child*. We can ask how that choice varies with the theme, the recipient, the verb, and the discourse context. This gives us a categorical response, which will motivate generalized linear models later in the semester.
+Suppose a speaker wants to describe a transfer event. What can happen? The speaker can use the double object construction, as in *give the child the book*, or the prepositional dative, as in *give the book to the child*. [Advance.] How often does each choice happen? We can describe how the probability of each construction varies with properties of the theme, recipient, verb, and discourse context. [Advance.] This is a categorical response, which will motivate generalized linear models later in the semester.
 
 ## Slide 12. Giving a slider rating
 
-A participant placing a slider is something that happens. The participant may choose the left endpoint, the right endpoint, or a value in the interior. That response format matters. A statistical model for the ratings must represent both the endpoint values and the interior values. We will return to this case when we discuss bounded responses, because a model that treats the endpoints as impossible cannot be an adequate description of a task that explicitly permits them.
+Now consider a slider task. What can happen? A participant can choose the left endpoint, the right endpoint, or a value in the interior. [Advance.] How often does each possibility happen? We need to describe the probability of each endpoint and the distribution of the interior values. The response format therefore matters to the statistical model. [Advance.] We will return to this case when we discuss bounded responses, because a model that assigns probability zero to the endpoints cannot describe how often participants choose values that the task explicitly permits.
 
 ## Slide 13. Participants and items
 
-The participants and items are also part of what happened. Two participants may use a rating scale differently, and two sentence items may elicit different responses for reasons we did not manipulate. If a participant responds to many items and an item receives responses from many participants, those observations are not interchangeable independent records. A model must account for the repeated variation associated with participants and items. That is the motivation for the mixed effects models we will study in November.
+What can happen when a participant responds to an item? Each participant-item pairing can yield a different response. [Advance.] How often do those responses happen? Their distribution can vary across participants and items as well as across the conditions we manipulate. Two participants may use a rating scale differently, and two sentence items may elicit different responses for reasons we did not manipulate. [Advance.] When each participant responds to many items and each item receives many responses, a model must account for those recurring sources of variation. That is the motivation for the mixed effects models we will study in November.
 
 ## Slide 14. Experimental design
 
-The experiment determines what can happen in the data. Random assignment determines which conditions a participant can encounter. Counterbalancing determines which items can occur in which conditions. Exclusion rules determine which observations enter the analysis. And the number of participants and items constrains the comparisons the data can support. This is why experimental design comes before interpretation. A complicated statistical model cannot recover a comparison that the design never made possible.
+Experimental design constrains both parts of our course claim. What can happen? The design determines which conditions each participant and item can appear in and which observations can enter the analysis. [Advance.] How often does each possibility happen? Assignment probabilities and replication determine how often the comparisons supported by the design occur. Counterbalancing, exclusion rules, and the number of participants and items all affect those comparisons. [Advance.] A statistical model cannot recover a comparison that the design never made possible. We will examine those constraints in the experimental design module.
 
 ## Slide 15. Vowel inventories
 
-Now let us stretch the notion of what happens. Suppose we observe many first and second formant measurements without vowel labels. We might ask whether those measurements support a useful grouping into vowel categories. The object we want to describe is not simply one acoustic measurement. It is the structure of a vowel inventory, inferred from a collection of measurements. We will use cases like this when we discuss clustering and mixture models in the latent structure module.
+Now let us stretch the notion of what happens. What can happen? An acoustic token can arise from one of several vowel categories that we do not observe directly. [Advance.] How often does each possibility happen? We can describe how frequently each category generates a token and how acoustic measurements are distributed within each category. The object of interest is not simply one formant measurement. It is the structure of a vowel inventory inferred from many measurements. [Advance.] We will return to this distinction when we discuss clustering and mixture models in the latent structure module.
 
 ## Slide 16. Acceptability lexicons
 
-We can stretch the notion further. For each verb, we might ask which syntactic frames permit an acceptable sentence. The object we want is then an entire acceptability lexicon, a structured collection of values across verbs and frames. We do not mean that we observed this lexicon directly. We may infer it from many judgments, perhaps supplemented by corpus observations. The factorization module will ask how lower dimensional structure can describe variation across the resulting verb by frame matrix.
+We can stretch the notion further. What can happen? A verb-frame combination can receive a range of acceptability judgments. [Advance.] How often do those judgments occur? We can describe their distribution across verb-frame combinations and ask which recurring patterns support a structured acceptability lexicon. That lexicon is not one observed response. It is an abstract object that we infer from many responses. [Advance.] The factorization module will ask how a smaller set of recurring patterns can describe variation across the resulting verb by frame table.
 
 ## Slide 17. Missing measurements
 
-Missingness can change the object available for description. A typological database may omit some language by feature combinations. The absence may reflect the sampling process, documentation practices, or a genuine structural restriction. We cannot simply fill every blank and proceed as though the completed table had been observed. We must state which measurements are missing, specify what assumptions justify a proposed completion, and test whether the procedure can recover values that we deliberately hold out.
+Missing data require us to represent another possibility. What can happen? A language-feature combination can be observed or missing, and an observed combination can take different values. [Advance.] How often do these possibilities happen? We can describe how missingness varies with sampling and documentation and how the recorded values are distributed. We cannot fill every blank and proceed as though the completed table had been observed. [Advance.] In the missing data module, we will distinguish the process that determines which values are recorded from the process that determines the values themselves.
 
 ## Slide 18. Annotations
 
-An annotation is also an event produced by a measurement process. An annotator may answer one question only when an earlier answer opens it. Different annotators may use scales differently or interpret a prompt differently. In that setting, we may want a model that describes both the annotation process and the linguistic property being measured. The custom model design module will show how to write a joint model when an off the shelf response distribution does not represent the task.
+Finally, consider a branching annotation task. What can happen? An earlier response can determine which question an annotator sees next, and the annotator can then choose among the responses available at that point. [Advance.] How often does each path and response happen? We can describe their probabilities across annotators and items. In that setting, we may want a statistical model that describes the annotation process together with the linguistic property being measured. [Advance.] The custom model design module will show how to construct that model when the standard response models do not represent the task.
 
 ## Slide 19. Not every object is observed
 
@@ -98,7 +98,7 @@ The two observations provide different evidence. A corpus token tells us that a 
 
 ## Slide 22. Data and the processes that produce them
 
-Okay. So this gives us a second formulation of the course's aim. We want to describe the data we collect, but we also want to describe the processes that could have produced those data. Sometimes the first description is enough for the question at hand. In other cases, especially when we want to generalize or explain, we need to state the process explicitly.
+Okay. So this follows directly from the course claim. Describing what can happen and how often it happens requires us to describe the data we collect. It may also require us to describe the processes that could have produced those data. Sometimes a description of the observations is enough for the question at hand. In other cases, especially when we want to generalize or explain, we need to state the process explicitly.
 
 ## Slide 23. Six questions organize the course
 
@@ -222,7 +222,7 @@ Students seeking accommodations should contact the University Office of Disabili
 
 ## Slide 53. What should you do before September 2?
 
-Before Wednesday, please do four things. [Advance.] Join the Fall 2026 course Zulip. [Advance.] Confirm that you can open the course notes. [Advance.] Begin installing R and your editor. [Advance.] Read the notes on linguistic data and Zipf's law. Before we leave the administrative material, what questions do you have about the schedule, assessments, communication, or course policies? [Pause for questions.] Okay. Let us return to the claim that probability and statistics describe what happens precisely and ask what that claim means for an entire corpus.
+Before Wednesday, please do four things. [Advance.] Join the Fall 2026 course Zulip. [Advance.] Confirm that you can open the course notes. [Advance.] Begin installing R and your editor. [Advance.] Read the notes on linguistic data and Zipf's law. Before we leave the administrative material, what questions do you have about the schedule, assessments, communication, or course policies? [Pause for questions.] Okay. Let us return to the claim that probability and statistics is all about describing what happens precisely. That means stating what can happen and how often it happens. We will now ask what both parts of that claim mean for an entire corpus.
 
 ## Slide 54. Describing an entire corpus
 
@@ -364,13 +364,13 @@ The novel-name experiment suggests that memory may contribute to unequal reuse e
 
 An explanation of Zipfian frequency should meet four requirements. [Advance.] It should state a process that could plausibly produce the data. [Advance.] It should test the assumptions of that process independently. [Advance.] It should predict observations beyond the rank-frequency curve. [Advance.] And it should account for the effects of meaning, category, context, time, and novel production. Reproducing one aggregate relation is the beginning of the analysis, not the end.
 
-## Slide 89. How broad is “what happens”?
+## Slide 89. What happened in the corpus?
 
-We can now return to the phrase *what happens*. Zipf's law describes an entire corpus of usages by compressing it into a relation between word type frequency and frequency rank. The object is extremely broad. The processes that produce it consist of individual choices made by particular speakers and writers across contexts and historical periods. Probability and statistics can describe the aggregate, the component processes, or both, but those are different descriptions.
+We can now return to both parts of the course claim. What can happen? A speaker or writer can choose a word type in a particular context. How often does it happen? Zipf's law describes the aggregate frequencies of those choices across an entire corpus. The object is extremely broad. The process that produces it consists of individual choices made by particular speakers and writers across contexts and historical periods. A statistical model can describe the aggregate frequencies, the component processes, or both, but those are different descriptions.
 
 ## Slide 90. Description is not explanation
 
-So statistical work separates two questions. What pattern does the data exhibit? And which process could have produced that pattern? A good answer to the first question does not automatically answer the second.
+Describing what can happen and how often it happens does not by itself identify the process that produced the pattern. So statistical work separates two questions. What pattern does the data exhibit? And which process could have produced that pattern? A good answer to the first question does not automatically answer the second.
 
 ## Slide 91. Later modules return to this distinction
 
@@ -378,7 +378,7 @@ We will return to this distinction throughout the semester. [Advance.] On Octobe
 
 ## Slide 92. Four conclusions from August 31
 
-Let me end with four conclusions. [Advance.] Linguistic data record many different kinds of happenings. [Advance.] The object of interest may be more abstract than an observed response. [Advance.] A statistical model can describe an aggregate pattern or a process that produces data. [Advance.] And matching one broad pattern does not by itself identify the process. These conclusions set up our next step, which is to state possible outcomes and events mathematically.
+Let me end with four conclusions. [Advance.] Probability and statistics describe what can happen and how often it happens. [Advance.] The object of interest may be more abstract than an observed response. [Advance.] A statistical model can describe an aggregate pattern or a process that produces data. [Advance.] And matching one broad pattern does not by itself identify the process. These conclusions set up our next step, which is to state possible outcomes and events mathematically.
 
 ## Slide 93. Read before September 2
 
