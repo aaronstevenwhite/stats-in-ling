@@ -176,7 +176,7 @@ ICH_ESTIMAND = (
     "https://database.ich.org/sites/default/files/"
     "E9-R1_Step4_Guideline_2019_1203.pdf"
 )
-ZIPF_SOURCE = "https://doi.org/10.1016/j.cognition.2014.07.011"
+ZIPF_SOURCE = "https://doi.org/10.3758/s13423-014-0585-6"
 MEGA_SOURCE = "https://doi.org/10.5334/gjgl.1001"
 
 PSU_CLUSTERING = "https://online.stat.psu.edu/stat505/Lesson14"
