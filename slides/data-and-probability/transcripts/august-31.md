@@ -58,7 +58,7 @@ Suppose a speaker wants to describe a transfer event. What can happen? The speak
 
 ## Slide 12. Giving a slider rating
 
-Now consider a slider task. What can happen? A participant can choose the left endpoint, the right endpoint, or a value in the interior. [Advance.] How often does each possibility happen? We need to describe the probability of each endpoint and the distribution of the interior values. The response format therefore matters to the statistical model. [Advance.] We will return to this case when we discuss bounded responses, because a model that assigns probability zero to the endpoints cannot describe how often participants choose values that the task explicitly permits.
+Now consider a slider task. What can happen? A participant can choose the left endpoint, the right endpoint, or a value in the interior. [Advance.] How often does each possibility happen? We need to describe the probability of each endpoint and the distribution of the interior values. The response format thus matters to the statistical model. [Advance.] We will return to this case when we discuss bounded responses, because a model that assigns probability zero to the endpoints cannot describe how often participants choose values that the task explicitly permits.
 
 ## Slide 13. Participants and items
 
@@ -154,7 +154,7 @@ We will do the statistical work in R. You may use RStudio or Visual Studio Code 
 
 ## Slide 36. LING 214 has three assessment components
 
-LING 214 has three assessment components. The five problem sets contribute 65 percent of the course grade. The midterm on October 28 contributes 25 percent. Two office hour meetings contribute the remaining 10 percent. There is no independent final project in LING 214. The problem sets are therefore the main sustained analyses in that version of the course.
+LING 214 has three assessment components. The five problem sets contribute 65 percent of the course grade. The midterm on October 28 contributes 25 percent. Two office hour meetings contribute the remaining 10 percent. There is no independent final project in LING 214. The problem sets are thus the main sustained analyses in that version of the course.
 
 ## Slide 37. LING 414 includes a final project
 
@@ -198,7 +198,7 @@ Use a public channel for questions whose answers may help other students. That i
 
 ## Slide 47. Expect replies during working hours
 
-I generally reply within one to two business days. I do not monitor Zulip after 5 PM or on weekends. A message sent late Sunday night may therefore receive an answer on Tuesday. Please account for that when you plan work near a deadline. If a problem blocks your progress, ask early enough that there is time for an exchange.
+I generally reply within one to two business days. I do not monitor Zulip after 5 PM or on weekends. A message sent late Sunday night may thus receive an answer on Tuesday. Please account for that when you plan work near a deadline. If a problem blocks your progress, ask early enough that there is time for an exchange.
 
 ## Slide 48. Late problem sets
 
@@ -236,150 +236,158 @@ Zipf's law relates each word type's frequency to its frequency rank across an en
 
 Consider what a corpus contains. It records many usages produced by many people in many contexts, often across a long period of time. Each token resulted from a particular producer choosing a particular expression in a particular context. Zipf's law ignores most of that local structure and asks whether the aggregate collection has a simple shape. So we have an unusually complex object paired with an unusually compact description.
 
-## Slide 57. Begin by counting word types
+## Slide 57. Use a corpus we can inspect
 
-We begin by counting word types. Suppose *the* occurs 10,000 times, *of* occurs 5,100 times, and *and* occurs 3,400 times. We order the types by their counts. The most frequent type receives rank 1, the next most frequent receives rank 2, and so on. The question is then how frequency changes as rank increases.
+Rather than inventing counts, we will calculate them from George Washington's 1793 inaugural address. The address is included in quanteda's corpus of US presidential inaugural addresses. Under the tokenization we will use, it contains 135 alphabetic word tokens and 90 word types. [Advance.] It is short enough that we can read the whole text and inspect unusual results. [Advance.] It is also long enough for several words to recur. This is a genuine small corpus, not a table constructed to resemble Zipf's law.
 
-## Slide 58. Zipf proposed an inverse relation
+## Slide 58. Count the tokens in R
+
+Here is the complete count. We load Washington's address from quanteda and convert the corpus object to text. We lowercase the characters because *The* and *the* will count as the same orthographic type. The regular expression replaces punctuation and spaces with a single space. We then split the text at whitespace and tabulate the resulting words. Nothing in this code assumes a Zipfian distribution. It only turns a stated tokenization rule into word counts.
+
+## Slide 59. Rank the observed types
+
+These are the six most frequent types under that tokenization. *The* occurs 13 times, *of* occurs 11 times, *I* occurs 6 times, and *to* occurs 5 times. *In* and *shall* each occur 3 times. We break that tie alphabetically, so they receive ranks 5 and 6. Reversing those two ranks would not change the observed counts. This tie is already useful: rank is assigned after counting, and the ranking rule matters in a small corpus.
+
+## Slide 60. Zipf proposed an inverse relation
 
 Zipf proposed that frequency is approximately inversely related to rank. We write the frequency of the type at rank $r$ as $f(r)$. The relation says that $f(r)$ is proportional to one divided by $r$ raised to the power $\alpha$. The parameter $\alpha$ controls how quickly frequency falls as rank increases. For word frequencies, $\alpha$ is often near 1. The equation is not claiming that every observed count lies exactly on the curve. It states the broad relation the curve is meant to capture.
 
-## Slide 59. When $\alpha=1$
+## Slide 61. When $\alpha=1$
 
-When $\alpha$ equals 1, the interpretation is especially simple. If the first ranked word occurs 10,000 times, then the second ranked word should occur about 5,000 times, and the third ranked word should occur about 3,333 times. Doubling the rank halves the predicted frequency. Tripling the rank divides the predicted frequency by three. That is what an inverse relation means here.
+The rank 1 count fixes the constant in the simplest inverse relation. Because *the* occurs 13 times, the curve predicts 6.5 occurrences at rank 2 and about 4.33 occurrences at rank 3. The observed counts are 11 and 6. The direction is right, but the numerical mismatch is substantial. This small corpus has many tied counts and many types that occur only once, so its observed distribution is much rougher than a distribution estimated from millions of tokens.
 
-## Slide 60. Mandelbrot shifts frequency rank
+## Slide 62. Mandelbrot shifts frequency rank
 
-Mandelbrot introduced an additional parameter, $\beta$, which shifts the rank before the power is applied. Piantadosi treats this Zipf and Mandelbrot form as the working description. The shift changes the curve most strongly among the highest frequency words, where adding a fixed amount to rank has the largest proportional effect. The two parameters therefore control different aspects of the curve.
+Mandelbrot introduced an additional parameter, $\beta$, which shifts the rank before the power is applied. Piantadosi treats this Zipf and Mandelbrot form as the working description. The shift changes the curve most strongly among the highest frequency words, where adding a fixed amount to rank has the largest proportional effect. The two parameters thus control different aspects of the curve.
 
-## Slide 61. Why use logarithmic axes?
+## Slide 63. Why use logarithmic axes?
 
 Rank and frequency each extend over several orders of magnitude. On ordinary axes, the high frequency words occupy a small portion of the plot and the long tail is compressed. Logarithmic axes give comparable visual space to comparable ratios. The interval from 10 to 100 receives the same width as the interval from 100 to 1,000. The broad power law relation is much easier to see on those axes.
 
-## Slide 62. The ANC is approximately Zipfian
+## Slide 64. The ANC is approximately Zipfian
 
 This figure shows normalized word frequency against frequency rank in the American National Corpus. The red curve is the fitted Zipf and Mandelbrot relation. At this scale, the corpus is approximately Zipfian. The gray curve follows a local average more closely. Notice that the red curve captures the overall decline while missing smaller bends in the gray curve. That difference will become important in a moment.
 
-## Slide 63. Rank and frequency errors are coupled
+## Slide 65. Rank and frequency errors are coupled
 
-There is a measurement problem with the usual rank-frequency plot. If we estimate a word's rank and its frequency from the same corpus counts, the errors in those estimates are coupled. Suppose two word types have the same underlying probability. A chance difference in their observed counts gives one type the higher rank and, by construction, the higher measured frequency. We can therefore create apparent local agreement between rank and frequency simply by using the same random counts to estimate both.
+There is a measurement problem with the usual rank frequency plot. If we estimate a word's rank and its frequency from the same corpus counts, the errors in those estimates are coupled. Suppose two word types have the same underlying probability. A chance difference in their observed counts gives one type the higher rank and, by construction, the higher measured frequency. We can thus create apparent local agreement between rank and frequency simply by using the same random counts to estimate both.
 
-## Slide 64. Estimate rank and frequency separately
+## Slide 66. Estimate rank and frequency separately
 
 Piantadosi addresses this problem by randomly splitting the corpus tokens into two parts. One part estimates each word's rank. The other estimates its frequency. A chance fluctuation in one half cannot affect both measurements. This separation lets us interpret the difference between an observed frequency and the fitted curve without building the same sampling fluctuation into both axes.
 
-## Slide 65. The broad fit hides departures
+## Slide 67. The broad fit hides departures
 
 Once rank and frequency are estimated separately, we can inspect the departures from the curve. The vertical axis here is the observed log frequency minus the log frequency predicted by the Zipf and Mandelbrot curve. A value above zero means the word is more frequent than the curve predicts. A value below zero means it is less frequent. If the broad curve captured the full structure, these departures should not show long, systematic patterns.
 
-## Slide 66. Departures from the curve are systematic
+## Slide 68. Departures from the curve are systematic
 
 But the departures do show systematic structure. There are long runs above and below zero, including the large scoop among lower frequency words. Even the highest frequency words show local bends that the simple curve does not describe. We do not merely see isolated points scattered around zero. We see neighboring ranks departing in related ways.
 
-## Slide 67. The broad fit misses local structure
+## Slide 69. The broad fit misses local structure
 
 So two levels of description need to be kept separate. The large scale relation between rank and frequency is approximately Zipfian. The full distribution contains systematic local structure that the fitted curve misses. Saying that a corpus is Zipfian is informative, but it is not a complete description of the corpus's word frequencies.
 
-## Slide 68. A power law does not identify its cause
+## Slide 70. A power law does not identify its cause
 
-This creates the explanatory problem that organizes the rest of Piantadosi's paper. Many incompatible processes can produce an approximately power law distribution. Deriving the curve from one process does not show that speakers or writers use that process. A theory must also account for observations that distinguish its process from the alternatives. Piantadosi therefore examines properties of word frequency beyond the broad rank-frequency relation.
+This creates the explanatory problem that organizes the rest of Piantadosi's paper. Many incompatible processes can produce an approximately power law distribution. Deriving the curve from one process does not show that speakers or writers use that process. A theory must also account for observations that distinguish its process from the alternatives. Piantadosi thus examines properties of word frequency beyond the broad rank-frequency relation.
 
-## Slide 69. Meaning ranks are similar across languages
+## Slide 71. Meaning ranks are similar across languages
 
 The first property concerns meaning. This figure uses Swadesh list meanings across 17 languages. The common ordering on the horizontal axis is estimated across languages. Meanings that rank as relatively frequent in one language tend to rank as relatively frequent in others. So frequency is not arbitrary with respect to meaning. Whatever process explains word frequency must allow semantically similar items to occupy similar portions of the distribution across languages.
 
-## Slide 70. Smaller numbers are more frequent
+## Slide 72. Smaller numbers are more frequent
 
 Number words provide a particularly transparent case because the horizontal axis is cardinality rather than a frequency rank assigned from the same counts. Across English, Russian, and Italian, smaller numbers are used more frequently. The word for *one* is more frequent than the word for *ten*, and the decline continues as cardinality increases. This relation is tied to what the words mean, not merely to an ordering constructed from their observed frequencies.
 
-## Slide 71. Similar referents, unequal frequencies
+## Slide 73. Similar referents, unequal frequencies
 
 The next case asks whether shared reference removes the unequal distribution. These are taboo words referring to sexual activity and feces. The words within a referential category still differ sharply in frequency. So reference alone does not determine use. Social register, conventional preferences, and other aspects of context may distinguish expressions that can refer to roughly the same thing.
 
-## Slide 72. Constrained referents remain Zipfian
+## Slide 74. Constrained referents remain Zipfian
 
-Months, planets, and chemical elements give a language relatively little freedom to choose the relevant referents. The calendar fixes the months, astronomy fixes the planets under the chosen classification, and chemistry fixes the elements. Yet the names in these categories still have strongly unequal frequencies and remain approximately Zipfian. A theory based only on how a language partitions an unconstrained conceptual space will therefore be incomplete.
+Months, planets, and chemical elements give a language relatively little freedom to choose the relevant referents. The calendar fixes the months, astronomy fixes the planets under the chosen classification, and chemistry fixes the elements. Yet the names in these categories still have strongly unequal frequencies and remain approximately Zipfian. A theory based only on how a language partitions an unconstrained conceptual space will thus be incomplete.
 
-## Slide 73. Syntactic categories are also Zipfian
+## Slide 75. Syntactic categories are also Zipfian
 
 The pattern is not restricted to word types. This figure shows the frequency distribution of syntactic categories in the Penn Treebank. Those categories also form a strongly unequal distribution. The most common categories occur far more often than the less common categories. So a Zipfian pattern can arise at a level of representation different from the lexicon.
 
-## Slide 74. Each category has its own curve
+## Slide 76. Each category has its own curve
 
 But the syntactic categories do not all have the same internal frequency distribution. Determiners, prepositions, modals, nouns, and the two verb categories shown here differ in their fitted curves and in their departures from those curves. Again, the broad family resemblance does not erase the local structure. A theory that predicts only that every category is approximately Zipfian leaves these differences unexplained.
 
-## Slide 75. Frequency varies with context and time
+## Slide 77. Frequency varies with context and time
 
-Word frequency also changes with context and time. Piantadosi uses *Dallas* as an intuitive case. The probability of that word differs between a discussion of Lyndon Johnson and a discussion of Carl Sagan. Topics, social groups, technologies, and historical events all change which words are useful. There is therefore no reason to assume that every token in a large corpus was generated from one unchanging distribution.
+Word frequency also changes with context and time. Piantadosi uses *Dallas* as an intuitive case. The probability of that word differs between a discussion of Lyndon Johnson and a discussion of Carl Sagan. Topics, social groups, technologies, and historical events all change which words are useful. There is thus no reason to assume that every token in a large corpus was generated from one unchanging distribution.
 
-## Slide 76. Corpus frequencies average over contexts
+## Slide 78. Corpus frequencies average over contexts
 
 A corpus frequency averages over all of those contexts. The simple rank-frequency curve describes the aggregate, even when the component contexts have different distributions. This matters for explanation. A process that fits the aggregate may fail to describe any particular speaker, topic, or period that contributed to it.
 
-## Slide 77. Novel names also show unequal use
+## Slide 79. Novel names also show unequal use
 
 Piantadosi then asks whether a near Zipfian pattern can arise when speakers are given a small set of novel names. Twenty-five participants wrote stories of at least 2,000 words using eight alien names that had been introduced for the experiment. The average across participants was near Zipfian. Even without an established lexical history for those names, participants reused some names much more often than others.
 
-## Slide 78. The within-participant pattern is unknown
+## Slide 80. The within-participant pattern is unknown
 
 The result has an important limitation. Piantadosi orders the names by frequency within each participant and then averages those ordered frequencies across participants. That analysis establishes an aggregate pattern after rank alignment. It does not establish that each participant's own eight-name distribution was reliably Zipfian. A larger study with more observations per participant would be needed to estimate that within-participant pattern.
 
-## Slide 79. Zipfian patterns occur outside language
+## Slide 81. Zipfian patterns occur outside language
 
 Near Zipfian distributions also occur outside language, including in music, computer programs, and internet systems. That breadth admits at least two possibilities. There may be a sufficiently general process operating across these systems, or different processes may converge on similar aggregate distributions. The curve alone does not tell us which possibility is correct.
 
-## Slide 80. Random typing reproduces the broad curve
+## Slide 82. Random typing reproduces the broad curve
 
 Random typing makes the problem especially sharp. Imagine a process that emits characters independently and occasionally emits a space. The strings between spaces have a highly unequal frequency distribution that can be approximately Zipfian. But humans do not produce words by emitting independent characters until a space happens to occur. The process reproduces the broad curve while giving an implausible account of linguistic production.
 
-## Slide 81. False boundaries preserve the curve
+## Slide 83. False boundaries preserve the curve
 
 Piantadosi gives an even more direct demonstration using the American National Corpus. Treat the letter *e* as though it were a word boundary and count the resulting strings. Those strings still produce a near Zipfian curve. The units are not words, and the boundary rule is not a plausible model of linguistic segmentation. The persistence of the curve shows how little the broad shape tells us about the represented units or the process.
 
-## Slide 82. Curve fit does not validate a process
+## Slide 84. Curve fit does not validate a process
 
 This is the central warning from the paper. A model can fit the aggregate pattern while misdescribing how speakers produce words. Fit to the rank-frequency curve is evidence that the model reproduces that curve. It is not, by itself, evidence that the model's process is psychologically or linguistically correct.
 
-## Slide 83. Preferential reuse produces inequality
+## Slide 85. Preferential reuse produces inequality
 
 One possible process is preferential reuse. If a word becomes more likely to recur after it has already occurred, small early differences can grow into a strongly unequal distribution. But even here we need to distinguish mechanism from correlation. A discourse topic may explain both the earlier use and the later reuse. The recurrence of the word need not itself cause the increased probability.
 
-## Slide 84. Meaning explains only part of the pattern
+## Slide 86. Meaning explains only part of the pattern
 
 Semantic organization is also part of the explanation. The cross-linguistic results and the number word results show that meaning predicts frequency. But the constrained referent categories and the novel-name experiment show that semantic organization alone is not sufficient. An adequate account must represent meaning while allowing other processes to shape frequency.
 
-## Slide 85. Optimization requires independent evidence
+## Slide 87. Optimization requires independent evidence
 
 Communicative optimization models can yield Zipfian frequencies by balancing assumptions about speaker and listener costs. That is a possible explanation, but the assumptions and parameter values need independent support. If the costs are chosen only because they produce the observed curve, the curve cannot then serve as independent evidence for those costs. The model needs predictions beyond the pattern it was constructed to reproduce.
 
-## Slide 86. Universal accounts need new predictions
+## Slide 88. Universal accounts need new predictions
 
 The same issue applies to universal accounts based on information, computation, or entropy. Such accounts may explain why power laws occur in many systems. But to distinguish one account from another, we need new predictions. Which local departures should occur? How should the curve change across contexts or categories? Without observations of that kind, the shared broad curve cannot adjudicate among the proposed processes.
 
-## Slide 87. The memory account remains a hypothesis
+## Slide 89. The memory account remains a hypothesis
 
 The novel-name experiment suggests that memory may contribute to unequal reuse even without an established lexicon. Piantadosi presents this as a possible direction, not as an established result. The current analysis does not identify a memory mechanism, and it does not establish the pattern within individual participants. A fuller model and new data would be needed to make that explanation precise.
 
-## Slide 88. Explanations need new predictions
+## Slide 90. Explanations need new predictions
 
 An explanation of Zipfian frequency should meet four requirements. [Advance.] It should state a process that could plausibly produce the data. [Advance.] It should test the assumptions of that process independently. [Advance.] It should predict observations beyond the rank-frequency curve. [Advance.] And it should account for the effects of meaning, category, context, time, and novel production. Reproducing one aggregate relation is the beginning of the analysis, not the end.
 
-## Slide 89. What happened in the corpus?
+## Slide 91. What happened in the corpus?
 
 We can now return to both parts of the course claim. What can happen? A speaker or writer can choose a word type in a particular context. How often does it happen? Zipf's law describes the aggregate frequencies of those choices across an entire corpus. The object is extremely broad. The process that produces it consists of individual choices made by particular speakers and writers across contexts and historical periods. A statistical model can describe the aggregate frequencies, the component processes, or both, but those are different descriptions.
 
-## Slide 90. Description is not explanation
+## Slide 92. Description is not explanation
 
 Describing what can happen and how often it happens does not by itself identify the process that produced the pattern. So statistical work separates two questions. What pattern does the data exhibit? And which process could have produced that pattern? A good answer to the first question does not automatically answer the second.
 
-## Slide 91. Later modules return to this distinction
+## Slide 93. Later modules return to this distinction
 
 We will return to this distinction throughout the semester. [Advance.] On October 14, model criticism asks where a fitted description fails. [Advance.] On October 19 and 21, prediction asks whether the description extends to new data. [Advance.] On November 30, factorization describes structured lexical objects. [Advance.] On December 2, custom model design states processes that could produce complex annotations. Zipf's law gives us the first case in which all four questions are visible at once.
 
-## Slide 92. Four conclusions from August 31
+## Slide 94. Four conclusions from August 31
 
 Let me end with four conclusions. [Advance.] Probability and statistics describe what can happen and how often it happens. [Advance.] The object of interest may be more abstract than an observed response. [Advance.] A statistical model can describe an aggregate pattern or a process that produces data. [Advance.] And matching one broad pattern does not by itself identify the process. These conclusions set up our next step, which is to state possible outcomes and events mathematically.
 
-## Slide 93. Read before September 2
+## Slide 95. Read before September 2
 
 Before Wednesday, read the notes on turning linguistic records into data and the notes on Zipf's law. On Wednesday, we will begin with a single represented observation and ask what outcomes the model permits. That is where today's broad question becomes a probability space.

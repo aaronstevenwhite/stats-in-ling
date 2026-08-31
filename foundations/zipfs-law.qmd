@@ -2,22 +2,11 @@
 title: "A first pattern: Zipf's law"
 ---
 
-Suppose we count every represented word token in a corpus. Some word types occur many times, while most occur rarely. Zipf's law describes this imbalance without, by itself, explaining its source.
+To calculate a rank frequency distribution, we will use George Washington's 1793 inaugural address. This address is one of the texts in quanteda's [corpus of US presidential inaugural addresses](https://quanteda.io/reference/data_corpus_inaugural.html). It is short enough to inspect: after we lowercase the text and remove punctuation, it contains 135 word tokens assigned to 90 word types.
 
-Begin by sorting the word types from highest frequency to lowest frequency. The most frequent type receives rank 1, the next receives rank 2, and so on.
+We first count the tokens assigned to each type. We then sort the types from highest frequency to lowest frequency. The most frequent type receives rank 1, the next receives rank 2, and so on.
 
-| word type | frequency | rank |
-|---|---:|---:|
-| *the* | 10,000 | 1 |
-| *of* | 5,100 | 2 |
-| *and* | 3,400 | 3 |
-| *to* | 2,450 | 4 |
-
-The table has two numerical columns, but they do not come from independent measurements. Frequency is the token count for a type. Rank is assigned after the types have been ordered by that count.
-
-Frequency decreases approximately as rank increases: the type at rank 2 occurs about half as often as the type at rank 1, while the type at rank 3 occurs about one third as often.
-
-This inverse relation is the basic form of [**Zipf's law**](https://doi.org/10.1016/j.cognition.2014.07.011):
+This inverse relation is the basic form of [**Zipf's law**](https://doi.org/10.3758/s13423-014-0585-6):
 
 $$
 f(r)\propto\frac{1}{r^\alpha}.
@@ -32,6 +21,63 @@ Read the introduction, Sections 2 and 3, and the conclusion.
 
 **Why this reading?** The paper starts from a familiar linguistic regularity and asks what would count as an explanation of it. It shows why reproducing the broad rank frequency curve is weak evidence for a proposed mechanism when many different mechanisms produce similar curves.
 :::
+
+## Count the tokens in R
+
+The corpus is included with the `quanteda` package. Install the package once with `install.packages("quanteda")`. We can then load the address and count its words with base R functions.
+
+```{r}
+#| eval: false
+library(quanteda)
+data("data_corpus_inaugural", package = "quanteda")
+
+speech <- as.character(
+  data_corpus_inaugural["1793-Washington"]
+)
+
+normalized <- tolower(
+  gsub("[^[:alpha:]']+", " ", speech)
+)
+word <- strsplit(
+  trimws(normalized),
+  "[[:space:]]+"
+)[[1]]
+
+frequency_table <- sort(
+  table(word),
+  decreasing = TRUE
+)
+
+counts <- data.frame(
+  word = names(frequency_table),
+  frequency = as.integer(frequency_table)
+)
+counts <- counts[
+  order(-counts$frequency, counts$word),
+]
+counts$rank <- seq_len(nrow(counts))
+
+head(counts, 10)
+```
+
+The first ten rows are:
+
+| word type | frequency | rank |
+|---|---:|---:|
+| *the* | 13 | 1 |
+| *of* | 11 | 2 |
+| *i* | 6 | 3 |
+| *to* | 5 | 4 |
+| *in* | 3 | 5 |
+| *shall* | 3 | 6 |
+| *am* | 2 | 7 |
+| *and* | 2 | 8 |
+| *any* | 2 | 9 |
+| *be* | 2 | 10 |
+
+Frequency and rank are not independent measurements. Frequency is the token count for a type. Rank is assigned after the types have been ordered by that count.
+
+Ties are common in this address. We order tied types alphabetically so that the result is reproducible. Thus *in* and *shall* receive different ranks even though both occur three times. Reversing their ranks would not change either observed frequency.
 
 ## The counting representation
 
@@ -48,7 +94,7 @@ Consider lemmatization. If *run*, *runs*, *ran*, and *running* are grouped under
 
 The analysis should say how tokens were counted, how types were defined, and how ties were ranked.
 
-## The inverse pattern
+## Compare the counts with the inverse pattern
 
 For the simplest case, set $\alpha=1$. We can write the proportional relation as
 
@@ -56,19 +102,19 @@ $$
 f(r)=\frac{C}{r},
 $$
 
-where $C$ is a constant. If the rank 1 type has frequency 10,000, then
+where $C$ is a constant. In the Washington address, *the* has rank 1 and occurs 13 times. Thus
 
 $$
-C=f(1)\times1=10{,}000.
+C=f(1)\times1=13.
 $$
 
-The simple curve predicts
+The curve predicts
 
 $$
 \begin{aligned}
-f(2)&=10{,}000/2=5{,}000,\\
-f(3)&=10{,}000/3\approx3{,}333,\\
-f(4)&=10{,}000/4=2{,}500.
+f(2)&=13/2=6.5,\\
+f(3)&=13/3\approx4.33,\\
+f(4)&=13/4=3.25.
 \end{aligned}
 $$
 
@@ -76,33 +122,30 @@ Compare those predictions with the observed counts.
 
 | rank | observed | simple prediction | observed minus prediction |
 |---:|---:|---:|---:|
-| 1 | 10,000 | 10,000 | 0 |
-| 2 | 5,100 | 5,000 | 100 |
-| 3 | 3,400 | 3,333 | about 67 |
-| 4 | 2,450 | 2,500 | minus 50 |
+| 1 | 13 | 13.00 | 0.00 |
+| 2 | 11 | 6.50 | 4.50 |
+| 3 | 6 | 4.33 | 1.67 |
+| 4 | 5 | 3.25 | 1.75 |
+| 5 | 3 | 2.60 | 0.40 |
+| 6 | 3 | 2.17 | 0.83 |
 
-The simple inverse curve captures the broad decrease without reproducing every count. The deviations are themselves part of the pattern that an explanatory account must address.
+The mismatch at rank 2 is large: *of* occurs 11 times, while the curve predicts 6.5 occurrences. A corpus with 135 tokens will also have many types that occur only once. The estimated rank frequency distribution is thus much rougher than the distribution from a corpus containing millions of tokens.
 
-## The calculation in R
+The same calculation can be added to the `counts` table.
 
 ```{r}
 #| eval: false
-word <- c("the", "of", "and", "to")
-frequency <- c(10000, 5100, 3400, 2450)
-rank <- seq_along(frequency)
+counts$prediction <- counts$frequency[1] / counts$rank
+counts$difference <- counts$frequency - counts$prediction
 
-zipf_prediction <- frequency[1] / rank
-
-data.frame(
-  word = word,
-  frequency = frequency,
-  rank = rank,
-  prediction = zipf_prediction,
-  difference = frequency - zipf_prediction
-)
+head(counts, 10)
 ```
 
-The code makes one fixed comparison. It uses the rank 1 count to set $C$ and then checks the other ranks. It does not estimate $\alpha$, select among mechanisms, or establish that the corpus follows an exact law.
+In this calculation, the rank 1 count fixes $C$, and we compare the remaining counts with $C/r$. We do not estimate $\alpha$ or compare alternative explanations of the rank frequency relation.
+
+![](figures/washington-1793-zipf.svg){width="78%" fig-alt="Word frequency by frequency rank for Washington's 1793 inaugural address, with the inverse-rank prediction shown as a line."}
+
+The individual points are the observed type counts. The line is $13/r$. The axes are logarithmic so that the many low-frequency types remain visible.
 
 ## Inspect the broad pattern
 
@@ -114,7 +157,7 @@ The first plot shows the broad inverse relation. The second shows that the obser
 
 ![](../slides/data-and-probability/figures/piantadosi-figure-1b.svg){width="80%" fig-alt="Deviation of observed word frequencies from a simple Zipfian curve."}
 
-The plots raise two separate questions.
+Piantadosi uses these plots to distinguish two questions.
 
 1. Does an inverse rank frequency curve describe the broad pattern?
 2. What process produced the particular frequencies and deviations in this corpus?
@@ -125,9 +168,9 @@ The first question is descriptive, whereas the second asks for an explanation.
 
 Many proposed mechanisms can produce an approximately Zipfian pattern. They make different claims about memory, lexical organization, communication, and textual growth. If incompatible mechanisms produce the same broad curve, then matching that curve cannot distinguish among them.
 
-A useful account must make additional predictions. For instance, it might predict which meanings receive frequent forms, how the curve changes in a restricted genre, how local frequencies change through a text, or where syntactic categories depart from the overall pattern.
+Piantadosi argues that an explanatory account must make predictions on which the proposed mechanisms differ. For instance, the mechanisms might predict different relations between meaning and frequency, different changes across genres, or different trajectories for local frequencies within a text.
 
-Reproducing a broad curve does not explain its source. The fit may be real while a mechanistic conclusion remains unsupported, since the curve alone does not distinguish the proposed account from its alternatives.
+An inverse rank frequency curve is compatible with several incompatible mechanisms. Observing that curve thus does not tell us which of those mechanisms generated the corpus.
 
 ## The descriptive target
 
@@ -135,13 +178,12 @@ For this rank frequency analysis, we can write:
 
 > One observation represents one word type in the chosen corpus. Its response is the number of represented tokens assigned to that type. Rank is assigned after sorting those counts. The target is the relation between rank and frequency under this tokenization, type definition, and corpus sample.
 
-This statement does not claim that the fitted curve explains lexical choice, memory, or communication. Those broader claims require comparisons that differ across the competing accounts.
+Fitting the curve does not explain lexical choice, memory, or communication. Those claims require observations on which the competing accounts make different predictions.
 
 ## Check your understanding
 
-1. If the rank 1 frequency is 12,000 and $\alpha=1$, compute the simple predicted frequencies at ranks 2, 3, and 4.
+1. Use the R code to identify every type that occurs three times. Explain how the code assigns ranks within this tie.
 2. Suppose two forms are combined under one lemma. Explain why the ranks of types outside that lemma may change even if their counts do not.
-3. What does a small observed minus predicted value establish? What does it not establish about the source of the pattern?
-4. Give one additional prediction that could distinguish two mechanisms that both produce an inverse rank frequency curve.
-
-We now have a linguistic pattern and a precise statement of what its rows represent. The next pages build the probability objects needed to describe such patterns, beginning with [sample spaces](possibilities-and-events.qmd).
+3. Calculate the inverse-rank prediction for rank 10 and compare it with the observed frequency of *be*.
+4. What does a small observed minus predicted value establish? What does it not establish about the source of the pattern?
+5. Give one additional prediction that could distinguish two mechanisms that both produce an inverse rank frequency curve.
