@@ -226,11 +226,11 @@ def tracked_in_index(relative_path: str) -> bool:
     return result.returncode == 0
 
 
-def deck_config_text(released_ids: set[str]) -> str:
+def deck_config_text(manifest: dict[str, Any], released_ids: set[str]) -> str:
     render_lines = ["    - index.qmd"]
     render_lines.extend(
         f"    - {entry['id']}/index.qmd"
-        for entry in load_manifest()["modules"]
+        for entry in manifest["modules"]
         if entry["id"] in released_ids
     )
     return (
@@ -294,7 +294,9 @@ def set_deck_states(
         print("update   decks/_quarto.yml")
         print("update   decks/index.qmd")
     else:
-        DECK_CONFIG_PATH.write_text(deck_config_text(released_ids), encoding="utf-8")
+        DECK_CONFIG_PATH.write_text(
+            deck_config_text(manifest, released_ids), encoding="utf-8"
+        )
         DECK_INDEX_PATH.write_text(
             deck_index_text(manifest, released_ids), encoding="utf-8"
         )
