@@ -1,10 +1,97 @@
 ---
 title: "Reproducing a simulation"
-toc: false
-course-release-id: random-variables-and-distributions
-course-release-placeholder: true
 ---
 
-Random variables map outcomes to values. We use discrete and continuous distributions to study expectations, variation, simulation, and joint distributions.
+The [preceding page](inverse-transform-sampling.qmd) introduced simulation from a target distribution. Suppose we simulate ten choices between two word orders, with probability $.60$ for order A. Two runs will usually produce different sequences because the pseudorandom number generator advances after every draw.
 
-**Available Monday, September 14, 2026.**
+A [**random seed**](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Random.html) returns the generator to a known initial state. Starting from the same state reproduces the same computational sequence.
+
+```{r}
+#| eval: false
+set.seed(214)
+sample(c("A", "B"), size = 10, replace = TRUE,
+       prob = c(.60, .40))
+
+set.seed(214)
+sample(c("A", "B"), size = 10, replace = TRUE,
+       prob = c(.60, .40))
+```
+
+The two simulated vectors are identical because both runs start the generator from the same state. The seed does not change the target probabilities.
+
+## Separating the procedure from one realization
+
+The sampling procedure is the instruction to draw ten independent labels with probabilities $.60$ and $.40$. A seed determines which particular ten labels appear in one computational run.
+
+Another seed gives another valid realization from the same procedure. A sample of ten choices need not contain exactly six A outcomes. The probability $.60 describes the sampling procedure, not a constraint on every realized sample.
+
+When a simulated summary enters an analysis, check whether the result changes materially across seeds. With enough draws, the accidental choice of seed should no longer determine the substantive conclusion.
+
+## Setting the seed once before related draws
+
+Consider this incorrect loop:
+
+```{r}
+#| eval: false
+simulated_count <- numeric(100)
+
+for (b in 1:100) {
+  set.seed(214)
+  simulated_count[b] <- sum(runif(10) <= .60)
+}
+```
+
+Because every iteration resets the generator, the loop repeats the same simulated count 100 times.
+
+Set the seed once instead:
+
+```{r}
+#| eval: false
+set.seed(214)
+simulated_count <- numeric(100)
+
+for (b in 1:100) {
+  simulated_count[b] <- sum(runif(10) <= .60)
+}
+```
+
+Now the complete sequence is reproducible while individual iterations differ.
+
+## Checking simulation stability during development
+
+Suppose we estimate the expected A count by averaging many simulated counts. We can compare several seeds:
+
+```{r}
+#| eval: false
+estimate_mean_count <- function(seed, draws) {
+  set.seed(seed)
+  mean(replicate(draws, sum(runif(10) <= .60)))
+}
+
+sapply(c(11, 29, 47), estimate_mean_count, draws = 10000)
+```
+
+Each result should be near the theoretical expectation $10(.60)=6$. If conclusions change across seeds, the simulation may use too few draws or contain an implementation error.
+
+Increasing the number of draws reduces Monte Carlo variation but does not repair an incorrect target distribution.
+
+## Placing the seed at the right scope
+
+An analysis may contain several related random operations. Setting one seed before the complete block makes the entire sequence reproducible, whereas resetting the seed before every call can create unintended repetition or dependence.
+
+The seed should be recorded with the code and set before the first random draw that affects the reported result.
+
+## Reproducibility is not validity
+
+A reproducible simulation is not necessarily statistically valid, since a fixed seed cannot make dependent tokens independent, correct an incorrect PMF, or make a convenience sample representative.
+
+Reproducibility answers whether another analyst can regenerate the same computation. Adequacy answers whether the computation represents the intended linguistic process. These questions require separate checks.
+
+## Check your understanding
+
+1. What object does `set.seed()` hold fixed?
+2. Why does resetting the same seed inside a loop repeat outcomes?
+3. If a simulated estimate changes substantially across seeds, what should be checked?
+4. Why can a perfectly reproducible simulation still use an inadequate linguistic model?
+
+Simulation draws one variable at a time or several together. The [next page](joint-probability.qmd) begins the multivariable sequence by assigning probability to value combinations.
