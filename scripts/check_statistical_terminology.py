@@ -30,6 +30,13 @@ NICENBOIM_10 = "https://bruno.nicenboim.me/bayescogsci/ch-custom.html"
 NICENBOIM_12 = "https://bruno.nicenboim.me/bayescogsci/ch-comparison.html"
 NICENBOIM_14 = "https://bruno.nicenboim.me/bayescogsci/ch-cv.html"
 NICENBOIM_WORKFLOW = "https://bruno.nicenboim.me/bayescogsci/ch-workflow.html"
+PSU_CONDITIONAL_PROBABILITY = "https://online.stat.psu.edu/stat414/Lesson04"
+PSU_INDEPENDENCE = "https://online.stat.psu.edu/stat414/Lesson05"
+PSU_STUDENT_T = "https://online.stat.psu.edu/stat414/Lesson26"
+CONDITIONAL_INDEPENDENCE_TEXT = (
+    "https://www.probabilitycourse.com/chapter1/"
+    "1_4_4_conditional_independence.php"
+)
 
 WINTER = "https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf"
 WINTER_DESCRIPTIVE = f"{WINTER}#page=69"
@@ -113,7 +120,7 @@ ESTIMATORS_TEXT = (
 )
 NEGATIVE_BINOMIAL_TEXT = "https://online.stat.psu.edu/stat414/lesson/11/11.4"
 INVERSE_TRANSFORM_TEXT = (
-    "https://bookdown.org/rdpeng/advstatcomp/inverse-transform-sampling.html"
+    "https://bookdown.org/richard_g_everitt/notes/chapsimulation.html"
 )
 MARKOV_TEXT = "https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html"
 IMPORTANCE_TEXT = (
@@ -242,10 +249,7 @@ add(
     "joint probability",
     "marginal probabilities",
     "conditional probability",
-    "product rule",
-    "multiplication rule",
     "Bayes' rule",
-    "independent",
     "random variable",
     "discrete random variable",
     "support",
@@ -264,13 +268,15 @@ add(
     "normal distribution",
     "joint distribution",
     "marginal distribution",
-    "Conditional independence",
     "covariance",
     "Correlation",
     "independent and identically distributed (IID)",
     "likelihood function",
     "maximum-likelihood estimate",
 )
+add(PSU_CONDITIONAL_PROBABILITY, "multiplication rule")
+add(PSU_INDEPENDENCE, "independent")
+add(CONDITIONAL_INDEPENDENCE_TEXT, "Conditional independence")
 add(PROBABILITY_SPACES_REVISITED, "probability measure")
 add(MEASURABLE_SPACES, "sigma-algebra", "generating set", "atoms")
 add(PROBABILITY_SPACES_REVISITED, "preimage", "measurability")
@@ -284,7 +290,7 @@ add(OPENSTAX_GEOMETRIC, "geometric distribution")
 add(NEGATIVE_BINOMIAL_TEXT, "negative binomial distribution")
 add(WINTER_POISSON, "Poisson distribution", "overdispersion")
 add(NICENBOIM_2, "beta distribution")
-add(WINTER_INFERENCE, "Student's t distribution")
+add(PSU_STUDENT_T, "Student's t distribution")
 add(OPENSTAX_CHISQUARE, "chi-squared distribution")
 add(OPENSTAX_ZSCORE, "z-score")
 add(INVERSE_TRANSFORM_TEXT, "Inverse transform sampling")
