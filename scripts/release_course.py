@@ -279,6 +279,9 @@ def set_deck_states(
 ) -> list[str]:
     source_branch = manifest["source_branch"]
     changed = ["decks/_quarto.yml", "decks/index.qmd"]
+    for relative_path in source_paths(source_branch, "decks/shared"):
+        write_source_page(source_branch, relative_path, dry_run)
+        changed.append(relative_path)
     for entry in manifest["modules"]:
         paths = deck_paths(source_branch, entry)
         if entry["id"] in released_ids:
