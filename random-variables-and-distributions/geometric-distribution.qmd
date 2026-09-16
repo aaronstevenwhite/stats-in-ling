@@ -1,159 +1,112 @@
 ---
 title: "The geometric distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The binomial page counted targets in a fixed number of [independent Bernoulli draws](binomial-distribution.qmd). The geometric distribution instead counts how long sampling continues before the first target. Suppose we sample word tokens from a declared corpus population until we encounter a loanword.
+The original notes introduce the geometric family from the geometric series
 
 $$
-\pi=.20.
+\sum_{k=0}^{\infty}\frac{1}{2^{k+1}}=1.
 $$
 
-Define $T$ as the draw number on which the first loanword appears. The [**geometric distribution**](https://openstax.org/books/introductory-statistics-2e/pages/4-4-geometric-distribution) represents this waiting time when draws are independent and share the same target probability.
+Thus $p_K(k)\equiv2^{-(k+1)}$, for $k=0,1,2,\ldots$, is a probability mass function (PMF) with countably infinite support.
 
-We write
+```{r}
+k <- 0:9
+mass <- 2^(-(k + 1))
+plot(k, mass, type = "h", lwd = 5, lend = 1, col = "#B2182B",
+     xlab = "k", ylab = "Probability",
+     main = "PMF defined by a geometric series", bty = "l")
+points(k, mass, pch = 19, col = "#B2182B")
+```
 
-$$
-T\sim\operatorname{Geometric}(\pi).
-$$
+## Definition and convention
 
-Under the draw number convention,
-
-$$
-\operatorname{supp}(T)=\{1,2,3,\ldots\}.
-$$
-
-The smallest possible value is 1 because the first draw might already be a loanword.
-
-We denote the PMF by
+Let $K$ count failures before the first success in independent Bernoulli trials with common success probability $\pi\in(0,1]$. We define
 
 $$
-p_T(t)\equiv\mathbb{P}(T=t).
+K\sim\operatorname{Geometric}(\pi)
 $$
 
-## Constructing the first probabilities from sequences
-
-For $T=1$, the first token must be a loanword:
+by
 
 $$
-p_T(1)=.20.
+p_K(k)
+\equiv\mathbb P(K=k)
+=(1-\pi)^k\pi,
+\qquad k=0,1,2,\ldots.
 $$
 
-For $T=2$, the first token must be a nonloanword and the second a loanword:
+This is the convention used by `dgeom` in R. If $T$ counts total trials through the first success, then $T\equiv K+1$ and
 
 $$
-p_T(2)=.80(.20)=.16.
+\mathbb P(T=t)=(1-\pi)^{t-1}\pi,
+\qquad t=1,2,\ldots.
 $$
 
-For $T=3$, two nonloanwords must be followed by a loanword:
+## Constructing the PMF from trial sequences
+
+Suppose we sample word tokens until the first loanword, with constant loanword probability $\pi=.20$. The event $K=k$ requires $k$ nonloanwords followed by one loanword. Independence gives
 
 $$
-p_T(3)=.80^2(.20)=.128.
+\mathbb P(K=k)=(.80)^k(.20).
 $$
 
-The sequence requirement has one form for every value of $T$: failures first, then one target outcome.
-
-## Writing the general PMF
-
-For the first loanword to appear on draw $t$, the process must produce
-
-1. $t-1$ nonloanwords, each with probability $1-\pi$;
-2. one loanword, with probability $\pi$.
-
-Independence lets us multiply these probabilities:
-
-$$
-p_T(t)
-=(1-\pi)^{t-1}\pi,
-\qquad t\in\{1,2,3,\ldots\}.
-$$
-
-For $t=4$ and $\pi=.20$,
+Thus
 
 $$
 \begin{aligned}
-p_T(4)
-&=(.80)^3(.20)\\
-&=.1024.
+p_K(0)&=.20,\\
+p_K(1)&=.80(.20)=.16,\\
+p_K(2)&=.80^2(.20)=.128,\\
+p_K(3)&=.80^3(.20)=.1024.
 \end{aligned}
 $$
 
-The mass decreases with $t$ because every additional step requires another preceding nonloanword.
-
-## Calculating cumulative waiting probabilities
-
-The event $T>4$ means that the first four draws are all nonloanwords. Thus
+The event $K\geq4$ requires four initial failures, so
 
 $$
-\mathbb{P}(T>4)
-=(1-\pi)^4
-=.80^4
-=.4096.
+\mathbb P(K\geq4)=.80^4=.4096
 $$
 
-The complement gives
+and $\mathbb P(T\leq4)=1-.4096=.5904$.
 
-$$
-\mathbb{P}(T\leq4)
-=1-.4096
-=.5904.
-$$
+## The original parameter sequence
 
-This calculation avoids adding the first four PMF values separately.
-
-## Reading the center and spread
-
-Under the draw number convention,
-
-$$
-\mathbb{E}[T]=\frac{1}{\pi}
-$$
-
-and
-
-$$
-\operatorname{Var}(T)=\frac{1-\pi}{\pi^2}.
-$$
-
-With $\pi=.20$, the expected draw number is 5 and the variance is 20. The expected wait is not a claim that the fifth draw is the most likely first target. In fact, the PMF is largest at 1 and decreases thereafter.
-
-## Using R with the convention visible
-
-R's geometric functions count failures before the first success, so `dgeom(3, .20)` gives the probability of three failures followed by success. That event corresponds to $T=4$ under our draw number convention.
+The following graphs reproduce the $\pi=.5$, $.1$, and $.9$ sequence from the original notes.
 
 ```{r}
-#| eval: false
-pi_loanword <- .20
+plot_geometric <- function(probability) {
+  k <- 0:9
+  mass <- dgeom(k, prob = probability)
+  plot(k, mass, type = "h", lwd = 5, lend = 1, col = "#B2182B",
+       xlab = "Failures before the first success", ylab = "Probability",
+       main = sprintf("PMF of Geometric(%.1f)", probability), bty = "l")
+  points(k, mass, pch = 19, col = "#B2182B")
+}
 
-dgeom(3, prob = pi_loanword)
-(1 - pi_loanword)^3 * pi_loanword
-1 - (1 - pi_loanword)^4
+plot_geometric(.5)
+plot_geometric(.1)
+plot_geometric(.9)
 ```
 
-The first two calls return `.1024`. The final call returns the probability that the first loanword appears by draw 4.
-
-## Making the linguistic assumptions visible
-
-The geometric family assumes that the target probability stays fixed and that one draw does not change another. Sequential corpus tokens may violate both claims. Loanwords may cluster by topic, and documents may have different borrowing rates.
-
-The model can still serve as a baseline, but a mismatch should be traced to the sampling representation rather than hidden inside the word *waiting*.
-
-## Checking the support convention
-
-A geometric random variable can count the draw on which the first success occurs or the failures before that success. The same waiting process has support beginning at 1 under the first convention and at 0 under the second, so the two conventions cannot be mixed.
-
-The two variables differ by one:
+For every $k\geq0$,
 
 $$
-T=K+1,
+\frac{p_K(k+1)}{p_K(k)}
+=1-\pi<1.
 $$
 
-where $K$ counts failures before the first target. Writing what the variable counts prevents an off by one interpretation.
+Thus every nondegenerate geometric PMF is strictly decreasing. Its mode is $K=0$. If $L\equiv K+1$ represents positive word length, its mode is necessarily $L=1$. The [negative-binomial page](negative-binomial-distribution.qmd) compares this restriction with the empirical distribution of phoneme counts in CMUdict.
 
-## Check your understanding
+Under this convention,
 
-1. With $\pi=.25$, compute $p_T(3)$.
-2. Under R's failures convention, which value represents a target on draw 3?
-3. Derive $\mathbb{P}(T>k)$ by describing the required first $k$ outcomes.
-4. Give one corpus property that could make the target probability change across draws.
-
-The geometric family stops at the first target. The [next page](negative-binomial-distribution.qmd) extends the same waiting process to a specified later target.
+$$
+\mathbb E[K]=\frac{1-\pi}{\pi},
+\qquad
+\operatorname{Var}(K)=\frac{1-\pi}{\pi^2}.
+$$
