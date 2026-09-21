@@ -2,18 +2,18 @@
 title: "Gaussian mixtures"
 ---
 
-Suppose we measure F1 and F2 for a collection of vowel tokens. The scatterplot may contain several overlapping dense regions. K-means assigns every token to one centroid and treats every direction around a centroid alike after scaling. Vowel clouds may instead differ in spread, orientation, and overlap.
+Suppose we retain F1 and F2 frequency measurements for a collection of vowel tokens. The scatterplot may contain several overlapping dense regions. The linguistic question is how those acoustic regions relate to the vowel categories intended in the elicitation task. K-means assigns every token to one centroid and treats every direction around a centroid alike after scaling. The observed regions may instead differ in spread, orientation, and overlap.
 
 A [**Gaussian mixture model (GMM)**](https://scikit-learn.org/stable/modules/mixture.html) represents the observations as arising from several weighted Gaussian component distributions. Each component extends the earlier [normal distribution](../random-variables-and-distributions/normal-distribution.qmd) to several jointly modeled measurements, with its own mean vector and [covariance](../random-variables-and-distributions/covariance.qmd). Every component contributes some density to every observed token.
 
 ::: {.callout-note title="Reading: Peterson and Barney vowel measurements"}
-Read Peterson and Barney's [study of vowel control methods](https://doi.org/10.1121/1.1906875). Focus on the speaker sample, the ten words with an /hVd/ frame, the acoustic measurements, and the listener-identification task.
+Read Peterson and Barney's [study of vowel control methods](https://doi.org/10.1121/1.1906875). The study used 76 speakers---33 men, 28 women, and 15 children---who each produced two randomized lists containing ten monophthongal vowels in /hVd/ words. Focus on the relation among the intended vowel in the elicitation word, the acoustic measurements, and the separate listener-identification task.
 
-**Why this reading?** The formant measurements motivate overlapping Gaussian components, while the speaker groups show why raw acoustic geometry may partly represent anatomy. The intended vowel labels provide external information for interpreting the components after fitting. None of this information is supplied as a label to the mixture fit.
+**Why this reading?** The formant-frequency measurements motivate overlapping Gaussian components, while the age/sex speaker groupings show why raw acoustic geometry contains substantial between-speaker variation. The elicitation words provide external information for interpreting components after fitting. They do not turn an acoustic component into a phonological category.
 :::
 
 ::: {.callout-note title="Data documentation"}
-The [`phonTools::pb52` documentation](https://search.r-project.org/CRAN/refmans/phonTools/html/pb52.html) describes the released teaching table. The paper reports a listener task, but listener-level responses are not part of this table. The documentation is included to distinguish the measurements available for analysis from the measurements reported only in the article.
+The [`phonTools::pb52` documentation](https://search.r-project.org/CRAN/refmans/phonTools/html/pb52.html) and the [Praat table documentation](https://www.fon.hum.uva.nl/praat/manual/Create_formant_table__Peterson___Barney_1952_.html) describe the released acoustic table: 1,520 rows, comprising two productions of each of ten words by each of 76 speakers, with F0 and F1--F3 recorded in hertz. The paper reports a listener task, but listener-level responses are not columns in this table. Thus, the table supports an analysis of productions and their acoustic measurements, not a token-level analysis of listener responses.
 :::
 
 ## Defining one Gaussian component
@@ -175,7 +175,7 @@ mixture_density
 
 The printed component densities are 0.08 and 0.02 apart from numerical rounding. The computational structure matches the formal definition: evaluate each density, multiply by its weight, and sum.
 
-For a real vowel analysis, $\mathbf{x}_i$ contains F1 and F2, so each component evaluation uses a bivariate mean and covariance. Fitting those parameters comes later. For now, we define only the observation model they must satisfy.
+For our illustrative vowel analysis, $\mathbf{x}_i$ contains F1 and F2, so each component evaluation uses a bivariate mean and covariance. The source table also contains F0 and F3; leaving them out is a feature-selection decision, not an absence in the original data. Fitting the selected parameters comes later. For now, we define only the observation model they must satisfy.
 
 ## Covariance restrictions state category geometry
 
@@ -187,9 +187,9 @@ The covariance structure determines each component's geometry. This modeling ass
 
 ## Mapping the model to Peterson and Barney
 
-In the Peterson and Barney data, a row is a vowel token and the mixture features can be F1 and F2. Intended vowel is withheld from fitting and used afterward to describe component alignment.
+In the Peterson and Barney table, a row is one recorded vowel token, while each speaker contributes 20 rows: ten elicitation words times two repetitions. The mixture features can be F1 and F2. Elicitation-word and intended-vowel metadata are withheld from fitting and used afterward to describe component alignment.
 
-Raw formants contain differences associated with speaker anatomy. A mixture of raw F1 and F2 may thus allocate components partly to speaker groups. Standardizing formants within speaker changes the target to a speaker-relative acoustic representation and may align components more closely with intended vowels.
+Raw formant frequencies contain between-speaker differences associated with vocal-tract anatomy as well as dialectal and other production differences. A mixture of raw F1 and F2 may thus allocate components partly to speaker groups. Standardizing formants within speaker changes the target to a speaker-relative acoustic representation. It may reduce some anatomical variation, but normalization can also remove sociolinguistically relevant variation; [Rankinen and de Jong](https://doi.org/10.1177/0023830920929379), for instance, show that this tradeoff depends on the normalization procedure.
 
 Better alignment after normalization does not make each component identical to one phoneme, and a preferred component count need not equal the ten intended vowels. The fitted components and the linguistic categories remain different objects.
 
@@ -197,7 +197,7 @@ Better alignment after normalization does not make each component identical to o
 
 A fitted Gaussian component is a distributional summary under the chosen measurements, transformations, component count, and covariance restrictions. It is not automatically a phonological category.
 
-Several components may represent one vowel with internal speaker or contextual variation. One component may cover overlapping regions from several intended vowels. The mixture likelihood itself does not know which interpretation is linguistically correct.
+Several components may describe productions associated with one elicitation category because of speaker or token-to-token variation. One component may cover overlapping acoustic regions associated with several intended vowels. The mixture likelihood itself does not know which interpretation is linguistically correct.
 
 Comparing fitted components with intended labels does not make the analysis supervised. The labels are external evidence used after fitting. They can diagnose alignment without determining the fitted objective.
 
@@ -207,7 +207,7 @@ An unrestricted Gaussian component can concentrate around very few observations 
 
 This is a likelihood singularity: a component covariance can collapse around one observation as its likelihood grows without bound. Covariance restrictions, regularization, minimum component sizes, and careful fitting controls may be needed. A high likelihood is not trustworthy when it arises from a nearly singular component around one token.
 
-The failure matters linguistically because an apparent tiny category may be a numerical collapse rather than a recurring vowel pattern.
+The failure matters linguistically because an apparent tiny acoustic group may be a numerical collapse rather than a recurring pattern in vowel production.
 
 ## Checking the observation model
 
@@ -219,4 +219,4 @@ The failure matters linguistically because an apparent tiny category may be a nu
 6. How can raw formants cause components to track speaker anatomy?
 7. Why can covariance collapse create a misleading component?
 
-A Gaussian mixture assigns each observation the weighted sum of several component densities. Component means, covariances, and weights define a probability model whose geometry is more flexible than a hard centroid partition. The [next page](posterior-membership.qmd) uses Bayes' rule to calculate how the component contributions divide responsibility for one observed token.
+A Gaussian mixture assigns each observed acoustic vector the weighted sum of several component densities. Component means, covariances, and weights define a probability model whose geometry is more flexible than a hard centroid partition. Those components remain distributional objects under the selected measurements. The [next page](posterior-membership.qmd) uses Bayes' rule to calculate how the component contributions divide responsibility for one observed token.

@@ -2,12 +2,12 @@
 title: "Iterative PCA imputation"
 ---
 
-Suppose a phonetic study measures several correlated spectral properties for every token. A tracker fails on one measurement, but the remaining measurements place the token near a well defined acoustic direction. Can the observed cells help reconstruct the missing one?
+Suppose a phonetic study asks how productions occupy a continuous acoustic space defined by duration and formant-frequency estimates. A tracker fails to return one estimate, but the remaining measurements place the token near a well-defined direction in that space. Can the observed cells predict the unavailable estimate without pretending that the prediction was measured?
 
-[**Iterative PCA imputation**](https://cran.r-project.org/package=missMDA) repeatedly uses a low rank reconstruction to update missing cells while leaving observed cells fixed. Principal components and matrix reconstruction have already been introduced; the new object is the update procedure.
+[**Iterative PCA imputation**](https://search.r-project.org/CRAN/refmans/missMDA/html/imputePCA.html) repeatedly uses a rank-$K$ reconstruction to update missing cells while returning observed cells to their measured values. Principal components and matrix reconstruction have already been introduced; the new object is the update procedure. It applies here because the acoustic columns are continuous. A reconstructed score is not automatically a phonological category, an annotation, or a calibrated probability.
 
 ::: {.callout-note title="Prerequisite: low rank reconstruction"}
-Review [centering and scaling](../factorization/centering-and-scaling.qmd), [principal component analysis](../factorization/principal-component-analysis.qmd), and [reconstruction](../factorization/reconstruction.qmd) before continuing. The imputation procedure uses these operations without redefining them.
+Review [centering and scaling](../factorization/centering-and-scaling.qmd), [principal component analysis](../factorization/principal-component-analysis.qmd), and [rank-$K$ reconstruction](../factorization/reconstruction.qmd) before continuing. The imputation procedure uses these operations without redefining them. The earlier treatment of [choosing the number of components](../factorization/choosing-components.qmd) supplies the fold-safe logic used below.
 :::
 
 ## Defining one update
@@ -53,7 +53,7 @@ $$
 
 This matrix already has rank one. Its two columns are identical, and both can be represented by the score vector $(-1,0,1)^\top$. A rank one reconstruction returns the same matrix. The missing middle value is thus updated to zero, and a second iteration makes no change.
 
-The imputed value has a specific interpretation. Under a one dimensional linear representation of these standardized measurements, the middle token lies at score zero, so its second measurement is reconstructed at the centered value zero. The procedure does not claim that zero was observed.
+The imputed value has a specific interpretation. Under a one-dimensional linear representation of these standardized measurements, the middle token lies at score zero, so its second measurement is reconstructed at the centered value zero. The procedure does not claim that zero was observed, nor does it identify the token's phonological category.
 
 ## Implementing the iteration in base R
 
@@ -116,11 +116,11 @@ The final comparison checks the defining constraint: every originally observed c
 
 The number of retained components $K$ controls which relations can inform a missing cell. Too small a value can remove real variation by forcing the matrix into an overly simple representation. Too large a value can reproduce unstable details of the initialized matrix.
 
-We do not choose $K$ from the same missing cells that the procedure reconstructs. To evaluate candidate settings, we mask observed cells, fit the complete imputation without those values, and calculate reconstruction error. The hidden values must not influence the fitted reconstruction.
+We do not choose $K$ from the same held-out cells on which the procedure is evaluated. To compare candidate settings, we mask observed cells, fit the complete imputation without those values, and calculate held-out reconstruction error. The hidden values must not influence centering, scaling, component estimation, or rank selection.
 
 ## Imputed values remain estimates
 
-A completed matrix may look indistinguishable from an observed matrix in software. The two kinds of cells are not epistemically equivalent. An observed cell contains a measurement. An imputed cell contains a prediction under a low rank assumption, a centering decision, a chosen $K$, and an initialization procedure.
+A completed matrix may look indistinguishable from an observed matrix in software. The two kinds of cells are not epistemically equivalent. An observed cell contains an acoustic estimate obtained from the recorded signal. An imputed cell contains a prediction under a low-rank assumption, a centering decision, a chosen $K$, and an initialization procedure.
 
 Using one completed matrix in a later analysis treats these predictions as fixed. This generally understates the uncertainty created by not observing the values. A procedure that propagates imputation uncertainty would require additional machinery beyond the single reconstruction introduced here. The data should retain an indicator distinguishing measured and imputed cells.
 
@@ -138,4 +138,4 @@ This failure is especially concerning when extreme values are more likely to be 
 5. What kind of token is most likely to be pulled toward the dominant PCA structure during imputation?
 :::
 
-Iterative PCA imputation alternates between low rank reconstruction and replacement of the originally missing cells. It preserves observed cells, but its predictions depend on linear low rank structure and a chosen component count. We next evaluate those predictions by [masking values that are actually observed](validating-imputation.qmd).
+Iterative PCA imputation alternates between rank-$K$ reconstruction and replacement of the originally missing cells. It preserves observed cells, but its predictions depend on linear low-rank structure and a chosen component count. The completed acoustic space may support a later linguistic analysis; it does not by itself explain the representations or contrasts that generated the measurements. We next evaluate its predictions by [masking values that are actually observed](validating-imputation.qmd).

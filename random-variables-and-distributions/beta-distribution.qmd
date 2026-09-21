@@ -1,8 +1,15 @@
 ---
 title: "The beta distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [uniform distribution](uniform-distribution.qmd) placed constant density on a bounded interval. The beta family allows that density to change across the unit interval. Suppose $\Theta$ represents a speaker's latent probability of choosing the double object construction in a declared discourse context.
+The [uniform distribution](uniform-distribution.qmd) placed constant density on a bounded interval. But suppose values near $.2$ should receive more density than values near $.8$, even though both lie in the unit interval. How can we change the shape while keeping the same bounds? Let $\Theta$ represent a speaker's latent probability of choosing the double object construction in a declared discourse context.
+
+The substantive question is how construction choice varies across comparable dative tokens and contexts, a distinction studied in corpus work on the [English dative alternation](https://web.stanford.edu/~bresnan/qs-submit.pdf). The latent probability is a model quantity. It is not one observed token choice, and its variation does not by itself explain the alternation.
 
 The [**beta distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is a family of absolutely continuous distributions with topological support $[0,1]$:
 
@@ -23,7 +30,15 @@ f_\Theta(\theta)
 \end{cases}
 $$
 
-The quantity $B(\alpha,\beta)$ is a normalizing constant that makes the total density area one. The parameters $\alpha$ and $\beta$ control how that area is arranged across the interval.
+The normalizing constant is the beta function
+
+$$
+B(\alpha,\beta)
+\equiv
+\int_0^1 t^{\alpha-1}(1-t)^{\beta-1}\,\mathrm dt.
+$$
+
+The beta function in the denominator is the normalizing constant: it is exactly the integral of the numerator over $(0,1)$. Dividing by it makes the total density area one. The parameters $\alpha$ and $\beta$ control how that unit probability mass is arranged across the interval.
 
 ## Beginning from constant density
 
@@ -47,12 +62,26 @@ When both parameters exceed one, the density may have an interior peak. When bot
 
 ## Deriving the mean and variance
 
-The mean is
+By the definition of expectation,
 
 $$
-\mathbb{E}[\Theta]
-=\frac{\alpha}{\alpha+\beta}.
+\begin{aligned}
+\mathbb E[\Theta]
+&=\frac{1}{B(\alpha,\beta)}
+  \int_0^1\theta^\alpha(1-\theta)^{\beta-1}\,\mathrm d\theta\\
+&=\frac{B(\alpha+1,\beta)}{B(\alpha,\beta)}\\
+&=\frac{\alpha}{\alpha+\beta}.
+\end{aligned}
 $$
+
+The first equality inserts the beta density into the expectation integral. Multiplying by $\theta$ raises its exponent from $\alpha-1$ to $\alpha$, so the resulting integral is $B(\alpha+1,\beta)$. The final step uses the beta-function recurrence
+
+$$
+B(\alpha+1,\beta)
+=\frac{\alpha}{\alpha+\beta}B(\alpha,\beta).
+$$
+
+Each equality thus follows from either the expectation definition or the beta-function identity.
 
 For $\operatorname{Beta}(2,5)$,
 
@@ -62,12 +91,23 @@ $$
 \approx.286.
 $$
 
-The variance is
+Similarly,
 
 $$
+\mathbb E[\Theta^2]
+=\frac{B(\alpha+2,\beta)}{B(\alpha,\beta)}
+=\frac{\alpha(\alpha+1)}{(\alpha+\beta)(\alpha+\beta+1)}.
+$$
+
+Thus
+
+$$
+\begin{aligned}
 \operatorname{Var}(\Theta)
-=\frac{\alpha\beta}
+&=\mathbb E[\Theta^2]-\mathbb E[\Theta]^2\\
+&=\frac{\alpha\beta}
  { (\alpha+\beta)^2(\alpha+\beta+1)}.
+\end{aligned}
 $$
 
 For $\operatorname{Beta}(2,5)$,
@@ -82,16 +122,16 @@ The parameters jointly determine center and concentration. Neither parameter alo
 
 ## Holding the mean fixed while changing concentration
 
-Both $\operatorname{Beta}(2,2)$ and $\operatorname{Beta}(20,20)$ have mean $.5$. Their variances differ:
+If $\Theta_1\sim\operatorname{Beta}(2,2)$ and $\Theta_2\sim\operatorname{Beta}(20,20)$, both variables have mean $.5$, but
 
 $$
-\operatorname{Var}(\operatorname{Beta}(2,2))=.05
+\operatorname{Var}(\Theta_1)=.05
 $$
 
 and
 
 $$
-\operatorname{Var}(\operatorname{Beta}(20,20))\approx.0061.
+\operatorname{Var}(\Theta_2)\approx.0061.
 $$
 
 The larger equal parameters concentrate more density near $.5$. Equal means do not imply equal variances.
@@ -122,6 +162,86 @@ A proportion calculated from finitely many observed tokens is also not automatic
 A beta distribution is not appropriate merely because a response is written between zero and one. The family is continuous on the open interval and assigns no probability to exact endpoints. A response process that produces structural zeros, structural ones, or a finite grid needs those features represented explicitly.
 
 Support is necessary but not sufficient. The modeled level and observation process must also match.
+
+## A sequence of beta shapes
+
+First, equal parameters greater than one produce symmetric densities with an interior mode.
+
+```{r}
+x_beta <- seq(.001, .999, length.out = 800)
+plot(x_beta, dbeta(x_beta, 3, 3), type = "l", lwd = 3,
+     col = "#2166AC", xlab = "x", ylab = "Density",
+     main = "Symmetric beta densities", bty = "l")
+lines(x_beta, dbeta(x_beta, 5, 5), lwd = 3, col = "#B2182B")
+lines(x_beta, dbeta(x_beta, 10, 10), lwd = 3, col = "#4D4D4D")
+legend("topleft", c("Beta(3, 3)", "Beta(5, 5)", "Beta(10, 10)"),
+       col = c("#2166AC", "#B2182B", "#4D4D4D"),
+       lty = 1, lwd = 3, bty = "n")
+```
+
+Second, unequal parameters greater than one move the interior mode away from $.5$.
+
+```{r}
+plot(x_beta, dbeta(x_beta, 5, 3), type = "l", lwd = 3,
+     col = "#2166AC", xlab = "x", ylab = "Density",
+     main = "Asymmetric beta densities", bty = "l")
+lines(x_beta, dbeta(x_beta, 3, 5), lwd = 3, col = "#B2182B")
+legend("top", c("Beta(5, 3)", "Beta(3, 5)"),
+       col = c("#2166AC", "#B2182B"), lty = 1, lwd = 3, bty = "n")
+```
+
+Third, setting one parameter to one and the other above one produces a single boundary mode.
+
+```{r}
+plot(x_beta, dbeta(x_beta, 5, 1), type = "l", lwd = 3,
+     col = "#2166AC", xlab = "x", ylab = "Density",
+     main = "Beta densities with one boundary mode", bty = "l")
+lines(x_beta, dbeta(x_beta, 1, 5), lwd = 3, col = "#B2182B")
+legend("top", c("Beta(5, 1)", "Beta(1, 5)"),
+       col = c("#2166AC", "#B2182B"), lty = 1, lwd = 3, bty = "n")
+```
+
+Fourth, $\alpha<1$ and $\beta<1$ produce two boundary modes.
+
+```{r}
+plot(x_beta, dbeta(x_beta, .5, .5), type = "l", lwd = 3,
+     col = "#2166AC", xlab = "x", ylab = "Density",
+     main = "Beta densities with two boundary modes",
+     ylim = c(0, 8), bty = "l")
+lines(x_beta, dbeta(x_beta, .6, .4), lwd = 3, col = "#B2182B")
+lines(x_beta, dbeta(x_beta, .4, .6), lwd = 3, col = "#4D4D4D")
+legend("top", c("Beta(.5, .5)", "Beta(.6, .4)", "Beta(.4, .6)"),
+       col = c("#2166AC", "#B2182B", "#4D4D4D"),
+       lty = 1, lwd = 3, bty = "n")
+```
+
+These graphs show which features each parameter change controls.
+
+## Transforming the support to an arbitrary finite interval
+
+Let $X\sim\operatorname{Beta}(\alpha,\beta)$ and define
+
+$$
+Y\equiv a+(b-a)X,
+\qquad a<b.
+$$
+
+Then $Y$ has density
+
+$$
+f_Y(y)
+\equiv
+\begin{cases}
+\dfrac{1}{b-a}
+\dfrac{
+\left(\frac{y-a}{b-a}\right)^{\alpha-1}
+\left(1-\frac{y-a}{b-a}\right)^{\beta-1}
+}{B(\alpha,\beta)},&a<y<b,\\[4mm]
+0,&\text{otherwise}.
+\end{cases}
+$$
+
+The factor $1/(b-a)$ is the Jacobian of the linear transformation and is required for the density to integrate to one.
 
 ## Check your understanding
 

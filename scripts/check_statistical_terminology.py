@@ -133,9 +133,7 @@ R_RANDOM = "https://stat.ethz.ch/R-manual/R-devel/library/base/html/Random.html"
 R_FISHER = "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/fisher.test.html"
 R_T_TEST = "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/t.test.html"
 R_BINOM_TEST = "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/binom.test.html"
-R_SILHOUETTE = (
-    "https://stat.ethz.ch/R-manual/R-devel/library/cluster/html/silhouette.html"
-)
+SILHOUETTE_SOURCE = "https://doi.org/10.1016/0377-0427(87)90125-7"
 
 STAN_MCMC = "https://mc-stan.org/docs/reference-manual/mcmc.html"
 STAN_RHAT = "https://mc-stan.org/rstan/reference/Rhat.html"
@@ -207,8 +205,12 @@ RISK_TEXT = (
     "chapters/chapter-13-point-estimation2.html"
 )
 VAN_BUUREN = "https://stefvanbuuren.name/fimd/sec-MCAR.html"
-VAN_BUUREN_IMPUTATION = "https://stefvanbuuren.name/fimd/sec-historic.html"
-MISSMDA = "https://cran.r-project.org/package=missMDA"
+RUBIN_MISSINGNESS = (
+    "https://academic.oup.com/biomet/article-abstract/63/3/581/270932"
+)
+MISSMDA = "https://search.r-project.org/CRAN/refmans/missMDA/html/imputePCA.html"
+PHOIBLE_FAQ = "https://phoible.org/faq"
+TALKER_ADAPTATION_SOURCE = "https://pmc.ncbi.nlm.nih.gov/articles/PMC2213510/"
 ORDERED_BETA_SOURCE = "https://doi.org/10.1007/s11050-025-09244-9"
 WURM_RESIDUALIZATION = "https://doi.org/10.1016/j.jml.2013.12.003"
 HARMONIC_ALIGNMENT_SOURCE = "https://web.stanford.edu/~bresnan/qs-submit.pdf"
@@ -274,14 +276,14 @@ add(
     "likelihood function",
     "maximum-likelihood estimate",
 )
-add(PSU_CONDITIONAL_PROBABILITY, "multiplication rule")
+add(PSU_CONDITIONAL_PROBABILITY, "multiplication rule", "factorization")
 add(PSU_INDEPENDENCE, "independent")
 add(CONDITIONAL_INDEPENDENCE_TEXT, "Conditional independence")
 add(PROBABILITY_SPACES_REVISITED, "probability measure")
 add(MEASURABLE_SPACES, "sigma-algebra", "generating set", "atoms")
 add(PROBABILITY_SPACES_REVISITED, "preimage", "measurability")
 add(ABSOLUTELY_CONTINUOUS_TEXT, "absolutely continuous")
-add(MOMENTS_TEXT, "Linearity of expectation", "$k$th central moment")
+add(MOMENTS_TEXT, "linearity of expectation", "$k$th central moment")
 add(CONDITIONAL_EXPECTATION_TEXT, "conditional expectations")
 add(STAN_CATEGORICAL, "categorical distribution")
 add(OPENSTAX_HYPERGEOMETRIC, "without replacement", "hypergeometric distribution")
@@ -293,7 +295,8 @@ add(NICENBOIM_2, "beta distribution")
 add(PSU_STUDENT_T, "Student's t distribution")
 add(OPENSTAX_CHISQUARE, "chi-squared distribution")
 add(OPENSTAX_ZSCORE, "z-score")
-add(INVERSE_TRANSFORM_TEXT, "Inverse transform sampling")
+add(INVERSE_TRANSFORM_TEXT, "inverse transform sampling")
+add(NICENBOIM_1, "marginalization")
 add(R_RANDOM, "random seed")
 
 add(
@@ -399,17 +402,19 @@ add(WINTER_POWER, "power curve")
 
 add(PSU_CLUSTERING, "K-means clustering", "local minimum", "elbow plot", "elbow method", "Euclidean distance")
 add(STAN_MIXTURES, "finite mixture model")
-add(R_SILHOUETTE, "silhouette width")
+add(SILHOUETTE_SOURCE, "silhouette width")
+add(PSU_CLUSTERING, "responsibilities")
 add(SKLEARN_MIXTURES, "Gaussian mixture model (GMM)", "posterior probability of component membership", "expectation-maximization (EM) algorithm")
 add(STAN_MIXTURES, "label switching")
 
 add(PSU_PCA, "rank one", "Principal component analysis (PCA)", "principal component directions", "score matrix", "Scores", "loadings", "rank-$K$ approximation", "proportion of variance explained")
 add(CS357_SVD, "singular value decomposition (SVD)", "left singular vectors", "right singular vectors")
 add(PCA_SIGN, "sign indeterminacy")
-add(MEGA_SOURCE, "selectional profile")
+add(MEGA_SOURCE, "selectional profile", "communicativity")
+add(PHOIBLE_FAQ, "doculect")
 
-add(VAN_BUUREN, "missingness indicator", "missingness mechanism", "missing completely at random (MCAR)", "missing at random (MAR)", "missing not at random (MNAR)", "Complete case analysis")
-add(VAN_BUUREN_IMPUTATION, "Imputation")
+add(RUBIN_MISSINGNESS, "missingness mechanism")
+add(VAN_BUUREN, "missingness indicator", "missingness pattern", "missing completely at random (MCAR)", "missing at random (MAR)", "missing not at random (MNAR)", "Complete-case analysis")
 add(MISSMDA, "Iterative PCA imputation")
 add(NICENBOIM_WORKFLOW, "data-generating process")
 add(NICENBOIM_10, "joint probability model")
@@ -437,6 +442,46 @@ EMPHASIS_NOT_TERMS = {
     "What the paper records.",
     "What counts as a new observation?",
     "What breaks the simpler model?",
+    "representation problem",
+    "unit choice",
+    "comparison-alignment problem",
+    "description-explanation gap",
+    "outcome-representation problem",
+    "closure problem",
+    "generation problem",
+    "coherence problem",
+    "double-counting problem",
+    "conditional-direction problem",
+    "invariance test",
+    "outcome-to-value mapping",
+    "heuristic accusative label",
+    "prediction-unit problem (PUP)",
+    "prediction unit",
+    "prediction information set",
+    "error-consequence problem",
+    "row-level LOO",
+    "leave-one-group-out",
+    "talker-independent perceptual adaptation",
+    "design-to-estimand map",
+    "sampling unit",
+    "assignment-identification link",
+    "intention-to-treat contrast",
+    "item-rotation principle",
+    "component--category distinction",
+    "within-cluster sum of squares (WCSS)",
+    "representation constraint (RC)",
+    "distributional components (DCs)",
+    "missing-data specification",
+    "An absent record:",
+    "Planned missingness:",
+    "An undefined measure:",
+    "Measurement, annotation, or tracking failure:",
+    "Dropout:",
+    "complete-case selection problem",
+    "Holdout validation by artificial masking",
+    "measurement chain",
+    "annotator location effect",
+    "by-design absence",
 }
 
 

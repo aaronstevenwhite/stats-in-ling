@@ -2,7 +2,7 @@
 title: "Expectation-maximization"
 ---
 
-If the component label of every vowel token were observed, we could estimate each component from its assigned tokens. If the component parameters were known, we could calculate the posterior membership of every token. In a mixture model, neither side is known at the start.
+If the component label of every vowel token's acoustic vector were observed, we could estimate each component from its assigned tokens. If the component parameters were known, we could calculate the posterior membership of every token. In a mixture model, neither side is known at the start. We need an algorithm that lets each provisional answer update the other.
 
 The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html) fits a latent-variable model by alternating between two calculations. The expectation step forms the conditional expectation of the complete-data log likelihood under the current parameters. For a Gaussian mixture, this calculation requires the responsibilities from the preceding page. The maximization step then chooses parameters that maximize that expected complete-data log likelihood.
 
@@ -23,6 +23,33 @@ $$
 where $t$ indexes the current iteration. These values may come from random starting assignments or another declared initialization rule.
 
 The superscript does not index data. It records the repeated algorithmic update.
+
+## Expanding the complete-data objective
+
+Why is the first update called an expectation step? Suppose for a moment that every component label $Z_i$ were observed. Define the indicator
+
+$$
+I_{ik}
+=
+\mathbf{1}[Z_i=k].
+$$
+
+For each token, exactly one of the $K$ indicators would equal one. The complete-data log likelihood could then be written as
+
+$$
+\ell_{\mathrm{complete}}(\boldsymbol{\theta})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+I_{ik}
+\left[
+\log\pi_k
++
+\log\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+This expression is compressed bookkeeping. The indicator retains the weight-and-density term for the token's component and multiplies every other component term by zero. But the $I_{ik}$ values are not observed, so we cannot maximize this objective directly.
 
 ## The expectation step uses responsibilities
 
@@ -58,6 +85,31 @@ $$
 Every row of responsibilities sums to one. A token with $(0.8,0.2)$ contributes mostly to component 1 in the next update but still contributes to component 2.
 
 These responsibilities provide the conditional probabilities needed to average over the unobserved component labels. This average is the expectation in the name of the algorithm. It replaces each unknown hard label with a probability vector under the current fit.
+
+More specifically,
+
+$$
+E[I_{ik}\mid\mathbf{x}_i,\boldsymbol{\theta}^{(t)}]
+=
+r_{ik}^{(t)}.
+$$
+
+Replacing each unknown indicator by this conditional expectation gives the EM auxiliary objective
+
+$$
+Q(\boldsymbol{\theta}\mid\boldsymbol{\theta}^{(t)})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+r_{ik}^{(t)}
+\left[
+\log\pi_k
++
+\log\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+The maximization step holds the responsibilities fixed and chooses new parameters to increase this expected complete-data log likelihood. This is the bridge between the membership probabilities and the weighted updates below.
 
 ## The maximization step updates the weights
 
@@ -235,7 +287,7 @@ A fixed random seed makes the collection of starts reproducible. It does not mak
 
 EM may move one component toward a small number of observations while shrinking its covariance. The likelihood can become extremely large as the covariance approaches singularity.
 
-This is not a meaningful discovery of a tiny vowel category. It is the likelihood singularity from the previous page appearing during fitting. The implementation should enforce appropriate covariance restrictions or regularization and flag degenerate solutions.
+This is not evidence for a sparsely represented vowel category. It is the likelihood singularity from the previous page appearing during fitting. The implementation should enforce appropriate covariance restrictions or regularization and flag degenerate solutions.
 
 Retaining the fit with the largest likelihood could select the collapsed solution. This is why validity checks precede likelihood comparison. An invalid degenerate solution is not a candidate interpretation.
 
@@ -243,7 +295,7 @@ Retaining the fit with the largest likelihood could select the collapsed solutio
 
 At convergence, the responsibilities and parameters agree under the alternating updates. The result is a local maximum or stationary solution for the declared mixture.
 
-It does not establish the correct component count, covariance family, or linguistic category interpretation. Those are comparison and interpretation questions, not consequences of convergence.
+It does not establish the correct component count, covariance family, or linguistic category interpretation. Those are comparison and interpretation questions, not consequences of convergence. In particular, an algorithmically stable acoustic component is not thereby a phonological category.
 
 ## Checking the alternating algorithm
 
@@ -255,4 +307,4 @@ It does not establish the correct component count, covariance family, or linguis
 6. Why should the same mixture be fit from several initializations?
 7. Why must a covariance-collapse fit be rejected before comparing attained likelihoods?
 
-EM alternates posterior membership calculation with responsibility-weighted parameter updates. It improves the observed-data likelihood from a provisional starting point but may reach a local or degenerate solution. The [next page](choosing-a-mixture.qmd) compares component counts and covariance assumptions using BIC's penalty for fitted flexibility.
+EM replaces unobserved component indicators with their conditional expectations, then alternates posterior membership calculation with responsibility-weighted parameter updates. It improves the observed-data likelihood from a provisional starting point but may reach a local or degenerate solution. The [next page](choosing-a-mixture.qmd) compares component counts and covariance assumptions using BIC's penalty for fitted flexibility.

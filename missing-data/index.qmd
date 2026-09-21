@@ -2,24 +2,36 @@
 title: "Missing data"
 ---
 
-Suppose a vowel production study records duration and three formants for every token. The third formant tracker fails on some tokens, so the corresponding cells are blank. A blank is not a formant measurement. It records the fact that a measurement which could have been present is absent.
+Suppose we want to compare the acoustic realization of American English /ɹ/ across speakers. For each production, we intend to record duration and several formant-frequency estimates. The signal is present, but the formant-tracking procedure does not yield a usable third-formant estimate for some tokens. What, exactly, is missing?
 
-The reason for that absence matters. A tracker that fails independently of the formant value removes a different set of tokens from a tracker that fails on unusually high values. The visible table may not distinguish these cases because the failed measurements are precisely the values we cannot inspect.
+The missing value is not the speech token, and it is not the phonological category /ɹ/. It is one particular acoustic estimate for one recorded token. This distinction matters because a formant value is an analysis of the signal: a Praat [`Formant` object](https://fon.hum.uva.nl/praat/manual/Formant.html), for instance, stores estimated center frequencies and bandwidths frame by frame. An absent estimate thus records measurement failure, not an observed value of zero and not direct evidence that the speaker produced no third formant.
 
-As with [exclusion rules](../experimental-design/exclusion-rules.qmd), deleting incomplete rows changes the analyzed observations. Filling the cells also changes the data because an imputed value is an estimate produced by a rule or model, not a newly observed measurement.
+The separation between the linguistic unit, the intended measurement, and the recorded value is the **missing-data specification**. Before choosing a statistical method, we should be able to name all three.
 
-## Missingness patterns and mechanisms
+## What counts as missing?
 
-A [missingness pattern](missingness-patterns.qmd) records which values are absent. We represent that pattern with a missingness indicator and count absent values by row, column, and combination of columns.
+Several superficially similar blanks have different meanings.
 
-A [missingness mechanism](missingness-mechanisms.qmd) is a claim about how the indicator depends on observed and unobserved measurements. This claim concerns the process that produced the missing cells. It cannot generally be read from the visible pattern alone.
+- **An absent record:** a speaker who was never recruited or a corpus token that was never sampled has no row. This is a sampling or coverage problem, not a missing cell in the realized table.
+- **Planned missingness:** a counterbalanced experiment may deliberately leave some participant--item combinations unpresented. Those omissions belong to the [design](../experimental-design/counterbalancing.qmd); they are not accidental nonresponses.
+- **An undefined measure:** a word skipped on first pass has an observed skipping outcome, but no first-pass fixation duration. Reading studies consequently analyze skipping and fixation-contingent durations as distinct measures ([Rayner et al. 2011](https://pmc.ncbi.nlm.nih.gov/articles/PMC3543826/)). Coding the duration as `NA` does not create an unseen fixation duration.
+- **Measurement, annotation, or tracking failure:** the recording exists, but a value that the protocol intended to recover is unavailable. A lost eye-tracker segment, an unresolved annotation, and a failed formant track belong here, though their causes differ.
+- **Dropout:** a participant begins a longitudinal or multi-session study but supplies no later records. This is unit-level loss over time, not merely an empty acoustic cell.
 
-## Deletion and imputation
+These cases may all produce blanks after data are reshaped into a rectangle. But they imply different target populations, different observation processes, and different possible remedies. Imputation is relevant only after we have identified a value that was intended to be observed and is now unavailable.
 
-[Complete case analysis](complete-case-analysis.qmd) deletes any row with a missing analysis variable. If the probability that a row is retained depends on the linguistic response or predictor, the complete cases represent a selected subset of the original target. When several columns contain missing values, the number of retained rows may also be much smaller than any single column's missing percentage suggests.
+## From locations to assumptions
 
-[**Imputation**](https://stefvanbuuren.name/fimd/sec-historic.html) replaces missing values with estimates produced from the observed data. [Iterative PCA imputation](pca-imputation.qmd) begins with provisional replacements, fits a low-rank representation, reconstructs the matrix, and updates the missing cells. This procedure uses the matrix factorization concepts introduced earlier. Its success depends on stable low-rank relations among the measurements.
+We proceed in two steps. First, [missingness patterns](missingness-patterns.qmd) represent which intended values are observed. The indicator describes locations; it does not explain them. Second, [missingness mechanisms](missingness-mechanisms.qmd) state how the probability of observation may depend on named observed and unobserved variables. The labels MCAR, MAR, and MNAR are incomplete unless those variables and the unit of analysis are specified.
 
-To [validate an imputation procedure](validating-imputation.qmd), we hide some observed values, fit without access to them, and compare the imputations with their known values. This test cannot reveal the naturally missing measurements, but it can identify observed regions in which the procedure reconstructs poorly.
+This distinction parallels the separation between a sampling design and an outcome model. The pattern is observed data. The mechanism is an assumption about the process that produced that pattern.
 
-Any report of a missing-data analysis should distinguish the measurements that were observed, the assumptions about why other measurements were absent, the rule used to delete or impute them, and the population described by the resulting estimate.
+## Deletion, reconstruction, and checking
+
+[Complete-case analysis](complete-case-analysis.qmd) retains rows observed on every variable required by a particular analysis. It thus defines a selection indicator. If selection depends on the response or a predictor, the retained rows may describe a different population from the eligible rows.
+
+[Iterative PCA imputation](pca-imputation.qmd) takes a different route. It uses the [rank-$K$ reconstruction](../factorization/reconstruction.qmd) of a completed matrix to update its missing cells while returning observed cells to their measured values. The resulting number is a model-based prediction under a low-rank assumption. It is not a recovered observation, and a single completed matrix does not propagate uncertainty about the prediction.
+
+Finally, [validation by artificial masking](validating-imputation.qmd) hides some observed values, fits the full procedure without them, and compares the held-out reconstructions with their known values. This extends the earlier distinction between [training and test data](../model-criticism-and-prediction/training-and-test-data.qmd) to matrix cells. It can reveal reconstruction failures under the tested masks, but it cannot reveal the values that were naturally missing.
+
+The order of the module follows the decisions an analysis requires: (i) specify what should have been observed, (ii) describe where it is absent, (iii) state assumptions about why, (iv) make deletion explicit, (v) define one reconstruction method, and (vi) test that method under plausible artificial omissions. The upshot is simple. A blank becomes statistically interpretable only after we name its unit, variable, and observation process.

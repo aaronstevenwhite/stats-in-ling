@@ -4,7 +4,7 @@ title: "Validating a mixture on held-out speakers"
 
 [BIC](choosing-a-mixture.qmd) penalizes maximized likelihood on the observations used for fitting. The [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) asks a different question: does a fitted mixture assign high predictive density to observations that did not determine its parameters?
 
-For the Peterson and Barney vowel measurements, the predictive target is a new speaker. Thus every token from a held-out speaker must remain outside the fitted mixture.
+For the Peterson and Barney vowel measurements, suppose our **prediction unit** is a new speaker rather than another token from a familiar speaker. Every one of a held-out speaker's 20 token rows must then remain outside the fitted mixture. This split asks whether an acoustic representation learned from other speakers transfers to that speaker.
 
 ## Applying log loss to a fitted density
 
@@ -46,7 +46,7 @@ The negative difference favors model B for this token.
 
 ## Holding out complete speakers
 
-Peterson and Barney speakers contribute multiple vowel tokens. A token-level split would leave the same speaker's other formant measurements in training. It would answer a new-token question for speakers partly represented during fitting.
+Peterson and Barney speakers contribute two productions of each of ten elicitation words. A token-level split would leave the same speaker's other formant-frequency measurements in training. It would answer a new-token question for speakers partly represented during fitting.
 
 For a new-speaker target, all tokens from one speaker must be excluded together. This is the [grouped cross-validation rule](../model-criticism-and-prediction/grouped-cross-validation.qmd) applied to speakers. The fitted mixture then has no acoustic measurements from that speaker when it scores the speaker's held-out tokens.
 
@@ -54,7 +54,7 @@ This grouping rule follows the linguistic claim, not the number of rows in the m
 
 ## Keeping the complete fit inside each fold
 
-Every training fold must estimate scaling, mixture parameters, and specification-dependent quantities without using held-out speakers. The mixture should also use the same declared multi-start policy in every fold.
+Every training fold must estimate scaling, mixture parameters, and specification-dependent quantities without using held-out speakers. The mixture should also use the same declared multi-start policy in every fold. These choices define the [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd) available when the held-out acoustic vectors are scored.
 
 ```{r}
 #| eval: false
@@ -86,19 +86,21 @@ for (fold in seq_along(folds)) {
 
 The functions are schematic because packages encode covariance families differently. The procedural requirement is exact: held-out speakers cannot affect the representation or mixture whose density scores them.
 
+The code evaluates density on the standardized coordinate system. If every candidate in a fold uses the same transformation, the transformation's Jacobian cancels in paired log-loss differences. An absolute density stated in the original hertz scale would also require the change-of-variables term. Thus, the report should name the scoring scale rather than treating density as unit-free.
+
 ## Stating the information available for normalization
 
-Raw formants may allocate components partly to anatomical speaker differences. A speaker-relative representation may align more closely with intended vowels, but it creates a new information question.
+Raw formant frequencies may allocate components partly to anatomical and other between-speaker differences. A speaker-relative representation may align differently with intended-vowel metadata, but it creates a new information question.
 
-If the held-out speaker's complete formant set supplies that speaker's own means and standard deviations, the analysis evaluates an adapted representation in which the speaker's acoustic scale is already available. It does not evaluate the first token from a speaker whose acoustic scale has never been observed.
+If the held-out speaker's complete formant set supplies that speaker's own means and standard deviations, the analysis evaluates an adapted representation in which the speaker's acoustic scale is already available. Those measurements belong to the prediction information set even though they do not estimate the mixture components. This design does not evaluate the first token from a speaker whose acoustic scale has never been observed.
 
 The training-only transformation in the code above asks a stricter question. Its center and spread come only from training speakers. Neither choice is universally correct. The report must specify which measurements are available at prediction time.
 
 ## Returning token losses to speakers
 
-A full comparison retains one paired model difference for each held-out token, but speakers are the groups relevant to the scientific claim. Summarize or resample the token differences at the speaker level.
+A full comparison retains one paired model difference for each held-out token, but speakers are the groups relevant to the scientific claim. To weight speakers equally, average the token differences within speaker and then summarize those 76 speaker-level values. Averaging all tokens directly instead weights speakers in proportion to their observed token counts, though the complete Peterson and Barney table happens to contribute 20 rows per speaker.
 
-Cross-validation folds share most of their training observations. Fold averages are computational summaries, not independent linguistic samples. A t test over repeated fold means would make precision depend on how often the analyst reran the partition.
+Cross-validation folds share most of their training observations. Fold averages are computational summaries, not independent linguistic samples. A t test over repeated fold means would make precision depend on how often the analyst reran the partition. Even speaker-level uncertainty intervals inherit dependence through overlapping training fits and should be described as approximations unless an explicit sampling analysis justifies more.
 
 Instead, calculate the relevant loss summary for each held-out speaker and describe variation across speakers. Repeated partitions can still show sensitivity to a computational choice, but they do not create new sampled speakers.
 
@@ -114,12 +116,13 @@ A primary candidate may still be selected by a declared rule. The sensitivity an
 
 1. What does held-out log loss measure?
 2. What does a negative value of $L_i(B)-L_i(A)$ favor?
-3. Why must all Peterson and Barney tokens from one test speaker move together?
+3. Why must all 20 Peterson and Barney tokens from one test speaker move together?
 4. Which transformations must be estimated inside each training fold?
-5. How does speaker-specific normalization change the information available at prediction time?
-6. Why are repeated fold averages not independent linguistic samples?
-7. What should be reported when preferred specifications change across speaker resamples?
+5. How does speaker-specific normalization change the prediction information set?
+6. Why does a log density need a declared measurement scale?
+7. Why are repeated fold averages not independent linguistic samples?
+8. What should be reported when preferred specifications change across speaker resamples?
 
 ## What held-out mixture validation establishes
 
-Held-out log loss evaluates whether a fitted mixture assigns density to observations excluded from fitting. Grouping complete speakers aligns the split with a new-speaker claim, and training-only transformations prevent held-out acoustic measurements from shaping the fitted representation. The comparison remains conditional on the stated prediction-time information and candidate set.
+Held-out log loss evaluates whether a fitted mixture assigns density to observations excluded from fitting. Grouping complete speakers aligns the split with a new-speaker claim, and training-only transformations prevent held-out acoustic measurements from shaping the fitted representation. The comparison remains conditional on the prediction unit, prediction information set, scoring scale, and candidate set. Transfer under those choices does not establish that a mixture component is a vowel category.
