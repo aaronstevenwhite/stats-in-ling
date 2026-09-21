@@ -1,100 +1,88 @@
 ---
 title: "When an expectation does not exist"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [expected value page](expected-values.qmd) defined the mean of a distribution only when the required sum or integral exists. Suppose $L$ records utterance length in words. Every observed utterance has a finite length, and every finite sample has an ordinary arithmetic mean. It does not follow that every probability model over possible utterance lengths has a finite expected value.
+The [expected value page](expected-values.qmd) required an absolute sum or integral. Why do we need that condition when a symmetric distribution appears to balance perfectly around its center? The Cauchy family gives a case in which the visual center exists but the probability-weighted mean does not.
 
-An expectation exists as a finite summary only when its probability weighted contributions converge to a finite number.
+## The Cauchy density
 
-For a discrete nonnegative variable,
-
-$$
-\mathbb{E}[L]=\sum_{l=0}^{\infty}l\,p_L(l).
-$$
-
-The masses may sum to one while the value weighted masses fail to have a finite sum.
-
-## Constructing a heavy tailed PMF
-
-Consider the following toy model for positive utterance lengths:
+For $x_0\in\mathbb R$ and $\gamma>0$, write
 
 $$
-p_L(l)\equiv\frac{6}{\pi^2l^2},
-\qquad l=1,2,3,\ldots
+X\sim\operatorname{Cauchy}(x_0,\gamma)
 $$
 
-The masses are nonnegative. They also sum to one because
+when $X$ has density
 
 $$
-\sum_{l=1}^{\infty}\frac{1}{l^2}=\frac{\pi^2}{6}.
+f_X(x)
+\equiv
+\frac{1}{\pi\gamma
+\left[1+\left(\frac{x-x_0}{\gamma}\right)^2\right]},
+\qquad x\in\mathbb R.
 $$
 
-Thus this assignment is a valid PMF over positive integer lengths.
+The standard Cauchy distribution has $x_0=0$ and $\gamma=1$.
 
-Now compute the expectation:
+```{r}
+x <- seq(-6, 6, length.out = 1000)
+plot(x, dcauchy(x, location = 0, scale = 1),
+     type = "l", lwd = 3, col = "#2166AC",
+     xlab = "x", ylab = "Density",
+     main = "PDF of Cauchy(0, 1)", bty = "l")
+```
+
+The density is symmetric around zero. Now the tempting move is to pair each positive contribution with a negative one and declare the mean zero. The next calculation shows why that move is not licensed.
+
+## Checking the two sides before combining them
+
+For the standard Cauchy density,
+
+$$
+x f_X(x)=\frac{x}{\pi(1+x^2)}.
+$$
+
+Consider the positive part:
 
 $$
 \begin{aligned}
-\mathbb{E}[L]
-&=\sum_{l=1}^{\infty}l\frac{6}{\pi^2l^2}\\
-&=\frac{6}{\pi^2}\sum_{l=1}^{\infty}\frac{1}{l}.
+\int_0^b \frac{x}{\pi(1+x^2)}\,\mathrm dx
+&=\frac{1}{2\pi}\log(1+b^2).
 \end{aligned}
 $$
 
-The final series does not converge. The model assigns progressively less probability to long utterances, but length grows quickly enough that the weighted contributions have no finite sum.
-
-## Inspecting partial contributions
-
-If we add contributions only through a finite cutoff $K$, we obtain
+As $b\to\infty$, this quantity diverges to $+\infty$. By symmetry, the integral over the negative half-line diverges to $-\infty$. An expectation exists only when these two parts can be combined without making the result depend on how the limits are taken. Here they cannot, so
 
 $$
-m_K=\frac{6}{\pi^2}\sum_{l=1}^{K}\frac{1}{l}.
+\mathbb E[X]
 $$
 
-These partial contributions keep increasing:
+is undefined.
 
-| cutoff $K$ | $m_K$ |
-|---:|---:|
-| 10 | about $1.78$ |
-| 100 | about $3.15$ |
-| 1,000 | about $4.55$ |
+## Principal value is not expectation
 
-No finite cutoff reveals a value at which the contributions settle. The increase becomes slow, but it does not stop.
-
-```{r}
-#| eval: false
-partial_mean <- function(cutoff) {
-  (6 / pi^2) * sum(1 / seq_len(cutoff))
-}
-
-sapply(c(10, 100, 1000), partial_mean)
-```
-
-The code evaluates finite partial sums. It illustrates divergence; it does not turn the infinite expectation into a finite mean.
-
-## A useful existence condition
-
-For a variable that may take positive and negative values, a standard finite mean condition is
+For every finite $b>0$,
 
 $$
-\mathbb{E}[|X|]<\infty.
+\int_{-b}^{b}x f_X(x)\,\mathrm dx=0.
 $$
 
-This condition requires the expected absolute magnitude to be finite. It prevents positive and negative infinite contributions from being treated as if they cancel to a meaningful center.
+Taking the symmetric limit produces a Cauchy principal value of zero. An expectation is not defined by forcing the positive and negative truncation bounds to approach infinity at the same rate. It requires the probability-weighted integral itself to exist. Thus the principal value is not $\mathbb E[X]$.
 
-Algebraic manipulations of expectation assume that the relevant expectations exist. Before splitting an expectation into terms or reporting a mean from a model, the weighted sum or integral should be checked.
+## Finite samples do not repair the model expectation
 
-## What a finite sample can and cannot show
-
-Every finite sample from the utterance-length model contains finitely many finite values, so its arithmetic mean is finite. A larger sample may contain an unusually long utterance that moves the sample mean substantially. But even a sample without such an utterance tells us only about the values observed in that sample. The model expectation depends on the probability assigned across the complete support.
-
-Other summaries may remain defined. A threshold with half of the probability below it can exist even when the probability weighted mean does not.
+Every finite sample of Cauchy draws has a finite arithmetic mean. That fact does not imply that the distribution has an expected value. As the sample grows, an extreme draw can move the sample mean by an arbitrarily large amount. The model supplies no finite population mean to which those sample means must converge.
 
 ## Check your understanding
 
-1. Why do the masses $p_L(l)$ define a valid PMF even though $\mathbb{E}[L]$ is not finite?
-2. Which series appears after multiplying $l$ by $p_L(l)$?
-3. What does the condition $\mathbb{E}[|X|]<\infty$ guarantee?
-4. Why can every finite sample have a finite mean while the model expectation fails to exist?
+1. Evaluate the antiderivative of $x/[\pi(1+x^2)]$.
+2. Explain why symmetry does not define the Cauchy mean.
+3. Distinguish the Cauchy principal value from an expected value.
+4. Explain why every finite sample can have a finite arithmetic mean even when the distributional expectation is undefined.
 
-The next spread summary also depends on a finite expectation of a transformed value. The [next page](variance-and-covariance.qmd) introduces variance and keeps its existence requirement visible.
+The exact upshot is that symmetry identifies a geometric center but does not guarantee a finite expected value. The later summaries in this module, including [variance](variance-and-covariance.qmd), likewise require their defining expectations to exist.

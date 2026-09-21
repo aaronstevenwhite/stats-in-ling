@@ -1,10 +1,15 @@
 ---
 title: "The negative binomial distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [geometric distribution](geometric-distribution.qmd) counted the draw on which the first target occurs. Subtracting one gives the number of failures before that target. Suppose we continue sampling corpus tokens until we encounter the third loanword. Let $K$ record the number of nonloanwords observed before that third target.
+The [geometric distribution](geometric-distribution.qmd) counted failures before the first target occurs. What if the sampling rule stops at the third loanword rather than the first? Suppose we continue sampling corpus tokens until we encounter that third target, and let $K$ record the number of nonloanwords observed beforehand.
 
-The [**negative binomial distribution**](https://online.stat.psu.edu/stat414/lesson/11/11.4) represents this waiting count when each draw is independent and has the same target probability $\pi$.
+The [**negative binomial distribution**](https://online.stat.psu.edu/stat414/lesson/11/11.4) represents this waiting count when each draw is [independent](../foundations/independence.qmd) and has the same target probability $\pi$. The name is less informative than the mechanism: we wait for a fixed number of targets and count the failures encountered along the way.
 
 Let $r\in\{1,2,\ldots\}$ be the target number of loanwords. We write
 
@@ -62,7 +67,7 @@ $$
 {k+r-1\choose k}.
 $$
 
-Multiplying arrangement count by sequence probability gives
+Now combine the two pieces. The binomial coefficient counts the mutually exclusive qualifying sequences, while $\pi^r(1-\pi)^k$ gives the probability of each sequence. Multiplying arrangement count by sequence probability gives
 
 $$
 p_K(k)
@@ -154,6 +159,161 @@ T\equiv K+r.
 $$
 
 Some texts or software model $T$ instead. Others use a mean and dispersion parameter for the same family. A numerical parameter is interpretable only after the counted quantity and convention have been declared.
+
+## A negative-binomial parameter sequence
+
+First hold $\pi=.5$ fixed and compare $r=1$ with $r=5$. Then hold $r=5$ fixed and compare $\pi=.1$ with $\pi=.9$, before increasing $r$ to $40$ at $\pi=.9$.
+
+```{r}
+plot_negative_binomial <- function(size, probability, upper) {
+  k <- 0:upper
+  mass <- dnbinom(k, size = size, prob = probability)
+  plot(k, mass, type = "h", lwd = 5, lend = 1, col = "#B2182B",
+       xlab = sprintf("Failures before the %s success", size),
+       ylab = "Probability",
+       main = sprintf("PMF of NegBin(%s, %.1f)", size, probability),
+       bty = "l")
+  points(k, mass, pch = 19, col = "#B2182B")
+}
+
+plot_negative_binomial(1, .5, 20)
+plot_negative_binomial(5, .5, 20)
+plot_negative_binomial(5, .1, 60)
+plot_negative_binomial(5, .9, 12)
+plot_negative_binomial(40, .9, 18)
+```
+
+These plots have a direct parameter interpretation. Holding $\pi$ fixed, increasing $r$ increases
+
+$$
+\mathbb E[K]=r\frac{1-\pi}{\pi}.
+$$
+
+Holding $r$ fixed, decreasing $\pi$ also increases this mean. Unlike a geometric PMF, a negative-binomial PMF can have an interior mode when $r>1$.
+
+## The CMUdict word-length example
+
+Use [CMU Pronouncing Dictionary 0.7b](https://github.com/cmusphinx/cmudict). Each noncomment line contains an orthographic entry followed by its ARPAbet phone symbols, and alternate pronunciations occupy separate entries under the [documented file format](https://github.com/cmusphinx/cmudict-tools/blob/master/README.md). Thus the observational unit below is a pronunciation entry, not a unique word type or a corpus token. Define
+
+$$
+L(\omega)
+\equiv
+\text{number of phone symbols in pronunciation entry }\omega.
+$$
+
+The following code reads the data file directly and computes $L$ from each entry.
+
+```{r}
+cmudict_candidates <- c(
+  "../decks/random-variables-and-distributions/data/cmudict-0.7b",
+  "decks/random-variables-and-distributions/data/cmudict-0.7b"
+)
+cmudict_path <- cmudict_candidates[file.exists(cmudict_candidates)][1]
+cmudict_lines <- readLines(cmudict_path, encoding = "latin1", warn = FALSE)
+cmudict_entries <- cmudict_lines[
+  nzchar(cmudict_lines) & !startsWith(cmudict_lines, ";;;")
+]
+cmudict_fields <- strsplit(trimws(cmudict_entries), "[[:space:]]+")
+word_lengths <- lengths(cmudict_fields) - 1L
+
+length(word_lengths)
+range(word_lengths)
+```
+
+The empirical PMF has an interior mode.
+
+```{r}
+empirical_mass <- prop.table(table(word_lengths))
+length_values <- as.integer(names(empirical_mass))
+
+barplot(empirical_mass, names.arg = length_values,
+        col = "#2166AC", border = NA, space = .15,
+        xlab = "Word length in phonemes", ylab = "Relative frequency",
+        main = "CMUdict 0.7b pronunciation entries", las = 1)
+```
+
+The observed mode is six phonemes. A geometric model for $K\equiv L-1$ cannot reproduce this feature because
+
+$$
+\frac{p_K(k+1)}{p_K(k)}=1-\pi<1.
+$$
+
+Its fitted PMF must decrease from $L=1$.
+
+```{r}
+word_failures <- word_lengths - 1L
+geom_pi_hat <- 1 / mean(word_lengths)
+
+plot(length_values, as.numeric(empirical_mass), type = "h",
+     lwd = 5, lend = 1, col = "#2166AC",
+     xlab = "Word length in phonemes",
+     ylab = "Probability / relative frequency",
+     main = "Empirical and fitted geometric PMFs", bty = "l")
+points(length_values, as.numeric(empirical_mass), pch = 19, col = "#2166AC")
+lines(length_values, dgeom(length_values - 1, prob = geom_pi_hat),
+      type = "b", pch = 17, lwd = 2, col = "#B2182B")
+legend("topright", c("Empirical", sprintf("Geometric(%.3f)", geom_pi_hat)),
+       col = c("#2166AC", "#B2182B"), lty = 1,
+       pch = c(19, 17), bty = "n")
+```
+
+## Fitting the negative-binomial family
+
+For $K\sim\operatorname{NegBin}(r,\pi)$,
+
+$$
+\mathbb E[K]=r\frac{1-\pi}{\pi}
+\qquad\text{and}\qquad
+\operatorname{Var}(K)=r\frac{1-\pi}{\pi^2}.
+$$
+
+Writing $\mu\equiv\mathbb E[K]$ gives
+
+$$
+\operatorname{Var}(K)=\mu+\frac{\mu^2}{r}>\mu
+$$
+
+for every finite $r$. The empirical mean and variance are computed directly below.
+
+```{r}
+poisson_lambda_hat <- mean(word_failures)
+c(mean = mean(word_failures), variance = var(word_failures))
+```
+
+Because the empirical variance is smaller than the empirical mean, the negative-binomial likelihood increases toward the Poisson boundary $r\to\infty$. Freeing $r$ removes the geometric family's boundary-mode restriction, but no finite negative-binomial distribution can reproduce the observed underdispersion.
+
+```{r}
+cdf_x <- 1:20
+plot(cdf_x, ecdf(word_lengths)(cdf_x), type = "s", lwd = 3,
+     col = "#2166AC", xlab = "Word length in phonemes",
+     ylab = "Cumulative probability / relative frequency",
+     main = "CDF of word length in phonemes", ylim = c(0, 1), bty = "l")
+lines(cdf_x, pgeom(cdf_x - 1, prob = geom_pi_hat),
+      type = "s", lwd = 2, col = "#B2182B")
+lines(cdf_x, ppois(cdf_x - 1, lambda = poisson_lambda_hat),
+      type = "s", lwd = 2, lty = 2, col = "#4D4D4D")
+legend("bottomright",
+       c("Empirical", "Fitted geometric", "Poisson limit of NegBin"),
+       col = c("#2166AC", "#B2182B", "#4D4D4D"),
+       lty = c(1, 1, 2), lwd = c(3, 2, 2), bty = "n")
+```
+
+## Poisson limiting case
+
+Fix $\lambda>0$ and let
+
+$$
+K_r\sim\operatorname{NegBin}\!\left(r,\frac{r}{r+\lambda}\right).
+$$
+
+The mean of $K_r$ is $\lambda$, and for every $k=0,1,2,\ldots$,
+
+$$
+\lim_{r\to\infty}\mathbb P(K_r=k)
+=e^{-\lambda}\frac{\lambda^k}{k!}.
+$$
+
+Thus $K_r$ converges in distribution to $\operatorname{Poisson}(\lambda)$. The success-probability parameter is $r/(r+\lambda)$ under the failures-before-$r$th-success convention.
 
 ## Check your understanding
 

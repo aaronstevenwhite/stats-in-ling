@@ -1,149 +1,110 @@
 ---
 title: "The categorical distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The earlier [probability mass function](probability-mass-functions.qmd) assigned probability to the separate values of a discrete variable. We now specify a distribution family for one draw from a finite set. Suppose we sample one dependency from an annotated corpus and record its grammatical relation.
-
-A [**categorical distribution**](https://mc-stan.org/docs/functions-reference/categorical-distribution.html) assigns probability to one draw from such a finite set of alternatives.
-
-Let $R$ be the relation variable with support
+Suppose a sampled token must receive exactly one label from a finite inventory. How do we specify a distribution when the possible values are names such as pronouns rather than numerical measurements? Use the case-coded English pronouns
 
 $$
-\operatorname{supp}(R)
-\equiv\{\textsc{subject},\textsc{object},\textsc{oblique}\}.
+\begin{aligned}
+\mathcal V\equiv(&\textit{us},\textit{they},\textit{them},
+\textit{you}_{[-\mathrm{acc}]},\textit{he},\textit{I},
+\textit{it}_{[-\mathrm{acc}]},\textit{me},\textit{him},\textit{she},\\
+&\textit{we},\textit{it}_{[+\mathrm{acc}]},
+\textit{you}_{[+\mathrm{acc}]},\textit{her}).
+\end{aligned}
 $$
 
-Consider this constructed PMF.
+This list answers the first question by declaring the support. The ordering is part of the parameterization because it fixes which probability belongs to which pronoun label.
 
-| relation $r$ | $p_R(r)$ |
-|---|---:|
-| subject | $.50$ |
-| object | $.30$ |
-| oblique | $.20$ |
+The split copies of *you* and *it* represent case-annotated tokens, not distinct surface word types. This follows the [Universal Dependencies English case convention](https://universaldependencies.org/docsv1/en/feat/Case.html), under which these forms may receive nominative or accusative case according to their syntactic context.
 
-The table describes the relation label for one sampled dependency under a declared corpus and annotation process.
+## Definition
 
-## Collecting the probabilities in a vector
-
-List the support values
+Basically, a categorical distribution pairs each label with one probability. More specifically, a [**categorical distribution**](https://mc-stan.org/docs/functions-reference/categorical-distribution.html) assigns probability to a finite set of labels. Let $R$ record pronoun identity and take values in $\mathcal V\equiv\{v_1,\ldots,v_K\}$. For a vector
 
 $$
-c_1=\textsc{subject},
-\qquad
-c_2=\textsc{object},
-\qquad
-c_3=\textsc{oblique}.
+\boldsymbol\pi\equiv(\pi_1,\ldots,\pi_K)
 $$
 
-Collect their probabilities in the same order:
+such that $\pi_k\geq0$ and $\sum_{k=1}^K\pi_k=1$, we write
 
 $$
-\boldsymbol{\pi}=(.50,.30,.20).
+R\sim\operatorname{Categorical}(\boldsymbol\pi)
 $$
 
-We write
+when
 
 $$
-R\sim\operatorname{Categorical}(\boldsymbol{\pi})
+p_R(v_k)
+\equiv\mathbb P(R=v_k)
+=\pi_k,
+\qquad k\in\{1,\ldots,K\}.
 $$
 
-and read the symbol $\sim$ as “is distributed as.” The PMF is
+The symbol $\sim$ means “is distributed as.” It is not an equality between the random variable and the probability vector.
+
+## The pronoun example
+
+Define the probability vector
 
 $$
-p_R(c_k)\equiv\mathbb{P}(R=c_k)=\pi_k,
-\qquad k\in\{1,2,3\}.
+\boldsymbol\pi
+\equiv(.03,.09,.03,.12,.07,.28,.07,.05,.02,.02,.07,.08,.05,.02).
 $$
 
-Thus $p_R(c_2)=.30$ means that the object relation receives probability $.30$.
-
-The subscripts are bookkeeping indices. They connect each category to the corresponding entry of $\boldsymbol{\pi}$.
-
-## Checking the parameter vector
-
-Every categorical probability must be nonnegative:
-
-$$
-\pi_k\geq0.
-$$
-
-The complete vector must sum to one:
-
-$$
-\sum_{k=1}^{3}\pi_k
-=.50+.30+.20
-=1.
-$$
-
-Once two entries are fixed, the third is determined. If subject and object receive $.50$ and $.30$, then oblique must receive
-
-$$
-1-.50-.30=.20.
-$$
-
-For $K$ categories, the sum constraint leaves $K-1$ entries free to vary.
-
-## Reordering labels does not reorder the linguistic system
-
-We could instead declare
-
-$$
-c_1=\textsc{oblique},
-\qquad
-c_2=\textsc{subject},
-\qquad
-c_3=\textsc{object}.
-$$
-
-The probability vector would then need to be
-
-$$
-\boldsymbol{\pi}=(.20,.50,.30).
-$$
-
-The distribution has not changed because every label retains its probability. The index order does not claim that one grammatical relation is linguistically greater than another.
-
-In software, factor level order may determine the position of a probability in an array without imposing an ordinal interpretation on the labels.
-
-## Representing and sampling the PMF in base R
+The first probability belongs to *us*, the second to *they*, and so on through the ordered list $\mathcal V$. The probabilities sum to one.
 
 ```{r}
-#| eval: false
-relation_probability <- c(
-  subject = .50,
-  object = .30,
-  oblique = .20
+pronoun_probability <- c(
+  us = .03,
+  they = .09,
+  them = .03,
+  `you[-acc]` = .12,
+  he = .07,
+  I = .28,
+  `it[-acc]` = .07,
+  me = .05,
+  him = .02,
+  she = .02,
+  we = .07,
+  `it[+acc]` = .08,
+  `you[+acc]` = .05,
+  her = .02
 )
 
-sum(relation_probability)
+sum(pronoun_probability)
 
-set.seed(31)
-sample(
-  names(relation_probability),
-  size = 8,
-  replace = TRUE,
-  prob = relation_probability
+plot(
+  seq_along(pronoun_probability), pronoun_probability,
+  type = "h", lwd = 5, lend = 1, col = "#B2182B",
+  xaxt = "n", xlab = "Pronoun", ylab = "Probability",
+  main = "PMF for the categorical distribution on pronouns",
+  ylim = c(0, .31), bty = "l"
 )
+axis(1, at = seq_along(pronoun_probability),
+     labels = names(pronoun_probability), las = 2, cex.axis = .72)
+points(seq_along(pronoun_probability), pronoun_probability,
+       pch = 19, col = "#B2182B")
 ```
 
-The first call checks the probability constraint. The sample call produces eight independent draws from the declared categorical PMF. A different simulated sample may have proportions that differ from the parameter vector, especially when only eight outcomes are drawn.
+The graph is the PMF evaluated at all fourteen pronoun values. Its vertical coordinates are probabilities, not densities.
 
-## What the distribution does not yet represent
+## Label order
 
-One categorical distribution uses one fixed probability vector. It does not yet represent differences across speakers, genres, or syntactic environments. Those differences would require separate conditional probability vectors or a model that makes $\boldsymbol{\pi}$ depend on predictors.
+Suppose a permutation sends $v_k$ to position $j$. The same permutation must send $\pi_k$ to position $j$. Reordering the labels while holding the numeric vector fixed assigns the probabilities to different pronouns and thus defines a different distribution.
 
-It also describes one label per draw. A sentence containing several dependencies produces several categorical observations only after the unit of analysis has been defined accordingly.
-
-## Keeping labels and probabilities in the same order
-
-The order of the category labels must match the order of the probabilities. If the labels are reordered while $\boldsymbol{\pi}$ is left unchanged, the values become attached to the wrong linguistic outcomes.
-
-Label the entries and check one value in words. Here the statement “object receives probability $.30$” should remain true after any software reordering.
+The labels themselves need not be numerical or ordered. The integer position merely indexes the corresponding entry of $\boldsymbol\pi$.
 
 ## Check your understanding
 
-1. A discourse annotation has four labels with probabilities $.10$, $.25$, $.40$, and an unknown final value. Compute the final value.
-2. Reorder the support above as object, oblique, subject. Write the matching probability vector.
-3. Why does a categorical index not make the relation labels ordinal?
-4. What additional structure is needed if relation probabilities differ by clause type?
+1. Verify that the displayed probability vector sums to one.
+2. State $p_R(\textit{I})$ and $p_R(\textit{her})$.
+3. Explain why permuting only the labels changes the distribution.
+4. State how many free probabilities remain after fixing the support size at $K$.
 
-The categorical family permits any finite number of labels. The [next page](bernoulli-distribution.qmd) studies the special case with two outcomes coded as zero and one.
+The [Bernoulli distribution](bernoulli-distribution.qmd) is the categorical special case with two values coded as zero and one.
