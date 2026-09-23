@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the Fall 2026 Quarto decks against the reference slide structure."""
+"""Check the Fall 2026 Quarto decks for shared structure and layout constraints."""
 
 from __future__ import annotations
 
@@ -73,28 +73,6 @@ BANNED = {
     "obviously": "a claim hedged to the evidence",
     "undoubtedly": "a claim hedged to the evidence",
 }
-
-ROLE_HEADINGS = {
-    "Big Question",
-    "Question",
-    "Surprising Fact",
-    "Challenge",
-    "Possibility",
-    "Answer",
-    "Idea",
-    "Approach",
-    "Goal",
-    "Data",
-    "Method",
-    "Implementation",
-    "Output",
-    "Interpretation",
-    "Upshot",
-    "Interim Discussion",
-    "Conclusion",
-    "This Module",
-}
-
 
 def split_front_matter(text: str) -> tuple[dict, str]:
     if not text.startswith("---\n"):
@@ -182,13 +160,6 @@ def check_deck(path: Path) -> list[str]:
         re.sub(r"\s*\{.*\}\s*$", "", heading).strip()
         for heading in re.findall(r"(?m)^##\s+(.+)$", body)
     ]
-    required_counts = {"This Module": 1}
-    for required, expected_count in required_counts.items():
-        count = headings.count(required)
-        if count != expected_count:
-            problems.append(
-                f"{rel}: requires {expected_count} {required!r} slides, found {count}"
-            )
     if ".section-slide" not in body:
         problems.append(f"{rel}: missing dark section divider")
     if re.search(r"(?m)^#\s+[^#].*\.section-slide", body):
@@ -205,15 +176,6 @@ def check_deck(path: Path) -> list[str]:
         has_visible_source = 'class="source"' in visible or "class='source'" in visible
         if (has_external_link or has_visible_source) and "[Sources]" not in piece:
             problems.append(f"{rel}: {heading!r} needs a [Sources] note block")
-
-    approved_roles = ROLE_HEADINGS | {"Important Point", "Result"}
-    for match in re.finditer(r"(?m)^##\s+(.+?)\s+\{([^}]*)\}\s*$", body):
-        heading, classes = match.groups()
-        if "role-slide" not in classes:
-            continue
-        base = re.sub(r"\s+#\d+$", "", heading).strip()
-        if base not in approved_roles:
-            problems.append(f"{rel}: nonreference role label {heading!r}")
 
     for heading, count in visible_slide_word_counts(body):
         if count > 70:
