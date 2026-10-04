@@ -1,10 +1,140 @@
 ---
 title: "When the posterior will not normalize by hand"
-toc: false
-course-release-id: statistical-inference
-course-release-placeholder: true
 ---
 
-Statistical inference relates a sample to a population. We consider frequentist and Bayesian measures of uncertainty, then introduce posterior computation.
+The [conjugate prior page](conjugate-priors.qmd) identified a normalized posterior by matching its algebraic form to a known distribution. Many useful prior and likelihood combinations do not supply that match. What, then, remains calculable?
 
-**Available Monday, September 28, 2026.**
+Let the nonnegative product of likelihood and prior have normalizing integral $Z$. A [**proper posterior**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is one that can be normalized to integrate to one. It exists when $0<Z<\infty$. The product need not be positive at every parameter value, and a proper posterior can exist even when $Z$ has no closed-form expression.
+
+## Constructing a nonconjugate model
+
+Suppose each of four speakers produces stops in two matched conditions. [Closure duration](https://www.cambridge.org/core/journals/language/article/abs/closure-duration-and-the-intervocalic-voicedvoiceless-distinction-in-english/397A7F377475B5423A000782430B755B) is the interval from the formation of a stop closure to its release, a measure used in phonetic work on distinctions among stops since at least Lisker (1957). Let $Y_i$ be speaker $i$'s difference between the two condition means, divided by a declared standardizing scale. Thus positive values indicate longer closure in the first condition.
+
+For this constructed example, treat the four speaker contrasts as independent and their response standard deviation as known to be one:
+
+$$
+Y_i\mid\Theta=\theta
+\sim
+\operatorname{Normal}(\theta,1).
+$$
+
+Let the sample mean be $\overline{y}=.50$. Terms not involving $\theta$ can be removed from the normal likelihood, leaving
+
+$$
+p(\mathbf{y}\mid\theta)
+\propto
+\exp\left[-\frac{4}{2}(\theta-.50)^2\right].
+$$
+
+Choose a Student t prior with three degrees of freedom, location zero, and scale one:
+
+$$
+\Theta\sim t_3(0,1).
+$$
+
+Its density [**kernel**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is the part that varies with $\theta$ after constant factors have been omitted:
+
+$$
+p(\theta)
+\propto
+\left(1+\frac{\theta^2}{3}\right)^{-2}.
+$$
+
+Multiplication gives the unnormalized posterior
+
+$$
+\widetilde{p}(\theta\mid\mathbf{y})
+=
+\exp\left[-2(\theta-.50)^2\right]
+\left(1+\frac{\theta^2}{3}\right)^{-2}.
+$$
+
+This expression is not the kernel of a familiar named family. The Student t prior is not conjugate to this normal likelihood. That result changes the calculation, not the definition of the posterior.
+
+## Identifying the missing quantity
+
+The normalized posterior is
+
+$$
+p(\theta\mid\mathbf{y})
+=
+\frac{\widetilde{p}(\theta\mid\mathbf{y})}{Z},
+$$
+
+where
+
+$$
+Z
+=
+\int_{-\infty}^{\infty}
+\widetilde{p}(\theta'\mid\mathbf{y})
+\,\mathrm{d}\theta'.
+$$
+
+The value $Z$ is the [**normalizing constant**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html). It does not vary with the particular $\theta$ in the numerator, but it depends on the model and observed sample. Dividing by $Z$ makes the posterior density integrate to one.
+
+## Comparing parameter values without $Z$
+
+For two values $\theta_a$ and $\theta_b$,
+
+$$
+\frac{p(\theta_b\mid\mathbf{y})}
+{p(\theta_a\mid\mathbf{y})}
+=
+\frac{\widetilde{p}(\theta_b\mid\mathbf{y})}
+{\widetilde{p}(\theta_a\mid\mathbf{y})}.
+$$
+
+The unknown constant cancels. The Monte Carlo methods introduced on later pages can use relative posterior density, or its gradient, without first obtaining a formula for $Z$. The [Stan documentation](https://mc-stan.org/docs/stan-users-guide/how-stan-works.html#target-log-density) describes this computation as evaluation of a target log density up to an additive constant.
+
+```{r}
+#| label: nonconjugate-duration-posterior
+#| echo: true
+
+log_unnormalized <- function(theta) {
+  -2 * (theta - .50)^2 + dt(theta, df = 3, log = TRUE)
+}
+
+relative_density <- exp(
+  log_unnormalized(.50) - log_unnormalized(0)
+)
+normalizer <- integrate(
+  function(theta) exp(log_unnormalized(theta)),
+  lower = -Inf,
+  upper = Inf
+)$value
+
+stopifnot(relative_density > 1)
+stopifnot(normalizer > 0)
+c(relative_density_at_half_vs_zero = relative_density,
+  normalizer = normalizer)
+```
+
+Numerical integration works here because the target is one dimensional. In a model with many parameters, direct numerical integration may require an impractical number of evaluations.
+
+## Evaluating on the log scale
+
+Likelihood products can become numerically tiny. Computation thus usually evaluates
+
+$$
+\log\widetilde{p}(\theta\mid\mathbf{y})
+$$
+
+and forms density ratios by subtracting log densities. This representation changes neither the posterior target nor $Z$.
+
+## Separating computational difficulty from uncertainty
+
+An unavailable closed-form expression for $Z$ is a computational difficulty. It does not make the posterior undefined when $0<Z<\infty$. Under the model, $p(\theta\mid\mathbf{y})$ remains the target.
+
+The normalizing constant $Z$ is a fixed mathematical consequence of the observed data and model. Numerical or Monte Carlo methods approximate posterior summaries and add computational error, which remains distinct from posterior spread and model adequacy.
+
+A small Monte Carlo error still does not narrow the posterior or establish that the model fits the data.
+
+## Check your understanding
+
+1. Which factor in the unnormalized posterior comes from the likelihood?
+2. Why does $Z$ cancel from a posterior density ratio?
+3. Why is a missing closed-form normalizer not a missing posterior?
+4. Why is the log scale useful for computation?
+
+The computation sequence begins with [Monte Carlo integration](monte-carlo-integration.qmd), where direct target draws are available.

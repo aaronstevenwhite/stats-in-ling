@@ -1,10 +1,157 @@
 ---
 title: "Markov chains"
-toc: false
-course-release-id: statistical-inference
-course-release-placeholder: true
 ---
 
-Statistical inference relates a sample to a population. We consider frequentist and Bayesian measures of uncertainty, then introduce posterior computation.
+The earlier [conditional independence page](../random-variables-and-distributions/conditional-independence.qmd) showed how conditioning can remove dependence on another variable. A Markov chain applies a related condition through time. Consider a constructed sequence in which each discourse referent is coded **given** ($G$) when it has already been mentioned in the represented discourse and **new** ($N$) otherwise. This binary coding is a teaching simplification, not a claim that information status has only two categories.
 
-**Available Monday, September 28, 2026.**
+| current state | next $G$ | next $N$ |
+|---|---:|---:|
+| $G$ | $.80$ | $.20$ |
+| $N$ | $.30$ | $.70$ |
+
+If the current referent is given, the next is given with probability $.80$. If the current referent is new, the next is given with probability $.30$. This is a constructed two-state coding exercise, not a substantive model of discourse accessibility. Its transition rule defines a [**Markov chain**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html).
+
+## Stating the Markov property
+
+Let $S_t$ denote the state at step $t$. For any set of possible next states $A$, the Markov property is
+
+$$
+\mathbb{P}(S_{t+1}\in A
+\mid S_t=s_t,\ldots,S_1=s_1)
+=
+\mathbb{P}(S_{t+1}\in A\mid S_t=s_t).
+$$
+
+In a continuous state space, $A$ must be a measurable set, meaning a set to which the probability model can assign a probability. In the current finite example, every subset of $\{G,N\}$ qualifies, so we can equivalently state the property for each possible next state. Once the present state is known, earlier states do not change the conditional distribution of the next state. This is a conditional-independence statement.
+
+The property does not say that consecutive states are independent. The next state depends directly on the current state. Given states tend to be followed by given states, and new states tend to be followed by new states.
+
+## Calculating a path probability
+
+Suppose the initial state is fixed at $G$, and consider the path
+
+$$
+G,G,N,N,G.
+$$
+
+Its probability is the product of the four required transitions:
+
+$$
+\begin{aligned}
+\mathbb{P}(S_2=G,S_3=N,S_4=N,S_5=G\mid S_1=G)
+&=.80(.20)(.70)(.30)\\
+&=.0336.
+\end{aligned}
+$$
+
+The first state contributes probability one because it was fixed rather than sampled from an initial distribution.
+
+## Representing the transition rule as a matrix
+
+Write
+
+$$
+K
+=
+\begin{pmatrix}
+.80 & .20\\
+.30 & .70
+\end{pmatrix}.
+$$
+
+Rows index the current state and columns index the next state. Every row sums to one because it is a conditional probability distribution. Using one matrix at every step also makes the chain time homogeneous: the transition probabilities do not change with $t$. Time homogeneity is an additional assumption, not part of the Markov property itself.
+
+If the current distribution over $G$ and $N$ is the row vector $\boldsymbol{v}_t$, then the distribution after one transition is
+
+$$
+\boldsymbol{v}_{t+1}
+=
+\boldsymbol{v}_tK.
+$$
+
+Starting from $G$ gives $\boldsymbol{v}_1=(1,0)$. After one transition,
+
+$$
+(1,0)K=(.80,.20).
+$$
+
+After two transitions,
+
+$$
+(.80,.20)K=(.70,.30).
+$$
+
+The distribution changes even though the transition matrix remains fixed.
+
+## Finding a stationary distribution
+
+A distribution $\boldsymbol{\pi}$ is [**stationary**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html) when one transition leaves it unchanged:
+
+$$
+\boldsymbol{\pi}K
+=
+\boldsymbol{\pi}.
+$$
+
+For this chain,
+
+$$
+\boldsymbol{\pi}=(.60,.40).
+$$
+
+The probability of $G$ after one transition is
+
+$$
+.60(.80)+.40(.30)=.60,
+$$
+
+and the probability of $N$ is
+
+$$
+.60(.20)+.40(.70)=.40.
+$$
+
+```{r}
+#| label: discourse-status-chain
+#| echo: true
+
+transition <- matrix(
+  c(.80, .20,
+    .30, .70),
+  nrow = 2,
+  byrow = TRUE,
+  dimnames = list(c("G", "N"), c("G", "N"))
+)
+
+stationary <- c(G = .60, N = .40)
+stopifnot(isTRUE(all.equal(
+  as.numeric(stationary %*% transition),
+  as.numeric(stationary)
+)))
+
+distribution <- c(G = 1, N = 0)
+path <- rbind(start = distribution)
+for (step in 1:10) {
+  distribution <- as.numeric(distribution %*% transition)
+  names(distribution) <- c("G", "N")
+  path <- rbind(path, distribution)
+}
+path
+```
+
+The distributions approach $(.60,.40)$ from the chosen starting state. For a finite chain, convergence to a unique stationary distribution from every starting state follows when the chain is [**irreducible**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html), so every state can eventually reach every other state, and [**aperiodic**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html), so returns are not restricted to a fixed cycle. The displayed chain has both properties. Not every transition matrix forgets its starting state.
+
+## The Markov property does not imply independence
+
+The Markov property does not make the chain independent. It removes additional dependence on the distant past after conditioning on the present while retaining direct dependence between adjacent states.
+
+The discourse interpretation is only a teaching construction. A real discourse model might require richer states or dependence beyond one step. The current aim is to understand the probability structure later used for computation.
+
+## Check your understanding
+
+1. If the current state is $N$, what is the probability that the next state is $G$?
+2. Which earlier states are needed after $S_t$ is known?
+3. Why are $S_t$ and $S_{t+1}$ not independent?
+4. Verify that $(.60,.40)$ remains unchanged after one transition.
+
+The [Markov chain Monte Carlo page](markov-chain-monte-carlo.qmd) uses a chain whose stationary distribution is a posterior target.

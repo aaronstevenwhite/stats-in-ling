@@ -1,10 +1,188 @@
 ---
 title: "Posterior predictive distributions"
-toc: false
-course-release-id: statistical-inference
-course-release-placeholder: true
 ---
 
-Statistical inference relates a sample to a population. We consider frequentist and Bayesian measures of uncertainty, then introduce posterior computation.
+The [prior predictive distribution](prior-predictive-distributions.qmd) averaged the observation model over the prior. A posterior predictive distribution performs the same averaging over the [posterior distribution](posterior-distributions.qmd).
 
-**Available Monday, September 28, 2026.**
+Continue with the picture-matching task for an ambiguous prepositional phrase. Let a response of one mean that the participant selects the picture corresponding to verb-phrase attachment, and let $\Pi$ be this participant's response probability across the declared item set. Suppose the observed responses $\mathbf{x}$ produce the posterior
+
+$$
+\Pi\mid\mathbf{X}=\mathbf{x}
+\sim
+\operatorname{Beta}(18,6).
+$$
+
+The posterior describes uncertainty about the participant's response probability under this model. For compactness, later expressions use conditioning on $\mathbf{x}$ as shorthand for conditioning on the event $\mathbf{X}=\mathbf{x}$. But another block records responses, not parameter values. A [**posterior predictive distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) describes those possible responses that have not yet been observed; the [Stan User's Guide](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html#simulating-from-the-posterior-predictive-distribution) gives the corresponding integral and simulation procedure.
+
+## Averaging over parameter uncertainty
+
+Let $\widetilde{X}$ denote a future binary response. Conditional on a fixed parameter value,
+
+$$
+\widetilde{X}\mid\Pi=\pi
+\sim
+\operatorname{Bernoulli}(\pi).
+$$
+
+Because $\pi$ is not known, prediction averages this observation model over the posterior:
+
+$$
+\mathbb{P}(\widetilde{X}=\widetilde{x}\mid\mathbf{X}=\mathbf{x})
+=
+\int
+\mathbb{P}(\widetilde{X}=\widetilde{x}\mid\Pi=\pi)
+f_{\Pi\mid\mathbf{X}}(\pi\mid\mathbf{x})
+\,\mathrm{d}\pi.
+$$
+
+The probability mass inside the integral describes a possible future response at a fixed $\pi$. The posterior density supplies the weight assigned to each value of $\pi$ after observing $\mathbf{x}$.
+
+For one future success,
+
+$$
+\begin{aligned}
+\mathbb{P}(\widetilde{X}=1\mid\mathbf{X}=\mathbf{x})
+&=\int \pi f_{\Pi\mid\mathbf{X}}(\pi\mid\mathbf{x})\,\mathrm{d}\pi\\
+&=\mathbb{E}[\Pi\mid\mathbf{X}=\mathbf{x}]\\
+&=\frac{18}{18+6}\\
+&=.75.
+\end{aligned}
+$$
+
+The prediction equals the posterior mean for one Bernoulli response. This equality does not make the posterior and predictive distributions identical. The posterior is continuous on $(0,1)$, while the future response is either zero or one.
+
+## Predicting a future block
+
+Now let $\widetilde{K}$ be the number of verb-phrase attachment responses in a future block of $m=20$ matched items from the same participant. Conditional on $\pi$,
+
+$$
+\widetilde{K}\mid\Pi=\pi
+\sim
+\operatorname{Binomial}(20,\pi).
+$$
+
+The posterior predictive distribution is beta-binomial because it averages the binomial probability over a beta posterior. We can sample from it in two steps:
+
+1. Draw $\pi^{(s)}\sim\operatorname{Beta}(18,6)$.
+2. Draw $\widetilde{k}^{(s)}\sim\operatorname{Binomial}(20,\pi^{(s)})$.
+
+```{r}
+#| label: posterior-predictive-parse-count
+#| echo: true
+
+set.seed(722)
+draw_count <- 100000
+pi_draw <- rbeta(draw_count, shape1 = 18, shape2 = 6)
+future_count <- rbinom(draw_count, size = 20, prob = pi_draw)
+
+predictive_mean <- 20 * 18 / (18 + 6)
+simulated_mean <- mean(future_count)
+
+stopifnot(abs(simulated_mean - predictive_mean) < .05)
+c(
+  analytic_mean = predictive_mean,
+  simulated_mean = simulated_mean,
+  quantile(future_count, c(.025, .5, .975))
+)
+```
+
+The analytic predictive mean is
+
+$$
+\mathbb{E}[\widetilde{K}\mid\mathbf{x}]
+=20(.75)
+=15.
+$$
+
+The posterior predictive distribution is more dispersed than a binomial distribution that fixes $\pi=.75$ because it mixes over posterior uncertainty about $\Pi$.
+
+For this beta-binomial distribution, the predictive variance is
+
+$$
+\operatorname{Var}(\widetilde{K}\mid\mathbf{x})
+=
+20
+\frac{18(6)}{(18+6)^2}
+\frac{18+6+20}{18+6+1}
+=6.60.
+$$
+
+If we fix $\pi=.75$, the binomial variance is only
+
+$$
+20(.75)(.25)=3.75.
+$$
+
+The difference between these two variances is $2.85$. To understand that difference correctly, we next separate the posterior predictive variance into its two components.
+
+```{r}
+#| label: posterior-predictive-variance
+#| echo: true
+
+analytic_variance <- 20 * 18 * 6 * (18 + 6 + 20) /
+  ((18 + 6)^2 * (18 + 6 + 1))
+plug_in_variance <- 20 * .75 * .25
+posterior_variance_pi <- 18 * 6 / ((18 + 6)^2 * (18 + 6 + 1))
+mean_conditional_variance <-
+  20 * (.75 * .25 - posterior_variance_pi)
+variance_conditional_mean <- 20^2 * posterior_variance_pi
+
+stopifnot(abs(analytic_variance - 6.60) < 1e-12)
+stopifnot(abs(var(future_count) - analytic_variance) < .10)
+stopifnot(abs(mean_conditional_variance - 3.60) < 1e-12)
+stopifnot(abs(variance_conditional_mean - 3.00) < 1e-12)
+c(full_prediction = analytic_variance,
+  fixed_parameter = plug_in_variance,
+  mean_conditional_variance = mean_conditional_variance,
+  variance_conditional_mean = variance_conditional_mean)
+```
+
+## Separating two sources of predictive spread
+
+The law of total variance gives
+
+$$
+\operatorname{Var}(\widetilde{K}\mid\mathbf{x})
+=
+\mathbb{E}\left[
+\operatorname{Var}(\widetilde{K}\mid\Pi,\mathbf{x})
+\mid\mathbf{x}
+\right]
++
+\operatorname{Var}\left(
+\mathbb{E}[\widetilde{K}\mid\Pi,\mathbf{x}]
+\mid\mathbf{x}
+\right).
+$$
+
+The first term averages future response variation over the posterior. The second measures how much the conditional mean $20\Pi$ varies across the posterior. In the current example, the two terms are
+
+$$
+\begin{aligned}
+\mathbb{E}\left[20\Pi(1-\Pi)\mid\mathbf{x}\right]
+&=3.60,\\
+\operatorname{Var}(20\Pi\mid\mathbf{x})
+&=3.00.
+\end{aligned}
+$$
+
+Their sum is $6.60$. The plug-in variance $20(.75)(.25)=3.75$ is not exactly the first component: evaluating the concave function $20\pi(1-\pi)$ at the posterior mean gives a slightly larger value than averaging it over the posterior. More importantly, the plug-in distribution omits the second component entirely. It is thus too narrow in this example.
+
+## Keeping prediction and checking separate
+
+A posterior predictive distribution says what the fitted model predicts after observing the data. It does not establish that those predictions resemble relevant features of the observed data. [Posterior predictive checking](posterior-predictive-checks.qmd) later compares simulated and observed summaries to assess model adequacy.
+
+A future observation must also match the population and measurement process represented by the observation model. Prediction for a new trial from the same participant differs from prediction for a new participant when participants vary. The symbol $\widetilde{X}$ should be defined with the same care as the original response.
+
+We use a tilde for a genuinely future response. Later, $\mathbf{X}^{\mathrm{rep}}$ will denote a replicated dataset generated under the design of the observed $\mathbf{x}$ for a posterior predictive check. Both use the posterior predictive distribution, but they answer different questions.
+
+Monte Carlo error is separate again. Using more simulated draws makes a computed predictive probability more stable. It does not reduce posterior uncertainty or future response variation.
+
+## Check your understanding
+
+1. What is the support of $\Pi\mid\mathbf{x}$?
+2. What is the support of $\widetilde{K}$ for a block of 20 responses?
+3. Which source of predictive variance is lost by setting $\pi=.75$ for every future block?
+4. Why does increasing the number of simulation draws not make future responses less variable?
+
+This beta-binomial prediction is available algebraically because the posterior is conjugate. The [next page](beyond-conjugacy.qmd) asks what remains possible when the posterior does not belong to a familiar family.

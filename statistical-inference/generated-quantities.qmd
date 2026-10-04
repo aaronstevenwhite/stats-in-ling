@@ -1,10 +1,99 @@
 ---
 title: "Generating derived quantities in Stan"
-toc: false
-course-release-id: statistical-inference
-course-release-placeholder: true
 ---
 
-Statistical inference relates a sample to a population. We consider frequentist and Bayesian measures of uncertainty, then introduce posterior computation.
+The [Stan page](stan.qmd) showed how the `model` block adds log probability contributions that determine a posterior, but an analysis may also require a condition contrast, a replicated response, or an observation-level log-likelihood. The question is how to calculate these quantities without changing the posterior target. The [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) executes after the sampler has produced each retained parameter draw.
 
-**Available Monday, September 28, 2026.**
+## Distinguishing three operations
+
+Suppose a normal model has condition means `mu_a` and `mu_b` and response standard deviation `sigma`. A generated-quantities block can contain
+
+```stan
+generated quantities {
+  real mean_difference;
+  array[N] real y_rep;
+  vector[N] log_lik;
+
+  mean_difference = mu_a - mu_b;
+
+  for (n in 1:N) {
+    real mu_n = condition[n] == 1 ? mu_a : mu_b;
+    y_rep[n] = normal_rng(mu_n, sigma);
+    log_lik[n] = normal_lpdf(y[n] | mu_n, sigma);
+  }
+}
+```
+
+In this example, `mean_difference` transforms the joint parameter draw. The values in `y_rep` are simulated responses, while the values in `log_lik` are log densities evaluated at the observed responses.
+
+## Computing a contrast within each draw
+
+The derived quantity is
+
+$$
+D=M_A-M_B.
+$$
+
+Here $M_A$ and $M_B$ denote the posterior random quantities corresponding to the two condition means. Their realized values within draw $s$ are $\mu_A^{(s)}$ and $\mu_B^{(s)}$, so $d^{(s)}=\mu_A^{(s)}-\mu_B^{(s)}$.
+
+Calculating it draw by draw preserves posterior dependence between the condition means. Combining marginal standard deviations as if the means were independent can give the wrong uncertainty.
+
+```{r}
+#| label: generated-mean-difference
+#| echo: true
+
+set.seed(248)
+draw_count <- 10000
+shared_location <- rnorm(draw_count, mean = 180, sd = 10)
+condition_difference <- rnorm(draw_count, mean = -12, sd = 4)
+mu_a <- shared_location + condition_difference / 2
+mu_b <- shared_location - condition_difference / 2
+generated_difference <- mu_a - mu_b
+
+naive_independent_sd <- sqrt(var(mu_a) + var(mu_b))
+joint_draw_sd <- sd(generated_difference)
+
+stopifnot(abs(mean(generated_difference) + 12) < .1)
+stopifnot(joint_draw_sd < naive_independent_sd)
+c(mean = mean(generated_difference),
+  joint_draw_sd = joint_draw_sd,
+  naive_independent_sd = naive_independent_sd,
+  quantile(generated_difference, c(.025, .975)))
+```
+
+The generated vector is a posterior sample for the mean difference, whose spread represents model-based uncertainty. The finite accuracy of its summaries also depends on Monte Carlo error in the underlying parameter draws.
+
+## Simulating rather than evaluating
+
+The function
+
+```stan
+normal_rng(mu_n, sigma)
+```
+
+generates a new response, as indicated by the `_rng` suffix. In contrast,
+
+```stan
+normal_lpdf(y[n] | mu_n, sigma)
+```
+
+evaluates the log density of the observed response without generating a value.
+
+Use the replicated responses for [posterior predictive checking](posterior-predictive-checks.qmd). Pointwise log-likelihoods can support predictive scoring and model comparison when the intended prediction unit and model factorization match the scoring procedure.
+
+## Preserving the observation index
+
+Each `log_lik[n]` must correspond to `y[n]`. If trials are nested within speakers and items, retaining one contribution per modeled row preserves the observation-level factorization. But summing those values by speaker does not automatically turn observation-level leave-one-out evaluation into leave-one-speaker-out evaluation. The analyst must declare the prediction unit and verify that the scoring method integrates or conditions on group-level quantities appropriately.
+
+## Recognizing what cannot happen here
+
+Generated quantities are evaluated after sampling a parameter draw, so assignments in this block cannot contribute to `target` or change the posterior. Moving a prior or likelihood calculation from the `model` block into generated quantities removes that contribution from inference.
+
+Use this block to calculate quantities from saved draws, not to add a prior or likelihood contribution.
+
+## Check your understanding
+
+1. Which line generates a future response?
+2. Which line evaluates an observed response?
+3. Why should a contrast be calculated within each joint draw?
+4. Can a generated quantity repair a missing likelihood term?

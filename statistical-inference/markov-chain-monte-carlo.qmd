@@ -1,10 +1,115 @@
 ---
 title: "Markov chain Monte Carlo"
-toc: false
-course-release-id: statistical-inference
-course-release-placeholder: true
 ---
 
-Statistical inference relates a sample to a population. We consider frequentist and Bayesian measures of uncertainty, then introduce posterior computation.
+[Monte Carlo integration](monte-carlo-integration.qmd) used independent draws from a target distribution. Direct posterior draws are often unavailable. Can dependent draws still approximate the same expectation? [**Markov chain Monte Carlo (MCMC)**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html) answers yes by using states from a [Markov chain](markov-chains.qmd) designed to have the posterior as its stationary distribution.
 
-**Available Monday, September 28, 2026.**
+## Defining the target before the chain
+
+Suppose $\Theta$ is a standardized articulation-rate contrast. After specifying a likelihood and prior, the inferential target is
+
+$$
+p(\theta\mid\mathbf{y}).
+$$
+
+For a function $g$, the posterior quantity of interest is
+
+$$
+I
+=
+\mathbb{E}[g(\Theta)\mid\mathbf{y}]
+=
+\int g(\theta)p(\theta\mid\mathbf{y})\,\mathrm{d}\theta.
+$$
+
+The likelihood and prior define this posterior. MCMC constructs a dependent sequence of realized states
+
+$$
+\theta^{(1)},\theta^{(2)},\ldots,\theta^{(S)}
+$$
+
+whose long-run distribution is intended to be $p(\theta\mid\mathbf{y})$.
+
+## Using chain averages
+
+Under conditions that make the chain ergodic, its long-run averages converge to expectations under the stationary target. Here *ergodic* means, roughly, that the chain can reach the relevant target regions and eventually loses the influence of its starting state. We then approximate $I$ with
+
+$$
+\widehat{I}_S
+=
+\frac{1}{S}
+\sum_{s=1}^Sg(\theta^{(s)}).
+$$
+
+The formula resembles ordinary Monte Carlo integration, but adjacent MCMC states are dependent.
+
+Dependence among the states does not by itself invalidate the average. The transition rule must preserve the target distribution, and the chain must satisfy an ergodic theorem for the function $g$. For the finite-state chains on the preceding page, irreducibility and aperiodicity are sufficient. Conditions for chains on continuous parameter spaces are more technical, so a finite run still requires diagnostics.
+
+## Examining a chain with a known target
+
+Consider the transition
+
+$$
+\Theta^{(s+1)}
+=
+\mu
++\rho(\Theta^{(s)}-\mu)
++\sqrt{1-\rho^2}\,\varepsilon_s,
+$$
+
+where $\varepsilon_s\sim\operatorname{Normal}(0,1)$ and $|\rho|<1$. Its stationary distribution is $\operatorname{Normal}(\mu,1)$.
+
+Set $\mu=.40$ and $\rho=.90$. Starting at $-4$ produces a chain that initially moves toward the target region and then continues to explore it.
+
+```{r}
+#| label: known-target-markov-chain
+#| echo: true
+
+set.seed(183)
+draw_count <- 20000
+mu <- .40
+rho <- .90
+theta <- numeric(draw_count)
+theta[1] <- -4
+
+for (s in 2:draw_count) {
+  theta[s] <- mu + rho * (theta[s - 1] - mu) +
+    sqrt(1 - rho^2) * rnorm(1)
+}
+
+saved <- theta[1001:draw_count]
+stopifnot(abs(mean(saved) - mu) < .05)
+stopifnot(abs(sd(saved) - 1) < .05)
+c(mean = mean(saved), sd = sd(saved))
+```
+
+The first 1,000 states are omitted here only because the chain was deliberately initialized far from its high-probability region. There is no observable iteration at which a finite chain becomes exactly stationary, and discarding early iterations does not repair a transition that cannot reach part of the target.
+
+Multiple chains should begin from different plausible initial values. If they move toward and then repeatedly explore the same region, initialization appears to have lost its influence. If they remain separated, averaging them hides the failure.
+
+The omitted initialization period is often called burn-in for a fixed transition rule. In adaptive samplers such as Stan's NUTS, *warmup* also tunes the step size and mass matrix, so the transition rule itself changes. Those adaptation states are not included in posterior summaries.
+
+## Keeping three distributions separate
+
+| object | role |
+|---|---|
+| posterior target | distribution the analysis seeks to approximate |
+| transition distribution | conditional rule for moving to a new state |
+| empirical draw distribution | finite collection of states produced by one run |
+
+The transition distribution tells the chain how to move from its current state. It is designed to preserve the posterior, but it is not itself the posterior. The empirical distribution of a finite run only approximates the posterior and contains Monte Carlo error.
+
+## Distinguishing posterior spread from chain behavior
+
+A wide posterior may reflect limited linguistic information under the model. A slowly moving chain reflects computational inefficiency. Collecting more data can change posterior spread. Running the chain longer can reduce Monte Carlo error, but it does not add linguistic evidence.
+
+Simply running a chain for many iterations does not show that it explored the target. A chain can remain in the wrong region for millions of steps. Later diagnostics compare multiple chains and estimate how much information remains after accounting for their dependence.
+
+MCMC output should thus be treated as an approximation with an audit trail. The model defines the target, the algorithm generates dependent draws, and diagnostics assess the finite run.
+
+## Check your understanding
+
+1. Which distribution is the inferential target in MCMC?
+2. Why are adjacent chain states generally not independent?
+3. What must a transition rule accomplish before chain averages approximate posterior expectations?
+4. Why can increasing the number of iterations reduce Monte Carlo error without narrowing the posterior?

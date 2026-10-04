@@ -1,10 +1,173 @@
 ---
 title: "Conjugate priors"
-toc: false
-course-release-id: statistical-inference
-course-release-placeholder: true
 ---
 
-Statistical inference relates a sample to a population. We consider frequentist and Bayesian measures of uncertainty, then introduce posterior computation.
+The [posterior distribution page](posterior-distributions.qmd) normalized a finite update by summing over the parameter values. A conjugate prior allows some continuous updates to be normalized by recognizing a familiar distribution family.
 
-**Available Monday, September 28, 2026.**
+Suppose a variationist study codes English *t/d*-deletion. This variable concerns whether word-final /t/ or /d/ is absent when it follows another consonant, as in a realization of *best man* without the final /t/ of *best*. Research on [*t/d*-deletion](https://www.cambridge.org/core/journals/language-variation-and-change/article/tddeletion-in-british-english-new-evidence-for-the-longlost-morphological-effect/4157F17EED627BA7938B11FA9D7BB816) shows conditioning by preceding and following segments, morphological class, speech style, and other properties of speakers and words. Our one-probability model is thus a constructed teaching simplification.
+
+$$
+D_i\mid\Pi=\pi
+\sim
+\operatorname{Bernoulli}(\pi).
+$$
+
+Here $D_i=1$ means that eligible token $i$ is coded as deleted, and $D_i=0$ means that it is coded as retained. The parameter $\Pi$ is the deletion probability for the population and linguistic environment declared by the study. We temporarily treat the eligible tokens as conditionally independent with a shared probability, then use a prior family for which the posterior update can be calculated algebraically.
+
+## Writing the beta prior
+
+Recall the [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) on the unit interval. Choose
+
+$$
+\Pi\sim\operatorname{Beta}(2,2).
+$$
+
+The beta density is
+
+$$
+p(\pi)
+=
+\frac{1}{B(\alpha,\beta)}
+\pi^{\alpha-1}(1-\pi)^{\beta-1},
+\qquad 0<\pi<1.
+$$
+
+For $\alpha=2$ and $\beta=2$, the density is symmetric around $.50$ and has less density near zero and one. Its mean is
+
+$$
+\mathbb{E}[\Pi]
+=\frac{\alpha}{\alpha+\beta}
+=\frac{2}{4}
+=.50.
+$$
+
+When deriving the posterior, terms that do not depend on $\pi$ can be absorbed into a proportionality constant:
+
+$$
+p(\pi)\propto\pi^{2-1}(1-\pi)^{2-1}.
+$$
+
+## Writing the likelihood from counts
+
+Suppose the sample contains $d=\sum_{i=1}^{20}d_i=14$ deleted tokens and $r=20-d=6$ retained tokens. Under the conditional-independence assumption, the Bernoulli likelihood is
+
+$$
+p(\mathbf{d}\mid\pi)
+=\prod_{i=1}^{20}
+\pi^{d_i}(1-\pi)^{1-d_i}.
+$$
+
+Collecting equal powers gives the likelihood kernel
+
+$$
+p(\mathbf{d}\mid\pi)
+\propto
+\pi^{14}(1-\pi)^6.
+$$
+
+The sequence order does not enter this model. Only the number of deletions and retentions enters the kernel. This count reduction would no longer be adequate if the model represented speaker, word, or phonological-context differences.
+
+## Multiplying and recognizing the posterior family
+
+Bayes' rule gives
+
+$$
+\begin{aligned}
+p(\pi\mid\mathbf{d})
+&\propto
+p(\mathbf{d}\mid\pi)p(\pi)\\
+&\propto
+\pi^{14}(1-\pi)^6
+\pi^{2-1}(1-\pi)^{2-1}\\
+&=
+\pi^{16-1}(1-\pi)^{8-1}.
+\end{aligned}
+$$
+
+The deletion exponent is $(\alpha-1)+d=(\alpha+d)-1$, and the retention exponent changes in the same way. This is the kernel of a beta density. Thus
+
+$$
+\Pi\mid\mathbf{D}=\mathbf{d}
+\sim
+\operatorname{Beta}(16,8).
+$$
+
+In general, a $\operatorname{Beta}(\alpha,\beta)$ prior and Bernoulli data with $d$ deletions and $r$ retentions produce
+
+$$
+\Pi\mid\mathbf{D}=\mathbf{d}
+\sim
+\operatorname{Beta}(\alpha+d,\beta+r).
+$$
+
+The beta distribution is a [**conjugate prior**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) for the Bernoulli likelihood because the posterior remains in the beta family. Conjugacy names this family-preserving property; the [Stan User's Guide](https://mc-stan.org/docs/stan-users-guide/efficiency-tuning.html#exploiting-conjugacy) shows the same beta update computationally.
+
+## Calculating posterior summaries
+
+The posterior mean is
+
+$$
+\mathbb{E}[\Pi\mid\mathbf{D}=\mathbf{d}]
+=\frac{16}{16+8}
+=\frac{2}{3}
+\approx.667.
+$$
+
+The observed proportion is $14/20=.70$. The posterior mean lies between the prior mean $.50$ and the observed proportion. The posterior interval is also available directly from beta quantiles.
+
+```{r}
+#| label: beta-bernoulli-update
+#| echo: true
+
+alpha_prior <- 2
+beta_prior <- 2
+deletions <- 14
+retentions <- 6
+
+alpha_posterior <- alpha_prior + deletions
+beta_posterior <- beta_prior + retentions
+posterior_mean <- alpha_posterior /
+  (alpha_posterior + beta_posterior)
+posterior_interval <- qbeta(
+  c(.025, .975),
+  alpha_posterior,
+  beta_posterior
+)
+
+stopifnot(alpha_posterior == 16)
+stopifnot(beta_posterior == 8)
+stopifnot(abs(posterior_mean - 2 / 3) < 1e-12)
+
+c(mean = posterior_mean,
+  lower = posterior_interval[1],
+  upper = posterior_interval[2])
+```
+
+## Interpreting the prior weight
+
+The posterior mean can be rewritten as
+
+$$
+\frac{\alpha+ d}{\alpha+\beta+d+r}
+=
+\frac{\alpha+\beta}{\alpha+\beta+d+r}
+\frac{\alpha}{\alpha+\beta}
++
+\frac{d+r}{\alpha+\beta+d+r}
+\frac{d}{d+r}.
+$$
+
+This expression is a weighted average of the prior mean and observed deletion proportion. In that calculation, $\alpha+\beta$ acts like a prior weight. This behavior motivates [**pseudocount**](https://mc-stan.org/learn-stan/case-studies/pool-binary-trials.html) language, but the shape parameters are not literal unobserved tokens. One convention compares the beta kernel with a uniform $\operatorname{Beta}(1,1)$ density and uses $\alpha-1$ and $\beta-1$. Thus the density and its predictive implications are less ambiguous descriptions of the prior than an unqualified count metaphor.
+
+Conjugacy is likewise a computational property, not a reason to choose the prior. A beta prior may be computationally convenient while placing implausible mass on deletion rates. [Prior predictive simulation](prior-predictive-distributions.qmd) checks that implication on the observation scale.
+
+The posterior remains conditional on the Bernoulli model. If tokens are grouped within speakers, or deletion probabilities vary with phonological and morphological context, the simple update does not represent that structure.
+
+## Check your understanding
+
+1. Begin with $\operatorname{Beta}(3,7)$ and observe eight deletions and two retentions. What is the posterior?
+2. What is the mean of that posterior?
+3. What property makes the beta prior conjugate here?
+4. Why does conjugacy not establish that a prior is linguistically appropriate?
+
+Conjugacy makes this update easy to calculate, but it does not tell us whether the prior makes defensible predictions. The [next page](prior-predictive-distributions.qmd) checks those predictions on the response scale.
