@@ -6,13 +6,13 @@ A static [HMC transition](hamiltonian-monte-carlo.qmd) requires a fixed number o
 
 The appropriate number of leapfrog steps may vary across transitions, so one fixed choice can waste computation or produce short moves. We thus need a stopping rule that can be evaluated while a trajectory is being built.
 
-The [**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) chooses the trajectory length dynamically. We will examine how the tree grows, why the turning criterion stops it, and how a proposal is selected from the resulting states.
+The [**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) chooses the trajectory length dynamically. The original algorithm was introduced by [Hoffman and Gelman (2014)](https://jmlr.org/papers/v15/hoffman14a.html), while Stan now uses the multinomial variant described in its [current reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html). We will examine how the tree grows, why the turning criterion stops it, and how a proposal is selected from the resulting states.
 
 ## Growing a balanced trajectory tree
 
 NUTS begins with the current parameter value and a freshly drawn momentum. It applies the same leapfrog updates used by HMC, extending the numerical path forward or backward in simulated time.
 
-The candidate states are organized as a balanced binary tree. Each increase in tree depth doubles the number of leapfrog states in the completed tree. A depth increase can thus produce a substantially longer path without requiring a fixed leapfrog count before the transition begins.
+The candidate states are organized as a balanced binary tree. Each increase in tree depth doubles the intended trajectory length, though a U-turn or divergence can stop construction early. A depth increase can thus produce a substantially longer path without requiring a fixed leapfrog count before the transition begins.
 
 Tree growth does not mean that the sampler branches into several posterior draws. The tree is a computational structure for constructing one transition. NUTS ultimately selects one parameter state as the next draw.
 
@@ -27,13 +27,13 @@ $$
 An endpoint version of the turning check asks whether either endpoint momentum points back across the existing displacement. With mass matrix $M$, the relevant signs are represented by
 
 $$
-\Delta q^{\mathsf T}M^{-1}p^{-}
+\Delta q^{\mathsf T}M^{-1}\rho^{-}
 $$
 
 and
 
 $$
-\Delta q^{\mathsf T}M^{-1}p^{+}.
+\Delta q^{\mathsf T}M^{-1}\rho^{+}.
 $$
 
 When one becomes negative, motion at that endpoint has begun to reverse relative to the span of the trajectory. Extending much farther would tend to retrace an explored region rather than produce a more distant proposal.
@@ -44,9 +44,9 @@ Stan checks completed subtrees as well as the two endpoints of the full tree. A 
 
 NUTS does not automatically keep the last leapfrog state. Doing so would make the transition depend on an endpoint chosen by the stopping event.
 
-Instead, Stan selects among eligible trajectory states using multinomial weights based on their Hamiltonian energies. States with lower Hamiltonian values receive more weight. Exact integration would keep these energies equal, so the weighting accounts for differences introduced by the numerical path.
+Instead, Stan's multinomial NUTS selects among eligible trajectory states with weights proportional to $\exp\{-H(q,\rho)\}$. States with lower Hamiltonian values thus receive more weight. Exact integration would keep these energies equal, while numerical integration makes them differ slightly.
 
-This selection addresses the same approximation problem that motivated the Metropolis correction for a static HMC endpoint, but it does so across a dynamically constructed trajectory.
+This selection is part of a transition constructed to preserve the target distribution. It is not equivalent to saving every leapfrog state as a posterior draw, and it is not simply a rule that keeps the final endpoint.
 
 The resulting draw is one state from the tree. The remaining states are computational candidates and do not enter the retained chain as additional iterations.
 
@@ -56,7 +56,7 @@ NUTS chooses trajectory length within every transition. Warmup adaptation estima
 
 A well estimated step size can make each leapfrog update accurate without deciding how many updates a particular trajectory needs. A well estimated mass matrix can align velocities with global posterior geometry without deciding when a trajectory has turned back. NUTS makes this remaining decision during each transition.
 
-Stan reports tree depth as `treedepth__` and the leapfrog count as `n_leapfrog__`. The setting `max_treedepth` places a computational cap on tree growth. Reaching that cap once is not by itself evidence of a failed fit, but repeated saturation suggests that the cap may be truncating many trajectories before the turning criterion stops them.
+Stan reports tree depth as `treedepth__` and the leapfrog count as `n_leapfrog__`. The setting `max_treedepth` places a computational cap on tree growth. Reaching that cap is principally an efficiency warning. If $\widehat{R}$ and effective sample sizes are adequate for the reported quantities, occasional saturation may not threaten those summaries. Repeated saturation nonetheless suggests that the cap may be truncating many trajectories before the turning criterion stops them.
 
 Increasing the cap only permits more work. It does not repair inaccurate leapfrog integration, poor mass matrix geometry, or weak parameter identification.
 

@@ -2,7 +2,7 @@
 title: "Generating derived quantities in Stan"
 ---
 
-The [Stan page](stan.qmd) showed how the `model` block adds density contributions that determine a posterior, but an analysis may also require a condition contrast, a replicated response, or an observation-level log-likelihood. The question is how to calculate these quantities without changing the posterior target. The [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) computes them after each saved parameter draw.
+The [Stan page](stan.qmd) showed how the `model` block adds log probability contributions that determine a posterior, but an analysis may also require a condition contrast, a replicated response, or an observation-level log-likelihood. The question is how to calculate these quantities without changing the posterior target. The [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) executes after the sampler has produced each retained parameter draw.
 
 ## Distinguishing three operations
 
@@ -31,8 +31,10 @@ In this example, `mean_difference` transforms the joint parameter draw. The valu
 The derived quantity is
 
 $$
-D=\Mu_A-\Mu_B.
+D=M_A-M_B.
 $$
+
+Here $M_A$ and $M_B$ denote the posterior random quantities corresponding to the two condition means. Their realized values within draw $s$ are $\mu_A^{(s)}$ and $\mu_B^{(s)}$, so $d^{(s)}=\mu_A^{(s)}-\mu_B^{(s)}$.
 
 Calculating it draw by draw preserves posterior dependence between the condition means. Combining marginal standard deviations as if the means were independent can give the wrong uncertainty.
 
@@ -77,15 +79,15 @@ normal_lpdf(y[n] | mu_n, sigma)
 
 evaluates the log density of the observed response without generating a value.
 
-Use the replicated responses for posterior predictive checking. Use the pointwise log-likelihoods for predictive scoring and model comparison.
+Use the replicated responses for [posterior predictive checking](posterior-predictive-checks.qmd). Pointwise log-likelihoods can support predictive scoring and model comparison when the intended prediction unit and model factorization match the scoring procedure.
 
 ## Preserving the observation index
 
-Each `log_lik[n]` must correspond to `y[n]`. If trials are nested within speakers and items, retaining one contribution per row permits later aggregation at the prediction unit required by the question. Premature aggregation can make downstream software run while answering a different predictive question.
+Each `log_lik[n]` must correspond to `y[n]`. If trials are nested within speakers and items, retaining one contribution per modeled row preserves the observation-level factorization. But summing those values by speaker does not automatically turn observation-level leave-one-out evaluation into leave-one-speaker-out evaluation. The analyst must declare the prediction unit and verify that the scoring method integrates or conditions on group-level quantities appropriately.
 
 ## Recognizing what cannot happen here
 
-Generated quantities are evaluated after sampling a parameter draw, so they cannot contribute density or change the posterior. Moving a prior or likelihood term into this block removes that term from inference.
+Generated quantities are evaluated after sampling a parameter draw, so assignments in this block cannot contribute to `target` or change the posterior. Moving a prior or likelihood calculation from the `model` block into generated quantities removes that contribution from inference.
 
 Use this block to calculate quantities from saved draws, not to add a prior or likelihood contribution.
 

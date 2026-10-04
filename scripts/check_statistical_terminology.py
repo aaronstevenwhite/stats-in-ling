@@ -128,7 +128,7 @@ IMPORTANCE_TEXT = (
     "monte-carlo-sampling-and-importance-sampling/"
     "AEE4AC4E63548DC6A732013B571841D8"
 )
-PSEUDOCOUNT_TEXT = "https://web.stanford.edu/group/sisl/public/dmu.pdf"
+PSEUDOCOUNT_TEXT = "https://mc-stan.org/learn-stan/case-studies/pool-binary-trials.html"
 R_RANDOM = "https://stat.ethz.ch/R-manual/R-devel/library/base/html/Random.html"
 R_FISHER = "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/fisher.test.html"
 R_T_TEST = "https://stat.ethz.ch/R-manual/R-devel/library/stats/html/t.test.html"
@@ -138,9 +138,10 @@ SILHOUETTE_SOURCE = "https://doi.org/10.1016/0377-0427(87)90125-7"
 STAN_MCMC = "https://mc-stan.org/docs/reference-manual/mcmc.html"
 STAN_RHAT = "https://mc-stan.org/rstan/reference/Rhat.html"
 STAN_PAIRS = "https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html"
-STAN_ESS = "https://mc-stan.org/docs/2_31/reference-manual/effective-sample-size.html"
+STAN_ESS = "https://mc-stan.org/docs/reference-manual/analysis.html"
 STAN_DIAGNOSTICS = "https://mc-stan.org/learn-stan/diagnostics-warnings.html"
 STAN_BLOCKS = "https://mc-stan.org/docs/reference-manual/blocks.html"
+STAN_TRANSFORMS = "https://mc-stan.org/docs/reference-manual/transforms.html"
 STAN_MIXTURES = "https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html"
 STAN_PPC = "https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html"
 STAN_CATEGORICAL = "https://mc-stan.org/docs/functions-reference/categorical-distribution.html"
@@ -168,6 +169,13 @@ PSU_ICC = "https://online.stat.psu.edu/stat502/Lesson06"
 PSU_SUFFICIENCY = "https://online.stat.psu.edu/stat415/book/export/html/844"
 PSU_WALD = "https://online.stat.psu.edu/stat504/Lesson02"
 PSU_COVERAGE = "https://online.stat.psu.edu/stat100/Lesson09"
+PSU_SAMPLING = "https://online.stat.psu.edu/stat200/Lesson04"
+PSU_HYPOTHESIS = "https://online.stat.psu.edu/stat200/Lesson05"
+PSU_CLT = "https://online.stat.psu.edu/stat414/Lesson27"
+MATHWORLD_STATIONARY = "https://mathworld.wolfram.com/StationaryPoint.html"
+OXFORD_LEXEME = "https://doi.org/10.1093/obo/9780199772810-0232"
+LEMMA_SOURCE = "https://doi.org/10.1075/ijcl.9.1.04kno"
+SUPPLETION_SOURCE = "https://doi.org/10.1075/sl.18.2.03mel"
 LME4_SINGULAR = "https://lme4.github.io/lme4/reference/isSingular.html"
 LME4_RANEF = "https://lme4.github.io/lme4/reference/ranef.html"
 LME4_GLMER = "https://lme4.github.io/lme4/reference/glmer.html"
@@ -299,16 +307,14 @@ add(INVERSE_TRANSFORM_TEXT, "inverse transform sampling")
 add(NICENBOIM_1, "marginalization")
 add(R_RANDOM, "random seed")
 
-add(
-    WINTER_INFERENCE,
-    "sampling distribution",
-    "standard error",
-    "confidence interval",
-    "null hypothesis",
-    "alternative hypothesis",
-    "null distribution",
-    "paired design",
-)
+add(PSU_SAMPLING, "sampling distribution", "standard error", "confidence interval")
+add(PSU_HYPOTHESIS, "null hypothesis", "alternative hypothesis", "null distribution")
+add(WINTER_T_TESTS, "paired design")
+add(MATHWORLD_STATIONARY, "stationary point")
+add(PSU_WALD, "contingency table", "margins")
+add(OXFORD_LEXEME, "lexeme")
+add(LEMMA_SOURCE, "lemma")
+add(SUPPLETION_SOURCE, "suppletion")
 add(ESTIMATORS_TEXT, "bias", "mean squared error")
 add(PSU_COVERAGE, "coverage probability")
 add(PSU_WALD, "Wald interval")
@@ -317,7 +323,8 @@ add(R_T_TEST, "Welch's two-sample t-test")
 add(OPENSTAX_INDEPENDENCE, "chi-squared test of independence")
 add(R_BINOM_TEST, "Clopper-Pearson confidence interval")
 add(OPENSTAX_BOOTSTRAP, "nonparametric bootstrap", "empirical distribution", "percentile bootstrap confidence interval")
-add(R_FISHER, "Fisher's exact test", "sample odds ratio")
+add(R_FISHER, "Fisher's exact test")
+add(PSU_WALD, "sample odds ratio")
 add(
     NICENBOIM_2,
     "prior distribution",
@@ -327,10 +334,14 @@ add(
     "prior predictive distribution",
     "posterior predictive distribution",
     "normalizing constant",
+    "proper posterior",
+    "kernel",
 )
 add(PSEUDOCOUNT_TEXT, "pseudocount")
 add(NICENBOIM_8, "Monte Carlo integration", "Monte Carlo error")
 add(IMPORTANCE_TEXT, "importance weight")
+add(IMPORTANCE_TEXT, "consistency")
+add(PSU_CLT, "central limit theorem")
 add(MARKOV_TEXT, "Markov chain", "stationary", "irreducible", "aperiodic", "Markov chain Monte Carlo (MCMC)", "Metropolis-Hastings algorithm")
 add(
     NICENBOIM_8,
@@ -342,7 +353,8 @@ add(
     "No-U-Turn Sampler (NUTS)",
     "Stan",
 )
-add(STAN_MCMC, "mass matrix", "unit mass matrix", "diagonal mass matrix", "dense mass matrix", "nonstationarity", "divergent transition")
+add(STAN_MCMC, "mass matrix", "unit mass matrix", "diagonal mass matrix", "dense mass matrix", "symmetric positive definite", "involution", "nonstationarity", "divergent transition")
+add(STAN_TRANSFORMS, "Jacobian adjustment")
 add(STAN_PAIRS, "trace plot", "pairs plot")
 add(STAN_ESS, "autocorrelation", "autocorrelation function", "integrated autocorrelation time", "effective sample size")
 add(STAN_DIAGNOSTICS, "Bulk ESS", "Tail ESS")

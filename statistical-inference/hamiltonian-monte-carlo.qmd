@@ -6,11 +6,11 @@ The [Metropolis-Hastings page](metropolis-hastings.qmd) used a random walk propo
 
 This slow exploration is characteristic of random-walk behavior. The problem is not that the posterior has two parameters. It is that plausible changes in those parameters must be coordinated.
 
-[**Hamiltonian Monte Carlo (HMC)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) uses the gradient of the log posterior to coordinate a proposal. The method introduces an auxiliary variable, follows a numerical trajectory through the joint parameter and auxiliary space, and then corrects the numerical error with an accept or reject step.
+[**Hamiltonian Monte Carlo (HMC)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) uses the gradient of the log posterior to coordinate a proposal. The [current Stan reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html) gives the implementation used below. The method introduces an auxiliary variable, follows a numerical trajectory through the joint parameter and auxiliary space, and then corrects the numerical error with an accept or reject step.
 
 ## Adding an auxiliary momentum
 
-Let $q$ denote the vector of model parameters. HMC augments $q$ with a momentum vector $p$ of the same length. The momentum is temporary. It is redrawn for each transition and discarded after the proposed parameter value has been accepted or rejected.
+Let $q$ denote the vector of model parameters. In Stan, these are the unconstrained coordinates obtained after transforming any constrained parameters. HMC augments $q$ with a momentum vector $\rho$ of the same length. The momentum is temporary. It is redrawn for each transition and discarded after the proposed parameter value has been accepted or rejected.
 
 The parameter vector receives a [**potential energy**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html):
 
@@ -23,18 +23,18 @@ The tilde indicates that the posterior density need not include its normalizing 
 The momentum receives a [**kinetic energy**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html):
 
 $$
-K(p)=\frac{1}{2}p^\mathsf{T}p.
+K(\rho)=\frac{1}{2}\rho^\mathsf{T}\rho.
 $$
 
-For the derivation below, the momentum has unit scaling, so $p$ is drawn from a standard multivariate normal distribution. Then $K(p)$ is one half of the squared Euclidean length of $p$.
+For the derivation below, the momentum has unit scaling, so $\rho$ is drawn from a standard multivariate normal distribution. Then $K(\rho)$ is one half of the squared Euclidean length of $\rho$.
 
 The sum of the two energies is the [**Hamiltonian**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html):
 
 $$
-H(q,p)=U(q)+K(p).
+H(q,\rho)=U(q)+K(\rho).
 $$
 
-The corresponding joint density is proportional to $\exp\{-H(q,p)\}$. Because the momentum density integrates to one, adding $p$ does not change the posterior distribution for $q$. It gives the sampler an additional quantity with which to construct a proposal.
+The corresponding joint density is proportional to $\exp\{-H(q,\rho)\}$. Because the momentum density integrates to one, adding $\rho$ does not change the posterior distribution for $q$. It gives the sampler an additional quantity with which to construct a proposal.
 
 ## Using the gradient to choose a direction
 
@@ -43,14 +43,14 @@ A Hamiltonian trajectory obeys two differential equations:
 $$
 \frac{\mathrm{d}q}{\mathrm{d}t}
 =
-\frac{\partial H}{\partial p}
-=p
+\frac{\partial H}{\partial \rho}
+=\rho
 $$
 
 and
 
 $$
-\frac{\mathrm{d}p}{\mathrm{d}t}
+\frac{\mathrm{d}\rho}{\mathrm{d}t}
 =
 -\frac{\partial H}{\partial q}
 =-\nabla U(q).
@@ -67,41 +67,41 @@ We cannot usually solve the Hamiltonian equations exactly. HMC thus uses a numer
 For a step size $\epsilon$, one step is
 
 $$
-p_{t+\frac12}
+\rho_{t+\frac12}
 =
-p_t-\frac{\epsilon}{2}\nabla U(q_t),
+\rho_t-\frac{\epsilon}{2}\nabla U(q_t),
 $$
 
 $$
 q_{t+1}
 =
-q_t+\epsilon p_{t+\frac12},
+q_t+\epsilon \rho_{t+\frac12},
 $$
 
 and
 
 $$
-p_{t+1}
+\rho_{t+1}
 =
-p_{t+\frac12}-\frac{\epsilon}{2}\nabla U(q_{t+1}).
+\rho_{t+\frac12}-\frac{\epsilon}{2}\nabla U(q_{t+1}).
 $$
 
-The half steps matter. This update is reversible and preserves volume in the augmented space, two properties needed for the later Metropolis correction.
+The half steps matter. The update preserves volume, and reversing the momentum reverses the numerical path. These properties make the later Metropolis correction valid.
 
 ### Calculate one step
 
-Consider a one dimensional standard normal target. Its negative log density, up to an additive constant, is
+Consider a one-dimensional standard normal target. Its negative log density, up to an additive constant, is
 
 $$
 U(q)=\frac{q^2}{2},
 $$
 
-so its gradient is $\nabla U(q)=q$. For this calculation, use unit scaling, begin at $q_0=1$ with momentum $p_0=.5$, and set $\epsilon=.1$.
+so its gradient is $\nabla U(q)=q$. For this calculation, use unit scaling, begin at $q_0=1$ with momentum $\rho_0=.5$, and set $\epsilon=.1$.
 
 The first half momentum update is
 
 $$
-p_{1/2}=.5-\frac{.1}{2}(1)=.45.
+\rho_{1/2}=.5-\frac{.1}{2}(1)=.45.
 $$
 
 The position update is
@@ -113,22 +113,22 @@ $$
 The second half momentum update uses the gradient at the new position:
 
 $$
-p_1=.45-\frac{.1}{2}(1.045)=.39775.
+\rho_1=.45-\frac{.1}{2}(1.045)=.39775.
 $$
 
 The initial Hamiltonian is
 
 $$
-H(q_0,p_0)=\frac{1^2}{2}+\frac{.5^2}{2}=.625.
+H(q_0,\rho_0)=\frac{1^2}{2}+\frac{.5^2}{2}=.625.
 $$
 
 The Hamiltonian after the numerical step is approximately
 
 $$
-H(q_1,p_1)=\frac{1.045^2}{2}+\frac{.39775^2}{2}=.6251.
+H(q_1,\rho_1)=\frac{1.045^2}{2}+\frac{.39775^2}{2}=.6251.
 $$
 
-The numerical path changed the energy slightly. Smaller step sizes would usually reduce this error, though they would require more gradient evaluations to travel the same distance.
+The numerical path changed the energy slightly. Smaller step sizes usually reduce the global error over a fixed integration time, though they require more gradient evaluations to travel that distance.
 
 ## Correcting the numerical error
 
@@ -138,21 +138,21 @@ $$
 \alpha
 =
 \min\left\{1,
-\exp\bigl(H(q,p)-H(q^*,p^*)\bigr)
+\exp\bigl(H(q,\rho)-H(q^*,\rho^*)\bigr)
 \right\}.
 $$
 
 If leapfrog integration preserved the Hamiltonian exactly, the exponent would be zero and the proposal would be accepted. Numerical error makes the acceptance probability smaller than one for some trajectories. The accept or reject step corrects that error and preserves the intended joint distribution.
 
-For the one step calculation above, the energy changed by about $.0001$. The corresponding acceptance probability is very close to one. This does not mean that every HMC proposal will be accepted. A longer trajectory or larger step size may accumulate more numerical error.
+For the one-step calculation above, the energy changed by about $.0001$. The corresponding acceptance probability is very close to one. This does not mean that every HMC proposal will be accepted. Larger step sizes often produce more error. For a stable leapfrog trajectory, however, the energy error need not grow monotonically with every additional step.
 
 ## Assembling one transition
 
 One HMC transition now has four parts:
 
-1. Draw a fresh momentum $p$ while holding the current parameter value $q$ fixed.
-2. Apply one or more leapfrog steps to obtain a numerical endpoint $(q^*,p^*)$.
-3. Accept that endpoint with the Hamiltonian acceptance probability above, or retain the current parameter value if the proposal is rejected.
+1. Draw a fresh momentum $\rho$ while holding the current parameter value $q$ fixed.
+2. Apply one or more leapfrog steps to obtain a numerical endpoint $(q^*,\rho^*)$ and reverse its momentum. Since $K(-\rho^*)=K(\rho^*)$, this reversal leaves the acceptance probability and proposed parameter value unchanged. It also makes the deterministic update reversible in a precise sense: applying it again returns to the starting state. This return property is called an [**involution**](https://mc-stan.org/docs/reference-manual/mcmc.html).
+3. Accept the endpoint with the Hamiltonian acceptance probability above, or retain the current parameter value if the proposal is rejected.
 4. Discard the momentum and save the resulting parameter value as the next state of the Markov chain.
 
 This sequence is one HMC transition. Momentum and gradients direct the proposal, leapfrog integration approximates the path, and the final randomized decision corrects the numerical approximation.
