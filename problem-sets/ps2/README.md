@@ -45,7 +45,7 @@ Data preparation and analysis require:
 
 - Python 3.9 or newer with `pandas`
 - R 4.0 or newer
-- `brms`, `posterior`, and `cmdstanr`
+- `brms`, `posterior`, `cmdstanr`, `dplyr`, `ggplot2`, and `tidyr`
 - a working CmdStan installation
 
 From the repository root, create the assignment-specific Python environment and install `pandas`:
@@ -58,7 +58,7 @@ problem-sets/ps2/.venv/bin/python -m pip install pandas
 Install the R packages once, then use the [`cmdstanr` installation procedure](https://mc-stan.org/cmdstanr/articles/cmdstanr.html) to install CmdStan:
 
 ```r
-install.packages(c("brms", "posterior"))
+install.packages(c("brms", "posterior", "dplyr", "ggplot2", "tidyr"))
 install.packages(
   "cmdstanr",
   repos = c("https://stan-dev.r-universe.dev", getOption("repos"))
@@ -140,7 +140,7 @@ The Provo teaching table is an adaptation distributed under the source project's
 | 2 | 25 | derive a conditional normal–normal posterior and fit the normal location model |
 | 3 | 10 | fit the robust Student t location model |
 | 4 | 10 | derive and apply the beta–Bernoulli update |
-| 5 | 20 | estimate a two-row association and its sample-size behavior |
+| 5 | 20 | estimate two-row associations for two word-form comparisons and examine sample-size behavior |
 | 6 | 25 | conduct a posterior predictive check of categorical independence |
 
 The task points sum to 100. The assignment-level grade follows the course policy below.
