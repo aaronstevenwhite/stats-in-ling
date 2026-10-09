@@ -93,6 +93,6 @@ main <- function(arguments = commandArgs(trailingOnly = TRUE)) {
   prepare_hillenbrand_data(output_path)
 }
 
-if (!interactive()) {
+if (sys.nframe() == 0L) {
   main()
 }

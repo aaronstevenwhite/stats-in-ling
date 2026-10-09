@@ -6,6 +6,8 @@
 
 Problem Set 1 is the frequentist member of the matched PS1–PS2 sequence. It uses paired Hillenbrand F1 measurements for continuous inference and German UniMorph lexeme tables for categorical inference. All six exercises are required for every student.
 
+Students complete `ps1.ipynb`. Open the notebook from the extracted assignment directory and use the R kernel so that its relative paths resolve to the included `data` and `scripts` directories.
+
 The assignment covers five procedures:
 
 1. a paired t procedure for the population mean F1 difference
@@ -21,6 +23,7 @@ The assignment covers five procedures:
 ```text
 ps1/
 ├── README.md
+├── ps1.ipynb
 ├── ps1.qmd
 ├── ps1-answer-key.qmd
 ├── data/
@@ -36,57 +39,57 @@ ps1/
     └── prepare_unimorph_tables.R
 ```
 
-`ps1.qmd` is the student assignment. `ps1-answer-key.qmd` is the instructor key and is excluded from the public course site. The two unsummarized UniMorph files and the Hillenbrand CSV are generated locally. The three lexeme-level UniMorph tables are included with the assignment.
+`ps1.ipynb` is the student working file. It is generated from `ps1.qmd`, which supplies the course-site version. `ps1-answer-key.qmd` is the instructor key and is excluded from the public course site. The two unsummarized UniMorph files and the Hillenbrand CSV are generated locally. The three lexeme-level UniMorph tables are included with the assignment.
 
-The downloadable public package contains `ps1.qmd`, this README, all three preparation scripts, and the three redistributable UniMorph teaching tables. It omits the instructor key, the locally generated Hillenbrand table, and the two form-level UniMorph intermediate files.
+The downloadable public package contains `ps1.ipynb`, `ps1.qmd`, this README, all three preparation scripts, and the three redistributable UniMorph teaching tables. It omits the instructor key, the locally generated Hillenbrand table, and the two form-level UniMorph intermediate files.
 
 ## Setup Instructions
 
 ### 1. Install Required Software
 
-Data preparation requires:
+Running the notebook requires:
 
-- Python 3.9 or newer with `pandas`
+- Jupyter Notebook or JupyterLab
 - R 4.0 or newer
+- the `IRkernel` R package and a registered R kernel
 - `phonTools` version 0.2.2.2 for the audited Hillenbrand extraction
 - `dplyr`, `ggplot2`, and `tidyr` for the assignment analysis
 
-From the repository root, create the assignment-specific Python environment and install `pandas`:
-
-```bash
-python3 -m venv problem-sets/ps1/.venv
-problem-sets/ps1/.venv/bin/python -m pip install pandas
-```
-
-Install the required R package once:
+Install the required R packages and register the kernel once:
 
 ```r
-install.packages(c("phonTools", "dplyr", "ggplot2", "tidyr"))
+install.packages(c("IRkernel", "phonTools", "dplyr", "ggplot2", "tidyr"))
+IRkernel::installspec()
 ```
 
 ### 2. Generate Datasets
 
-Run every command below from the repository root.
+Extract `ps1-assignment.zip`, open a terminal in the extracted `ps1-assignment` directory, and generate the Hillenbrand table. The first notebook cell runs the same preparation function when this table is absent, but running the script directly makes the required file explicit.
 
 ```bash
-Rscript problem-sets/ps1/scripts/prepare_data.R \
-  problem-sets/ps1/data/hillenbrand_vowels.csv
+Rscript scripts/prepare_data.R data/hillenbrand_vowels.csv
+```
 
-problem-sets/ps1/.venv/bin/python \
-  problem-sets/ps1/scripts/fetch_unimorph_data.py
+The three lexeme-level UniMorph tables are already included. Rebuilding them from the pinned source additionally requires Python 3.9 or newer with `pandas`:
 
-Rscript problem-sets/ps1/scripts/prepare_unimorph_tables.R
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install pandas
+
+.venv/bin/python scripts/fetch_unimorph_data.py
+
+Rscript scripts/prepare_unimorph_tables.R
 ```
 
 The Python script downloads the pinned German UniMorph source and writes the two form-level intermediate files. The second R script checks those files, reduces them to one row per lexeme, and draws the fixed 120-lexeme teaching sample.
 
-### 3. Render the Assignment
+### 3. Open the Notebook
 
 ```bash
-quarto render problem-sets/ps1/ps1.qmd
+jupyter notebook ps1.ipynb
 ```
 
-The rendered student assignment is written to `docs/problem-sets/ps1/ps1.html`.
+Select the R kernel if Jupyter does not select it automatically. Keep the notebook in the extracted assignment directory while working so that paths beginning with `data/` and `scripts/` continue to resolve.
 
 ## Datasets
 
