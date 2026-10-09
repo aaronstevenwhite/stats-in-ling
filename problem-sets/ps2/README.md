@@ -1,17 +1,18 @@
-# Problem Set 2: Bayesian analogues of hypothesis tests
+# Problem Set 2: Bayesian hypothesis testing
 
 **LING 214/414: Statistical Methods in Linguistics**
 
 ## Overview
 
-Problem Set 2 is the Bayesian member of the matched PS1–PS2 sequence. It uses passage-level Provo reading-time contrasts for continuous inference and selected UD English EWT annotations for categorical inference. All eight tasks are required for every student.
+Problem Set 2 is the Bayesian member of the matched PS1–PS2 sequence. It uses passage-level Provo reading-time contrasts for continuous inference and selected UD English EWT annotations for categorical inference. All six exercises are required for every student.
 
-The assignment covers four analyses:
+The assignment covers five analyses:
 
 1. a Bayesian normal model for the population mean passage contrast, including a guided one-dimensional conditional normal–normal derivation
-2. a beta–Bernoulli model for the population probability of a positive passage contrast
-3. separate scalar beta–binomial models for a two-by-two syntactic association
-4. a scalar shared-probability model with posterior predictive Pearson discrepancies for a three-by-two table
+2. a robust Student t location model corresponding to the Wilcoxon analysis
+3. a beta–Bernoulli model for the population probability of a positive passage contrast
+4. separate scalar beta–binomial models for a two-by-two syntactic association
+5. a scalar shared-probability model with posterior predictive Pearson discrepancies for a three-by-two table
 
 [Problem Set 1](../ps1/README.md) targets the corresponding quantities with frequentist procedures and distinct linguistic data.
 
@@ -135,13 +136,12 @@ The Provo teaching table is an adaptation distributed under the source project's
 
 | Tasks | Points | Statistical work |
 |---|---:|---|
-| 1–2 | 10 | establish the reading-time design and construct the passage contrast |
-| 3 | 20 | derive a conditional normal–normal posterior and fit the Bayesian normal model |
-| 4 | 10 | apply the beta–Bernoulli update to directional consistency |
-| 5 | 15 | estimate a two-by-two syntactic association with scalar beta models |
-| 6 | 20 | conduct a posterior predictive check of categorical independence |
-| 7 | 10 | compare the licensed claims and their scope |
-| 8 | 15 | assess prior-scale and likelihood-family sensitivity |
+| 1 | 10 | construct and summarize paired passage differences |
+| 2 | 25 | derive a conditional normal–normal posterior and fit the normal location model |
+| 3 | 10 | fit the robust Student t location model |
+| 4 | 10 | derive and apply the beta–Bernoulli update |
+| 5 | 20 | estimate a two-row association and its sample-size behavior |
+| 6 | 25 | conduct a posterior predictive check of categorical independence |
 
 The task points sum to 100. The assignment-level grade follows the course policy below.
 
@@ -154,4 +154,4 @@ Students may use LLMs for coding assistance, but they must understand and be abl
 
 ## Submission
 
-Submit the completed notebook through the course learning-management system. All eight numbered tasks are required. The course schedule supplies the due date.
+Submit the completed notebook through the course learning-management system. All six exercises are required. The course schedule supplies the due date.
