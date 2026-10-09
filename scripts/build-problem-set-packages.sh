@@ -5,6 +5,14 @@ script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "${script_directory}/.." && pwd)"
 staging_directory="$(mktemp -d /tmp/stats-in-ling-packages.XXXXXX)"
 
+python3 "${repository_root}/scripts/qmd_to_r_notebook.py" \
+  "${repository_root}/problem-sets/ps1/ps1.qmd" \
+  "${repository_root}/problem-sets/ps1/ps1.ipynb"
+
+python3 "${repository_root}/scripts/qmd_to_r_notebook.py" \
+  "${repository_root}/problem-sets/ps2/ps2.qmd" \
+  "${repository_root}/problem-sets/ps2/ps2.ipynb"
+
 cleanup() {
   rm -rf -- "${staging_directory}"
 }
@@ -19,6 +27,7 @@ mkdir -p \
 
 cp \
   "${repository_root}/problem-sets/ps1/ps1.qmd" \
+  "${repository_root}/problem-sets/ps1/ps1.ipynb" \
   "${repository_root}/problem-sets/ps1/README.md" \
   "${staging_directory}/ps1-assignment/"
 
@@ -36,6 +45,7 @@ cp \
 
 cp \
   "${repository_root}/problem-sets/ps2/ps2.qmd" \
+  "${repository_root}/problem-sets/ps2/ps2.ipynb" \
   "${repository_root}/problem-sets/ps2/README.md" \
   "${staging_directory}/ps2-assignment/"
 

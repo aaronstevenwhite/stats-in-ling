@@ -6,6 +6,8 @@
 
 Problem Set 2 is the Bayesian member of the matched PS1–PS2 sequence. It uses passage-level Provo reading-time contrasts for continuous inference and selected UD English EWT annotations for categorical inference. All six exercises are required for every student.
 
+Students complete `ps2.ipynb`. Open the notebook from the extracted assignment directory and use the R kernel so that its relative paths resolve to the included `data` and `scripts` directories.
+
 The assignment covers five analyses:
 
 1. a Bayesian normal model for the population mean passage contrast, including a guided one-dimensional conditional normal–normal derivation
@@ -21,6 +23,7 @@ The assignment covers five analyses:
 ```text
 ps2/
 ├── README.md
+├── ps2.ipynb
 ├── ps2.qmd
 ├── ps2-answer-key.qmd
 ├── data/
@@ -33,32 +36,29 @@ ps2/
     └── prepare_ud_wh_tables.R
 ```
 
-`ps2.qmd` is the student assignment. `ps2-answer-key.qmd` is the instructor key and is excluded from the public course site. The Provo teaching table and selected UD table are included with the assignment. The larger UD intermediate file is generated locally.
+`ps2.ipynb` is the student working file. It is generated from `ps2.qmd`, which supplies the course-site version. `ps2-answer-key.qmd` is the instructor key and is excluded from the public course site. The Provo teaching table and selected UD table are included with the assignment. The larger UD intermediate file is generated locally.
 
-The downloadable public package contains `ps2.qmd`, this README, all three preparation scripts, and both redistributable teaching tables. It omits the instructor key and the larger UD intermediate file.
+The downloadable public package contains `ps2.ipynb`, `ps2.qmd`, this README, all three preparation scripts, and both redistributable teaching tables. It omits the instructor key and the larger UD intermediate file.
 
 ## Setup Instructions
 
 ### 1. Install Required Software
 
-Data preparation and analysis require:
+Running the notebook requires:
 
-- Python 3.9 or newer with `pandas`
+- Jupyter Notebook or JupyterLab
 - R 4.0 or newer
+- the `IRkernel` R package and a registered R kernel
 - `brms`, `posterior`, `cmdstanr`, `dplyr`, `ggplot2`, and `tidyr`
 - a working CmdStan installation
-
-From the repository root, create the assignment-specific Python environment and install `pandas`:
-
-```bash
-python3 -m venv problem-sets/ps2/.venv
-problem-sets/ps2/.venv/bin/python -m pip install pandas
-```
 
 Install the R packages once, then use the [`cmdstanr` installation procedure](https://mc-stan.org/cmdstanr/articles/cmdstanr.html) to install CmdStan:
 
 ```r
-install.packages(c("brms", "posterior", "dplyr", "ggplot2", "tidyr"))
+install.packages(
+  c("IRkernel", "brms", "posterior", "dplyr", "ggplot2", "tidyr")
+)
+IRkernel::installspec()
 install.packages(
   "cmdstanr",
   repos = c("https://stan-dev.r-universe.dev", getOption("repos"))
@@ -69,28 +69,30 @@ cmdstanr::install_cmdstan(cores = 2)
 
 ### 2. Generate Datasets
 
-Download `Provo_Corpus-Eyetracking_Data.csv` from the [Provo Corpus OSF project](https://osf.io/sjefs/). Then run every command below from the repository root. Replace `/path/to` with the location of the downloaded file.
+The package contains both teaching tables, so no data preparation is required before opening the notebook. Rebuilding the tables requires Python 3.9 or newer with `pandas` and the original Provo release. Download `Provo_Corpus-Eyetracking_Data.csv` from the [Provo Corpus OSF project](https://osf.io/sjefs/), open a terminal in the extracted `ps2-assignment` directory, and replace `/path/to` below with the downloaded file's location.
 
 ```bash
-Rscript problem-sets/ps2/scripts/prepare_data.R \
+python3 -m venv .venv
+.venv/bin/python -m pip install pandas
+
+Rscript scripts/prepare_data.R \
   /path/to/Provo_Corpus-Eyetracking_Data.csv \
-  problem-sets/ps2/data/provo-content-word-positions.csv
+  data/provo-content-word-positions.csv
 
-problem-sets/ps2/.venv/bin/python \
-  problem-sets/ps2/scripts/fetch_wh_data.py
+.venv/bin/python scripts/fetch_wh_data.py
 
-Rscript problem-sets/ps2/scripts/prepare_ud_wh_tables.R
+Rscript scripts/prepare_ud_wh_tables.R
 ```
 
 The Python script downloads the pinned UD English EWT training file and writes the raw WH-token dependency table. The second R script selects `what`, `which`, and `who` tokens annotated as `nsubj` or `obj`, retains sentences with exactly one selected dependency, and writes the teaching table.
 
-### 3. Render the Assignment
+### 3. Open the Notebook
 
 ```bash
-quarto render problem-sets/ps2/ps2.qmd
+jupyter notebook ps2.ipynb
 ```
 
-The rendered student assignment is written to `docs/problem-sets/ps2/ps2.html`.
+Select the R kernel if Jupyter does not select it automatically. Keep the notebook in the extracted assignment directory while working so that paths beginning with `data/` and `scripts/` continue to resolve.
 
 ## Datasets
 
