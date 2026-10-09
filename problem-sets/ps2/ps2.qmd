@@ -29,6 +29,10 @@ The files are also available separately:
 
 Use `<-` for assignment, use `snake_case` object names, and record a seed before every random calculation. Every numerical answer must be produced by visible code.
 
+Each derivation is divided into short steps. Complete only the displayed line or lines in each step. The surrounding equations supply the notation and the algebraic operation. You do not need to reproduce them.
+
+In an R block, replace every `___` with the requested expression or value. Code without a blank is supplied as scaffolding and should be retained.
+
 ```{r}
 library(dplyr)
 library(ggplot2)
@@ -56,21 +60,33 @@ Thus $\exp(\delta_p)$ is the ratio of the noun-position geometric mean FFD to th
 Load `data/provo-content-word-positions.csv`. Retain noun and verb positions. Verify that each passage contains at least four positions from each class. Summarize within passage and class, then join by `Text_ID` to obtain one row per passage. Do not align the summaries by row position.
 
 ```{r}
-# Load the Provo teaching table.
+positions <- read.csv("data/provo-content-word-positions.csv")
+str(positions)
+sort(unique(positions$Word_POS))
 
-# Examine the column names, classes, and word-class levels.
+noun_verb_positions <- positions |>
+  filter(Word_POS %in% c("Noun", "Verb"))
 
-# Filter to noun and verb positions.
+position_counts <- noun_verb_positions |>
+  count(Text_ID, Word_POS)
+stopifnot(all(position_counts$n >= 4))
 
-# Count positions by Text_ID and Word_POS.
+passage_class_means <- noun_verb_positions |>
+  group_by(Text_ID, Word_POS) |>
+  summarize(mean_log_ffd = mean(mean_log_ffd), .groups = "drop")
 
-# Verify at least four positions in each class for every passage.
+passage_pairs <- passage_class_means |>
+  pivot_wider(
+    names_from = Word_POS,
+    values_from = mean_log_ffd
+  ) |>
+  rename(
+    mean_log_ffd_noun = Noun,
+    mean_log_ffd_verb = Verb
+  ) |>
+  mutate(delta_log_ffd = mean_log_ffd_noun - mean_log_ffd_verb)
 
-# Compute the mean response within passage and word class.
-
-# Join the noun and verb summaries by Text_ID.
-
-# Calculate delta_log_ffd as noun minus verb.
+stopifnot(nrow(passage_pairs) == 55, !anyNA(passage_pairs$delta_log_ffd))
 ```
 
 ### 1.2 Summarize the passage differences
@@ -78,15 +94,22 @@ Load `data/provo-content-word-positions.csv`. Retain noun and verb positions. Ve
 Calculate the number of passages, the mean, the standard deviation, the median, and the number of negative, zero, and positive differences. Plot the differences with zero marked.
 
 ```{r}
-# Descriptive statistics.
-# 1. Count the passages.
-# 2. Calculate the mean, standard deviation, and median of delta_log_ffd.
-# 3. Count negative, zero, and positive differences.
+passage_summary <- passage_pairs |>
+  summarize(
+    passage_count = n(),
+    mean_delta = ___,
+    sd_delta = ___,
+    median_delta = ___,
+    negative_count = ___,
+    zero_count = ___,
+    positive_count = ___
+  )
+passage_summary
 
-# Plot the passage differences.
-# 1. Put one point at each observed difference.
-# 2. Mark zero with a reference line.
-# 3. Label the subtraction order and log-duration scale.
+ggplot(passage_pairs, aes(x = delta_log_ffd)) +
+  geom_dotplot(binwidth = .01) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = "Noun minus verb mean log FFD", y = "Count")
 ```
 
 Report the requested values in the subtraction order noun minus verb.
@@ -149,7 +172,7 @@ $$
 
 #### Step 1: likelihood kernel
 
-Remove from the normal density of $\overline Y$ only the factors that do not depend on $\mu$.
+The normal kernel is $\exp\{-(\text{observation}-\text{mean})^2/(2\,\text{variance})\}$. Substitute observation $\overline\delta$, mean $\mu$, and variance $\sigma^2/P$. Complete one line.
 
 **Target:** $f_{\overline Y\mid M,\Sigma}(\overline\delta\mid\mu,\sigma)$ as a kernel in $\mu$.
 
@@ -164,7 +187,7 @@ $$
 
 #### Step 2: prior kernel
 
-Remove from the $\mathcal N(m_0,s_0^2)$ density only the factors that do not depend on $\mu$.
+Use the same normal kernel with mean $m_0$ and variance $s_0^2$. Complete one line.
 
 **Target:** $f_M(\mu)$ as a kernel in $\mu$.
 
@@ -178,13 +201,13 @@ $$
 
 #### Step 3: posterior quadratic
 
-Multiply the two kernels. Expand $(\overline\delta-\mu)^2$ and $(\mu-m_0)^2$. Drop only terms that do not depend on $\mu$. Collect the result as
+Multiply the two kernels. Their exponents add. Expand the two squares and discard $\overline\delta^2$ and $m_0^2$ because they do not depend on $\mu$. The remaining terms have the form
 
 $$
 \exp\left\{-\frac12(A\mu^2-2B\mu)\right\}.
 $$
 
-**Target:** derive the coefficients $A$ and $B$ as functions of $P$, $\sigma$, $\overline\delta$, $m_0$, and $s_0$.
+Collect the coefficient of $\mu^2$ into $A$ and the coefficient paired with $2\mu$ into $B$. Complete two lines.
 
 **Your LaTeX**
 
@@ -195,28 +218,33 @@ B&=\text{enter the coefficient paired with }2\mu.
 \end{aligned}
 $$
 
-#### Step 4: complete the square
+#### Step 4: posterior parameters
 
-Use $A\mu^2-2B\mu=A(\mu-B/A)^2-B^2/A$.
-
-**Target:** derive the posterior mean $m_P=B/A$, the posterior variance $s_P^2=1/A$, and the conditional posterior distribution.
+Use $A\mu^2-2B\mu=A(\mu-B/A)^2-B^2/A$. The normal kernel therefore has mean $B/A$ and variance $1/A$. Substitute the expressions for $A$ and $B$ from Step 3. Complete two lines.
 
 **Your LaTeX**
 
 $$
 \begin{aligned}
 m_P&=\text{enter the posterior mean in the original quantities},\\
-s_P^2&=\text{enter the posterior variance in the original quantities},\\
-M\mid\Sigma=\sigma,\overline Y=\overline\delta
-&\sim\mathcal N\left(\text{enter the mean},\text{ enter the variance}\right).
+s_P^2&=\text{enter the posterior variance in the original quantities}.
 \end{aligned}
 $$
 
-#### Step 5: posterior event probability
+#### Step 5: conditional posterior distribution
+
+Insert the two quantities from Step 4 into the normal distribution. Complete one line.
+
+$$
+M\mid\Sigma=\sigma,\overline Y=\overline\delta
+\sim\mathcal N\left(\text{enter the mean},\text{ enter the variance}\right).
+$$
+
+#### Step 6: posterior event probability
 
 Define the event that the population mean difference is positive. Use full set-builder notation. Then standardize the posterior normal distribution to express its probability with the standard normal cumulative distribution function $\Phi$.
 
-**Target:** $B_M^+$ and $\mathbb P(B_M^+\mid\Sigma=\sigma,\overline Y=\overline\delta)$.
+Define the event in the first line. Standardizing zero under $\mathcal N(m_P,s_P^2)$ gives the second line. Complete two lines.
 
 **Your LaTeX**
 
@@ -233,13 +261,22 @@ $$
 A [prior predictive distribution](../../statistical-inference/prior-predictive-distributions.qmd) is the distribution of replicated data obtained by drawing parameters from their priors and data from the likelihood. Draw at least 10,000 values of $\mu$, $\sigma$, and one replicated difference. Plot the replicated differences and summarize $\exp(Y_{\mathrm{rep}})$.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Set and report one seed.
-# 2. Draw at least 10,000 values of mu from N(0, .05^2).
-# 3. Draw the same number of sigma values from Exponential(20).
-# 4. Draw one replicated difference for every mu and sigma pair.
-# 5. Plot the replicated differences.
-# 6. Summarize exp(y_rep) with declared quantiles.
+set.seed(___)
+prior_draw_count <- 10000
+
+mu_prior <- rnorm(prior_draw_count, mean = 0, sd = .05)
+sigma_prior <- rexp(prior_draw_count, rate = 20)
+y_rep_prior <- rnorm(
+  prior_draw_count,
+  mean = mu_prior,
+  sd = sigma_prior
+)
+
+ggplot(tibble(y_rep_prior), aes(x = y_rep_prior)) +
+  geom_histogram(bins = 60) +
+  geom_vline(xintercept = 0, linetype = "dashed")
+
+quantile(exp(y_rep_prior), probs = c(.025, .25, .5, .75, .975))
 ```
 
 Fit the normal model with `brms`. Use four chains, at least 2,000 iterations per chain, the `cmdstanr` backend, and a recorded seed.
@@ -251,31 +288,68 @@ library(posterior)
 detected_cores <- parallel::detectCores()
 core_count <- if (is.na(detected_cores)) 1L else min(4L, detected_cores)
 
-# Fit the normal location model.
-# 1. Use delta_log_ffd ~ 1.
-# 2. Use family = gaussian().
-# 3. State the priors for the intercept and sigma.
-# 4. Use four chains and at least 2,000 iterations per chain.
-# 5. Use backend = "cmdstanr" and report the seed.
+normal_fit <- brm(
+  delta_log_ffd ~ 1,
+  data = passage_pairs,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, .05), class = Intercept),
+    prior(exponential(20), class = sigma)
+  ),
+  chains = 4,
+  cores = core_count,
+  iter = 2000,
+  seed = ___,
+  backend = "cmdstanr",
+  refresh = 0
+)
 ```
 
 Report [$\widehat R$](../../statistical-inference/rhat.qmd), [bulk and tail effective sample size](../../statistical-inference/effective-sample-size.qmd), and [divergent transitions](../../statistical-inference/divergent-transitions.qmd) for the intercept and `sigma`. The [Markov-chain checks](../../statistical-inference/checking-markov-chains.qmd) put these diagnostics in the order used here.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Extract R-hat for the intercept and sigma.
-# 2. Extract bulk and tail effective sample sizes for both parameters.
-# 3. Count divergent transitions.
+normal_diagnostics <- summarise_draws(
+  as_draws(normal_fit),
+  "rhat",
+  "ess_bulk",
+  "ess_tail"
+)
+
+normal_diagnostics |>
+  filter(variable %in% c("b_Intercept", "sigma"))
+
+normal_nuts <- nuts_params(normal_fit)
+divergence_count <- sum(
+  normal_nuts$Parameter == "divergent__" &
+    normal_nuts$Value == 1
+)
+divergence_count
 ```
 
 From the posterior draws, calculate the median and 95% equal-tailed [credible interval](../../statistical-inference/posterior-summaries.qmd) for $M$ and $\exp(M)$. Estimate $\mathbb P(B_M^+\mid\boldsymbol\delta)$ as the proportion of intercept draws greater than zero, where $\boldsymbol\delta=(\delta_1,\ldots,\delta_P)$.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Extract posterior draws of the intercept.
-# 2. Calculate the median and equal-tailed 95% interval for M.
-# 3. Transform every draw with exp() and summarize exp(M).
-# 4. Calculate the proportion of M draws greater than zero.
+normal_draws <- as_draws_df(normal_fit)
+mu_draw <- normal_draws$b_Intercept
+
+mu_summary <- c(
+  median = median(mu_draw),
+  lower_95 = quantile(mu_draw, .025),
+  upper_95 = quantile(mu_draw, .975)
+)
+
+ratio_draw <- exp(mu_draw)
+ratio_summary <- c(
+  median = median(ratio_draw),
+  lower_95 = quantile(ratio_draw, .025),
+  upper_95 = quantile(ratio_draw, .975)
+)
+
+probability_mu_positive <- mean(mu_draw > 0)
+
+mu_summary
+ratio_summary
+probability_mu_positive
 ```
 
 Report the computational checks, posterior summaries, and posterior event probability.
@@ -301,23 +375,62 @@ where $M$ and $\Sigma$ retain the priors from Exercise 2 and the scalar degrees-
 Fit this model with `family = student()` and `prior(gamma(2, .1), class = nu)`. Use the same chain settings and seed policy as Exercise 2.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Replace gaussian() with student().
-# 2. Retain the priors for the intercept and sigma.
-# 3. Add prior(gamma(2, .1), class = nu).
-# 4. Retain the chain, iteration, backend, and seed policy from Exercise 2.
-# 5. Report R-hat, effective sample sizes, and divergent transitions.
+student_fit <- brm(
+  delta_log_ffd ~ 1,
+  data = passage_pairs,
+  family = student(),
+  prior = c(
+    prior(normal(0, .05), class = Intercept),
+    prior(exponential(20), class = sigma),
+    prior(gamma(2, .1), class = nu)
+  ),
+  chains = 4,
+  cores = core_count,
+  iter = 2000,
+  seed = ___,
+  backend = "cmdstanr",
+  refresh = 0
+)
+
+student_diagnostics <- summarise_draws(
+  as_draws(student_fit),
+  "rhat",
+  "ess_bulk",
+  "ess_tail"
+)
+student_diagnostics |>
+  filter(variable %in% c("b_Intercept", "sigma", "nu"))
+
+student_nuts <- nuts_params(student_fit)
+sum(
+  student_nuts$Parameter == "divergent__" &
+    student_nuts$Value == 1
+)
 ```
 
 Calculate the posterior median and 95% interval for $M$, $\exp(M)$, and $\Nu$. Calculate $\mathbb P(B_M^+\mid\boldsymbol\delta)$ from the posterior draws.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Extract posterior draws of M and Nu.
-# 2. Summarize M and exp(M).
-# 3. Summarize Nu.
-# 4. Calculate the posterior probability that M is greater than zero.
-# 5. Put the normal and Student t summaries in one table.
+student_draws <- as_draws_df(student_fit)
+student_mu_draw <- student_draws$b_Intercept
+nu_draw <- student_draws$nu
+
+student_summary <- tibble(
+  model = "Student t",
+  quantity = c("M", "exp(M)", "Nu"),
+  median = c(
+    median(student_mu_draw),
+    median(exp(student_mu_draw)),
+    median(nu_draw)
+  ),
+  lower_95 = c(___, ___, ___),
+  upper_95 = c(___, ___, ___)
+)
+
+student_probability_positive <- mean(student_mu_draw > 0)
+
+student_summary
+student_probability_positive
 ```
 
 Report the requested values beside the corresponding normal-model values.
@@ -352,16 +465,24 @@ The [conjugate-prior notes](../../statistical-inference/conjugate-priors.qmd) de
 
 Let $k_{\mathrm{obs}}=\sum_{p=1}^{P}z_p$.
 
-**Target:** state the beta posterior first in terms of $P$ and $k_{\mathrm{obs}}$, then substitute their observed values.
+#### Step 1: symbolic update
+
+The first beta parameter receives the number of ones, and the second receives the number of zeros. Add those counts to the prior parameters $(2,2)$. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
 \Pi\mid\mathbf Z=\mathbf z
-&\sim\operatorname{Beta}(\text{enter the updated parameters})\\
-&=\operatorname{Beta}(\text{enter the numerical parameters}).
-\end{aligned}
+\sim\operatorname{Beta}(\text{enter the updated parameters in terms of }P\text{ and }k_{\mathrm{obs}}).
+$$
+
+#### Step 2: observed update
+
+Use the code from Exercise 1 to obtain $P$ and $k_{\mathrm{obs}}$, then substitute them. Complete one line.
+
+$$
+\Pi\mid\mathbf Z=\mathbf z
+\sim\operatorname{Beta}(\text{enter the two numerical parameters}).
 $$
 
 ### 4.2 Calculate posterior summaries
@@ -369,14 +490,35 @@ $$
 Calculate the posterior mean, median, and 95% equal-tailed interval. Define $B_\Pi^+=\{\omega\in\Omega\mid\Pi(\omega)>.5\}$ and calculate $\mathbb P(B_\Pi^+\mid\mathbf z)$ with `pbeta(..., lower.tail = FALSE)`. Verify it with at least 50,000 independent posterior draws and report the [Monte Carlo standard error](../../statistical-inference/monte-carlo-integration.qmd).
 
 ```{r}
-# YOUR CODE HERE
-# 1. Count positive and nonpositive passage differences.
-# 2. Insert the counts into the beta posterior parameters.
-# 3. Calculate the posterior mean, median, and equal-tailed 95% interval.
-# 4. Calculate P(Pi > .5 | z) using pbeta().
-# 5. Set a seed and draw at least 50,000 beta values.
-# 6. Estimate the same probability from the draws.
-# 7. Calculate its Monte Carlo standard error.
+passage_count <- nrow(passage_pairs)
+positive_count <- sum(passage_pairs$delta_log_ffd > 0)
+nonpositive_count <- passage_count - positive_count
+
+alpha_posterior <- 2 + ___
+beta_posterior <- 2 + ___
+
+pi_summary <- c(
+  mean = alpha_posterior / (alpha_posterior + beta_posterior),
+  median = qbeta(.5, alpha_posterior, beta_posterior),
+  lower_95 = qbeta(.025, alpha_posterior, beta_posterior),
+  upper_95 = qbeta(.975, alpha_posterior, beta_posterior)
+)
+
+exact_probability <- pbeta(
+  .5,
+  alpha_posterior,
+  beta_posterior,
+  lower.tail = FALSE
+)
+
+set.seed(___)
+simulation_count <- 50000
+pi_draw <- rbeta(simulation_count, alpha_posterior, beta_posterior)
+mc_probability <- mean(pi_draw > .5)
+mcse <- sqrt(mc_probability * (1 - mc_probability) / simulation_count)
+
+pi_summary
+c(exact_probability = exact_probability, simulation = mc_probability, mcse = mcse)
 ```
 
 Report $k_{\mathrm{obs}}$, the posterior summaries, the event probability, and its Monte Carlo standard error.
@@ -406,22 +548,30 @@ where $w\in\{\mathrm{what},\mathrm{who}\}$.
 Load the data, verify that `sentence_id` is unique, and construct the two-by-two table with rows `what`, `who` and columns `nsubj`, `obj`.
 
 ```{r}
-# Load the selected UD dependencies.
+wh_dependencies <- read.csv("data/ud_wh_dependencies.csv")
+str(wh_dependencies)
+stopifnot(!anyDuplicated(wh_dependencies$sentence_id))
 
-# Examine the column classes and observed levels.
+what_who_data <- wh_dependencies |>
+  filter(wh_word %in% c("what", "who"))
 
-# Verify one selected dependency per sentence_id.
+what_who_table <- with(
+  what_who_data,
+  table(
+    factor(wh_word, levels = c("what", "who")),
+    factor(deprel, levels = c("nsubj", "obj"))
+  )
+)
 
-# Restrict to what and who.
+row_totals <- rowSums(what_who_table)
+object_counts <- what_who_table[, "obj"]
 
-# Set the row and column factor levels explicitly.
-
-# Construct the two-by-two table and extract N_w and K_w.
+what_who_table
+row_totals
+object_counts
 ```
 
-Apply the beta–binomial update separately to the two scalar parameters.
-
-**Target:** state both posterior distributions after substituting the observed counts.
+Apply the beta–binomial update separately to the two scalar parameters. For each row, the first beta parameter is $1+K_w$ and the second is $1+N_w-K_w$. Substitute the counts from the table. Complete two lines.
 
 **Your LaTeX**
 
@@ -454,14 +604,30 @@ $$
 Calculate the posterior median and 95% interval for both quantities. Define $B_\Delta^+=\{\omega\in\Omega\mid\Delta_\Pi(\omega)>0\}$ and estimate its posterior probability and Monte Carlo standard error.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Set and report one seed.
-# 2. Draw at least 100,000 values from each scalar beta posterior.
-# 3. Pair draws by simulation index.
-# 4. Calculate Delta_Pi for every draw.
-# 5. Calculate the odds ratio for every draw.
-# 6. Summarize both posterior quantities.
-# 7. Estimate P(Delta_Pi > 0 | data) and its Monte Carlo standard error.
+alpha_what <- 1 + object_counts["what"]
+beta_what <- 1 + row_totals["what"] - object_counts["what"]
+alpha_who <- 1 + object_counts["who"]
+beta_who <- 1 + row_totals["who"] - object_counts["who"]
+
+set.seed(___)
+association_draw_count <- 100000
+pi_what_draw <- rbeta(association_draw_count, alpha_what, beta_what)
+pi_who_draw <- rbeta(association_draw_count, alpha_who, beta_who)
+
+delta_pi_draw <- ___
+odds_ratio_draw <- ___
+
+delta_summary <- quantile(delta_pi_draw, c(.025, .5, .975))
+odds_ratio_summary <- quantile(odds_ratio_draw, c(.025, .5, .975))
+probability_delta_positive <- mean(delta_pi_draw > 0)
+delta_mcse <- sqrt(
+  probability_delta_positive * (1 - probability_delta_positive) /
+    association_draw_count
+)
+
+delta_summary
+odds_ratio_summary
+c(probability = probability_delta_positive, mcse = delta_mcse)
 ```
 
 Report the two observed row counts and all requested posterior summaries.
@@ -475,12 +641,46 @@ Replace this sentence with the requested two-row association result.
 Repeat the calculation with *which* and *who*. Define the difference as $\Pi_{\mathrm{which}}-\Pi_{\mathrm{who}}$ and orient the odds ratio with the *which* odds in the numerator. Use a new pair of scalar beta posteriors rather than a vector-valued parameter.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Construct the which by who table.
-# 2. Update the two scalar beta posteriors.
-# 3. Draw from both posteriors using a recorded seed.
-# 4. Calculate the probability difference and odds ratio.
-# 5. Calculate the posterior medians, 95% intervals, and directional probability.
+which_who_data <- wh_dependencies |>
+  filter(wh_word %in% c("which", "who"))
+
+which_who_table <- with(
+  which_who_data,
+  table(
+    factor(wh_word, levels = c("which", "who")),
+    factor(deprel, levels = c("nsubj", "obj"))
+  )
+)
+
+which_who_totals <- rowSums(which_who_table)
+which_who_objects <- which_who_table[, "obj"]
+
+alpha_which <- 1 + which_who_objects["which"]
+beta_which <-
+  1 + which_who_totals["which"] - which_who_objects["which"]
+alpha_who_second <- 1 + which_who_objects["who"]
+beta_who_second <-
+  1 + which_who_totals["who"] - which_who_objects["who"]
+
+set.seed(___)
+comparison_draw_count <- 100000
+pi_which_draw <- rbeta(
+  comparison_draw_count,
+  alpha_which,
+  beta_which
+)
+pi_who_second_draw <- rbeta(
+  comparison_draw_count,
+  alpha_who_second,
+  beta_who_second
+)
+
+delta_which_who_draw <- ___
+odds_ratio_which_who_draw <- ___
+
+quantile(delta_which_who_draw, c(.025, .5, .975))
+quantile(odds_ratio_which_who_draw, c(.025, .5, .975))
+mean(delta_which_who_draw > 0)
 ```
 
 Put the *what*–*who* and *which*–*who* posterior summaries in one table.
@@ -493,23 +693,88 @@ Replace this sentence with the requested comparison of the two associations.
 
 Treat the retained *what* and *who* sentences as a finite population. For each $n\in\{20,40,80,160\}$, draw 500 simple random samples without replacement. For each sample, update the two beta posteriors and record the posterior mean of $\Delta_\Pi$ and its 95% interval width. Use one recorded seed.
 
+Use 5,000 paired posterior draws inside each replicate to estimate the interval width. The posterior mean of $\Delta_\Pi$ may be calculated directly as the difference between the two beta means. A sample may omit one word class. The beta prior still yields a proper posterior in that case: use object count zero and row total zero for the omitted class.
+
 ```{r}
-# YOUR CODE HERE
-# 1. Write a function that accepts a sample size and replicate identifier.
-# 2. Draw sentences without replacement.
-# 3. Update the what and who beta posteriors.
-# 4. Record the posterior mean of Delta_Pi.
-# 5. Record the equal-tailed 95% interval width.
-# 6. Return one tidy row.
-# 7. Run 500 replicates at every requested sample size.
+what_who_population <- wh_dependencies |>
+  filter(wh_word %in% c("what", "who"))
+
+analyze_sentence_sample <- function(
+  sample_size,
+  replicate_id,
+  posterior_draw_count = 5000
+) {
+  sampled_sentences <- what_who_population |>
+    slice_sample(n = sample_size, replace = FALSE)
+
+  sampled_table <- with(
+    sampled_sentences,
+    table(
+      factor(wh_word, levels = c("what", "who")),
+      factor(deprel, levels = c("nsubj", "obj"))
+    )
+  )
+
+  sampled_totals <- rowSums(sampled_table)
+  sampled_objects <- sampled_table[, "obj"]
+
+  alpha_what <- 1 + sampled_objects["what"]
+  beta_what <- 1 + sampled_totals["what"] - sampled_objects["what"]
+  alpha_who <- 1 + sampled_objects["who"]
+  beta_who <- 1 + sampled_totals["who"] - sampled_objects["who"]
+
+  posterior_mean_delta <-
+    alpha_what / (alpha_what + beta_what) -
+    alpha_who / (alpha_who + beta_who)
+
+  pi_what <- rbeta(posterior_draw_count, alpha_what, beta_what)
+  pi_who <- rbeta(posterior_draw_count, alpha_who, beta_who)
+  delta_draw <- ___
+  delta_interval <- quantile(delta_draw, c(.025, .975))
+
+  tibble(
+    sample_size = sample_size,
+    replicate_id = replicate_id,
+    posterior_mean_delta = posterior_mean_delta,
+    interval_width = ___
+  )
+}
+
+set.seed(___)
+sampling_plan <- expand_grid(
+  sample_size = c(20, 40, 80, 160),
+  replicate_id = seq_len(500)
+)
+
+sampling_results <- bind_rows(Map(
+  analyze_sentence_sample,
+  sampling_plan$sample_size,
+  sampling_plan$replicate_id
+))
 ```
 
 For each $n$, calculate the mean and standard deviation of the posterior-mean estimates and the median interval width. Plot the empirical sampling distributions of the posterior means by $n$.
 
 ```{r}
-# 1. Group the replicate results by sample size.
-# 2. Calculate every requested summary.
-# 3. Plot the posterior-mean sampling distributions by sample size.
+sampling_summary <- sampling_results |>
+  group_by(sample_size) |>
+  summarize(
+    mean_posterior_mean = mean(posterior_mean_delta),
+    sd_posterior_mean = sd(posterior_mean_delta),
+    median_interval_width = median(interval_width),
+    .groups = "drop"
+  )
+sampling_summary
+
+ggplot(
+  sampling_results,
+  aes(x = factor(sample_size), y = posterior_mean_delta)
+) +
+  geom_boxplot() +
+  labs(
+    x = "Sentences sampled",
+    y = "Posterior mean of the object-probability difference"
+  )
 ```
 
 Report the sample-size summary table.
@@ -536,16 +801,24 @@ A [posterior predictive distribution](../../statistical-inference/posterior-pred
 
 Pool the object counts and non-object counts across rows.
 
-**Target:** derive the beta posterior of $\Pi_0$ and substitute the observed totals.
+#### Step 1: symbolic update
+
+The pooled object count is $\sum_gK_g$, and the pooled non-object count is $\sum_g(N_g-K_g)$. Add these counts to the $\operatorname{Beta}(1,1)$ prior. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
 \Pi_0\mid\mathbf K=\mathbf k
-&\sim\operatorname{Beta}(\text{enter the updated parameters})\\
-&=\operatorname{Beta}(\text{enter the numerical parameters}).
-\end{aligned}
+\sim\operatorname{Beta}(\text{enter the updated parameters in summation notation}).
+$$
+
+#### Step 2: observed update
+
+Use the three-by-two table to substitute the pooled object and non-object counts. Complete one line.
+
+$$
+\Pi_0\mid\mathbf K=\mathbf k
+\sim\operatorname{Beta}(\text{enter the two numerical parameters}).
 $$
 
 ### 6.2 Define the discrepancy
@@ -553,53 +826,114 @@ $$
 Construct the observed three-by-two table in row order `what`, `which`, `who` and column order `nsubj`, `obj`. Calculate its expected counts under independence and its Pearson statistic using the formula from the [chi-squared-test notes](../../statistical-inference/chi-squared-test.qmd).
 
 ```{r}
-# YOUR CODE HERE
-# 1. Set the word-form and dependency-relation levels explicitly.
-# 2. Construct the observed three-by-two table.
-# 3. Calculate its row totals, column totals, and grand total.
-# 4. Calculate the complete expected table under independence.
-# 5. Calculate each Pearson contribution and x_squared_observed.
+three_word_table <- with(
+  wh_dependencies,
+  table(
+    factor(wh_word, levels = c("what", "which", "who")),
+    factor(deprel, levels = c("nsubj", "obj"))
+  )
+)
+
+row_totals <- rowSums(three_word_table)
+column_totals <- colSums(three_word_table)
+grand_total <- sum(three_word_table)
+expected_counts <- outer(row_totals, column_totals) / grand_total
+pearson_contributions <- ___
+x_squared_observed <- sum(pearson_contributions)
+
+three_word_table
+expected_counts
+x_squared_observed
 ```
 
 ### 6.3 Simulate replicated tables
 
-Generate at least 100,000 posterior predictive tables. For each replicate, draw one value of $\Pi_0$, draw one object count for each fixed row total, construct the replicated table, and calculate its Pearson statistic.
+Generate at least 100,000 posterior predictive tables. For each replicate, draw one value of $\Pi_0$, draw one object count for each fixed row total, construct the replicated table, and calculate its Pearson statistic. The function below returns `NA_real_` if a replicated column total is zero, because the corresponding expected counts would also be zero. Such a replicate is extraordinarily unlikely here, but the rule makes the calculation defined.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Set and report one seed.
-# 2. Draw at least 100,000 values from the posterior of Pi_0.
-# 3. For each draw, generate one object count for each fixed row total.
-# 4. Construct the replicated table.
-# 5. Recalculate its expected counts from its margins.
-# 6. Calculate and store its Pearson statistic.
+object_counts <- three_word_table[, "obj"]
+alpha_zero <- 1 + sum(object_counts)
+beta_zero <- 1 + sum(row_totals - object_counts)
+
+set.seed(___)
+predictive_draw_count <- 100000
+pi_zero_draw <- rbeta(predictive_draw_count, alpha_zero, beta_zero)
+
+replicated_statistic <- function(pi_zero) {
+  replicated_objects <- rbinom(
+    length(row_totals),
+    size = row_totals,
+    prob = pi_zero
+  )
+  replicated_table <- cbind(
+    nsubj = row_totals - replicated_objects,
+    obj = replicated_objects
+  )
+
+  replicated_columns <- colSums(replicated_table)
+  if (any(replicated_columns == 0)) {
+    return(NA_real_)
+  }
+
+  replicated_expected <- outer(
+    rowSums(replicated_table),
+    replicated_columns
+  ) / sum(replicated_table)
+
+  sum(___)
+}
+
+replicated_x_squared <- vapply(
+  pi_zero_draw,
+  replicated_statistic,
+  numeric(1)
+)
+replicated_x_squared <- replicated_x_squared[!is.na(replicated_x_squared)]
 ```
 
 Define the posterior predictive tail event in full set-builder notation.
 
-**Target:** $B_{X^2}^{\mathrm{rep}}$ and its posterior probability.
+#### Step 1: discrepancy event
+
+The event contains replicated statistics at least as large as the observed statistic. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
 B_{X^2}^{\mathrm{rep}}
-&=\{\omega\in\Omega\mid\text{enter the discrepancy condition}\},\\
+=\{\omega\in\Omega\mid\text{enter the discrepancy condition}\}.
+$$
+
+#### Step 2: Monte Carlo probability
+
+Let $M$ be the number of retained replications. Average an indicator of the event over the $M$ statistics. Complete one line.
+
+$$
 \mathbb P(B_{X^2}^{\mathrm{rep}}\mid\mathbf K=\mathbf k)
-&=\text{enter the Monte Carlo estimator}.
-\end{aligned}
+\approx\text{enter the Monte Carlo average}.
 $$
 
 Plot the replicated statistics with the observed statistic marked. Calculate the posterior predictive tail probability and its Monte Carlo standard error. Calculate the observed Pearson residuals and identify the two cells with the largest absolute residuals.
 
 ```{r}
-# Plot the replicated Pearson statistics and mark x_squared_observed.
+ggplot(tibble(replicated_x_squared), aes(x = replicated_x_squared)) +
+  geom_histogram(bins = 50) +
+  geom_vline(xintercept = x_squared_observed, color = "red")
 
-# Calculate the posterior predictive tail probability.
+tail_indicator <- replicated_x_squared >= x_squared_observed
+tail_probability <- mean(tail_indicator)
+tail_mcse <- sqrt(
+  tail_probability * (1 - tail_probability) /
+    length(tail_indicator)
+)
 
-# Calculate its Monte Carlo standard error.
+pearson_residuals <- ___
+residual_table <- as.data.frame(as.table(pearson_residuals)) |>
+  mutate(absolute_residual = abs(Freq)) |>
+  arrange(desc(absolute_residual))
 
-# Calculate and sort the observed Pearson residuals by absolute magnitude.
+c(probability = tail_probability, mcse = tail_mcse)
+slice_head(residual_table, n = 2)
 ```
 
 Report the observed statistic, posterior predictive tail probability, Monte Carlo standard error, and two largest absolute residuals with their signs.

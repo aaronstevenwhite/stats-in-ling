@@ -29,6 +29,10 @@ The files are also available separately:
 
 Use `<-` for assignment, use `snake_case` object names, and record a seed before every random calculation. Every numerical answer must be produced by visible code.
 
+Each derivation is divided into short steps. Complete only the displayed line or lines in each step. The surrounding equations supply the notation and the rule to apply. You do not need to reproduce them.
+
+In an R block, replace every `___` with the requested expression or value. Code without a blank is supplied as scaffolding and should be retained.
+
 ```{r}
 library(dplyr)
 library(ggplot2)
@@ -54,17 +58,34 @@ $$
 Here $d_s$ is the observed difference for speaker $s$.
 
 ```{r}
-# Load Hillenbrand formant data.
+vowels <- read.csv("data/hillenbrand_vowels.csv")
 
-# Examine the column names, classes, and vowel labels.
+# Inspect the available columns and vowel labels.
+str(vowels)
+sort(unique(vowels$vowel))
 
-# Filter to adult men and the vowels i and I.
+adult_men <- vowels |>
+  filter(speaker_type == "man")
 
-# Verify one row per speaker and vowel.
+target_vowels <- adult_men |>
+  filter(vowel %in% c("i", "I"))
 
-# Join the two vowel tables by speaker_id and speaker_type.
+# This table must contain one row for every speaker-vowel combination.
+pair_counts <- target_vowels |>
+  count(speaker_id, vowel)
+stopifnot(all(pair_counts$n == 1))
 
-# Calculate difference_hz as F1 for i minus F1 for I.
+# pivot_wider() joins the two measurements by the identifier columns.
+paired_f1 <- target_vowels |>
+  select(speaker_id, speaker_type, vowel, f1_hz) |>
+  pivot_wider(
+    names_from = vowel,
+    values_from = f1_hz,
+    names_glue = "f1_{vowel}_hz"
+  ) |>
+  mutate(difference_hz = f1_i_hz - f1_I_hz)
+
+stopifnot(nrow(paired_f1) == 45, !anyNA(paired_f1$difference_hz))
 ```
 
 ### 1.2 Visualize vowel space
@@ -72,28 +93,37 @@ Here $d_s$ is the observed difference for speaker $s$.
 The **F1–F2 vowel space** provides an acoustic representation of vowel quality. Plot F2 on the horizontal axis and F1 on the vertical axis, with both axes reversed to mirror the conventional articulatory vowel space. Use the complete adult-male subset, not only /i/ and /ɪ/.
 
 ```{r}
-# Classic F1-F2 vowel plot with inverted axes.
-# 1. Filter to adult men.
-# 2. Map f2_hz to x and f1_hz to y.
-# 3. Color points by vowel.
-# 4. Add one ellipse per vowel with stat_ellipse(level = .68).
-# 5. Reverse both axes and label both measurements in Hz.
+ggplot(adult_men, aes(x = f2_hz, y = f1_hz, color = vowel)) +
+  geom_point(alpha = .35) +
+  stat_ellipse(level = .68) +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  labs(x = "F2 (Hz)", y = "F1 (Hz)", color = "Vowel")
 ```
+
+The ellipse summarizes the center and spread of each vowel cloud under a bivariate normal approximation. It is a descriptive layer, not a confidence region for a vowel mean.
 
 ### 1.3 Summarize the differences
 
 Calculate the number of speakers, the mean, the standard deviation, the median, and the number of negative, zero, and positive differences. Plot the differences with zero marked.
 
 ```{r}
-# Descriptive statistics.
-# 1. Count the speaker pairs.
-# 2. Calculate the mean, standard deviation, and median of difference_hz.
-# 3. Count negative, zero, and positive differences.
+difference_summary <- paired_f1 |>
+  summarize(
+    speaker_count = n(),
+    mean_difference_hz = ___,
+    sd_difference_hz = ___,
+    median_difference_hz = ___,
+    negative_count = ___,
+    zero_count = ___,
+    positive_count = ___
+  )
+difference_summary
 
-# Plot the paired differences.
-# 1. Put one point at each observed difference.
-# 2. Mark zero with a reference line.
-# 3. Label the x-axis with the subtraction order and units.
+ggplot(paired_f1, aes(x = difference_hz)) +
+  geom_dotplot(binwidth = 5) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = "F1 difference: /i/ minus /ɪ/ (Hz)", y = "Count")
 ```
 
 Report the requested values in the subtraction order /i/ minus /ɪ/.
@@ -118,15 +148,36 @@ Review [the Student t distribution](../../random-variables-and-distributions/stu
 
 ### 2.1 Derive the estimator and its standard error
 
-Let $S$ be the number of speakers and $\overline D=S^{-1}\sum_{s=1}^{S}D_s$. Use [linearity of expectation](../../random-variables-and-distributions/linearity-of-expectation.qmd) and independence to derive $\mathbb E[\overline D]$ and $\operatorname{Var}(\overline D)$. Then replace $\sigma_D$ with the sample standard deviation $S_D$ to obtain the estimated standard error.
+Let $S$ be the number of speakers and $\overline D=S^{-1}\sum_{s=1}^{S}D_s$. Assume that $D_1,\ldots,D_S$ are independent and identically distributed with mean $\mu_D$ and variance $\sigma_D^2$.
 
-**Target:** derive $\mathbb E[\overline D]=\mu_D$, $\operatorname{Var}(\overline D)=\sigma_D^2/S$, and $\widehat{\operatorname{SE}}(\overline D)=S_D/\sqrt S$.
+#### Step 1: expectation
 
-**Your LaTeX**
+[Linearity of expectation](../../random-variables-and-distributions/linearity-of-expectation.qmd) moves the expectation through the finite sum. Replace each $\mathbb E[D_s]$ with $\mu_D$, then simplify. Complete one line.
+
+$$
+\mathbb E[\overline D]
+=\frac{1}{S}\sum_{s=1}^{S}\mathbb E[D_s]
+=\text{enter the simplification}.
+$$
+
+#### Step 2: variance
+
+Independence allows the variance of the sum to become the sum of the variances. Replace each $\operatorname{Var}(D_s)$ with $\sigma_D^2$, then simplify. Complete one line.
+
+$$
+\operatorname{Var}(\overline D)
+=\frac{1}{S^2}\sum_{s=1}^{S}\operatorname{Var}(D_s)
+=\text{enter the simplification}.
+$$
+
+#### Step 3: estimated standard error
+
+Take the square root of the variance from Step 2. Then replace the unknown $\sigma_D$ with the sample standard deviation $S_D$. Complete two lines.
 
 $$
 \begin{aligned}
-&\text{Enter the three derivations here.}
+\operatorname{SE}(\overline D)&=\text{enter the population standard error},\\
+\widehat{\operatorname{SE}}(\overline D)&=\text{enter the estimated standard error}.
 \end{aligned}
 $$
 
@@ -134,37 +185,49 @@ $$
 
 Standardize the difference between $\overline D$ and the null value. Because $\sigma_D$ is estimated by $S_D$, the null reference distribution is a [Student t distribution](../../random-variables-and-distributions/student-t-distribution.qmd) with $S-1$ degrees of freedom.
 
-**Target:** derive the random statistic $\mathcal T$ and its observed value $t_{\mathrm{obs}}$.
+#### Step 1: random statistic
+
+Insert the null value $0$ in the numerator and the estimated standard error from Step 3 in the denominator. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
-\mathcal T&=\text{enter the random statistic},\\
-t_{\mathrm{obs}}&=\text{enter the statistic as a function of }\overline d,s_d,\text{ and }S.
-\end{aligned}
+\mathcal T=\text{enter the standardized random statistic}.
+$$
+
+#### Step 2: observed statistic
+
+Replace the random quantities $\overline D$ and $S_D$ with their observed values $\overline d$ and $s_d$. Complete one line.
+
+$$
+t_{\mathrm{obs}}=\text{enter the statistic as a function of }\overline d,s_d,\text{ and }S.
 $$
 
 ### 2.3 Derive the two-sided p value
 
 Define the event containing null outcomes at least as far from zero as the observed statistic. Use full set-builder notation. Then use the cumulative distribution function $F_{t_{S-1}}$ to write its probability.
 
-**Target:** define $B_{\mathcal T}$ and derive $\mathbb P_0(B_{\mathcal T})=2[1-F_{t_{S-1}}(|t_{\mathrm{obs}}|)]$.
+#### Step 1: two-sided event
+
+Use an absolute-value comparison so that the event contains both tails. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
-B_{\mathcal T}&=\{\omega\in\Omega\mid\text{enter the two-sided condition}\},\\
-\mathbb P_0(B_{\mathcal T})&=\text{enter the tail probability}.
-\end{aligned}
+B_{\mathcal T}=\{\omega\in\Omega\mid\text{enter the two-sided condition}\}.
+$$
+
+#### Step 2: event probability
+
+Symmetry makes the two tail probabilities equal. Write twice the upper-tail probability in terms of $F_{t_{S-1}}$. Complete one line.
+
+$$
+\mathbb P_0(B_{\mathcal T})=\text{enter the two-sided tail probability}.
 $$
 
 ### 2.4 Derive the confidence interval
 
-A 95% [confidence interval](../../statistical-inference/confidence-intervals.qmd) is obtained by inverting the central 95% t reference region.
-
-**Target:** write the lower and upper endpoints as functions of $\overline d$, $s_d$, $S$, and $t_{S-1,.975}$.
+A 95% [confidence interval](../../statistical-inference/confidence-intervals.qmd) is obtained by inverting the central 95% t reference region. Subtract the critical value times the estimated standard error for the lower endpoint and add it for the upper endpoint. Complete two lines.
 
 **Your LaTeX**
 
@@ -180,24 +243,40 @@ $$
 Implement the paired t-test calculation from scratch to verify R's `t.test()` output. Without calling `t.test()`, calculate $\overline d$, $s_d$, the estimated standard error, $t_{\mathrm{obs}}$, the two-sided p value, and the 95% confidence interval.
 
 ```{r}
-# YOUR CODE HERE
-# Implement the paired t-test.
-#
-# Steps:
-# 1. Extract the speaker-level differences.
-# 2. Compute the mean, standard deviation, and number of differences.
-# 3. Compute the estimated standard error.
-# 4. Compute the t statistic.
-# 5. Compute the degrees of freedom.
-# 6. Compute the two-sided p value using pt().
-# 7. Compute the confidence-interval endpoints using qt().
+difference_vector <- paired_f1$difference_hz
+speaker_count <- length(difference_vector)
+mean_difference <- ___
+sd_difference <- ___
+estimated_se <- ___
+degrees_of_freedom <- ___
+t_observed <- ___
+
+# pt(-abs(t_observed), ...) evaluates one tail. Double it.
+p_value <- 2 * pt(-abs(t_observed), df = degrees_of_freedom)
+
+t_critical <- qt(.975, df = degrees_of_freedom)
+confidence_interval <- mean_difference + c(-1, 1) * ___
+
+c(
+  estimate = mean_difference,
+  standard_error = estimated_se,
+  t = t_observed,
+  df = degrees_of_freedom,
+  p_value = p_value,
+  lower_95 = confidence_interval[1],
+  upper_95 = confidence_interval[2]
+)
 ```
 
 Verify the result with `t.test(..., paired = TRUE)`.
 
 ```{r}
-# Compare the manual estimate, statistic, degrees of freedom, p value,
-# and confidence interval with t.test(..., paired = TRUE).
+software_result <- t.test(
+  paired_f1$f1_i_hz,
+  paired_f1$f1_I_hz,
+  paired = TRUE
+)
+software_result
 ```
 
 Report $\overline d$, the interval, $t_{\mathrm{obs}}$, the degrees of freedom, and the p value.
@@ -211,12 +290,21 @@ Replace this sentence with the requested test result.
 Select another pair of vowels and test whether their mean F1 or F2 values differ. Use the adult-male measurements and preserve the paired speaker design. State the two vowels, the acoustic measurement, the subtraction order, and the hypotheses. Construct the speaker-level differences, calculate the paired t test from the differences, and verify it with `t.test(..., paired = TRUE)`.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Select two vowels and either f1_hz or f2_hz.
-# 2. Join their measurements by speaker_id and speaker_type.
-# 3. Calculate one difference per speaker.
-# 4. Plot the differences with zero marked.
-# 5. Calculate and verify the paired t test.
+vowel_1 <- "___"
+vowel_2 <- "___"
+measurement <- "___"  # Enter either "f1_hz" or "f2_hz".
+
+chosen_pair <- adult_men |>
+  filter(vowel %in% c(vowel_1, vowel_2)) |>
+  select(speaker_id, speaker_type, vowel, all_of(measurement)) |>
+  pivot_wider(names_from = vowel, values_from = all_of(measurement))
+
+# Subtract in the declared order.
+chosen_pair$difference <-
+  chosen_pair[[vowel_1]] - chosen_pair[[vowel_2]]
+
+# Use chosen_pair$difference for the plot and manual calculation.
+# Verify with t.test(chosen_pair$difference, mu = 0).
 ```
 
 Report the estimate, 95% confidence interval, t statistic, degrees of freedom, and p value. Relate the sign of the estimate to the stated subtraction order and the selected formant.
@@ -242,27 +330,50 @@ where $\mathbb I(d_s>0)$ equals one when $d_s>0$ and zero otherwise. Under the s
 Use `rank(abs(difference_hz), ties.method = "average")` to calculate $r_s$. Calculate $w_+$ from the ranks and signs. Display `speaker_id`, `difference_hz`, the absolute difference, its rank, and its sign indicator.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Remove zero differences, if any.
-# 2. Calculate abs(difference_hz).
-# 3. Rank the absolute differences with average ranks for ties.
-# 4. Create the indicator for a positive difference.
-# 5. Multiply each rank by its indicator and sum to obtain w_plus.
-# 6. Display the speaker, difference, magnitude, rank, and indicator.
+signed_ranks <- paired_f1 |>
+  filter(difference_hz != 0) |>
+  mutate(
+    absolute_difference = abs(difference_hz),
+    absolute_rank = rank(absolute_difference, ties.method = "average"),
+    positive_indicator = as.integer(difference_hz > 0),
+    positive_rank = ___
+  )
+
+w_plus <- sum(___)
+
+signed_ranks |>
+  select(
+    speaker_id,
+    difference_hz,
+    absolute_difference,
+    absolute_rank,
+    positive_indicator
+  )
+w_plus
 ```
 
 ### 3.2 Derive the null mean
 
-Let $B_s:\Omega\to\{0,1\}$ be the random positive-sign indicator under the null model. Then $\mathbb E[B_s]=.5$ and $\mathcal W_+=\sum_{s=1}^{S}r_sB_s$. Use linearity of expectation and $\sum_{s=1}^{S}r_s=S(S+1)/2$ to derive the null mean.
+Let $B_s:\Omega\to\{0,1\}$ be the random positive-sign indicator under the null model. Then $\mathbb E[B_s]=.5$ and $\mathcal W_+=\sum_{s=1}^{S}r_sB_s$.
 
-**Target:** derive $\mathbb E_0[\mathcal W_+]=S(S+1)/4$.
+#### Step 1: move the expectation through the sum
+
+Use linearity of expectation and replace $\mathbb E_0[B_s]$ with $.5$. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
-\mathbb E_0[\mathcal W_+]&=\text{enter the derivation here}.
-\end{aligned}
+\mathbb E_0[\mathcal W_+]
+=\sum_{s=1}^{S}r_s\mathbb E_0[B_s]
+=\text{enter the expression after substitution}.
+$$
+
+#### Step 2: sum the ranks
+
+Use $\sum_{s=1}^{S}r_s=S(S+1)/2$ and simplify. Complete one line.
+
+$$
+\mathbb E_0[\mathcal W_+]=\text{enter the null mean}.
 $$
 
 ### 3.3 Implement the test
@@ -270,8 +381,17 @@ $$
 Run `wilcox.test()` on the paired F1 measurements with `paired = TRUE`, `alternative = "two.sided"`, `exact = FALSE`, and `correct = FALSE`. The observed integer-valued F1 measurements produce tied absolute differences, so this call uses the large-sample signed-rank reference approximation rather than exact enumeration.
 
 ```{r}
-# Run the paired Wilcoxon signed-rank test.
-# Compare the returned V statistic with the manual value of w_plus.
+signed_rank_result <- wilcox.test(
+  paired_f1$f1_i_hz,
+  paired_f1$f1_I_hz,
+  paired = TRUE,
+  alternative = "two.sided",
+  exact = FALSE,
+  correct = FALSE
+)
+
+signed_rank_result
+c(manual_w_plus = w_plus, software_v = unname(signed_rank_result$statistic))
 ```
 
 Report $w_+$, the p value, and the null hypothesis tested by the signed-rank procedure.
@@ -296,18 +416,32 @@ Let $\pi_D=\mathbb P(Z_s=1)$. Test $H_0:\pi_D=.5$ against $H_1:\pi_D>.5$. There 
 
 ### 4.1 Derive the null distribution and p value
 
-Let $\mathcal K=\sum_{s=1}^{S}Z_s$ and $k_{\mathrm{obs}}=\sum_{s=1}^{S}z_s$. Use the [binomial distribution](../../random-variables-and-distributions/binomial-distribution.qmd) to derive the null distribution of $\mathcal K$. Then define the upper-tail event and expand its probability as a sum.
+Let $\mathcal K=\sum_{s=1}^{S}Z_s$ and $k_{\mathrm{obs}}=\sum_{s=1}^{S}z_s$.
 
-**Target:** derive $\mathcal K\mid H_0\sim\operatorname{Binomial}(S,.5)$ and $\mathbb P_0(\{\omega\in\Omega\mid\mathcal K(\omega)\ge k_{\mathrm{obs}}\})$.
+#### Step 1: null distribution
+
+Under $H_0$, the $Z_s$ are independent $\operatorname{Bernoulli}(.5)$ variables. Use the [binomial distribution](../../random-variables-and-distributions/binomial-distribution.qmd) for their sum. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
-\mathcal K\mid H_0&\sim\text{enter the null distribution},\\
-B_{\mathcal K}&=\{\omega\in\Omega\mid\text{enter the upper-tail condition}\},\\
-\mathbb P_0(B_{\mathcal K})&=\text{enter the binomial sum}.
-\end{aligned}
+\mathcal K\mid H_0\sim\text{enter the null distribution}.
+$$
+
+#### Step 2: upper-tail event
+
+The alternative predicts more negative differences than the null. Define the event containing counts at least as large as $k_{\mathrm{obs}}$. Complete one line.
+
+$$
+B_{\mathcal K}=\{\omega\in\Omega\mid\text{enter the upper-tail condition}\}.
+$$
+
+#### Step 3: exact probability
+
+Insert the binomial probability mass function and sum from the observed count through $S$. Complete one line.
+
+$$
+\mathbb P_0(B_{\mathcal K})=\text{enter the binomial sum from }k_{\mathrm{obs}}\text{ to }S.
 $$
 
 ### 4.2 Implement the test
@@ -315,13 +449,33 @@ $$
 Calculate $k_{\mathrm{obs}}$, $k_{\mathrm{obs}}/S$, and the upper-tail probability with `pbinom(..., lower.tail = FALSE)`. Verify the calculation with `binom.test(..., alternative = "greater")` and report the one-sided 95% [exact confidence bound](../../statistical-inference/exact-binomial-intervals.qmd).
 
 ```{r}
-# YOUR CODE HERE
-# 1. Convert each difference to the indicator I(difference_hz < 0).
-# 2. Sum the indicators to obtain k_observed.
-# 3. Divide by the number of speakers to obtain the observed proportion.
-# 4. Compute the upper-tail probability using pbinom().
-# 5. Verify the calculation with binom.test().
-# 6. Extract the one-sided 95% confidence bound.
+negative_indicator <- as.integer(paired_f1$difference_hz < 0)
+k_observed <- sum(negative_indicator)
+speaker_count <- length(negative_indicator)
+observed_proportion <- k_observed / speaker_count
+
+# pbinom(q, lower.tail = FALSE) returns P(K > q).
+# Setting q = k_observed - 1 therefore returns P(K >= k_observed).
+p_value <- pbinom(
+  k_observed - 1,
+  size = speaker_count,
+  prob = .5,
+  lower.tail = FALSE
+)
+
+sign_result <- binom.test(
+  k_observed,
+  speaker_count,
+  p = .5,
+  alternative = "greater"
+)
+
+c(
+  negative_count = k_observed,
+  observed_proportion = observed_proportion,
+  lower_95 = sign_result$conf.int[1],
+  p_value = p_value
+)
 ```
 
 Report the sign count, the observed proportion, the confidence bound, and the p value.
@@ -349,13 +503,14 @@ Review [the hypergeometric distribution](../../random-variables-and-distribution
 Load `data/unimorph_genitive_lexemes.csv`. Verify that `lemma` is unique. Examine the levels and marginal distributions of `syllable_class`, `ends_in_sibilant`, and `es_attested`.
 
 ```{r}
-# Load genitive allomorphy data.
+genitive_lexemes <- read.csv("data/unimorph_genitive_lexemes.csv")
 
-# Examine the data.
+str(genitive_lexemes)
+stopifnot(!anyDuplicated(genitive_lexemes$lemma))
 
-# Verify one row per lemma.
-
-# Display the syllable-class, sibilant, and -es-attestation distributions.
+count(genitive_lexemes, syllable_class)
+count(genitive_lexemes, ends_in_sibilant)
+count(genitive_lexemes, es_attested)
 ```
 
 ### 5.2 Test syllable count and genitive *-es* attestation
@@ -363,14 +518,29 @@ Load `data/unimorph_genitive_lexemes.csv`. Verify that `lemma` is unique. Examin
 In German genitive allomorphy, is there an association between syllable class and the attestation of an *-es* form? Construct the two-by-two table for `syllable_class` by `es_attested`, with `monosyllabic` before `polysyllabic` and `TRUE` before `FALSE`. Plot the table with a mosaic plot or grouped bar chart. Run `fisher.test()` and calculate the sample odds ratio. With this order, the odds ratio places the odds of *-es* attestation among monosyllabic lexemes in the numerator and the corresponding odds among polysyllabic lexemes in the denominator.
 
 ```{r}
-# YOUR CODE HERE
-# a) Create a contingency table for syllable_class by es_attested.
+syllable_table <- with(
+  genitive_lexemes,
+  table(
+    factor(
+      syllable_class,
+      levels = c("monosyllabic", "polysyllabic")
+    ),
+    factor(es_attested, levels = c(TRUE, FALSE))
+  )
+)
+syllable_table
+mosaicplot(syllable_table, color = TRUE)
 
-# b) Visualize the table using a mosaic plot or grouped bar chart.
+syllable_fisher <- fisher.test(syllable_table)
 
-# c) Conduct Fisher's exact test.
+a_syllable <- syllable_table[1, 1]
+b_syllable <- syllable_table[1, 2]
+c_syllable <- syllable_table[2, 1]
+d_syllable <- syllable_table[2, 2]
+syllable_sample_or <- ___
 
-# d) Compute the sample odds ratio in the stated orientation.
+syllable_fisher
+syllable_sample_or
 ```
 
 Report the observed table, sample odds ratio, conditional estimate and interval returned by `fisher.test()`, and p value.
@@ -384,11 +554,17 @@ Replace this sentence with the requested syllable-class result.
 Is there an association between the string-based sibilant classification and the attestation of an *-es* form? Construct the table for `ends_in_sibilant` by `es_attested`, with the character value `"True"` before `"False"` in the rows and the logical value `TRUE` before `FALSE` in the columns. With this order, the sample odds ratio places the odds of *-es* attestation among sibilant-final lexemes in the numerator and the corresponding odds among other lexemes in the denominator.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Set explicit "True" and "False" row levels.
-# 2. Set explicit TRUE and FALSE column levels.
-# 3. Construct the two-by-two contingency table.
-# 4. Display all four cells and both sets of margins.
+sibilant_table <- with(
+  genitive_lexemes,
+  table(
+    factor(ends_in_sibilant, levels = c("True", "False")),
+    factor(es_attested, levels = c(TRUE, FALSE))
+  )
+)
+
+sibilant_table
+rowSums(sibilant_table)
+colSums(sibilant_table)
 ```
 
 Report the four cells and both sets of margins.
@@ -403,14 +579,30 @@ Replace this sentence with the observed sibilant table and its margins.
 
 Derive the probability of the observed table by counting the ways to select its first-column total from the two rows and dividing by the number of selections from all observations.
 
-**Target:** derive $\mathbb P_0(A=a)$ as a ratio of binomial coefficients containing $a,b,c,d$.
+#### Step 1: selections within each row
+
+The first row contains $a+b$ observations and contributes $a$ observations to the first column. The second row contains $c+d$ observations and contributes $c$. Write the product of the two counts. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
-\mathbb P_0(A=a)&=\text{enter the ratio of binomial coefficients}.
-\end{aligned}
+N_{\mathrm{observed}}=\text{enter the product of two binomial coefficients}.
+$$
+
+#### Step 2: all selections with the fixed margins
+
+There are $a+b+c+d$ observations in total, and the first column contains $a+c$ of them. Write the number of possible first-column selections. Complete one line.
+
+$$
+N_{\mathrm{all}}=\text{enter one binomial coefficient}.
+$$
+
+#### Step 3: conditional probability
+
+Divide the count in Step 1 by the count in Step 2. Complete one line.
+
+$$
+\mathbb P_0(A=a)=\text{enter }N_{\mathrm{observed}}/N_{\mathrm{all}}\text{ in terms of }a,b,c,d.
 $$
 
 ### 5.5 Implement the sibilant test
@@ -418,13 +610,31 @@ $$
 Calculate the sample odds ratio $ad/(bc)$ and the observed-table probability with `dhyper()`. Run `fisher.test()` to obtain the two-sided p value and conditional confidence interval. Fisher's two-sided p value sums the probabilities of all margin-compatible tables whose null probabilities are no greater than the observed table's probability.
 
 ```{r}
-# YOUR CODE HERE
-# 1. Extract a, b, c, and d in the declared row and column order.
-# 2. Calculate the sample odds ratio ad / bc.
-# 3. Calculate the observed-table probability using dhyper().
-# 4. Conduct Fisher's exact test.
-# 5. Extract the conditional estimate, confidence interval, and p value.
-# 6. Compare the sample odds ratio with the syllable-class odds ratio.
+a <- sibilant_table[1, 1]
+b <- sibilant_table[1, 2]
+c_cell <- sibilant_table[2, 1]
+d_cell <- sibilant_table[2, 2]
+
+sibilant_sample_or <- ___
+
+# dhyper(x, m, n, k) uses the upper-left cell, the two row totals,
+# and the first-column total in that order.
+observed_table_probability <- dhyper(
+  x = a,
+  m = a + b,
+  n = c_cell + d_cell,
+  k = a + c_cell
+)
+
+sibilant_fisher <- fisher.test(sibilant_table)
+
+tibble(
+  predictor = c("syllable class", "sibilant ending"),
+  sample_odds_ratio = c(syllable_sample_or, sibilant_sample_or)
+)
+
+observed_table_probability
+sibilant_fisher
 ```
 
 Report the odds-ratio orientation, the sample odds ratio, the conditional estimate returned by `fisher.test()`, its confidence interval, and the p value. Put the sibilant and syllable-class sample odds ratios in the same table.
@@ -439,23 +649,107 @@ A [sampling distribution](../../statistical-inference/properties-of-estimators.q
 
 For each $n\in\{12,20,40,80,120\}$, draw 500 simple random samples without replacement. Use one recorded seed. For every sample, record the odds ratio, Fisher p value, confidence-interval endpoints, whether any cell is zero, and whether either margin is zero. Use explicit factor levels when constructing every table.
 
+A **zero cell** is a table entry equal to zero. A **zero margin** occurs when an entire row or column is absent. `fisher.test()` should not be called when a margin is zero. Return `NA_real_` for its p value and interval in that case. A sample odds ratio may be zero or infinite when a cell is zero. Retain that value and exclude it only from summaries that require a finite logarithm.
+
 ```{r}
-# YOUR CODE HERE
-# 1. Write a function that accepts a sample size and replicate identifier.
-# 2. Draw lexemes without replacement.
-# 3. Construct the sibilant by -es-attestation table with explicit levels.
-# 4. Record zero margins and zero cells.
-# 5. Record the odds ratio, Fisher p value, and interval endpoints.
-# 6. Return one tidy row.
-# 7. Run 500 replicates at every requested sample size.
+genitive_population <- read.csv(
+  "data/unimorph_genitive_lexeme_population.csv"
+)
+
+analyze_lexeme_sample <- function(sample_size, replicate_id) {
+  sampled_lexemes <- genitive_population |>
+    slice_sample(n = sample_size, replace = FALSE)
+
+  sampled_table <- with(
+    sampled_lexemes,
+    table(
+      factor(ends_in_sibilant, levels = c("True", "False")),
+      factor(es_attested, levels = c(TRUE, FALSE))
+    )
+  )
+
+  zero_cell <- any(sampled_table == 0)
+  zero_margin <- any(rowSums(sampled_table) == 0) ||
+    any(colSums(sampled_table) == 0)
+
+  a <- sampled_table[1, 1]
+  b <- sampled_table[1, 2]
+  c_cell <- sampled_table[2, 1]
+  d_cell <- sampled_table[2, 2]
+
+  # Preserve zero and infinite sample odds ratios.
+  sample_or <- if (b * c_cell == 0) {
+    if (a * d_cell > 0) Inf else NA_real_
+  } else {
+    ___
+  }
+
+  if (zero_margin) {
+    fisher_p <- NA_real_
+    ci_lower <- NA_real_
+    ci_upper <- NA_real_
+  } else {
+    sampled_fisher <- fisher.test(sampled_table)
+    fisher_p <- sampled_fisher$p.value
+    ci_lower <- sampled_fisher$conf.int[1]
+    ci_upper <- sampled_fisher$conf.int[2]
+  }
+
+  tibble(
+    sample_size = sample_size,
+    replicate_id = replicate_id,
+    zero_cell = zero_cell,
+    zero_margin = zero_margin,
+    odds_ratio = sample_or,
+    fisher_p = fisher_p,
+    ci_lower = ci_lower,
+    ci_upper = ci_upper
+  )
+}
+
+set.seed(___)
+sampling_plan <- expand_grid(
+  sample_size = c(12, 20, 40, 80, 120),
+  replicate_id = seq_len(500)
+)
+
+sampling_results <- bind_rows(Map(
+  analyze_lexeme_sample,
+  sampling_plan$sample_size,
+  sampling_plan$replicate_id
+))
 ```
 
 For each $n$, calculate the proportion of samples with a zero cell, the proportion with a zero margin, the proportion with a nonfinite odds ratio, the median finite log odds ratio, and the median finite confidence-interval width on the log scale. Plot the sampling distributions of the finite log odds ratios by $n$.
 
 ```{r}
-# 1. Group the replicate results by sample size.
-# 2. Calculate every requested summary.
-# 3. Plot the finite log odds ratios by sample size.
+sampling_summary <- sampling_results |>
+  mutate(
+    finite_log_or = is.finite(odds_ratio) & odds_ratio > 0,
+    finite_log_interval =
+      is.finite(ci_lower) & ci_lower > 0 &
+      is.finite(ci_upper) & ci_upper > 0
+  ) |>
+  group_by(sample_size) |>
+  summarize(
+    zero_cell_rate = mean(zero_cell),
+    zero_margin_rate = mean(zero_margin),
+    nonfinite_or_rate = mean(!finite_log_or),
+    median_log_or = median(log(odds_ratio[finite_log_or])),
+    median_log_interval_width = median(
+      log(ci_upper[finite_log_interval]) -
+        log(ci_lower[finite_log_interval])
+    ),
+    .groups = "drop"
+  )
+
+sampling_summary
+
+sampling_results |>
+  filter(is.finite(odds_ratio), odds_ratio > 0) |>
+  ggplot(aes(x = factor(sample_size), y = log(odds_ratio))) +
+  geom_boxplot() +
+  labs(x = "Lexemes sampled", y = "Finite log sample odds ratio")
 ```
 
 Report the summary table.
@@ -479,45 +773,91 @@ Review [the chi-squared test of independence](../../statistical-inference/chi-sq
 Load `data/unimorph_plural_lexemes.csv`. The relevant columns are `lemma`, `gender`, and `plural_suffix`. Construct the observed three-by-five table with gender ordered `FEM`, `MASC`, `NEUT` and suffix ordered `e`, `en`, `er`, `s`, `ø`.
 
 ```{r}
-# Load plural suffix data.
+plural_lexemes <- read.csv("data/unimorph_plural_lexemes.csv")
+stopifnot(!anyDuplicated(plural_lexemes$lemma))
 
-# Examine the data and verify one row per lemma.
-
-# Set the required gender and suffix factor levels.
-
-# Create the gender by plural-suffix contingency table.
+plural_table <- with(
+  plural_lexemes,
+  table(
+    factor(gender, levels = c("FEM", "MASC", "NEUT")),
+    factor(plural_suffix, levels = c("e", "en", "er", "s", "ø"))
+  )
+)
+plural_table
 ```
 
 ### 6.1 Derive the expected counts
 
 Under independence, the expected count in cell $(i,j)$ is determined by its row total, column total, and the grand total. Follow the derivation in the [chi-squared-test notes](../../statistical-inference/chi-squared-test.qmd).
 
-**Target:** derive $E_{ij}=O_{i+}O_{+j}/O_{++}$ and substitute the observed margins for the feminine-by-*en* cell.
+#### Step 1: independence probability
+
+Under the null hypothesis, the joint cell probability is the product of its row and column probabilities. Replace both probabilities with the corresponding observed marginal proportions. Complete one line.
 
 **Your LaTeX**
 
 $$
-\begin{aligned}
-E_{ij}&=\text{enter the general derivation},\\
-E_{\mathrm{FEM},\mathrm{en}}&=\text{enter the numerical substitution and result}.
-\end{aligned}
+\widehat p_{ij}
+=\widehat p_{i+}\widehat p_{+j}
+=\text{enter the product of observed marginal proportions}.
+$$
+
+#### Step 2: expected count
+
+Multiply the probability in Step 1 by the grand total $O_{++}$ and cancel one factor of $O_{++}$. Complete one line.
+
+$$
+E_{ij}=\text{enter the expected-count formula}.
+$$
+
+#### Step 3: feminine-by-*en* cell
+
+Read the feminine row total, the *-en* column total, and the grand total from `plural_table`. Substitute those three numbers. Complete one line.
+
+$$
+E_{\mathrm{FEM},\mathrm{en}}
+=\text{enter the numerical substitution and result}.
 $$
 
 ### 6.2 Derive the statistic and reference distribution
 
-Pearson's statistic sums the standardized squared difference between every observed and expected count. If the table has $R$ rows and $C$ columns, estimating the margins leaves $(R-1)(C-1)$ degrees of freedom.
+Pearson's statistic sums the standardized squared difference between every observed and expected count.
 
-**Target:** write $\mathcal X^2$, derive $\nu=(R-1)(C-1)$, define the upper-tail event in full set-builder notation, and write its probability under $\chi^2_\nu$.
+#### Step 1: statistic
+
+Sum the cell contribution $(O_{ij}-E_{ij})^2/E_{ij}$ over all rows and columns. Complete one line.
 
 **Your LaTeX**
 
 $$
+\mathcal X^2=\text{enter Pearson's statistic}.
+$$
+
+#### Step 2: degrees of freedom
+
+An $R\times C$ table has $RC$ cells. Fixed row and column margins leave $(R-1)(C-1)$ free cells. Substitute $R=3$ and $C=5$. Complete two lines.
+
+$$
 \begin{aligned}
-\mathcal X^2&=\text{enter Pearson's statistic},\\
-\nu&=\text{enter the degrees of freedom},\\
-B_{\mathcal X^2}&=\{\omega\in\Omega\mid\text{enter the upper-tail condition}\},\\
-\mathbb P_0(B_{\mathcal X^2})&=\text{enter the chi-squared tail probability}.
+\nu&=(R-1)(C-1),\\
+\nu&=\text{enter the numerical degrees of freedom}.
 \end{aligned}
+$$
+
+#### Step 3: upper-tail event
+
+Larger values of the statistic represent larger departures from independence. Complete one line.
+
+$$
+B_{\mathcal X^2}=\{\omega\in\Omega\mid\text{enter the upper-tail condition}\}.
+$$
+
+#### Step 4: reference probability
+
+Write the upper-tail probability using the cumulative distribution function $F_{\chi^2_\nu}$. Complete one line.
+
+$$
+\mathbb P_0(B_{\mathcal X^2})=\text{enter the chi-squared tail probability}.
 $$
 
 ### 6.3 Implement the test
@@ -525,24 +865,44 @@ $$
 Compute the chi-squared statistic manually to verify R's output. Without calling `chisq.test()`, calculate the complete expected table, every cell contribution, $x^2_{\mathrm{obs}}$, the degrees of freedom, and the p value. Verify that every expected count is at least five.
 
 ```{r}
-# YOUR CODE HERE
-# Steps:
-# 1. Create the contingency table.
-# 2. Compute expected counts for each cell.
-# 3. Compute (O - E)^2 / E for each cell.
-# 4. Sum the contributions to get the chi-squared statistic.
-# 5. Compute the degrees of freedom.
-# 6. Compute the p value using pchisq().
+row_totals <- rowSums(plural_table)
+column_totals <- colSums(plural_table)
+grand_total <- sum(plural_table)
+
+expected_counts <- outer(row_totals, column_totals) / ___
+cell_contributions <- ___
+x_squared_observed <- sum(cell_contributions)
+degrees_of_freedom <- ___
+p_value <- pchisq(
+  x_squared_observed,
+  df = degrees_of_freedom,
+  lower.tail = FALSE
+)
+
+expected_counts
+cell_contributions
+c(
+  x_squared = x_squared_observed,
+  df = degrees_of_freedom,
+  p_value = p_value,
+  minimum_expected = min(expected_counts)
+)
 ```
 
 Verify the statistic, degrees of freedom, p value, and expected table with `chisq.test(..., correct = FALSE)`. Calculate the Pearson residuals $(O_{ij}-E_{ij})/\sqrt{E_{ij}}$ and identify the two cells with the largest absolute residuals.
 
 ```{r}
-# Compare the manual result with chisq.test() output.
+software_result <- chisq.test(plural_table, correct = FALSE)
+software_result
 
-# Check the expected-count condition.
+stopifnot(all(expected_counts >= 5))
 
-# Calculate and sort the Pearson residuals by absolute magnitude.
+pearson_residuals <- ___
+residual_table <- as.data.frame(as.table(pearson_residuals)) |>
+  mutate(absolute_residual = abs(Freq)) |>
+  arrange(desc(absolute_residual))
+
+slice_head(residual_table, n = 2)
 ```
 
 Report $x^2_{\mathrm{obs}}$, the degrees of freedom, the p value, the minimum expected count, and the two largest absolute residuals with their signs.
