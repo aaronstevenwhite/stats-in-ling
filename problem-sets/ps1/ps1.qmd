@@ -1,10 +1,469 @@
 ---
-title: "Problem Set 1: Paired acoustic measurements"
-toc: false
-course-release-id: ps1
-course-release-placeholder: true
+title: "Problem Set 1: Frequentist hypothesis testing"
+subtitle: "Vowel acoustics and German morphology"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
 ---
 
-PS1 uses Hillenbrand vowel measurements to introduce inference for paired acoustic measurements and speaker-level resampling.
+## The question
 
-**Available Wednesday, September 23, 2026.**
+The first formant (F1) is an acoustic correlate of vowel height. Higher vowels tend to have lower F1. We will ask whether adult men in the Hillenbrand vowel sample produced /i/ as in *heed* with lower F1 than /ɪ/ as in *hid*.
+
+Every recorded speaker produced both vowels. Thus speaker identifies a pair, and the within-speaker F1 difference carries the vowel contrast. A paired t procedure tests a claim about the population mean difference. An exact binomial sign procedure tests a claim about the population probability that the difference has the predicted direction.
+
+The assignment then turns from a continuous response to categorical morphology. A Fisher exact procedure tests whether stem-final sibilance and the attestation of a genitive *-es* form are independent in the German UniMorph table. A chi-squared procedure tests whether grammatical gender and plural-suffix class are independent. These four procedures answer different questions, even when their p values are calculated from the same general null-hypothesis logic.
+
+By the end of the assignment, you should be able to (i) state a null hypothesis about a named population parameter or independence condition, (ii) calculate and interpret a p value without treating it as a posterior probability, (iii) distinguish exact conditional inference from a large-sample reference approximation, and (iv) locate the cells responsible for an omnibus association.
+
+All eight numbered tasks are required for every student.
+
+::: {.callout-note title="Assignment files"}
+[Download the complete Problem Set 1 package](../../downloads/ps1-assignment.zip){download="ps1-assignment.zip"}. The package contains the assignment source, the README, every data-preparation script, and the redistributable teaching tables.
+
+The same supporting files are available individually:
+
+- [README and setup instructions](README.md)
+- [`prepare_data.R`](scripts/prepare_data.R){download="prepare_data.R"} for the Hillenbrand table
+- [`fetch_unimorph_data.py`](scripts/fetch_unimorph_data.py){download="fetch_unimorph_data.py"} for the pinned UniMorph source
+- [`prepare_unimorph_tables.R`](scripts/prepare_unimorph_tables.R){download="prepare_unimorph_tables.R"} for the lexeme-level tables
+:::
+
+::: {.callout-note title="Reading"}
+Read Hillenbrand, Getty, Clark, and Wheeler (1995), [“Acoustic characteristics of American English vowels”](https://doi.org/10.1121/1.411872). Focus on the adult male sample, recording procedure, and formant measurements. The design matters here because each speaker supplies both observations used in the focal contrast.
+:::
+
+## Notes for this assignment
+
+Use the course notes as you reach each inferential decision.
+
+| Task | Course notes | What the notes supply |
+|---|---|---|
+| 1–2 | [Turning linguistic records into data](../../foundations/linguistic-data.qmd) and [paired observations](../../statistical-inference/paired-observations.qmd) | the measurement unit, pair identifier, and contrast-bearing unit |
+| 3 | [Null hypotheses and test statistics](../../statistical-inference/null-hypotheses-and-test-statistics.qmd) and [inference for a paired mean difference](../../statistical-inference/paired-mean-inference.qmd) | the paired t statistic, its reference distribution, and the distinction between a p value and an effect estimate |
+| 4 | [Bernoulli and categorical variables](../../random-variables-and-distributions/bernoulli-and-categorical-distributions.qmd), [the binomial distribution](../../random-variables-and-distributions/binomial-distribution.qmd), and [exact binomial intervals](../../statistical-inference/exact-binomial-intervals.qmd) | the binary response, exact tail probability, and interval for a population probability |
+| 5 | [Properties of estimators](../../statistical-inference/properties-of-estimators.qmd), [the hypergeometric distribution](../../random-variables-and-distributions/hypergeometric-distribution.qmd), and [Fisher's exact test](../../statistical-inference/fishers-exact-test.qmd) | sampling distributions, the fixed-margin reference distribution, probability ordering, and odds-ratio orientation |
+| 6 | [The chi-squared test of independence](../../statistical-inference/chi-squared-test.qmd) | expected counts, Pearson's statistic, degrees of freedom, signed residuals, and approximation checks |
+| 7–8 | [Populations and samples](../../statistical-inference/populations-and-samples.qmd), [confidence intervals](../../statistical-inference/confidence-intervals.qmd), and [bootstrap confidence intervals](../../statistical-inference/bootstrap-confidence-intervals.qmd) | the generalization target, repeated-sampling interpretation, and speaker-level resampling rule |
+
+[Problem Set 2](../ps2/ps2.qmd) follows the same inferential sequence with different linguistic data. It uses Provo reading times for the continuous targets and Universal Dependencies annotations for the categorical targets. Each frequentist procedure in this assignment has a Bayesian counterpart there.
+
+## Data and source
+
+The acoustic data derive from Hillenbrand, Getty, Clark, and Wheeler's study of American English vowels ([1995, JASA](https://doi.org/10.1121/1.411872)) and are loaded from the [`phonTools::h95` teaching table](https://search.r-project.org/CRAN/refmans/phonTools/html/h95.html). The preparation script retains all 12 vowels for 139 speakers. This assignment uses only the 45 adult men and their /i/ and /ɪ/ productions.
+
+The morphology data derive from the German [UniMorph](https://unimorph.github.io/) paradigm inventory described by [McCarthy et al. (2020)](https://aclanthology.org/2020.lrec-1.483/). The archived extraction script identifies suffixes, counts orthographic vowel groups, and marks a fixed list of stem-final strings as sibilants. These are derived teaching variables rather than linguistic annotations supplied by UniMorph. Tasks 5 and 6 therefore concern the tables produced by those rules.
+
+Generate `data/hillenbrand_vowels.csv` by following the instructions in `README.md`. Then load it.
+
+```{r}
+vowels <- read.csv("data/hillenbrand_vowels.csv")
+head(vowels)
+```
+
+The relevant acoustic columns are:
+
+- `speaker_id`, a unique speaker identifier
+- `speaker_type`, the speaker group
+- `vowel`, the X-SAMPA vowel category
+- `f1_hz`, steady-state F1 in hertz (Hz)
+- `duration_ms`, `f0_hz`, `f2_hz`, and `f3_hz`, measurements not used in the focal analysis
+
+For every task, retain rows for which `speaker_type == "man"` and `vowel` is either `i` or `I`. Do not analyze the other speaker groups.
+
+## Task 1: establish the acoustic design (5 points)
+
+Review [paired observations](../../statistical-inference/paired-observations.qmd), then answer the following questions.
+
+1. State the measurement unit, the pair identifier, and the unit of analysis for the /i/–/ɪ/ contrast.
+2. Verify that each selected speaker has exactly one row for `i` and one row for `I`. Report the number of complete pairs.
+3. Explain why 90 vowel tokens do not provide 90 independent observations of the vowel contrast.
+
+```{r}
+# Select the target observations and verify the speaker-by-vowel counts.
+```
+
+## Task 2: construct the acoustic contrast (5 points)
+
+Create a table with one row per speaker and the columns `f1_i_hz`, `f1_I_hz`, and `difference_hz`, where
+
+$$
+d_s
+=
+\operatorname{F1}_{s,/i/}
+-
+\operatorname{F1}_{s,/ɪ/}.
+$$
+
+Here $d_s$ is the realized difference for speaker $s$. Join the two vowel tables by `speaker_id` and `speaker_type`. Do not rely on their current row order.
+
+```{r}
+# Construct the paired table by joining on the two identifiers.
+```
+
+Plot the 45 differences with a visible zero point. Describe their center, spread, shape, and any observation that might strongly affect the mean. Preserve the subtraction order in every label and interpretation.
+
+```{r}
+# Plot the within-speaker differences.
+```
+
+## Task 3: test the population mean difference (20 points)
+
+Let $D_s:\Omega\to\mathbb{R}$ denote the random within-speaker difference for independent speaker $s$, let $d_s$ denote its observed realization from Task 2, and let $\mu_D=\mathbb{E}[D_s]$. For current purposes, use the sampling model
+
+$$
+D_s\mid\mu_D,\sigma_D
+\sim
+\mathcal{N}(\mu_D,\sigma_D^2).
+$$
+
+Use [the null-hypothesis notes](../../statistical-inference/null-hypotheses-and-test-statistics.qmd) to state the two-sided hypotheses
+
+$$
+H_0:\mu_D=0
+\qquad\text{and}\qquad
+H_1:\mu_D\ne0.
+$$
+
+### Guided derivation of the paired t statistic
+
+Let $S$ denote the number of complete speaker pairs. Work through the following steps on paper before writing R code. Show every equality, and give the named rule used at each arrow.
+
+1. **Define the estimator.** Begin with
+
+   $$
+   \overline D
+   =
+   \frac{1}{S}\sum_{s=1}^{S}D_s.
+   $$
+
+   Write its realized value $\overline d$ in terms of $d_1,\ldots,d_S$.
+
+2. **Derive its expectation.** Apply linearity of expectation to complete
+
+   $$
+   \mathbb{E}[\overline D]
+   =
+   \mathbb{E}\left[
+   \frac{1}{S}\sum_{s=1}^{S}D_s
+   \right]
+   =
+   \frac{1}{S}\sum_{s=1}^{S}\mathbb{E}[D_s]
+   =
+   \mu_D.
+   $$
+
+   Explain why the final equality contains $S$ copies of $\mu_D$.
+
+3. **Derive its variance.** Independence removes the covariance terms. Complete
+
+   $$
+   \begin{aligned}
+   \operatorname{Var}(\overline D)
+   &=
+   \operatorname{Var}\left(
+   \frac{1}{S}\sum_{s=1}^{S}D_s
+   \right)\\
+   &=
+   \frac{1}{S^2}
+   \sum_{s=1}^{S}\operatorname{Var}(D_s)\\
+   &=
+   \frac{\sigma_D^2}{S}.
+   \end{aligned}
+   $$
+
+   Take the square root to obtain $\operatorname{SE}(\overline D)=\sigma_D/\sqrt S$.
+
+4. **Estimate the unknown scale.** Define the sample standard deviation
+
+   $$
+   S_D
+   =
+   \sqrt{
+   \frac{1}{S-1}
+   \sum_{s=1}^{S}(D_s-\overline D)^2
+   }.
+   $$
+
+   Its realized value is $s_d$. Replace $\sigma_D$ with $S_D$ to obtain the estimated standard error $S_D/\sqrt S$.
+
+5. **Standardize the null discrepancy.** Under $H_0$, the random test statistic is
+
+   $$
+   \mathcal T
+   =
+   \frac{\overline D-0}{S_D/\sqrt S}.
+   $$
+
+   State why estimating $\sigma_D$ changes the reference distribution from standard normal to $t_{S-1}$. Then substitute the observed quantities to obtain
+
+   $$
+   t_{\mathrm{obs}}
+   =
+   \frac{\overline d-0}{s_d/\sqrt S}.
+   $$
+
+6. **Construct the two-sided tail event.** Treat $\mathcal T:\Omega\to\mathbb{R}$ as the random statistic under $H_0$ and define
+
+   $$
+   B_{\mathcal T}
+   \equiv
+   \{\omega\in\Omega\mid
+   |\mathcal T(\omega)|\ge|t_{\mathrm{obs}}|
+   \}.
+   $$
+
+   If $F_{t_{S-1}}$ denotes the cumulative distribution function of $t_{S-1}$, use symmetry to derive
+
+   $$
+   \mathbb{P}_0(B_{\mathcal T})
+   =
+   2\left[
+   1-F_{t_{S-1}}(|t_{\mathrm{obs}}|)
+   \right].
+   $$
+
+   Map the right-hand side to `2 * pt(-abs(t_observed), df = speaker_count - 1)` and explain why this equivalent R expression uses the lower tail.
+
+7. **Invert the standardized discrepancy.** Use the central 95% region of $t_{S-1}$ to obtain
+
+   $$
+   \overline d
+   \pm
+   t_{S-1,.975}
+   \frac{s_d}{\sqrt S}.
+   $$
+
+   Identify the estimate, critical value, and estimated standard error in this expression.
+
+### Calculate and verify
+
+Without calling `t.test()`, calculate:
+
+1. the estimate $\overline d$
+2. the difference standard deviation $s_d$
+3. the estimated standard error $s_d/\sqrt{S}$
+4. the t statistic for the null value zero
+5. the two-sided p value from a $t_{S-1}$ reference distribution
+6. the 95% t confidence interval for $\mu_D$.
+
+```{r}
+# Manual paired-mean calculation.
+```
+
+Verify the calculation with `t.test(..., paired = TRUE)`. Show that the estimate, statistic, p value, and interval agree with your manual result to numerical precision.
+
+```{r}
+# Software verification.
+```
+
+Interpret the estimate and interval in Hz. Then define the p value using $B_{\mathcal T}$: name the null model, the statistic treated as at least as discrepant as the observed statistic, and the probability being calculated. Do not describe the p value as the probability that $H_0$ is true.
+
+## Task 4: test directional consistency (10 points)
+
+The mean procedure uses the magnitudes of the 45 differences. We now ask a different question: for what proportion of speakers in the target population is the /i/ minus /ɪ/ difference negative?
+
+Let $Z_s:\Omega\to\{0,1\}$ be the binary random variable
+
+$$
+Z_s(\omega)
+=
+\begin{cases}
+1 & \text{if }D_s(\omega)<0,\\
+0 & \text{if }D_s(\omega)\ge0.
+\end{cases}
+$$
+
+Let $z_s$ denote the observed realization of $Z_s$. There are no zero differences in the selected data. Let $\pi_D$ denote the population probability that $Z_s=1$. Test
+
+$$
+H_0:\pi_D=.5
+\qquad\text{against}\qquad
+H_1:\pi_D>.5.
+$$
+
+### Guided derivation of the exact sign statistic
+
+1. Define the random count $\mathcal K=\sum_{s=1}^{S}Z_s$ and its observed value $k_{\mathrm{obs}}=\sum_{s=1}^{S}z_s$. Explain why independent $\operatorname{Bernoulli}(.5)$ variables under $H_0$ imply
+
+   $$
+   \mathcal K\mid H_0
+   \sim
+   \operatorname{Binomial}(S,.5).
+   $$
+
+2. Treat $\mathcal K:\Omega\to\{0,\ldots,S\}$ as the random sign count under $H_0$ and define the one-sided tail event
+
+   $$
+   B_{\mathcal K}
+   \equiv
+   \{\omega\in\Omega\mid
+   \mathcal K(\omega)\ge k_{\mathrm{obs}}
+   \}.
+   $$
+
+3. Expand its probability as
+
+   $$
+   \mathbb{P}_0(B_{\mathcal K})
+   =
+   \sum_{k=k_{\mathrm{obs}}}^{S}
+   {S\choose k}
+   (.5)^k(.5)^{S-k}.
+   $$
+
+   Then show why the same probability is `1 - pbinom(k_observed - 1, size = speaker_count, prob = .5)`. Explain the subtraction of one in words. For the numerical calculation, use the equivalent expression `pbinom(k_observed - 1, size = speaker_count, prob = .5, lower.tail = FALSE)`, which requests the upper tail directly rather than subtracting a probability near one.
+
+### Calculate and interpret
+
+1. Report $k_{\mathrm{obs}}$ and the observed proportion $k_{\mathrm{obs}}/S$.
+2. Calculate $\mathbb{P}_0(B_{\mathcal K})$ with `pbinom()`.
+3. Verify the result with `binom.test(..., alternative = "greater")`.
+4. Report the one-sided 95% exact confidence bound for $\pi_D$ returned by the test.
+5. Explain why this analysis would give the same result if every nonzero difference were replaced by either $-1$ or $1$.
+
+The [binomial-distribution notes](../../random-variables-and-distributions/binomial-distribution.qmd) supply the reference distribution, while the [exact-interval notes](../../statistical-inference/exact-binomial-intervals.qmd) explain the inversion used for the confidence bound.
+
+## Task 5: test a two-by-two morphological association (15 points)
+
+Review [the sampling-distribution notes](../../statistical-inference/properties-of-estimators.qmd), [the hypergeometric-distribution notes](../../random-variables-and-distributions/hypergeometric-distribution.qmd), and [the Fisher exact-test notes](../../statistical-inference/fishers-exact-test.qmd) before beginning this task.
+
+The raw UniMorph genitive file can contain both *-s* and *-es* forms for one lexeme. Those rows are alternative paradigm entries, not independent lexical observations. The preparation script first reduces the file to one row per lemma and records whether each form is attested. It then draws a reproducible simple random sample of 120 lexemes without replacement. The smaller table keeps the exact calculation numerically visible.
+
+```{r}
+genitive_lexemes <- read.csv("data/unimorph_genitive_lexemes.csv")
+stopifnot(!anyDuplicated(genitive_lexemes$lemma))
+stopifnot(nrow(genitive_lexemes) == 120)
+```
+
+The columns used here are `lemma`, the lexeme identifier, `ends_in_sibilant`, the string-based stem-final classification, and `es_attested`, the logical attestation indicator. Check their classes and observed levels before constructing the table.
+
+Let $A$ be the random count in the sibilant-final and *-es*-attested cell. Construct the two-by-two table for `ends_in_sibilant` by `es_attested`, with the non-sibilant row first and the `FALSE` column first. Report all four counts and both margins.
+
+1. State the null hypothesis that stem-final sibilance and *-es* attestation are independent in the population represented by the lexeme table.
+2. Let the observed table have cells $a$, $b$, $c$, and $d$ in row-major order. Calculate the sample odds ratio
+
+   $$
+   \widehat{\operatorname{OR}}
+   =
+   \frac{ad}{bc}.
+   $$
+
+   State the row and column orientation before interpreting it.
+3. Conditional on the observed margins, derive the null probability of the observed upper-left count:
+
+   $$
+   \mathbb{P}_0(A=a)
+   =
+   \frac{
+   {a+b\choose a}{c+d\choose c}
+   }{
+   {a+b+c+d\choose a+c}
+   }.
+   $$
+
+   Match each quantity in this expression to one margin or cell in your table. Then calculate the probability with `dhyper()`.
+4. Use `fisher.test()` to calculate the two-sided p value and conditional confidence interval for the odds ratio. Explain why the probability of the observed table alone is not the two-sided p value.
+5. State what the calculation conditions on. Then state why the result concerns attestation in this UniMorph-derived lexeme inventory rather than token frequency or productive suffix choice in German speech.
+6. Now examine the **small-lexicon problem (SLP)**. Load `data/unimorph_genitive_lexeme_population.csv`. Treat this finite inventory as the population for the exercise. For each $n\in\{12,20,40,80,120\}$, draw 500 simple random samples of $n$ lexemes without replacement. Use one recorded seed for the complete sweep. For every sample, construct the same two-by-two table with explicit factor levels and record:
+
+   - whether either row or column margin is zero
+   - whether any cell count is zero
+   - the sample odds ratio when it is finite
+   - Fisher's two-sided p value
+   - the lower and upper endpoints of the conditional confidence interval
+
+   Summarize each sample size by the proportion of tables with a zero margin, the proportion with at least one zero cell, the proportion of nonfinite odds-ratio estimates, the median log odds ratio among finite positive estimates, the median confidence-interval width on the log-odds scale among intervals with two finite positive endpoints, and the number of distinct p values observed. Plot the empirical sampling distribution of the log odds ratio for finite positive estimates. Plot the Fisher p values against sample size with horizontal jitter. Describe how the center, spread, discreteness, and nonfinite mass change with $n$.
+
+   The repeated samples produce empirical finite-population sampling distributions of the reported statistics. Fisher's conditional null distribution answers a different question. It holds one table's margins fixed and varies the compatible cell counts under independence. Explain this difference, then explain why exact type-I-error control does not guarantee an informative estimate in a small lexical sample.
+
+```{r}
+# Construct the table, calculate its observed null probability, and run Fisher's test.
+# Then sweep the five sample sizes with a function that returns one tidy row.
+```
+
+## Task 6: test an association in a larger table (20 points)
+
+Review [the chi-squared test notes](../../statistical-inference/chi-squared-test.qmd) before beginning this task.
+
+The plural table has one row per lemma. The variable `plural_suffix` records the suffix class returned by the preparation rule. The symbol `ø` labels a form for which that rule found no overt suffix from the listed set. Treat it as a descriptive class, not as a complete analysis of German plural exponence.
+
+```{r}
+plural_lexemes <- read.csv("data/unimorph_plural_lexemes.csv")
+stopifnot(!anyDuplicated(plural_lexemes$lemma))
+```
+
+The columns used here are `lemma`, `gender`, and `plural_suffix`. Check their classes and observed levels before constructing the table.
+
+Construct the three-by-five table for grammatical gender by plural-suffix class. Preserve the gender order `FEM`, `MASC`, `NEUT` and the suffix order `e`, `en`, `er`, `s`, `ø`.
+
+1. State the null hypothesis that grammatical gender and the derived suffix class are independent in the population represented by this table.
+2. For every cell, calculate the expected count
+
+   $$
+   E_{ij}
+   =
+   \frac{O_{i+}O_{+j}}{O_{++}}.
+   $$
+
+   Show the substitution for the feminine-by-*en* cell. Report the minimum expected count and verify that no expected count is below five.
+3. Calculate every cell contribution and the total statistic without calling `chisq.test()`:
+
+   $$
+   X^2
+   =
+   \sum_{i=1}^{3}\sum_{j=1}^{5}
+   \frac{(O_{ij}-E_{ij})^2}{E_{ij}}.
+   $$
+
+4. Derive the reference degrees of freedom from the number of rows and columns. Define the upper-tail event using full set-builder notation:
+
+   $$
+   B_{X^2}
+   \equiv
+   \{\omega\in\Omega\mid
+   X^2(\omega)\ge x^2_{\mathrm{obs}}\}.
+   $$
+
+   Calculate $\mathbb{P}_0(B_{X^2})$ with `pchisq(..., lower.tail = FALSE)`.
+5. Verify the statistic, degrees of freedom, p value, and expected counts with `chisq.test(..., correct = FALSE)`.
+6. Calculate Pearson residuals $(O_{ij}-E_{ij})/\sqrt{E_{ij}}$. Identify the cells with the two largest absolute residuals and describe the direction of each discrepancy.
+7. Explain why large expected counts address the reference approximation but do not establish independent lexical sampling or a causal effect of gender.
+
+```{r}
+# Construct observed and expected tables, calculate X-squared, and verify the result.
+```
+
+## Task 7: compare the claims and scope the results (10 points)
+
+Write three short paragraphs.
+
+1. Compare the estimands $\mu_D$ and $\pi_D$. State what the mean procedure uses that the sign procedure discards, and state what a result for one parameter does not establish about the other.
+2. Report the linguistic result. Name the analysis unit, the estimated mean difference and its interval, the sign proportion and its confidence bound, and the direction of both results. End with a defensible generalization target. Do not describe the study speakers as a probability sample of all adult male speakers of American English.
+3. Compare the Fisher and chi-squared procedures. State which calculation is conditional and exact, which uses a large-sample reference approximation, and which sample association each procedure evaluates. Keep the UniMorph claims at the level of lexeme-table association.
+
+Your conclusion should distinguish effect magnitude, sampling compatibility under a null model, and directional consistency. The word *significant* cannot replace any of those quantities.
+
+## Task 8: assess frequentist sensitivity (15 points)
+
+Construct a 95% percentile [bootstrap interval](../../statistical-inference/bootstrap-confidence-intervals.qmd) for $\mu_D$. Resample the 45 speaker-level differences, not the 90 vowel tokens. Use at least 10,000 replicates and report the random seed.
+
+Then repeat the paired t procedure after separately removing the most negative and least negative observed difference. Compare the estimates and interval endpoints with the full-data result. This is a sensitivity analysis of the magnitude claim. It is not permission to delete an observation from the reported analysis.
+
+## Submission checklist
+
+- The notebook runs from a fresh R session after the data-preparation step.
+- Object names use `snake_case`, assignment uses `<-`, and every random calculation has a recorded seed.
+- Every numerical answer is produced by visible code.
+- The derivations show every requested equality, name the rule that licenses it, and match each final expression to the corresponding R object.
+- The paired table is joined by identifiers rather than aligned by row position.
+- The genitive analysis has one row per lemma rather than one row per attested form.
+- The Fisher calculation states its margins and odds-ratio orientation.
+- The chi-squared calculation reports expected counts, cell contributions, degrees of freedom, and signed residuals.
+- Every figure labels the response and its units.
+- Every hypothesis names its population parameter.
+- The p values are interpreted under their null reference models.
+- The results paragraphs distinguish magnitude, directional consistency, and categorical association.
+- The bootstrap and endpoint-removal sensitivity analyses are completed and interpreted.
