@@ -11,7 +11,7 @@ The assignment covers five procedures:
 1. a paired t procedure for the population mean F1 difference
 2. a Wilcoxon signed-rank procedure for the location of the paired F1 differences
 3. an exact binomial sign procedure for the population probability that the F1 difference has the predicted direction
-4. Fisher's exact test for stem-final sibilance by genitive *-es* attestation, followed by a repeated-sampling analysis of small lexeme samples
+4. Fisher's exact test for syllable class and stem-final sibilance by genitive *-es* attestation, followed by a repeated-sampling analysis of small lexeme samples
 5. a chi-squared test for grammatical gender by plural-suffix class
 
 [Problem Set 2](../ps2/README.md) follows the same inferential sequence with distinct linguistic data and Bayesian analyses.
@@ -49,6 +49,7 @@ Data preparation requires:
 - Python 3.9 or newer with `pandas`
 - R 4.0 or newer
 - `phonTools` version 0.2.2.2 for the audited Hillenbrand extraction
+- `dplyr`, `ggplot2`, and `tidyr` for the assignment analysis
 
 From the repository root, create the assignment-specific Python environment and install `pandas`:
 
@@ -60,7 +61,7 @@ problem-sets/ps1/.venv/bin/python -m pip install pandas
 Install the required R package once:
 
 ```r
-install.packages("phonTools")
+install.packages(c("phonTools", "dplyr", "ggplot2", "tidyr"))
 ```
 
 ### 2. Generate Datasets
@@ -95,7 +96,7 @@ The rendered student assignment is written to `docs/problem-sets/ps1/ps1.html`.
 
 **Description:** The complete teaching table contains 1,668 vowel measurements from 139 speakers. The assignment restricts the focal comparison to the 45 adult men with one /i/ and one /ɪ/ measurement each.
 
-**Use:** Paired t inference, exact sign inference, and a speaker-level bootstrap.
+**Use:** Vowel-space visualization, paired t inference, Wilcoxon signed-rank inference, and exact sign inference.
 
 **Columns:**
 
@@ -150,11 +151,11 @@ The derived UniMorph tables are distributed under the source repository's [CC BY
 
 | Tasks | Points | Statistical work |
 |---|---:|---|
-| 1 | 10 | construct and summarize paired differences |
-| 2 | 20 | derive and apply the paired t statistic |
+| 1 | 10 | visualize the vowel space, then construct and summarize paired differences |
+| 2 | 20 | derive and apply the paired t statistic, then analyze a second vowel pair |
 | 3 | 10 | construct and apply the Wilcoxon signed-rank statistic |
 | 4 | 10 | derive and apply the exact sign procedure |
-| 5 | 25 | derive and apply Fisher's exact test and estimate small-lexicon sampling distributions |
+| 5 | 25 | analyze syllable and sibilant associations, derive Fisher's exact test, and estimate small-lexicon sampling distributions |
 | 6 | 25 | derive and apply the chi-squared test of independence |
 
 The task points sum to 100. The assignment-level grade follows the course policy below.
