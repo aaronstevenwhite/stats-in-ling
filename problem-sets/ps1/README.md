@@ -4,14 +4,15 @@
 
 ## Overview
 
-Problem Set 1 is the frequentist member of the matched PS1–PS2 sequence. It uses paired Hillenbrand F1 measurements for continuous inference and German UniMorph lexeme tables for categorical inference. All eight tasks are required for every student.
+Problem Set 1 is the frequentist member of the matched PS1–PS2 sequence. It uses paired Hillenbrand F1 measurements for continuous inference and German UniMorph lexeme tables for categorical inference. All six exercises are required for every student.
 
-The assignment covers four procedures:
+The assignment covers five procedures:
 
 1. a paired t procedure for the population mean F1 difference
-2. an exact binomial sign procedure for the population probability that the F1 difference has the predicted direction
-3. Fisher's exact test for stem-final sibilance by genitive *-es* attestation, followed by a repeated-sampling analysis of small lexeme samples
-4. a chi-squared test for grammatical gender by plural-suffix class
+2. a Wilcoxon signed-rank procedure for the location of the paired F1 differences
+3. an exact binomial sign procedure for the population probability that the F1 difference has the predicted direction
+4. Fisher's exact test for stem-final sibilance by genitive *-es* attestation, followed by a repeated-sampling analysis of small lexeme samples
+5. a chi-squared test for grammatical gender by plural-suffix class
 
 [Problem Set 2](../ps2/README.md) follows the same inferential sequence with distinct linguistic data and Bayesian analyses.
 
@@ -149,13 +150,12 @@ The derived UniMorph tables are distributed under the source repository's [CC BY
 
 | Tasks | Points | Statistical work |
 |---|---:|---|
-| 1–2 | 10 | establish the acoustic design and construct the paired contrast |
-| 3 | 20 | derive and apply the paired t statistic |
-| 4 | 10 | apply the exact binomial sign procedure |
-| 5 | 15 | apply Fisher's exact test and study small-lexicon sampling distributions |
-| 6 | 20 | calculate and diagnose the chi-squared test of independence |
-| 7 | 10 | compare the licensed claims and their scope |
-| 8 | 15 | assess bootstrap and inferential sensitivity |
+| 1 | 10 | construct and summarize paired differences |
+| 2 | 20 | derive and apply the paired t statistic |
+| 3 | 10 | construct and apply the Wilcoxon signed-rank statistic |
+| 4 | 10 | derive and apply the exact sign procedure |
+| 5 | 25 | derive and apply Fisher's exact test and estimate small-lexicon sampling distributions |
+| 6 | 25 | derive and apply the chi-squared test of independence |
 
 The task points sum to 100. The assignment-level grade follows the course policy below.
 
@@ -168,4 +168,4 @@ Students may use LLMs for coding assistance, but they must understand and be abl
 
 ## Submission
 
-Submit the completed notebook through the course learning-management system. All eight numbered tasks are required. The course schedule supplies the due date.
+Submit the completed notebook through the course learning-management system. All six exercises are required. The course schedule supplies the due date.

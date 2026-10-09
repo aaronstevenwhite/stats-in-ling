@@ -1,6 +1,6 @@
 ---
-title: "Problem Set 2: Bayesian analogues of hypothesis tests"
-subtitle: "Reading times and syntactic annotations"
+title: "Problem Set 2: Bayesian hypothesis testing"
+subtitle: "Posterior counterparts to paired, exact, and contingency-table tests"
 format:
   html:
     toc: true
@@ -8,89 +8,32 @@ execute:
   enabled: false
 ---
 
-## The question
+## Bayesian counterparts to hypothesis tests
 
-First-fixation duration (FFD) is the time between a reader's first fixation on a word and the end of that fixation. We will ask whether noun positions tend to receive longer first fixations than verb positions within passages from the Provo Corpus.
+Problem Set 1 begins with a null hypothesis and calculates the probability of a test statistic under a null reference distribution. This assignment begins with a [likelihood and a prior distribution](../../statistical-inference/posterior-distributions.qmd). [Bayes' rule](../../foundations/bayes-rule.qmd) updates the prior to a posterior distribution. Posterior probabilities are probabilities over parameter values conditional on the observed data. They are not p values.
 
-The dataset records content-word positions rather than one controlled noun–verb pair. We thus average the word-position responses within each passage and word class, then construct one noun minus verb contrast per passage. This reduction gives the Bayesian assignment the same inferential structure as [Problem Set 1](../ps1/ps1.qmd): a continuous paired contrast for magnitude and its sign for directional consistency. The linguistic domain and response differ, so the analysis does not repeat the phonetics exercise.
+The exercises follow the same sequence as Problem Set 1. A normal location model corresponds to the paired t analysis. A robust Student t location model serves the same inferential role as the Wilcoxon analysis. A beta–Bernoulli model corresponds to the exact sign analysis. Separate beta–binomial models correspond to the two-row association analyzed by Fisher's exact test. A posterior predictive independence model corresponds to the chi-squared analysis. The reading-time data become relevant in Exercises 1–4. The syntactic data become relevant in Exercises 5–6.
 
-The first two Bayesian analyses are analogues of the paired t and exact sign procedures in PS1. A normal model yields a posterior distribution for the population mean contrast. A beta–Bernoulli model yields a posterior distribution for the probability of a positive passage contrast. A conditional normal–normal derivation connects the first model to conjugacy. The beta–Bernoulli analysis then applies the update already derived in the notes.
-
-The assignment also analyzes categorical syntax in Universal Dependencies English EWT. Separate beta–binomial models replace the fixed-margin Fisher calculation with posterior distributions for two row probabilities. A posterior predictive independence model replaces the chi-squared upper-tail calculation with replicated contingency tables. These analyses target the same kinds of association as their PS1 counterparts, but their probability statements differ.
-
-By the end of the assignment, you should be able to (i) specify prior and likelihood distributions for a named estimand, (ii) summarize a posterior on the response scale, (iii) use posterior draws to compare categorical probabilities, and (iv) distinguish a posterior predictive tail area from a frequentist p value and a posterior model probability.
-
-All eight numbered tasks are required for every student.
+All six exercises are required. The points sum to 100. Every parameter is scalar. Bold symbols denote collections of independent and identically distributed observations, not vector-valued parameters.
 
 ::: {.callout-note title="Assignment files"}
-[Download the complete Problem Set 2 package](../../downloads/ps2-assignment.zip){download="ps2-assignment.zip"}. The package contains the assignment source, the README, every data-preparation script, and the redistributable teaching tables.
+[Download the complete Problem Set 2 package](../../downloads/ps2-assignment.zip){download="ps2-assignment.zip"}. The package contains the assignment source, the README, the preparation scripts, and the redistributable teaching tables.
 
-The same supporting files are available individually:
+The files are also available separately:
 
 - [README and setup instructions](README.md)
-- [`prepare_data.R`](scripts/prepare_data.R){download="prepare_data.R"} for the Provo table
-- [`fetch_wh_data.py`](scripts/fetch_wh_data.py){download="fetch_wh_data.py"} for the pinned UD English EWT source
-- [`prepare_ud_wh_tables.R`](scripts/prepare_ud_wh_tables.R){download="prepare_ud_wh_tables.R"} for the selected dependency table
+- [`prepare_data.R`](scripts/prepare_data.R){download="prepare_data.R"}
+- [`fetch_wh_data.py`](scripts/fetch_wh_data.py){download="fetch_wh_data.py"}
+- [`prepare_ud_wh_tables.R`](scripts/prepare_ud_wh_tables.R){download="prepare_ud_wh_tables.R"}
 :::
 
-::: {.callout-note title="Reading"}
-Read the Provo Corpus data description in Luke and Christianson (2018), [“The Provo Corpus”](https://doi.org/10.3758/s13428-017-0908-4). Focus on the passages, readers, eye-movement measures, and word-level annotations. The assignment makes a descriptive noun–verb comparison within the represented passages. It does not identify a causal effect of grammatical category.
-:::
+Use `<-` for assignment, use `snake_case` object names, and record a seed before every random calculation. Every numerical answer must be produced by visible code.
 
-## Notes for this assignment
+## Exercise 1: Construct paired passage differences (10 points)
 
-Use the course notes as you reach each stage of the analysis.
+The data for Exercises 1–4 come from the [Provo Corpus](https://doi.org/10.3758/s13428-017-0908-4). The prepared table contains one row per content-word position. `mean_log_ffd` is the mean log first-fixation duration over readers with a positive first fixation at that position. `Text_ID` identifies the passage and `Word_POS` identifies the word class.
 
-| Task | Course notes | What the notes supply |
-|---|---|---|
-| 1–2 | [Turning linguistic records into data](../../foundations/linguistic-data.qmd), [paired observations](../../statistical-inference/paired-observations.qmd), and [conditional expectation](../../random-variables-and-distributions/conditional-expectation.qmd) | the passage-level analysis unit, within-passage aggregation, and paired contrast |
-| 3 | [The normal distribution](../../random-variables-and-distributions/normal-distribution.qmd), [posterior distributions](../../statistical-inference/posterior-distributions.qmd), [conjugate priors](../../statistical-inference/conjugate-priors.qmd), [prior predictive distributions](../../statistical-inference/prior-predictive-distributions.qmd), [Stan](../../statistical-inference/stan.qmd), and [posterior summaries](../../statistical-inference/posterior-summaries.qmd) | the normal density, posterior-kernel method, prior check, posterior computation, credible interval, and directional probability. The notes do not supply the normal–normal result derived below |
-| 3 | [Checking Markov chains](../../statistical-inference/checking-markov-chains.qmd), [$\widehat R$](../../statistical-inference/rhat.qmd), [effective sample size](../../statistical-inference/effective-sample-size.qmd), and [divergent transitions](../../statistical-inference/divergent-transitions.qmd) | the computational checks required before posterior draws are interpreted |
-| 4 | [Conjugate priors](../../statistical-inference/conjugate-priors.qmd), [the beta distribution](../../random-variables-and-distributions/beta-distribution.qmd), and [Monte Carlo integration](../../statistical-inference/monte-carlo-integration.qmd) | the beta–Bernoulli update and posterior event probability |
-| 5 | [Fisher's exact test](../../statistical-inference/fishers-exact-test.qmd), [conjugate priors](../../statistical-inference/conjugate-priors.qmd), and [Monte Carlo integration](../../statistical-inference/monte-carlo-integration.qmd) | the frequentist association target, scalar beta updates, and posterior contrasts |
-| 6 | [The chi-squared test of independence](../../statistical-inference/chi-squared-test.qmd) and [posterior predictive checks](../../statistical-inference/posterior-predictive-checks.qmd) | Pearson's discrepancy and a posterior predictive reference distribution under independence |
-| 7–8 | [Posterior predictive checks](../../statistical-inference/posterior-predictive-checks.qmd) and [populations and samples](../../statistical-inference/populations-and-samples.qmd) | model criticism, inferential comparison, and defensible scope |
-
-Bold symbols in this assignment denote collections of IID observations only. Every parameter is scalar, and every integral or algebraic manipulation is with respect to a scalar quantity.
-
-## Data and source
-
-The original data come from the [Provo Corpus](https://doi.org/10.3758/s13428-017-0908-4), which is available from [OSF](https://osf.io/sjefs/) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). `data/provo-content-word-positions.csv` is an adapted teaching table with one row per content-word position.
-
-The categorical data derive from the training portion of [Universal Dependencies English EWT](https://github.com/UniversalDependencies/UD_English-EWT), which is distributed under [CC BY-SA 4.0](https://github.com/UniversalDependencies/UD_English-EWT/blob/master/LICENSE.txt). The archived extractor selects wh-word forms and their basic dependency relations. `data/ud_wh_dependencies.csv` then keeps sentences with exactly one selected dependency.
-
-```{r}
-items <- read.csv("data/provo-content-word-positions.csv")
-dim(items)
-head(items)
-```
-
-The relevant Provo columns are:
-
-- `position_id`, a unique passage-by-position identifier
-- `Text_ID`, the passage identifier
-- `Word_POS`, the part-of-speech label
-- `mean_log_ffd`, mean log FFD over readers who fixated the word position
-- `n_fixations`, the number of positive first fixations contributing to the mean
-
-The table also contains word length, sentence position, and predictability measures. They are not part of this assignment. Restrict the analysis to `Word_POS` equal to `Noun` or `Verb`.
-
-## Task 1: establish the reading-time design (5 points)
-
-Review [paired observations](../../statistical-inference/paired-observations.qmd), then answer the following questions.
-
-1. State the measurement represented by `mean_log_ffd`, the pair identifier, and the unit of analysis for the noun–verb contrast.
-2. For each passage and each of the two word classes, count the contributing word positions. Verify that every passage contains at least four noun positions and four verb positions.
-3. Explain why the 1,593 content-word rows cannot be treated as 1,593 independent noun–verb contrasts.
-4. State why a difference between the two word classes would be descriptive rather than a causal effect of part of speech.
-
-```{r}
-# Select noun and verb positions and verify the passage-by-class counts.
-```
-
-## Task 2: construct the reading-time contrast (5 points)
-
-For each passage, compute the mean of `mean_log_ffd` separately for noun and verb positions. Join the two passage summaries by `Text_ID` to obtain one row per passage and define
+The comparison is paired by passage. Within each passage, average `mean_log_ffd` over noun positions and over verb positions. Then define
 
 $$
 \delta_p
@@ -100,499 +43,448 @@ $$
 \overline{\log(\operatorname{FFD})}_{p,\mathrm{verb}}.
 $$
 
-Here $\delta_p$ is the realized noun minus verb contrast for passage $p$. A positive value indicates longer first fixations at noun positions on the multiplicative duration scale.
-More exactly, $\exp(\delta_p)$ is the ratio of the noun-position geometric mean FFD to the verb-position geometric mean FFD within passage $p$.
+Thus $\exp(\delta_p)$ is the ratio of the noun-position geometric mean FFD to the verb-position geometric mean FFD in passage $p$.
+
+### 1.1 Prepare the paired table
+
+Load `data/provo-content-word-positions.csv`. Retain noun and verb positions. Verify that each passage contains at least four positions from each class. Summarize within passage and class, then join by `Text_ID` to obtain one row per passage. Do not align the summaries by row position.
 
 ```{r}
-# Aggregate within passage and word class, join by Text_ID, and compute delta_log_ffd.
+# Load, filter, verify, summarize, join, and calculate delta_log_ffd.
 ```
 
-Plot the passage contrasts with a visible zero point. Report the number of passages $P$, the observed mean and standard deviation, and the number of positive contrasts. Describe the distribution without using a hypothesis-test label.
+### 1.2 Summarize the passage differences
+
+Calculate the number of passages, the mean, the standard deviation, the median, and the number of negative, zero, and positive differences. Plot the differences with zero marked.
 
 ```{r}
-# Plot the passage-level contrasts.
+# Calculate the requested summaries and plot the passage differences.
 ```
 
-## Task 3: estimate the population mean contrast (20 points)
+Report the requested values in the subtraction order noun minus verb.
 
-Let $Y_p:\Omega\to\mathbb{R}$ denote the random noun minus verb contrast for passage $p$, whose observed realization is $\delta_p$. Let $M:\Omega\to\mathbb{R}$ map each posterior outcome to the population mean contrast, and let $\Sigma:\Omega\to\mathbb{R}_{>0}$ map each outcome to the among-passage standard deviation. Use the model
+::: {.callout-note title="Your result"}
+Replace this sentence with the sample size and requested summaries.
+:::
+
+## Exercise 2: Normal location model (25 points)
+
+Let $Y_p:\Omega\to\mathbb R$ be the random noun minus verb difference for passage $p$, and let $\delta_p$ be its observed value. Let $M:\Omega\to\mathbb R$ be the population mean difference and $\Sigma:\Omega\to\mathbb R_{>0}$ the among-passage standard deviation. Use
 
 $$
 Y_p\mid M=\mu,\Sigma=\sigma
 \sim
-\mathcal{N}(\mu,\sigma^2)
+\mathcal N(\mu,\sigma^2)
 $$
 
-with priors
+with scalar priors
 
 $$
-M\sim\mathcal{N}(0,.05^2)
+M\sim\mathcal N(0,.05^2)
 \qquad\text{and}\qquad
 \Sigma\sim\operatorname{Exponential}(20).
 $$
 
-The normal prior scale refers to log duration: values of $\exp(M)$ near one represent small noun-to-verb ratios. The exponential prior has mean $.05$ on the log-duration scale. Following the course notes, the second parameter of $\mathcal N(\mu,\sigma^2)$ is a variance. In the `brms` code below, the second argument of `normal(0, .05)` is instead the standard deviation $.05$.
+In the course notation, the second argument of $\mathcal N(\mu,\sigma^2)$ is the variance. In `brms`, `normal(0, .05)` uses the standard deviation `.05`.
 
-### Guided derivation of the conditional posterior for $M$
+### 2.1 Derive the conditional normal–normal posterior
 
-This derivation concerns the same magnitude model that you will fit below, but it uses only one-dimensional random variables. Define the sample-mean random variable
+This derivation establishes a [conjugate update](../../statistical-inference/conjugate-priors.qmd) that is not derived in the notes. Let $P$ be the number of passages and define
 
 $$
-\overline{Y}(\omega)
+\overline Y
 =
-\frac{1}{P}\sum_{p=1}^{P}Y_p(\omega),
+\frac{1}{P}\sum_{p=1}^{P}Y_p,
+\qquad
+\overline\delta
+=
+\frac{1}{P}\sum_{p=1}^{P}\delta_p.
 $$
 
-and let its observed realization be $\overline{\delta}=P^{-1}\sum_{p=1}^{P}\delta_p$. Under the independent normal passage model,
+Conditional on a fixed value $\Sigma=\sigma$,
 
 $$
-\overline{Y}\mid M=\mu,\Sigma=\sigma
+\overline Y\mid M=\mu,\Sigma=\sigma
 \sim
-\mathcal{N}
-\left(\mu,\frac{\sigma^2}{P}\right).
+\mathcal N\left(\mu,\frac{\sigma^2}{P}\right).
 $$
 
-Treat $\sigma$ as a fixed positive value during the algebra, and define $m_0=0$ and $s_0=.05$. Your target is the one-dimensional conditional posterior density
+Write $m_0=0$ and $s_0=.05$. The quantity to derive is the scalar conditional density
 
 $$
-f_{M\mid\Sigma,\overline{Y}}
-(\mu\mid\sigma,\overline{\delta}).
+f_{M\mid\Sigma,\overline Y}(\mu\mid\sigma,\overline\delta).
 $$
 
-Complete each displayed blank. Do not substitute the observed value of $P$ or $\overline{\delta}$ until Step 6. Each step ends with a LaTeX response block. Replace its placeholder with your derivation, and put any requested prose explanation immediately below the display.
+#### Step 1: likelihood kernel
 
-1. **Write the likelihood kernel.** Begin with the normal density of the single observed sample mean:
+Remove from the normal density of $\overline Y$ only the factors that do not depend on $\mu$.
 
-   $$
-   f_{\overline{Y}\mid M,\Sigma}
-   (\overline{\delta}\mid\mu,\sigma)
-   =
-   \frac{\sqrt{P}}{\sqrt{2\pi}\sigma}
-   \exp\left\{
-   -\frac{P(\overline{\delta}-\mu)^2}{2\sigma^2}
-   \right\}.
-   $$
+**Target:** $f_{\overline Y\mid M,\Sigma}(\overline\delta\mid\mu,\sigma)$ as a kernel in $\mu$.
 
-   Remove only factors that do not depend on $\mu$, and write the remaining kernel:
+**Your LaTeX**
 
-   $$
-   f_{\overline{Y}\mid M,\Sigma}
-   (\overline{\delta}\mid\mu,\sigma)
-   \propto
-   \boxed{\text{your likelihood kernel in }\mu}.
-   $$
+$$
+\begin{aligned}
+f_{\overline Y\mid M,\Sigma}(\overline\delta\mid\mu,\sigma)
+&\propto\text{enter the likelihood kernel in }\mu.
+\end{aligned}
+$$
 
-   **Target for Step 1:** the likelihood kernel $f_{\overline{Y}\mid M,\Sigma}(\overline{\delta}\mid\mu,\sigma)$ as a function of $\mu$.
+#### Step 2: prior kernel
 
-   **Your LaTeX**
+Remove from the $\mathcal N(m_0,s_0^2)$ density only the factors that do not depend on $\mu$.
 
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
+**Target:** $f_M(\mu)$ as a kernel in $\mu$.
 
-2. **Write the prior kernel.** Start from the $\mathcal{N}(m_0,s_0^2)$ density for $M$. Remove its normalizing constant, but retain every term that depends on $\mu$:
+**Your LaTeX**
 
-   $$
-   f_M(\mu)
-   \propto
-   \boxed{\text{your prior kernel in }\mu}.
-   $$
+$$
+\begin{aligned}
+f_M(\mu)&\propto\text{enter the prior kernel in }\mu.
+\end{aligned}
+$$
 
-   **Target for Step 2:** the prior kernel $f_M(\mu)$ as a function of $\mu$.
+#### Step 3: posterior quadratic
 
-   **Your LaTeX**
+Multiply the two kernels. Expand $(\overline\delta-\mu)^2$ and $(\mu-m_0)^2$. Drop only terms that do not depend on $\mu$. Collect the result as
 
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
+$$
+\exp\left\{-\frac12(A\mu^2-2B\mu)\right\}.
+$$
 
-3. **Multiply and expand.** Use Bayes' rule up to proportionality, then use
+**Target:** derive the coefficients $A$ and $B$ as functions of $P$, $\sigma$, $\overline\delta$, $m_0$, and $s_0$.
 
-   $$
-   (\overline{\delta}-\mu)^2
-   =
-   \mu^2-2\overline{\delta}\mu+\overline{\delta}^{\,2}
-   $$
+**Your LaTeX**
 
-   and $(\mu-m_0)^2=\mu^2-2m_0\mu+m_0^2$. Discard terms that do not depend on $\mu$. Collect what remains in the form
+$$
+\begin{aligned}
+A&=\text{enter the coefficient of }\mu^2,\\
+B&=\text{enter the coefficient paired with }2\mu.
+\end{aligned}
+$$
 
-   $$
-   f_{M\mid\Sigma,\overline{Y}}
-   (\mu\mid\sigma,\overline{\delta})
-   \propto
-   \exp\left\{
-   -\frac{1}{2}
-   \left(A\mu^2-2B\mu\right)
-   \right\}.
-   $$
+#### Step 4: complete the square
 
-   Identify the two coefficients:
+Use $A\mu^2-2B\mu=A(\mu-B/A)^2-B^2/A$.
 
-   $$
-   A=\boxed{\text{coefficient of }\mu^2},
-   \qquad
-   B=\boxed{\text{one half of the coefficient paired with }2\mu}.
-   $$
+**Target:** derive the posterior mean $m_P=B/A$, the posterior variance $s_P^2=1/A$, and the conditional posterior distribution.
 
-   **Target for Step 3:** the coefficients $A$ and $B$ in the posterior kernel $\exp\{-\tfrac12(A\mu^2-2B\mu)\}$.
+**Your LaTeX**
 
-   **Your LaTeX**
+$$
+\begin{aligned}
+m_P&=\text{enter the posterior mean in the original quantities},\\
+s_P^2&=\text{enter the posterior variance in the original quantities},\\
+M\mid\Sigma=\sigma,\overline Y=\overline\delta
+&\sim\mathcal N\left(\text{enter the mean},\text{ enter the variance}\right).
+\end{aligned}
+$$
 
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
+#### Step 5: posterior event probability
 
-4. **Complete the square.** Expand $A(\mu-B/A)^2$ and verify that its $\mu$-dependent terms are $A\mu^2-2B\mu$. Use that identity to rewrite the posterior kernel as
+Define the event that the population mean difference is positive. Use full set-builder notation. Then standardize the posterior normal distribution to express its probability with the standard normal cumulative distribution function $\Phi$.
 
-   $$
-   f_{M\mid\Sigma,\overline{Y}}
-   (\mu\mid\sigma,\overline{\delta})
-   \propto
-   \exp\left\{
-   -\frac{
-   \left(\mu-\boxed{\text{posterior mean}}
-   \right)^2
-   }{
-   2\boxed{\text{posterior variance}}
-   }
-   \right\}.
-   $$
+**Target:** $B_M^+$ and $\mathbb P(B_M^+\mid\Sigma=\sigma,\overline Y=\overline\delta)$.
 
-   **Target for Step 4:** the posterior kernel after completing the square, with its mean and variance written in terms of $A$ and $B$.
+**Your LaTeX**
 
-   **Your LaTeX**
+$$
+\begin{aligned}
+B_M^+&=\{\omega\in\Omega\mid\text{enter the condition on }M(\omega)\},\\
+\mathbb P(B_M^+\mid\Sigma=\sigma,\overline Y=\overline\delta)
+&=\text{enter the expression in }m_P,s_P,\text{ and }\Phi.
+\end{aligned}
+$$
 
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
+### 2.2 Check the prior and fit the model
 
-5. **Name the posterior distribution.** Define the posterior mean as $m_P$ and the posterior standard deviation as $s_P$. Give both in terms of $P$, $\overline{\delta}$, $\sigma$, $m_0$, and $s_0$, then state
-
-   $$
-   M\mid\Sigma=\sigma,\overline{Y}=\overline{\delta}
-   \sim
-   \mathcal{N}
-   \left(
-   \boxed{\text{mean}},
-   \boxed{\text{variance}}
-   \right).
-   $$
-
-   Explain why obtaining another normal distribution establishes conditional normal–normal conjugacy.
-
-   **Target for Step 5:** formulas for $m_P$ and $s_P$, followed by the conditional distribution of $M$ with mean $m_P$ and variance $s_P^2$.
-
-   **Your LaTeX**
-
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
-
-6. **Connect the derivation to these data.** Substitute $P$, $\overline{\delta}$, $m_0=0$, and $s_0=.05$ into $m_P$ and $s_P$, while leaving $\sigma$ symbolic. Define
-
-   $$
-   B_M^+
-   \equiv
-   \{\omega\in\Omega\mid M(\omega)>0\}
-   $$
-
-   and express $\mathbb{P}(B_M^+\mid\Sigma=\sigma,\overline{Y}=\overline{\delta})$ using the standard normal cumulative distribution function $\Phi$. Finally, explain why this conditional probability is not yet the marginal posterior probability reported by the fitted model: the model also represents uncertainty about $\Sigma$, and the spread of the individual passage contrasts informs that uncertainty.
-
-   **Target for Step 6:** $m_P$ and $s_P$ after substituting these data while leaving $\sigma$ symbolic, followed by $\mathbb{P}(B_M^+\mid\Sigma=\sigma,\overline{Y}=\overline{\delta})$ in terms of $\Phi$.
-
-   **Your LaTeX**
-
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
-
-First conduct a prior predictive check. Simulate at least 10,000 draws by sampling $\mu$, $\sigma$, and then one replicated contrast from the likelihood. Plot the replicated contrasts and summarize `exp(delta_rep)`. Explain what range of noun-to-verb duration ratios the complete prior model treats as plausible before the Provo contrasts are used.
+A [prior predictive distribution](../../statistical-inference/prior-predictive-distributions.qmd) is the distribution of replicated data obtained by drawing parameters from their priors and data from the likelihood. Draw at least 10,000 values of $\mu$, $\sigma$, and one replicated difference. Plot the replicated differences and summarize $\exp(Y_{\mathrm{rep}})$.
 
 ```{r}
-# Simulate the prior predictive distribution.
+# Simulate and plot the prior predictive distribution.
 ```
 
-Then fit the model with `brms`. Use four chains, at least 2,000 iterations per chain, and a reported random seed.
+Fit the normal model with `brms`. Use four chains, at least 2,000 iterations per chain, the `cmdstanr` backend, and a recorded seed.
 
 ```{r}
 library(brms)
 library(posterior)
 
 detected_cores <- parallel::detectCores()
-core_count <- if (is.na(detected_cores)) {
-  1L
-} else {
-  min(4L, detected_cores)
-}
+core_count <- if (is.na(detected_cores)) 1L else min(4L, detected_cores)
 
-magnitude_fit <- brm(
-  delta_log_ffd ~ 1,
-  data = passage_pairs,
-  family = gaussian(),
-  prior = c(
-    prior(normal(0, .05), class = Intercept),
-    prior(exponential(20), class = sigma)
-  ),
-  chains = 4,
-  cores = core_count,
-  iter = 2000,
-  seed = 20260808,
-  backend = "cmdstanr"
-)
+# Fit the normal location model.
 ```
 
-Before interpreting the draws, report $\widehat R$, bulk effective sample size, and tail effective sample size for the intercept and `sigma`, together with the number of divergent transitions. Then use posterior draws of the intercept to report:
+Use the [Markov-chain checks](../../statistical-inference/checking-markov-chains.qmd) to report $\widehat R$, bulk effective sample size, tail effective sample size, and divergent transitions for the intercept and `sigma`.
 
-1. the posterior mean and median of $M$
-2. a 95% equal-tailed credible interval for $M$
-3. the corresponding posterior median and interval for $\exp(M)$
-4. the posterior probability of the event
+```{r}
+# Calculate the required computational checks.
+```
+
+From the posterior draws, calculate the median and 95% equal-tailed [credible interval](../../statistical-inference/posterior-summaries.qmd) for $M$ and $\exp(M)$. Estimate $\mathbb P(B_M^+\mid\boldsymbol\delta)$ as the proportion of intercept draws greater than zero, where $\boldsymbol\delta=(\delta_1,\ldots,\delta_P)$.
+
+```{r}
+# Calculate the posterior summaries and event probability.
+```
+
+Report the computational checks, posterior summaries, and posterior event probability.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with the requested normal-model result.
+:::
+
+## Exercise 3: Robust location model (10 points)
+
+The Wilcoxon test reduces the influence of numerical spacing by using ranks. A Bayesian Student t model takes a different route: it retains the measured differences but assigns more probability to extreme observations than a normal likelihood does. It is not a Bayesian version of the signed-rank test. It is the corresponding robust location analysis in this assignment.
+
+Replace the normal likelihood in Exercise 2 with
 
 $$
-B_M^+
-\equiv
-\{\omega\in\Omega\mid M(\omega)>0\}.
+Y_p\mid M=\mu,\Sigma=\sigma,\Nu=\nu
+\sim
+t_\nu(\mu,\sigma),
 $$
 
-Let $\boldsymbol{\delta}=(\delta_1,\ldots,\delta_P)$ denote the observed passage contrasts. Estimate $\mathbb{P}(B_M^+\mid\boldsymbol{\delta})$ with the proportion of posterior draws in $B_M^+$. Explain why this probability is neither a p value nor the posterior probability that the exact point $M=0$ is false.
+where $M$ and $\Sigma$ retain their earlier priors and the scalar degrees-of-freedom parameter has prior $\Nu\sim\operatorname{Gamma}(2,.1)$. Here the gamma distribution uses shape 2 and rate $.1$, so its mean is $2/.1=20$. The [Student t distribution](../../random-variables-and-distributions/student-t-distribution.qmd) approaches a normal distribution as $\nu$ increases and has heavier tails for smaller $\nu$.
 
-Finally, generate posterior replicated passage contrasts. Compare the observed standard deviation and range with the replicated values. State the limited feature this check evaluates.
+Fit this model with `family = student()` and `prior(gamma(2, .1), class = nu)`. Use the same chain settings and seed policy as Exercise 2.
 
-## Task 4: estimate directional consistency (10 points)
+```{r}
+# Fit the Student t location model and calculate its diagnostics.
+```
 
-Define the binary passage random variable $Z_p:\Omega\to\{0,1\}$ by
+Calculate the posterior median and 95% interval for $M$, $\exp(M)$, and $\Nu$. Calculate $\mathbb P(B_M^+\mid\boldsymbol\delta)$ from the posterior draws.
+
+```{r}
+# Calculate the robust-model posterior summaries.
+```
+
+Report the requested values beside the corresponding normal-model values.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with the normal and robust location results.
+:::
+
+## Exercise 4: Beta–Bernoulli sign model (10 points)
+
+Define $Z_p:\Omega\to\{0,1\}$ by
 
 $$
-Z_p(\omega)
-=
+Z_p(\omega)=
 \begin{cases}
 1 & \text{if }Y_p(\omega)>0,\\
 0 & \text{if }Y_p(\omega)\le0.
 \end{cases}
 $$
 
-Let $z_p$ denote the observed realization of $Z_p$, obtained from the sign of $\delta_p$. There are no zero contrasts in the prepared passage table. Let $\Pi:\Omega\to[0,1]$ map each posterior outcome to the population probability that a passage has a positive noun minus verb contrast. Use
+Let $\Pi:\Omega\to[0,1]$ be the population probability of a positive passage difference. Use
 
 $$
-Z_p\mid\Pi=\pi
-\sim
-\operatorname{Bernoulli}(\pi)
-$$
-
-and
-
-$$
+Z_p\mid\Pi=\pi\sim\operatorname{Bernoulli}(\pi)
+\qquad\text{and}\qquad
 \Pi\sim\operatorname{Beta}(2,2).
 $$
 
-### Apply the beta–Bernoulli update
+The [conjugate-prior notes](../../statistical-inference/conjugate-priors.qmd) derive the beta–Bernoulli update. Apply that update here.
 
-The [conjugate-prior notes](../../statistical-inference/conjugate-priors.qmd) derive the general beta–Bernoulli update. Do not reproduce that derivation. Instead, use it to analyze the signs of the Provo passage contrasts.
+### 4.1 Derive the posterior parameters
 
-1. Define and compute
+Let $k_{\mathrm{obs}}=\sum_{p=1}^{P}z_p$.
 
-   $$
-   k_{\mathrm{obs}}
-   =
-   \sum_{p=1}^{P}z_p,
-   $$
+**Target:** state the beta posterior first in terms of $P$ and $k_{\mathrm{obs}}$, then substitute their observed values.
 
-   and report both the number of positive contrasts, $k_{\mathrm{obs}}$, and the number of nonpositive contrasts, $P-k_{\mathrm{obs}}$.
-2. Use the general update to state the posterior distribution of $\Pi$, then substitute the observed $P$ and $k_{\mathrm{obs}}$ into its two parameters.
-3. Report the posterior mean, median, and 95% equal-tailed credible interval for $\Pi$.
-4. Let $\mathbf z=(z_1,\ldots,z_P)$ denote the observed signs. Define
-
-   $$
-   B_\Pi^+
-   \equiv
-   \{\omega\in\Omega\mid\Pi(\omega)>.5\}
-   $$
-
-   and compute
-
-   $$
-   \mathbb{P}(B_\Pi^+\mid\mathbf z)
-   =
-   \int_{.5}^{1}
-   f_{\Pi\mid\mathbf Z}(\pi\mid\mathbf z)
-   \,\mathrm d\pi.
-   $$
-
-   If $F_{\Pi\mid\mathbf Z}$ is the posterior cumulative distribution function, show why this integral equals $1-F_{\Pi\mid\mathbf Z}(.5)$. Compute the probability with `pbeta(..., lower.tail = FALSE)`.
-
-   **Target for this derivation:** $\mathbb{P}(B_\Pi^+\mid\mathbf z)$ rewritten from the posterior-density integral as $1-F_{\Pi\mid\mathbf Z}(.5)$.
-
-   **Your LaTeX**
-
-   $$
-   \begin{aligned}
-   &\text{Enter your derivation here.}
-   \end{aligned}
-   $$
-
-5. Verify the exact probability with at least 50,000 independent draws from the beta posterior and report its Monte Carlo standard error.
-6. Contrast this posterior probability with the exact-binomial p value from PS1. Name the distribution over which each probability is calculated.
-
-The [Monte Carlo notes](../../statistical-inference/monte-carlo-integration.qmd) supply the simulation calculation.
-
-## Task 5: estimate a two-by-two syntactic association (15 points)
-
-Review [the Fisher exact-test notes](../../statistical-inference/fishers-exact-test.qmd), [the conjugate-prior notes](../../statistical-inference/conjugate-priors.qmd), and [the Monte Carlo notes](../../statistical-inference/monte-carlo-integration.qmd) before beginning this task.
-
-The second dataset is derived from the training portion of Universal Dependencies English EWT. Each row represents one sentence containing exactly one selected *what*, *which*, or *who* dependency annotated as `nsubj` or `obj`. Restricting the table in this way prevents one sentence from contributing two selected dependencies. It does not remove possible dependence among sentences from the same document.
-
-```{r}
-wh_dependencies <- read.csv("data/ud_wh_dependencies.csv")
-stopifnot(!anyDuplicated(wh_dependencies$sentence_id))
-```
-
-The columns used here are `sentence_id`, the retained sentence identifier, `wh_word`, the lowercased form, and `deprel`, the basic UD relation. Check their classes and observed levels before constructing a table.
-
-First restrict the table to `what` and `who`. Let $K_w$ be the number of object relations among $N_w$ selected sentences with form $w$, where $w$ is either *what* or *who*. Let $\Pi_{\mathrm{what}}$ and $\Pi_{\mathrm{who}}$ be the corresponding population probabilities. Use the two scalar models
+**Your LaTeX**
 
 $$
-K_w\mid\Pi_w=\pi_w
-\sim
-\operatorname{Binomial}(N_w,\pi_w)
+\begin{aligned}
+\Pi\mid\mathbf Z=\mathbf z
+&\sim\operatorname{Beta}(\text{enter the updated parameters})\\
+&=\operatorname{Beta}(\text{enter the numerical parameters}).
+\end{aligned}
+$$
+
+### 4.2 Calculate posterior summaries
+
+Calculate the posterior mean, median, and 95% equal-tailed interval. Define $B_\Pi^+=\{\omega\in\Omega\mid\Pi(\omega)>.5\}$ and calculate $\mathbb P(B_\Pi^+\mid\mathbf z)$ with `pbeta(..., lower.tail = FALSE)`. Verify it with at least 50,000 independent posterior draws and report the [Monte Carlo standard error](../../statistical-inference/monte-carlo-integration.qmd).
+
+```{r}
+# Calculate and verify the beta-posterior summaries.
+```
+
+Report $k_{\mathrm{obs}}$, the posterior summaries, the event probability, and its Monte Carlo standard error.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with the requested sign-model result.
+:::
+
+## Exercise 5: Bayesian two-row association (20 points)
+
+The data for Exercises 5–6 come from the training split of [Universal Dependencies English EWT](https://github.com/UniversalDependencies/UD_English-EWT). The preparation scripts retain sentences containing exactly one selected *what*, *which*, or *who* token annotated as `nsubj` or `obj`. Each row of `data/ud_wh_dependencies.csv` represents one retained sentence. The relevant columns are `sentence_id`, `wh_word`, and `deprel`.
+
+For this exercise, retain *what* and *who*. Let $N_w$ be the number of retained sentences with word $w$, and let $K_w$ be the number annotated `obj`. Use the two scalar models
+
+$$
+K_w\mid\Pi_w=\pi_w\sim\operatorname{Binomial}(N_w,\pi_w)
+\qquad\text{and}\qquad
+\Pi_w\sim\operatorname{Beta}(1,1),
+$$
+
+where $w\in\{\mathrm{what},\mathrm{who}\}$.
+
+### 5.1 Construct the table and update the posteriors
+
+Load the data, verify that `sentence_id` is unique, and construct the two-by-two table with rows `what`, `who` and columns `nsubj`, `obj`.
+
+```{r}
+# Load, verify, restrict, and construct the table.
+```
+
+Apply the beta–binomial update separately to the two scalar parameters.
+
+**Target:** state both posterior distributions after substituting the observed counts.
+
+**Your LaTeX**
+
+$$
+\begin{aligned}
+\Pi_{\mathrm{what}}\mid\text{data}
+&\sim\operatorname{Beta}(\text{enter the parameters}),\\
+\Pi_{\mathrm{who}}\mid\text{data}
+&\sim\operatorname{Beta}(\text{enter the parameters}).
+\end{aligned}
+$$
+
+### 5.2 Calculate the association
+
+Draw at least 100,000 independent values from each posterior. Pair draws by simulation index and calculate
+
+$$
+\Delta_\Pi=\Pi_{\mathrm{what}}-\Pi_{\mathrm{who}}
 $$
 
 and
 
 $$
-\Pi_w\sim\operatorname{Beta}(1,1).
+\operatorname{OR}
+=
+\frac{\Pi_{\mathrm{what}}/(1-\Pi_{\mathrm{what}})}
+{\Pi_{\mathrm{who}}/(1-\Pi_{\mathrm{who}})}.
 $$
 
-1. Construct the two-by-two table with word form in the rows and dependency relation in the columns. Report $N_w$ and $K_w$ for each row.
-2. Apply the beta–binomial update separately to $\Pi_{\mathrm{what}}$ and $\Pi_{\mathrm{who}}$. State both posterior distributions after inserting the observed counts.
-3. Draw at least 100,000 independent values from each scalar posterior using a recorded seed. Pair the draws by simulation index and define
-
-   $$
-   \Delta_\Pi
-   =
-   \Pi_{\mathrm{what}}
-   -
-   \Pi_{\mathrm{who}}.
-   $$
-
-   Report the posterior median and 95% equal-tailed credible interval for $\Delta_\Pi$.
-4. Define
-
-   $$
-   B_{\Delta}^+
-   \equiv
-   \{\omega\in\Omega\mid
-   \Delta_\Pi(\omega)>0\}.
-   $$
-
-   Estimate $\mathbb{P}(B_{\Delta}^+\mid\text{selected sentences})$ and report its Monte Carlo standard error.
-5. For each paired draw, calculate
-
-   $$
-   \operatorname{OR}
-   =
-   \frac{
-   \Pi_{\mathrm{what}}/(1-\Pi_{\mathrm{what}})
-   }{
-   \Pi_{\mathrm{who}}/(1-\Pi_{\mathrm{who}})
-   }.
-   $$
-
-   Report its posterior median and 95% equal-tailed credible interval. State that the numerator contains the odds of an object relation for *what*.
-6. Compare this analysis with the Fisher procedure in PS1. The posterior calculation does not condition on both observed margins, and its posterior event probability is not Fisher's p value.
+Calculate the posterior median and 95% interval for both quantities. Define $B_\Delta^+=\{\omega\in\Omega\mid\Delta_\Pi(\omega)>0\}$ and estimate its posterior probability and Monte Carlo standard error.
 
 ```{r}
-# Update the two beta distributions and compare their posterior draws.
+# Draw from both posteriors and calculate the association summaries.
 ```
 
-## Task 6: check a categorical independence model (20 points)
+Report the two observed row counts and all requested posterior summaries.
 
-Review [the chi-squared test notes](../../statistical-inference/chi-squared-test.qmd) and [the posterior-predictive-check notes](../../statistical-inference/posterior-predictive-checks.qmd) before beginning this task.
+::: {.callout-note title="Your result"}
+Replace this sentence with the requested two-row association result.
+:::
 
-Now use all three word forms. Let $g\in\{\text{what},\text{which},\text{who}\}$ index the row, let $N_g$ be its fixed row total, and let $K_g$ be its object count. Under the independence model, every row shares one scalar object probability $\Pi_0$:
+### 5.3 Estimate sampling distributions across sample sizes
+
+Treat the retained *what* and *who* sentences as a finite population. For each $n\in\{20,40,80,160\}$, draw 500 simple random samples without replacement. For each sample, update the two beta posteriors and record the posterior mean of $\Delta_\Pi$ and its 95% interval width. Use one recorded seed.
+
+```{r}
+# Write one function that returns one tidy row, then run the complete sweep.
+```
+
+For each $n$, calculate the mean and standard deviation of the posterior-mean estimates and the median interval width. Plot the empirical sampling distributions of the posterior means by $n$.
+
+```{r}
+# Summarize and plot the empirical sampling distributions.
+```
+
+Report the sample-size summary table.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with the sample-size summary table.
+:::
+
+## Exercise 6: Posterior predictive independence model (25 points)
+
+Use all three word forms. Let $g\in\{\mathrm{what},\mathrm{which},\mathrm{who}\}$ index rows, $N_g$ the row total, and $K_g$ the object count. Under independence, all rows share the scalar object probability $\Pi_0$:
 
 $$
 K_g\mid\Pi_0=\pi_0
 \sim
-\operatorname{Binomial}(N_g,\pi_0).
+\operatorname{Binomial}(N_g,\pi_0),
+\qquad
+\Pi_0\sim\operatorname{Beta}(1,1).
 $$
 
-Use $\Pi_0\sim\operatorname{Beta}(1,1)$. Conditional on $\Pi_0$, treat the three row counts as independent.
+A [posterior predictive distribution](../../statistical-inference/posterior-predictive-checks.qmd) is obtained by drawing $\Pi_0$ from its posterior and then drawing a replicated table from the likelihood.
 
-1. Construct the three-by-two observed table in the row order `what`, `which`, `who` and the column order `nsubj`, `obj`.
-2. Calculate the observed Pearson statistic $x^2_{\mathrm{obs}}$ from the observed and expected tables. Use the same formula as in PS1.
-3. Pool the object and non-object counts across rows. Apply the scalar beta–binomial update to state $f_{\Pi_0\mid\mathbf K}$, where $\mathbf K=(K_{\mathrm{what}},K_{\mathrm{which}},K_{\mathrm{who}})$ only collects the observed counts.
-4. Generate at least 100,000 posterior predictive tables. For each replicate $r$:
+### 6.1 Derive the shared-probability posterior
 
-   a. draw one $\pi_0^{(r)}$ from the posterior of $\Pi_0$
+Pool the object counts and non-object counts across rows.
 
-   b. draw $K_g^{(r)}\sim\operatorname{Binomial}(N_g,\pi_0^{(r)})$ separately for each row
+**Target:** derive the beta posterior of $\Pi_0$ and substitute the observed totals.
 
-   c. construct the replicated three-by-two table
+**Your LaTeX**
 
-   d. calculate its Pearson statistic $X_{\mathrm{rep}}^{2(r)}$
+$$
+\begin{aligned}
+\Pi_0\mid\mathbf K=\mathbf k
+&\sim\operatorname{Beta}(\text{enter the updated parameters})\\
+&=\operatorname{Beta}(\text{enter the numerical parameters}).
+\end{aligned}
+$$
 
-5. Plot the replicated statistics with $x^2_{\mathrm{obs}}$ marked. Define
+### 6.2 Define the discrepancy
 
-   $$
-   B_{X^2}^{\mathrm{rep}}
-   \equiv
-   \{\omega\in\Omega\mid
-   X_{\mathrm{rep}}^2(\omega)\ge x^2_{\mathrm{obs}}\}.
-   $$
-
-   Estimate $\mathbb{P}(B_{X^2}^{\mathrm{rep}}\mid\mathbf K)$ and report its Monte Carlo standard error. If no replicate reaches the observed statistic, report both zero exceedances and the simulation count rather than claiming that the probability equals exactly zero.
-6. Inspect observed minus expected counts. State which word forms contribute most to the failure of the shared-probability model.
-7. Explain why this posterior predictive tail area is a model check. It is neither the posterior probability that independence is true nor a Bayes factor. Contrast its reference distribution with the chi-squared reference distribution used in PS1.
+Construct the observed three-by-two table in row order `what`, `which`, `who` and column order `nsubj`, `obj`. Calculate its expected counts under independence and its Pearson statistic using the formula from the [chi-squared-test notes](../../statistical-inference/chi-squared-test.qmd).
 
 ```{r}
-# Simulate replicated tables under the shared-probability independence model.
+# Construct the table and calculate the observed Pearson statistic.
 ```
 
-## Task 7: compare the claims and scope the results (10 points)
+### 6.3 Simulate replicated tables
 
-Write three short paragraphs.
+Generate at least 100,000 posterior predictive tables. For each replicate, draw one value of $\Pi_0$, draw one object count for each fixed row total, construct the replicated table, and calculate its Pearson statistic.
 
-1. Compare the estimands represented by $M$ and $\Pi$. State what the magnitude model uses that the direction model discards. Explain how the posterior could place most of its mass above zero for $M$ while retaining substantial uncertainty about whether $\Pi>.5$.
-2. Report the Provo result using the posterior summaries from Tasks 3 and 4. State the analysis unit, the noun minus verb subtraction order, and the multiplicative interpretation of $\exp(M)$. End with the narrow claim licensed by the corpus comparison. The claim is an association within passages represented by the Provo sample, conditional on positive first fixation. Do not describe the result as a causal effect of part of speech or as an individual-reader effect.
-3. Report the categorical result using $\Delta_\Pi$, the posterior odds ratio, and the posterior predictive check. State that the analysis concerns selected UD annotations, not all interrogative or relative-clause syntax in English. Compare each Bayesian quantity with its PS1 counterpart without calling either one a p value.
+```{r}
+# Generate the posterior predictive Pearson statistics.
+```
 
-## Task 8: assess Bayesian sensitivity (15 points)
+Define the posterior predictive tail event in full set-builder notation.
 
-Refit the magnitude model with the wider priors
+**Target:** $B_{X^2}^{\mathrm{rep}}$ and its posterior probability.
+
+**Your LaTeX**
 
 $$
-M\sim\mathcal{N}(0,.10^2)
-\qquad\text{and}\qquad
-\Sigma\sim\operatorname{Exponential}(10).
+\begin{aligned}
+B_{X^2}^{\mathrm{rep}}
+&=\{\omega\in\Omega\mid\text{enter the discrepancy condition}\},\\
+\mathbb P(B_{X^2}^{\mathrm{rep}}\mid\mathbf K=\mathbf k)
+&=\text{enter the Monte Carlo estimator}.
+\end{aligned}
 $$
 
-Then replace the normal likelihood with a Student t likelihood and estimate its degrees of freedom. Compare the posterior center, interval, $\mathbb{P}(B_M^+\mid\boldsymbol{\delta})$, and posterior predictive range across the three specifications. State which part of the conclusion, if any, depends on the prior scale or tail model.
+Plot the replicated statistics with the observed statistic marked. Calculate the posterior predictive tail probability and its Monte Carlo standard error. Calculate the observed Pearson residuals and identify the two cells with the largest absolute residuals.
+
+```{r}
+# Plot and calculate the requested posterior predictive summaries.
+```
+
+Report the observed statistic, posterior predictive tail probability, Monte Carlo standard error, and two largest absolute residuals with their signs.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with the requested posterior predictive result.
+:::
 
 ## Submission checklist
 
-- The notebook runs from a fresh R session with the listed packages installed.
-- Object names use `snake_case`, assignment uses `<-`, and package requirements are explicit.
-- The conditional normal–normal derivation completes every requested blank, shows the square completion, and distinguishes the conditional result from the marginal `brms` posterior.
+- The notebook runs from a fresh R session after the data-preparation steps.
+- Every derivation is entered in its LaTeX block.
+- Every computation is entered in the R block immediately following its instruction.
+- Every requested result is entered in its result block.
+- Every parameter is scalar.
 - The passage table is joined by `Text_ID` rather than aligned by row position.
-- The syntactic table contains at most one selected dependency per sentence.
-- The two row probabilities are represented as named scalar parameters, not as a vector-valued parameter.
-- The posterior predictive independence model uses one scalar probability shared across rows.
-- Every passage contributes one contrast to each posterior analysis.
-- The prior predictive check occurs before the posterior result is interpreted.
-- $\widehat R$, effective sample sizes, and divergent transitions are checked before posterior summaries are reported.
-- Every posterior event uses an explicitly defined full set.
-- The results paragraphs distinguish magnitude, directional consistency, categorical association, and model misfit.
-- The conclusion remains descriptive and conditional on positive first fixation.
-- The prior-scale and likelihood-family sensitivity analyses are completed and interpreted.
+- Every posterior event is written in full set-builder notation.
+- Every random calculation has a recorded seed.
+- Markov-chain diagnostics are checked before posterior summaries are reported.
