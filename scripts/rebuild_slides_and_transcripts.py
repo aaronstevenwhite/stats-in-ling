@@ -823,9 +823,9 @@ SLIDE_POINT_TEXT_OVERRIDES = {
         "A parameter describes the modeled population; an estimator is a sample rule; an "
         "estimate is that rule's realized value."
     ),
-    "For this empirical sampling reference, the natural target": (
-        "The empirical target is the median duration for adult-women /I/ tokens in the "
-        "Hillenbrand cohort; a broader model targets the corresponding population median."
+    "For this bootstrap, the target is": (
+        "The bootstrap target is the median /I/ duration for the observed women; a broader "
+        "sampling model would target a population median."
     ),
     "A 95% credible interval contains 95% posterior mass": (
         "A 95% credible interval contains 95% posterior mass; a 95% confidence procedure "
@@ -833,7 +833,7 @@ SLIDE_POINT_TEXT_OVERRIDES = {
     ),
     "the calculation runs the frozen random-walk computation": (
         "Four chains use 6,000 iterations, discard 1,000 as warmup, and share proposal "
-        "covariance $(2.38^2/2)\\widehat\\Sigma$ estimated from the normalized PCT grid."
+        "covariance $(2.38^2/2)\\widehat\\Sigma$ estimated from the normalized posterior grid."
     ),
     "An elicited binary choice is not a grammaticality label": (
         "Binary choices, ordinal labels, counts, and rates require distinct response models; "
@@ -847,20 +847,20 @@ SLIDE_POINT_TEXT_OVERRIDES = {
         "Centered cross-products measure co-movement; dividing by centered $x$ variation "
         "yields change in $y$ per unit $x$."
     ),
-    "For the PRS, we check three restrictions": (
-        "For the PRS, we check a linear conditional mean, stable residual location across "
+    "We check three restrictions": (
+        "For the Provo regression, we check a linear conditional mean, stable residual location across "
         "passages, and approximately normal residual shape."
     ),
-    "The exact PCT program contains": (
-        "The exact PCT program returns a transformed ratio, replicated responses, and "
+    "The exact passage-level Student-t program contains": (
+        "The exact Stan program returns a transformed ratio, replicated responses, and "
         "pointwise log likelihoods."
     ),
-    "the calculation below reconstructs the PCT": (
-        "The PCT calculation normalizes a $321\\times321$ posterior grid and samples "
+    "the calculation below reconstructs the posterior": (
+        "The calculation normalizes a $321\\times321$ posterior grid and samples "
         "20,000 cells with posterior weights."
     ),
     "The complete code below uses the frozen seed": (
-        "The PCT fit uses the frozen seed and the data-scaled proposal from the reference "
+        "The passage-level Student-$t$ fit uses the frozen seed and data-scaled proposal from the reference "
         "analysis."
     ),
     "the calculation below reconstructs those values": (
@@ -897,12 +897,12 @@ SLIDE_POINT_TEXT_OVERRIDES = {
         "$\\mathbb{P}(q_{.25}<D\\leq q_{.75})=0.511$; ties at the lower threshold matter "
         "because the event is open on the left."
     ),
-    "The following code reconstructs the PCT grid": (
-        "The normalized PCT grid supplies the proposal covariance for the first 25 "
+    "The following code reconstructs the posterior grid": (
+        "The normalized posterior grid supplies the proposal covariance for the first 25 "
         "recorded transitions; the full sampler is developed with Metropolis--Hastings."
     ),
     "The following code reads the actual production draws": (
-        "The diagnostic draws come from the production PCT fit, retain chain identity, "
+        "The diagnostic draws come from the production passage-level Student-$t$ fit, retain chain identity, "
         "and exclude warmup."
     ),
     "With row and column margins fixed, one cell determines the remaining cells": (

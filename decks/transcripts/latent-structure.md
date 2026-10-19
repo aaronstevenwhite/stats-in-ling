@@ -12,1030 +12,1979 @@ Welcome to Finding unobserved groups in linguistic data. The module follows the 
 
 Source note: `latent-structure/index.qmd`
 
-We now turn to Finding unobserved groups. Peterson and Barney's vowel-production study recorded repeated /hVd/ productions and their acoustic measurements. This unit uses the table distributed as `phonTools::pb52` in package version 0.2.2.2. The package is BSD-licensed, though those package terms do not separately establish redistribution terms for the historical table. One row is one recorded vowel token; rows repeat speakers, elicitation words, and intended vowels.
+Now we turn to Finding unobserved groups.
 
 ## Slide 3: Peterson-Barney: the empirical object
 
 Source note: `latent-structure/index.qmd`
 
-This is the first use of Peterson-Barney in this module. The slide names the observation represented in the teaching table and links the original source. We will keep that unit fixed when we compute and interpret quantities from these data.
+The data source is Peterson and Barney (1952). It provides 1,520 F1-F2 vowel-token vectors from 76 speakers.
 
 ## Slide 4: Finding unobserved groups
 
 Source note: `latent-structure/index.qmd`
 
-Peterson and Barney's vowel-production study recorded repeated /hVd/ productions and their acoustic measurements. This unit uses the table distributed as `phonTools::pb52` in package version 0.2.2.2. The package is BSD-licensed, though those package terms do not separately establish redistribution terms for the historical table. The fitting representation contains F1 and F2 but not the elicitation word or intended-vowel label. The linguistic question is whether recurring regions appear in this acoustic representation and, if so, how they relate to categories supplied by the experimental design. That distinction will matter again on the next slide.
+Peterson and Barney's vowel-production study recorded repeated /hVd/ productions and their acoustic measurements. This unit uses the table distributed as `phonTools::pb52` in package version 0.2.2.2. The package is BSD-licensed, though those package terms do not separately establish redistribution terms for the historical table. One row is one recorded vowel token; rows repeat speakers, elicitation words, and intended vowels.
 
-## Slide 5: Hard clustering
-
-Source note: `latent-structure/index.qmd`
-
-The analysis begins by representing each object as a row of measurements. Distance and scaling then determine which token pairs count as similar. Because F1 and F2 have different empirical spreads, the transformation affects the geometry supplied to the clustering algorithm. K-means assigns each token to one cluster and represents each cluster by a centroid. The assignment and centroid updates minimize within-cluster loss. Silhouette widths compare each token's distance to its assigned cluster with its distance to the nearest alternative. Validation without outcome labels then asks how centroids estimated from other speakers reconstruct a complete unseen-speaker panel. Now connect the notation back to the linguistic comparison.
-
-## Slide 6: Finite mixture models
+## Slide 5: Finding unobserved groups
 
 Source note: `latent-structure/index.qmd`
 
-A **finite mixture model** represents a distribution as a weighted combination of component distributions. A Gaussian mixture uses Gaussian components for the acoustic measurements. Posterior membership probabilities quantify how much each component contributes to the density at an observed token, and expectation--maximization alternates between updating these responsibilities and the component parameters. Choosing a mixture with BIC compares fitted likelihoods after accounting for parameter count. BIC still treats token rows as likelihood contributions, so the repeated-speaker structure remains a limitation rather than disappearing into the criterion. Held-out mixture validation then evaluates fitted density for speakers absent during fitting and uses intended vowels only for a separate post-fit alignment check. Notice what is observed and what is supplied by the model.
+The fitting representation contains F1 and F2 but not the elicitation word or intended-vowel label. The linguistic question is whether recurring regions appear in this acoustic representation and, if so, how they relate to categories supplied by the experimental design.
 
-## Slide 7: Validation and sequence
+## Slide 6: Finding unobserved groups
 
 Source note: `latent-structure/index.qmd`
 
-The CCD fixes the interpretation throughout the sequence. The pages thus specify (i) the represented object and geometry, (ii) the hard-clustering objective and its held-out target, and (iii) the probabilistic mixture objective and its held-out target. Peterson and Barney's vowel-production study recorded repeated /hVd/ productions and their acoustic measurements. This unit uses the table distributed as `phonTools::pb52` in package version 0.2.2.2. The package is BSD-licensed, though those package terms do not separately establish redistribution terms for the historical table. One row is one recorded vowel token; rows repeat speakers, elicitation words, and intended vowels. The interpretation is conditional on the sampling and measurement design.
+A group is unobserved only in the sense that no group label is supplied to the fitting procedure. A fitted cluster or mixture component is not automatically a phoneme, a vowel category, or a speaker type. That interpretation requires a separate comparison with linguistic metadata or held-out measurements.
 
-## Slide 8: Representing objects for clustering
+## Slide 7: Hard clustering
 
-Source note: `latent-structure/representing-objects.qmd`
+Source note: `latent-structure/index.qmd`
 
-We now turn to Representing objects for clustering. Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. Their primary report describes the production and separate listener experiments (Peterson and Barney 1952); the course uses the production table distributed as `phonTools::pb52`. The Praat documentation records the table's subsequent provenance.
+The analysis begins by representing each object as a row of measurements. Distance and scaling then determine which token pairs count as similar. Because F1 and F2 have different empirical spreads, the transformation affects the geometry supplied to the clustering algorithm.
 
-## Slide 9: Representing objects for clustering
+## Slide 8: Hard clustering
 
-Source note: `latent-structure/representing-objects.qmd`
+Source note: `latent-structure/index.qmd`
 
-Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. We use this table throughout the latent-structure notes. The label-separation rule (LSR) is fixed at the outset: intended-vowel labels may describe or evaluate a fitted representation, but they may not enter the feature matrix, initial values, component-count choice, or covariance-family choice. That distinction will matter again on the next slide.
+K-means assigns each token to one cluster and represents each cluster by a centroid. The assignment and centroid updates minimize within-cluster loss. Silhouette widths compare each token's distance to its assigned cluster with its distance to the nearest alternative. Validation without outcome labels then asks how centroids estimated from other speakers reconstruct a complete unseen-speaker panel.
 
-## Slide 10: Loading and auditing the production table
+## Slide 9: Finite mixture models
 
-Source note: `latent-structure/representing-objects.qmd`
+Source note: `latent-structure/index.qmd`
 
-The audited table has observed token rows from observed speakers. Each speaker contributes observed rows: two repetitions of each of ten elicitation words. One row is thus a recorded word token, not a speaker, vowel category, or listener judgment. Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. Their primary report describes the production and separate listener experiments (Peterson and Barney 1952); the course uses the production table distributed as `phonTools::pb52`. The Praat documentation records the table's subsequent provenance. Notice what is observed and what is supplied by the model.
+A **finite mixture model** represents a distribution as a weighted combination of component distributions. A Gaussian mixture uses Gaussian components for the acoustic measurements. Posterior membership probabilities quantify how much each component contributes to the density at an observed token, and expectation--maximization alternates between updating these responsibilities and the component parameters.
 
-## Slide 11: Defining the represented objects
+## Slide 10: Finite mixture models
 
-Source note: `latent-structure/representing-objects.qmd`
+Source note: `latent-structure/index.qmd`
 
-Let $N$ linguistic objects be measured on $p$ numerical properties. Their representation is Row $i$ is the vector Use the graph or equation to say the result in ordinary language.
+Choosing a mixture with BIC compares fitted likelihoods after accounting for parameter count. BIC still treats token rows as likelihood contributions, so the repeated-speaker structure remains a limitation rather than disappearing into the criterion. Held-out mixture validation then evaluates fitted density for speakers absent during fitting and uses intended vowels only for a separate post-fit alignment check.
 
-## Slide 12: Defining the represented objects: equation 1
+## Slide 11: Validation and sequence
 
-Source note: `latent-structure/representing-objects.qmd`
+Source note: `latent-structure/index.qmd`
 
-The displayed expression formalizes defining the represented objects: equation 1. Let $N$ linguistic objects be measured on $p$ numerical properties. Their representation is Keep track of what each term refers to in the linguistic dataset.
+This distinction between statistical components and linguistic categories fixes the interpretation throughout the sequence. The pages thus specify (i) the represented object and geometry, (ii) the hard-clustering objective and its held-out target, and (iii) the probabilistic mixture objective and its held-out target. The probability calculations rely on random variables and distributions, while both validation analyses reuse the separation between training and test data.
 
-## Slide 13: Defining the represented objects: equation 2
-
-Source note: `latent-structure/representing-objects.qmd`
-
-The displayed expression formalizes defining the represented objects: equation 2. Row $i$ is the vector Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 14: The observed acoustic geometry
+## Slide 12: Representing objects for clustering
 
 Source note: `latent-structure/representing-objects.qmd`
 
-The plot shows all observed F1-F2 vectors and retains speaker type only as a panel label. The broad differences across panels suggest why raw hertz can partly organize tokens by anatomy-related speaker groups. But the plot does not supply an intended-vowel label to a fitting algorithm. Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. Their primary report describes the production and separate listener experiments (Peterson and Barney 1952); the course uses the production table distributed as `phonTools::pb52`. The Praat documentation records the table's subsequent provenance. The interpretation is conditional on the sampling and measurement design.
+Our next step is Representing objects for clustering.
 
-## Slide 15: Repeated rows change the target
-
-Source note: `latent-structure/representing-objects.qmd`
-
-Treating the observed tokens as rows produces a grouping of productions. Averaging each speaker-vowel pair first would instead produce observed speaker-vowel means and remove repetition-level variation. Averaging all observed rows for each speaker would produce a grouping of speakers and remove the within-speaker vowel space almost entirely. These are different represented objects. The present analysis keeps token rows, preserves speaker identifiers for grouped validation, and describes the resulting clusters as regions of a production space. Notice what is observed and what is supplied by the model.
-
-## Slide 16: What the representation omits
+## Slide 13: Representing objects for clustering
 
 Source note: `latent-structure/representing-objects.qmd`
 
-Peterson and Barney also measured F0 and F3. F3 is especially relevant to the rhotic vowel, while a steady-state section cannot capture every dynamic property of an /hVd/ word. Restricting the matrix to F1 and F2 is thus a teaching choice, not a claim that the other measurements are irrelevant. The paper used the measurements to examine experimental control, production variation, and the relation between acoustic patterns and listener classifications. It did not fit K-means or Gaussian mixtures. Our clustering is a descriptive reanalysis of the released production table. Use the graph or equation to say the result in ordinary language.
+Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. Their primary report describes the production and separate listener experiments (Peterson and Barney 1952); the course uses the production table distributed as `phonTools::pb52`. The Praat documentation records the table's subsequent provenance.
 
-## Slide 17: Checking the represented object
-
-Source note: `latent-structure/representing-objects.qmd`
-
-1. What does one row of `X_raw` represent? 2. Why is `speaker` retained outside the feature matrix? 3. Which variables are allowed to define similarity under the LSR? 4. How would averaging repetitions change the object represented by one row? 5. The matrix fixes which objects can be grouped and which measurements can make them similar. The next page compares geometries that use the same observed F1-F2 measurements but different scale definitions. That distinction will matter again on the next slide.
-
-## Slide 18: Representing objects for clustering
+## Slide 14: Representing objects for clustering
 
 Source note: `latent-structure/representing-objects.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Representing objects for clustering. Read the pattern before attaching a model interpretation to it.
+We use this table throughout the latent-structure notes. To prevent label leakage, intended-vowel labels may describe or evaluate a fitted representation, but they may not enter the feature matrix, initial values, component-count choice, or covariance-family choice.
 
-## Slide 19: Distance and scaling
+## Slide 15: Loading and auditing the production table
+
+Source note: `latent-structure/representing-objects.qmd`
+
+The audited table has 1,520 token rows from 76 speakers. Each speaker contributes 20 rows: two repetitions of each of ten elicitation words. One row is thus a recorded word token, not a speaker, vowel category, or listener judgment. The package table contains no listener-level response, session, or seat variables from the paper’s perception experiment.
+
+## Slide 16: Defining the represented objects
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Let $N$ linguistic objects be measured on $p$ numerical properties. Their representation is
+
+$$
+\mathbf{X}
+=
+\begin{bmatrix}
+\mathbf{x}_1^{\mathsf T}\\
+\vdots\\
+\mathbf{x}_N^{\mathsf T}
+\end{bmatrix}
+\in
+\mathbb{R}^{N\times p}.
+$$
+
+## Slide 17: Defining the represented objects
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Row $i$ is the vector
+
+$$
+\mathbf{x}_i
+=
+\begin{bmatrix}
+x_{i1}&\cdots&x_{ip}
+\end{bmatrix}.
+$$
+
+## Slide 18: Defining the represented objects
+
+Source note: `latent-structure/representing-objects.qmd`
+
+For the main analysis, row $i$ is one token and the two columns are F1 and F2. The sampling group remains the speaker because each person contributes 20 rows. Intended vowel, repetition, speaker type, and sex remain beside the matrix as external metadata.
+
+## Slide 19: Defining the represented objects
+
+Source note: `latent-structure/representing-objects.qmd`
+
+This separation matters. Adding the integer `speaker` code to `X_raw` would treat record-number differences as measured acoustic distances. Adding `vowel` would instead make the intended answer part of the fitted representation. Neither operation answers the clustering question posed here.
+
+## Slide 20: The observed acoustic geometry
+
+Source note: `latent-structure/representing-objects.qmd`
+
+This figure shows observed linguistic data for The observed acoustic geometry.
+
+## Slide 21: The observed acoustic geometry
+
+Source note: `latent-structure/representing-objects.qmd`
+
+The plot shows all observed F1-F2 vectors and retains speaker type only as a panel label. The broad differences across panels suggest why raw hertz can partly organize tokens by anatomy-related speaker groups. But the plot does not supply an intended-vowel label to a fitting algorithm.
+
+## Slide 22: Repeated rows change the target
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Treating the 1,520 tokens as rows produces a grouping of productions. Averaging each speaker-vowel pair first would instead produce 760 speaker-vowel means and remove repetition-level variation. Averaging all 20 rows for each speaker would produce a grouping of speakers and remove the within-speaker vowel space almost entirely.
+
+## Slide 23: Repeated rows change the target
+
+Source note: `latent-structure/representing-objects.qmd`
+
+These are different represented objects. The present analysis keeps token rows, preserves speaker identifiers for grouped validation, and describes the resulting clusters as regions of a production space.
+
+## Slide 24: What the representation omits
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Peterson and Barney also measured F0 and F3. F3 is especially relevant to the rhotic vowel, while a steady-state section cannot capture every dynamic property of an /hVd/ word. Restricting the matrix to F1 and F2 is thus a teaching choice, not a claim that the other measurements are irrelevant.
+
+## Slide 25: What the representation omits
+
+Source note: `latent-structure/representing-objects.qmd`
+
+The paper used the measurements to examine experimental control, production variation, and the relation between acoustic patterns and listener classifications. It did not fit K-means or Gaussian mixtures. Our clustering is a descriptive reanalysis of the released production table.
+
+## Slide 26: Checking the represented object
+
+Source note: `latent-structure/representing-objects.qmd`
+
+What does one row of `X_raw` represent?
+
+## Slide 27: Checking the represented object
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Why is `speaker` retained outside the feature matrix?
+
+## Slide 28: Checking the represented object
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Which variables are allowed to define similarity during fitting?
+
+## Slide 29: Checking the represented object
+
+Source note: `latent-structure/representing-objects.qmd`
+
+How would averaging repetitions change the object represented by one row?
+
+## Slide 30: Checking the represented object
+
+Source note: `latent-structure/representing-objects.qmd`
+
+Which part of the original listener experiment cannot be reconstructed from `pb52`?
+
+## Slide 31: Checking the represented object
+
+Source note: `latent-structure/representing-objects.qmd`
+
+The matrix fixes which objects can be grouped and which measurements can make them similar. The next page compares geometries that use the same observed F1-F2 measurements but different scale definitions.
+
+## Slide 32: Distance and scaling
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-We now turn to Distance and scaling. The Peterson-Barney table introduced on the preceding page gives F1 and F2 in hertz. A distance calculation must state how those two measurements become one comparison. Here we compare raw hertz, global standardization, and a speaker-relative representation before fixing the geometry used on later pages.
+The next topic is Distance and scaling.
 
-## Slide 20: Distance and scaling
-
-Source note: `latent-structure/distance-and-scaling.qmd`
-
-The Peterson-Barney table introduced on the preceding page gives F1 and F2 in hertz. A distance calculation must state how those two measurements become one comparison. Here we compare raw hertz, global standardization, and a speaker-relative representation before fixing the geometry used on later pages. Now connect the notation back to the linguistic comparison.
-
-## Slide 21: Euclidean distance
+## Slide 33: Distance and scaling
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-For two rows $\mathbf{x}_i$ and $\mathbf{x}_{i'}$ with $p$ features, **Euclidean distance** is Subtracting within columns keeps the comparison feature-specific. Squaring makes positive and negative differences contribute in the same direction, and adding gives an axis-aligned geometry. The units of that geometry come from the feature transformation. Keep the observational unit fixed while you interpret the result.
+The Peterson-Barney table introduced on the preceding page gives F1 and F2 in hertz. A distance calculation must state how those two measurements become one comparison. Here we compare raw hertz, global standardization, and a speaker-relative representation before fixing the geometry used on later pages.
 
-## Slide 22: Euclidean distance: equation 1
-
-Source note: `latent-structure/distance-and-scaling.qmd`
-
-The displayed expression formalizes euclidean distance: equation 1. For two rows $\mathbf{x}_i$ and $\mathbf{x}_{i'}$ with $p$ features, **Euclidean distance** is Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 23: Euclidean distance: equation 2
+## Slide 34: Euclidean distance
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes euclidean distance: equation 2. Subtracting within columns keeps the comparison feature-specific. Squaring makes positive and negative differences contribute in the same direction, and adding gives an axis-aligned geometry. The units of that geometry come from the feature transformation. Keep track of what each term refers to in the linguistic dataset.
+For two rows $\mathbf{x}_i$ and $\mathbf{x}_{i'}$ with $p$ features, **Euclidean distance** is
 
-## Slide 24: Euclidean distance: equation 3
+$$
+d(\mathbf{x}_i,\mathbf{x}_{i'})
+=
+\sqrt{
+\sum_{m=1}^{p}
+(x_{im}-x_{i'm})^2
+}.
+$$
 
-Source note: `latent-structure/distance-and-scaling.qmd`
-
-The displayed expression formalizes euclidean distance: equation 3. For the main representation, we standardize within speaker: Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 25: One observed token under three scales
-
-Source note: `latent-structure/distance-and-scaling.qmd`
-
-We select the observed token nearest the center of the speaker-relative representation, then find its nearest other token independently in each geometry. Intended vowel and speaker type enter only after the neighbors have been found. The reference row is observed. Its nearest observed neighbor changes from row observed in raw hertz to row observed after within-speaker standardization. Scaling has changed the neighborhood without changing a token's measurements. Use the graph or equation to say the result in ordinary language.
-
-## Slide 26: Comparing the induced neighborhoods
+## Slide 35: Euclidean distance
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-Under raw hertz, observed of nearest neighbors share intended-vowel metadata and observed share speaker type. In the within-speaker geometry, those rates are observed and observed, respectively. This post hoc comparison suggests that the speaker-relative geometry reduces a salient speaker-type organization while increasing alignment with the elicitation labels. The Peterson-Barney table introduced on the preceding page gives F1 and F2 in hertz. A distance calculation must state how those two measurements become one comparison. Here we compare raw hertz, global standardization, and a speaker-relative representation before fixing the geometry used on later pages. That distinction will matter again on the next slide.
+Subtracting within columns keeps the comparison feature-specific. Squaring makes positive and negative differences contribute in the same direction, and adding gives an axis-aligned geometry. The units of that geometry come from the feature transformation.
 
-## Slide 27: The prediction information set
-
-Source note: `latent-structure/distance-and-scaling.qmd`
-
-Within-speaker standardization uses a speaker's complete unlabeled 20-token panel to determine that speaker's mean and standard deviation. The later speaker-blocked analyses thus target a new speaker whose complete calibration panel is available. No held-out token estimates a centroid or mixture component, but held-out measurements do determine their speaker's coordinate system. This distinction follows the prediction information set. The analysis does not predict one isolated token from a speaker with no calibration data. It also leaves dependence among the 20 transformed rows unmodeled. Keep the observational unit fixed while you interpret the result.
-
-## Slide 28: Scaling does not establish relevance
+## Slide 36: Euclidean distance
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-Standardization gives each chosen coordinate a comparable observed spread. It does not make F1 and F2 equally reliable, independent, or exhaustive. A duplicated feature would receive double influence, while an omitted dynamic or F3 measurement receives none. Thus, Euclidean distance remains conditional on the representation. A high-quality clustering under this geometry may summarize recurring F1-F2 regions, but it cannot establish that this geometry captures every linguistically relevant relation. Use the graph or equation to say the result in ordinary language.
+For the main representation, we standardize within speaker:
 
-## Slide 29: Checking the geometry
+$$
+z_{isj}
+=
+\frac{F_{isj}-\bar F_{sj}}{s_{sj}},
+\qquad j\in\{1,2\},
+$$
+
+where $\bar F_{sj}$ and $s_{sj}$ are the mean and sample standard deviation across speaker $s$’s 20 tokens.
+
+## Slide 37: Euclidean distance
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-1. Which observed token is nearest to row observed under each representation? 2. Why can the nearest neighbor change when the acoustic measurements do not? 3. What does one unit mean after within-speaker standardization? 4. Which information from a held-out speaker defines the validation coordinate system? 5. Euclidean distance combines feature differences under a declared coordinate system. The next page uses the speaker-relative geometry to estimate centroids without using the intended-vowel labels. That distinction will matter again on the next slide.
+Distance becomes
 
-## Slide 30: Distance and scaling
+$$
+d(i,i')
+=
+\sqrt{
+(z_{i1}-z_{i'1})^2+(z_{i2}-z_{i'2})^2
+}.
+$$
+
+## Slide 38: Euclidean distance
 
 Source note: `latent-structure/distance-and-scaling.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Distance and scaling. Read the pattern before attaching a model interpretation to it.
+The transformation asks about relative position inside each observed speaker's vowel space. It is a teaching choice, not a preprocessing step used by Peterson and Barney.
 
-## Slide 31: K-means clustering
+## Slide 39: One observed token under three scales
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-We now turn to K-means clustering. We now fit centroids to the speaker-relative Peterson-Barney representation. Intended-vowel labels do not enter the fit. We fix $K=10$ only to compare a ten-centroid acoustic partition with the experiment's ten elicitation categories after fitting; this is not a claim that K-means discovered the category count.
+We select the observed token nearest the center of the speaker-relative representation, then find its nearest other token independently in each geometry. Intended vowel and speaker type enter only after the neighbors have been found.
 
-## Slide 32: K-means clustering
+## Slide 40: One observed token under three scales
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-We now fit centroids to the speaker-relative Peterson-Barney representation. Intended-vowel labels do not enter the fit. We fix $K=10$ only to compare a ten-centroid acoustic partition with the experiment's ten elicitation categories after fitting; this is not a claim that K-means discovered the category count. Now connect the notation back to the linguistic comparison.
+The reference row is 860. Its nearest observed neighbor changes from row 567 in raw hertz to row 300 after within-speaker standardization. Scaling has changed the neighborhood without changing a token’s measurements.
 
-## Slide 33: Assignments, centroids, and loss
+## Slide 41: Comparing the induced neighborhoods
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s feature vector. For $K$ clusters, let be its hard assignment and let The interpretation is conditional on the sampling and measurement design.
+Under raw hertz, 70.5% of nearest neighbors share intended-vowel metadata and 63.3% share speaker type. In the within-speaker geometry, those rates are 89.7% and 41.2%, respectively. This post hoc comparison suggests that the speaker-relative geometry reduces a salient speaker-type organization while increasing alignment with the elicitation labels.
 
-## Slide 34: Assignments, centroids, and loss: equation 1
+## Slide 42: Comparing the induced neighborhoods
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes assignments, centroids, and loss: equation 1. Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s feature vector. For $K$ clusters, let Keep track of what each term refers to in the linguistic dataset.
+This figure shows observed linguistic data for Comparing the induced neighborhoods.
 
-## Slide 35: Assignments, centroids, and loss: equation 2
+## Slide 43: The prediction information set
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes assignments, centroids, and loss: equation 2. be its hard assignment and let Keep track of what each term refers to in the linguistic dataset.
+Within-speaker standardization uses a speaker's complete unlabeled 20-token panel to determine that speaker's mean and standard deviation. The later speaker-blocked analyses thus target a new speaker whose complete calibration panel is available. No held-out token estimates a centroid or mixture component, but held-out measurements do determine their speaker's coordinate system.
 
-## Slide 36: Assignments, centroids, and loss: equation 3
+## Slide 44: The prediction information set
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes assignments, centroids, and loss: equation 3. be centroid $k$. **K-means clustering** minimizes the within-cluster sum of squares Keep track of what each term refers to in the linguistic dataset.
+This distinction follows the prediction information set. The analysis does not predict one isolated token from a speaker with no calibration data. It also leaves dependence among the 20 transformed rows unmodeled.
 
-## Slide 37: Assignments, centroids, and loss: equation 4
+## Slide 45: Scaling does not establish relevance
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes assignments, centroids, and loss: equation 4. For fixed centroids, the assignment step chooses Keep track of what each term refers to in the linguistic dataset.
+Standardization gives each chosen coordinate a comparable observed spread. It does not make F1 and F2 equally reliable, independent, or exhaustive. A duplicated feature would receive double influence, while an omitted dynamic or F3 measurement receives none.
 
-## Slide 38: Assignments, centroids, and loss: equation 5
+## Slide 46: Scaling does not establish relevance
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes assignments, centroids, and loss: equation 5. For fixed assignments, the update step replaces each centroid with the mean of its assigned rows: Keep track of what each term refers to in the linguistic dataset.
+Thus, Euclidean distance remains conditional on the representation. A high-quality clustering under this geometry may summarize recurring F1-F2 regions, but it cannot establish that this geometry captures every linguistically relevant relation.
 
-## Slide 39: Why the update is a mean
+## Slide 47: Checking the geometry
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-For one coordinate of one fixed cluster, the squared loss around a proposed center $\mu$ is Its derivative is Keep the observational unit fixed while you interpret the result.
+Which observed token is nearest to row 860 under each representation?
 
-## Slide 40: Why the update is a mean: equation 1
+## Slide 48: Checking the geometry
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes why the update is a mean: equation 1. For one coordinate of one fixed cluster, the squared loss around a proposed center $\mu$ is Keep track of what each term refers to in the linguistic dataset.
+Why can the nearest neighbor change when the acoustic measurements do not?
 
-## Slide 41: Why the update is a mean: equation 2
+## Slide 49: Checking the geometry
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes why the update is a mean: equation 2. Its derivative is Keep track of what each term refers to in the linguistic dataset.
+What does one unit mean after within-speaker standardization?
 
-## Slide 42: Why the update is a mean: equation 3
+## Slide 50: Checking the geometry
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes why the update is a mean: equation 3. Setting this derivative to zero gives Keep track of what each term refers to in the linguistic dataset.
+Which information from a held-out speaker defines the validation coordinate system?
 
-## Slide 43: Why the update is a mean: equation 4
+## Slide 51: Checking the geometry
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The displayed expression formalizes why the update is a mean: equation 4. and thus Keep track of what each term refers to in the linguistic dataset.
+Why do post-fit intended-vowel matches not constitute label leakage?
 
-## Slide 44: Fitting ten centroids
+## Slide 52: Checking the geometry
 
-Source note: `latent-structure/k-means.qmd`
+Source note: `latent-structure/distance-and-scaling.qmd`
 
-The fitted loss is observed. The seed and 100 starts make this calculation reproducible and reduce sensitivity to one initialization. They do not establish a global optimum. We now fit centroids to the speaker-relative Peterson-Barney representation. Intended-vowel labels do not enter the fit. We fix $K=10$ only to compare a ten-centroid acoustic partition with the experiment's ten elicitation categories after fitting; this is not a claim that K-means discovered the category count. Use the graph or equation to say the result in ordinary language.
+Euclidean distance combines feature differences under a declared coordinate system. The next page uses the speaker-relative geometry to estimate centroids without using the intended-vowel labels.
 
-## Slide 45: Inspecting one observed assignment
-
-Source note: `latent-structure/k-means.qmd`
-
-The token used on the scaling page is row observed. We calculate its squared distance to every fitted centroid rather than inserting a constructed coordinate pair. The nearest fitted centroid is cluster observed, with squared distance observed. The integer label is arbitrary; its location and assigned observations define the fitted region. Notice what is observed and what is supplied by the model.
-
-## Slide 46: Verifying the update step on the fitted data
+## Slide 53: K-means clustering
 
 Source note: `latent-structure/k-means.qmd`
 
-The fitted centroids equal the coordinatewise means of their assigned Peterson-Barney tokens to numerical tolerance. This observed check instantiates the update equation above. We now fit centroids to the speaker-relative Peterson-Barney representation. Intended-vowel labels do not enter the fit. We fix $K=10$ only to compare a ten-centroid acoustic partition with the experiment's ten elicitation categories after fitting; this is not a claim that K-means discovered the category count. Notice what is observed and what is supplied by the model.
+The next topic is K-means clustering.
 
-## Slide 47: Comparing with labels only after fitting
-
-Source note: `latent-structure/k-means.qmd`
-
-The adjusted Rand index (ARI) against the withheld intended-vowel metadata is observed. This number measures alignment between two partitions after the acoustic fit. It does not turn a centroid into a vowel, establish perceptual validity, or make the analysis supervised. We now fit centroids to the speaker-relative Peterson-Barney representation. Intended-vowel labels do not enter the fit. We fix $K=10$ only to compare a ten-centroid acoustic partition with the experiment's ten elicitation categories after fitting; this is not a claim that K-means discovered the category count. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 48: Alternation and local solutions
+## Slide 54: K-means clustering
 
 Source note: `latent-structure/k-means.qmd`
 
-Each assignment step cannot increase $W$ because every token chooses its nearest current centroid. Each update step cannot increase $W$ because each centroid becomes the mean of its assigned rows. The procedure thus decreases or preserves the objective until it reaches a local solution. K-means favors compact regions under squared Euclidean distance and assigns every token to exactly one region. Overlapping productions may not have that structure. A poor fit would diagnose this representation and objective, not the absence of organization in the production data. Keep the observational unit fixed while you interpret the result.
+We now fit centroids to the speaker-relative Peterson-Barney representation. Intended-vowel labels do not enter the fit. We fix $K=10$ only to compare a ten-centroid acoustic partition with the experiment's ten elicitation categories after fitting; this is not a claim that K-means discovered the category count.
 
-## Slide 49: Checking the alternating updates
-
-Source note: `latent-structure/k-means.qmd`
-
-1. Which centroid receives the reference token, and what squared distance supports that assignment? 2. How does `centroid_check` verify the update equation? 3. Why can several starts improve the fitted loss without guaranteeing a global minimum? 4. Why was $K=10$ fixed before the intended-vowel comparison? 5. K-means alternates nearest-centroid assignments with mean updates in the declared acoustic geometry. The next page shows how the fitted compactness changes when the number of centroids changes. Notice what is observed and what is supplied by the model.
-
-## Slide 50: K-means clustering
+## Slide 55: Assignments, centroids, and loss
 
 Source note: `latent-structure/k-means.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for K-means clustering. Read the pattern before attaching a model interpretation to it.
+Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s feature vector. For $K$ clusters, let
 
-## Slide 51: Within-cluster loss
+$$
+z_i\in\{1,\ldots,K\}
+$$
+
+be its hard assignment and let
+
+$$
+\boldsymbol{\mu}_k\in\mathbb{R}^p
+$$
+
+be centroid $k$.
+
+## Slide 56: Assignments, centroids, and loss
+
+Source note: `latent-structure/k-means.qmd`
+
+**K-means clustering** minimizes the within-cluster sum of squares
+
+$$
+W
+=
+\sum_{i=1}^{N}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_{z_i}
+\right\rVert^2.
+$$
+
+## Slide 57: Assignments, centroids, and loss
+
+Source note: `latent-structure/k-means.qmd`
+
+For fixed centroids, the assignment step chooses
+
+$$
+z_i
+=
+\underset{k\in\{1,\ldots,K\}}{\operatorname{argmin}}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_k
+\right\rVert^2.
+$$
+
+## Slide 58: Assignments, centroids, and loss
+
+Source note: `latent-structure/k-means.qmd`
+
+For fixed assignments, the update step replaces each centroid with the mean of its assigned rows:
+
+$$
+\boldsymbol{\mu}_k
+=
+\frac{1}{|C_k|}
+\sum_{i\in C_k}\mathbf{x}_i.
+$$
+
+## Slide 59: Why the update is a mean
+
+Source note: `latent-structure/k-means.qmd`
+
+For one coordinate of one fixed cluster, the squared loss around a proposed center $\mu$ is
+
+$$
+Q(\mu)
+=
+\sum_{i=1}^{n}(x_i-\mu)^2.
+$$
+
+## Slide 60: Why the update is a mean
+
+Source note: `latent-structure/k-means.qmd`
+
+Its derivative is
+
+$$
+\frac{\mathrm{d}Q}{\mathrm{d}\mu}
+=
+-2\sum_{i=1}^{n}(x_i-\mu).
+$$
+
+## Slide 61: Why the update is a mean
+
+Source note: `latent-structure/k-means.qmd`
+
+Setting this derivative to zero gives
+
+$$
+\sum_{i=1}^{n}x_i-n\mu=0,
+$$
+
+and thus
+
+$$
+\mu
+=
+\frac{1}{n}\sum_{i=1}^{n}x_i.
+$$
+
+## Slide 62: Why the update is a mean
+
+Source note: `latent-structure/k-means.qmd`
+
+The coordinatewise mean thus minimizes squared distance for fixed assignments.
+
+## Slide 63: Fitting ten centroids
+
+Source note: `latent-structure/k-means.qmd`
+
+The fitted loss is 142.223. The seed and 100 starts make this calculation reproducible and reduce sensitivity to one initialization. They do not establish a global optimum.
+
+## Slide 64: Inspecting one observed assignment
+
+Source note: `latent-structure/k-means.qmd`
+
+The token used on the scaling page is row 860. We calculate its squared distance to every fitted centroid rather than inserting a constructed coordinate pair.
+
+## Slide 65: Inspecting one observed assignment
+
+Source note: `latent-structure/k-means.qmd`
+
+The nearest fitted centroid is cluster 1, with squared distance 0.089. The integer label is arbitrary; its location and assigned observations define the fitted region.
+
+## Slide 66: Verifying the update step on the fitted data
+
+Source note: `latent-structure/k-means.qmd`
+
+The fitted centroids equal the coordinatewise means of their assigned Peterson-Barney tokens to numerical tolerance. This observed check instantiates the update equation above.
+
+## Slide 67: Verifying the update step on the fitted data
+
+Source note: `latent-structure/k-means.qmd`
+
+This figure shows observed linguistic data for Verifying the update step on the fitted data.
+
+## Slide 68: Comparing with labels only after fitting
+
+Source note: `latent-structure/k-means.qmd`
+
+The adjusted Rand index (ARI) against the withheld intended-vowel metadata is 0.755. This number measures alignment between two partitions after the acoustic fit. It does not turn a centroid into a vowel, establish perceptual validity, or make the analysis supervised.
+
+## Slide 69: Alternation and local solutions
+
+Source note: `latent-structure/k-means.qmd`
+
+Each assignment step cannot increase $W$ because every token chooses its nearest current centroid. Each update step cannot increase $W$ because each centroid becomes the mean of its assigned rows. The procedure thus decreases or preserves the objective until it reaches a local solution.
+
+## Slide 70: Alternation and local solutions
+
+Source note: `latent-structure/k-means.qmd`
+
+K-means favors compact regions under squared Euclidean distance and assigns every token to exactly one region. Overlapping productions may not have that structure. A poor fit would diagnose this representation and objective, not the absence of organization in the production data.
+
+## Slide 71: Checking the alternating updates
+
+Source note: `latent-structure/k-means.qmd`
+
+Which centroid receives the reference token, and what squared distance supports that assignment?
+
+## Slide 72: Checking the alternating updates
+
+Source note: `latent-structure/k-means.qmd`
+
+How does `centroid_check` verify the update equation?
+
+## Slide 73: Checking the alternating updates
+
+Source note: `latent-structure/k-means.qmd`
+
+Why can several starts improve the fitted loss without guaranteeing a global minimum?
+
+## Slide 74: Checking the alternating updates
+
+Source note: `latent-structure/k-means.qmd`
+
+Why was $K=10$ fixed before the intended-vowel comparison?
+
+## Slide 75: Checking the alternating updates
+
+Source note: `latent-structure/k-means.qmd`
+
+What does the post-fit ARI establish, and what does it leave open?
+
+## Slide 76: Checking the alternating updates
+
+Source note: `latent-structure/k-means.qmd`
+
+K-means alternates nearest-centroid assignments with mean updates in the declared acoustic geometry. The next page shows how the fitted compactness changes when the number of centroids changes.
+
+## Slide 77: Within-cluster loss
 
 Source note: `latent-structure/within-cluster-loss.qmd`
 
-We now turn to Within-cluster loss. K-means requires a centroid count before fitting. We now trace the training loss across a declared grid using the same speaker-relative Peterson-Barney representation, seed policy, and multi-start fitting rule at every count.
+Next, we take up Within-cluster loss.
 
-## Slide 52: Within-cluster loss
-
-Source note: `latent-structure/within-cluster-loss.qmd`
-
-K-means requires a centroid count before fitting. We now trace the training loss across a declared grid using the same speaker-relative Peterson-Barney representation, seed policy, and multi-start fitting rule at every count. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 53: Loss at a declared centroid count
+## Slide 78: Within-cluster loss
 
 Source note: `latent-structure/within-cluster-loss.qmd`
 
-For the K-means fit with $K$ centroids, write The subscript records that both assignments and centroids were estimated under candidate count $K$. The reduction obtained by adding centroid $K$ is Now connect the notation back to the linguistic comparison.
+K-means requires a centroid count before fitting. We now trace the training loss across a declared grid using the same speaker-relative Peterson-Barney representation, seed policy, and multi-start fitting rule at every count.
 
-## Slide 54: Loss at a declared centroid count: equation 1
-
-Source note: `latent-structure/within-cluster-loss.qmd`
-
-The displayed expression formalizes loss at a declared centroid count: equation 1. For the K-means fit with $K$ centroids, write Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 55: Loss at a declared centroid count: equation 2
+## Slide 79: Loss at a declared centroid count
 
 Source note: `latent-structure/within-cluster-loss.qmd`
 
-The displayed expression formalizes loss at a declared centroid count: equation 2. The subscript records that both assignments and centroids were estimated under candidate count $K$. The reduction obtained by adding centroid $K$ is Keep track of what each term refers to in the linguistic dataset.
+For the K-means fit with $K$ centroids, write
 
-## Slide 56: Why the optimal curve cannot rise
+$$
+W_K
+=
+\sum_{i=1}^{N}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_{z_i,K}
+\right\rVert^2.
+$$
 
-Source note: `latent-structure/within-cluster-loss.qmd`
-
-A model with $K+1$ centroids can reproduce a $K$-centroid solution by duplicating one existing center and retaining the assignments. Since the larger model can do at least this well, Thus, the globally minimized training loss reaches its smallest value at the largest permitted $K$. A computed curve can still rise if an algorithm reaches a poorer local solution for one candidate; several starts reduce that computational failure without changing the mathematical relation. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 57: Why the optimal curve cannot rise
-
-Source note: `latent-structure/within-cluster-loss.qmd`
-
-The displayed expression formalizes why the optimal curve cannot rise. A model with $K+1$ centroids can reproduce a $K$-centroid solution by duplicating one existing center and retaining the assignments. Since the larger model can do at least this well, Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 58: Fitting the observed loss curve
+## Slide 80: Loss at a declared centroid count
 
 Source note: `latent-structure/within-cluster-loss.qmd`
 
-The observed curve falls from observed at the smallest candidate to observed at the largest. The ten-centroid fit has loss observed, and adding the eleventh centroid reduces the loss by observed. K-means requires a centroid count before fitting. We now trace the training loss across a declared grid using the same speaker-relative Peterson-Barney representation, seed policy, and multi-start fitting rule at every count. The interpretation is conditional on the sampling and measurement design.
+The subscript records that both assignments and centroids were estimated under candidate count $K$. The reduction obtained by adding centroid $K$ is
 
-## Slide 59: The elbow is a visual judgment
+$$
+\Delta_K
+=
+W_{K-1}-W_K,
+\qquad K\geq2.
+$$
 
-Source note: `latent-structure/within-cluster-loss.qmd`
-
-An **elbow plot** displays $W_K$ against $K$. The **elbow method** looks for a count after which additional centroids produce much smaller reductions. The Peterson-Barney curve supplies real reductions, but it does not supply a universal cutoff for what counts as small. The curve drops quickly at low counts and then flattens. More than one bend remains visually defensible, however. Reporting the complete curve keeps this judgment visible. Keep the observational unit fixed while you interpret the result.
-
-## Slide 60: Loss remains tied to the representation
-
-Source note: `latent-structure/within-cluster-loss.qmd`
-
-Within-cluster loss depends on feature units, columns, and row count. Replacing speaker-relative scores with raw hertz would change the vertical scale and could change the fitted partitions. Duplicating F2 would give it twice the influence. Training compactness also does not establish a vowel inventory. Every additional centroid increases representational capacity on the same observations used to estimate it. The monotone loss curve cannot decide that one count is linguistically correct merely by reaching a minimum. That distinction will matter again on the next slide.
-
-## Slide 61: Checking the loss curve
+## Slide 81: Loss at a declared centroid count
 
 Source note: `latent-structure/within-cluster-loss.qmd`
 
-1. Why must an optimal $W_{K+1}$ be no greater than $W_K$? 2. Which additions produce the largest empirical reductions in this table? 3. Why can two readers locate different elbows on the same curve? 4. Why is the loss scale not comparable with a raw-hertz analysis? 5. The loss curve shows how training compactness changes with capacity. The next page asks whether each observed token is closer on average to its assigned cluster than to its nearest alternative cluster. The interpretation is conditional on the sampling and measurement design.
+A larger $\Delta_K$ means that the additional centroid removes more squared reconstruction error from the fitted rows.
 
-## Slide 62: Within-cluster loss
+## Slide 82: Why the optimal curve cannot rise
 
 Source note: `latent-structure/within-cluster-loss.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Within-cluster loss. Read the pattern before attaching a model interpretation to it.
+A model with $K+1$ centroids can reproduce a $K$-centroid solution by duplicating one existing center and retaining the assignments. Since the larger model can do at least this well,
 
-## Slide 63: Silhouette widths
+$$
+W_{K+1}\leq W_K.
+$$
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 83: Why the optimal curve cannot rise
 
-We now turn to Silhouette widths. The within-cluster loss measures distance from each token to its assigned centroid. It does not ask whether the token is nearly as close to another fitted group. A **silhouette width**90125-7) compares within-cluster cohesion with the nearest alternative.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 64: Silhouette widths
+Thus, the globally minimized training loss reaches its smallest value at the largest permitted $K$. A computed curve can rise after a poor local solution; multiple starts reduce this algorithmic failure without changing the mathematical relation.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 84: Fitting the observed loss curve
 
-The within-cluster loss measures distance from each token to its assigned centroid. It does not ask whether the token is nearly as close to another fitted group. A **silhouette width**90125-7) compares within-cluster cohesion with the nearest alternative. The interpretation is conditional on the sampling and measurement design.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 65: Cohesion and the nearest alternative
+The observed curve falls from 2888 at the smallest candidate to 96.792 at the largest. The ten-centroid fit has loss 142.223, and adding the eleventh centroid reduces the loss by 11.08.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 85: Fitting the observed loss curve
 
-Let $C(i)$ be the cluster containing token $i$. Its average distance to the other rows in that cluster is For another cluster $C$, define Notice what is observed and what is supplied by the model.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 66: Cohesion and the nearest alternative: equation 1
+This figure shows observed linguistic data for Fitting the observed loss curve.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 86: The elbow is a visual judgment
 
-The displayed expression formalizes cohesion and the nearest alternative: equation 1. Let $C(i)$ be the cluster containing token $i$. Its average distance to the other rows in that cluster is Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 67: Cohesion and the nearest alternative: equation 2
+An **elbow plot** displays $W_K$ against $K$. The **elbow method** looks for a count after which additional centroids produce much smaller reductions. The Peterson-Barney curve supplies real reductions, but it does not supply a universal cutoff for what counts as small.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 87: The elbow is a visual judgment
 
-The displayed expression formalizes cohesion and the nearest alternative: equation 2. For another cluster $C$, define Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 68: Cohesion and the nearest alternative: equation 3
+The curve drops quickly at low counts and then flattens. More than one bend remains visually defensible, however. Reporting the complete curve keeps this judgment visible.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 88: Loss remains tied to the representation
 
-The displayed expression formalizes cohesion and the nearest alternative: equation 3. The nearest alternative-cluster distance is Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 69: Cohesion and the nearest alternative: equation 4
+Within-cluster loss depends on feature units, columns, and row count. Replacing speaker-relative scores with raw hertz would change the vertical scale and could change the fitted partitions. Duplicating F2 would give it twice the influence.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 89: Loss remains tied to the representation
 
-The displayed expression formalizes cohesion and the nearest alternative: equation 4. The silhouette width is Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 70: Cohesion and the nearest alternative: equation 5
+Training compactness also does not establish a vowel inventory. Every additional centroid increases representational capacity on the same observations used to estimate it. The monotone loss curve cannot decide that one count is linguistically correct merely by reaching a minimum.
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 90: Checking the loss curve
 
-The displayed expression formalizes cohesion and the nearest alternative: equation 5. If $b(i)\geq a(i)$, then Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 71: Cohesion and the nearest alternative: equation 6
+Why must an optimal $W_{K+1}$ be no greater than $W_K$?
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 91: Checking the loss curve
 
-The displayed expression formalizes cohesion and the nearest alternative: equation 6. which lies between zero and one. If $a(i)>b(i)$, then Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 72: Reconstructing one observed silhouette
+Which additions produce the largest empirical reductions in this table?
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 92: Checking the loss curve
 
-The most negative token in the ten-centroid fit supplies a worked calculation from the production table. For row observed, $a(i)$ is observed and $b(i)$ is observed. Substituting those observed distances gives The interpretation is conditional on the sampling and measurement design.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 73: Reconstructing one observed silhouette
+Why can two readers locate different elbows on the same curve?
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 93: Checking the loss curve
 
-The displayed expression formalizes reconstructing one observed silhouette. The most negative token in the ten-centroid fit supplies a worked calculation from the production table. Keep track of what each term refers to in the linguistic dataset.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 74: Comparing candidate counts
+Why is the loss scale not comparable with a raw-hertz analysis?
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 94: Checking the loss curve
 
-The mean silhouette is largest at $K=observed$, where it equals observed. The ten-centroid partition has mean silhouette observed, while its post-fit ARI against intended vowels is observed, the largest in this fitted grid at $K=observed$. This disagreement is the empirical lesson. Silhouette rewards cohesion and separation under the fitted geometry; intended-vowel ARI evaluates agreement with external experimental metadata. The two criteria answer different questions. That distinction will matter again on the next slide.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 75: Limits of the score
+What linguistic claim is not licensed by the smallest displayed loss?
 
-Source note: `latent-structure/silhouette-scores.qmd`
+## Slide 95: Checking the loss curve
 
-Silhouettes inherit the distance, scaling, and fitted partition. Compact groups separated by gaps tend to score well, while systematically overlapping categories may not. A singleton cluster conventionally receives silhouette zero because within-cluster cohesion cannot be estimated from a pair. Thus, the candidate with the largest mean silhouette is best only among the fitted partitions under this score. It does not establish the number of phonological categories. The interpretation is conditional on the sampling and measurement design.
+Source note: `latent-structure/within-cluster-loss.qmd`
 
-## Slide 76: Checking cohesion and separation
+The loss curve shows how training compactness changes with capacity. The next page asks whether each observed token is closer on average to its assigned cluster than to its nearest alternative cluster.
 
-Source note: `latent-structure/silhouette-scores.qmd`
-
-1. Which observed averages produce the reference token's negative silhouette? 2. Why does $b(i)$ use the nearest alternative cluster? 3. Which $K$ maximizes the intrinsic silhouette criterion? 4. Which $K$ maximizes alignment with withheld intended-vowel metadata? 5. Why can both answers be correct for their respective targets? A silhouette diagnoses a fitted partition under the same geometry used to form it. The speaker-blocked validation page instead asks how centroids estimated from other speakers reconstruct a complete unseen speaker panel. Notice what is observed and what is supplied by the model.
-
-## Slide 77: Silhouette widths
+## Slide 96: Silhouette widths
 
 Source note: `latent-structure/silhouette-scores.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Silhouette widths. Read the pattern before attaching a model interpretation to it.
+Now we turn to Silhouette widths.
 
-## Slide 78: Interpretation
+## Slide 97: Silhouette widths
 
 Source note: `latent-structure/silhouette-scores.qmd`
 
-A silhouette diagnoses a fitted partition under the same geometry used to form it. The speaker-blocked validation page instead asks how centroids estimated from other speakers reconstruct a complete unseen speaker panel. The interpretation is conditional on the sampling and measurement design.
+The within-cluster loss measures distance from each token to its assigned centroid. It does not ask whether the token is nearly as close to another fitted group. A **silhouette width**90125-7) compares within-cluster cohesion with the nearest alternative.
 
-## Slide 79: Validation without outcome labels
+## Slide 98: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Let $C(i)$ be the cluster containing token $i$. Its average distance to the other rows in that cluster is
+
+$$
+a(i)
+=
+\frac{1}{|C(i)|-1}
+\sum_{j\in C(i),\ j\neq i}
+d(\mathbf{x}_i,\mathbf{x}_j).
+$$
+
+## Slide 99: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+For another cluster $C$, define
+
+$$
+d(i,C)
+=
+\frac{1}{|C|}
+\sum_{j\in C}
+d(\mathbf{x}_i,\mathbf{x}_j).
+$$
+
+## Slide 100: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+The nearest alternative-cluster distance is
+
+$$
+b(i)
+=
+\min_{C\neq C(i)}d(i,C).
+$$
+
+## Slide 101: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+The silhouette width is
+
+$$
+s(i)
+=
+\frac{b(i)-a(i)}{\max\{a(i),b(i)\}}.
+$$
+
+## Slide 102: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+If $b(i)\geq a(i)$, then
+
+$$
+s(i)=1-\frac{a(i)}{b(i)},
+$$
+
+which lies between zero and one.
+
+## Slide 103: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+If $a(i)>b(i)$, then
+
+$$
+s(i)=\frac{b(i)}{a(i)}-1,
+$$
+
+which lies between minus one and zero.
+
+## Slide 104: Cohesion and the nearest alternative
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Negative values indicate that another fitted cluster is closer on average under the declared geometry.
+
+## Slide 105: Reconstructing one observed silhouette
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+The most negative token in the ten-centroid fit supplies a worked calculation from the production table.
+
+## Slide 106: Reconstructing one observed silhouette
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+For row 669, $a(i)$ is 0.59 and $b(i)$ is 0.573. Substituting those observed distances gives
+
+$$
+s(i)
+=
+\frac{0.573-0.590}
+{\max\{0.590,0.573\}}
+=
+-0.028.
+$$
+
+## Slide 107: Reconstructing one observed silhouette
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+The negative value says that this acoustic vector lies slightly closer on average to the nearest competing cluster than to its assigned cluster. It does not say that the speaker or token has an ambiguous linguistic identity.
+
+## Slide 108: Comparing candidate counts
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+This figure shows observed linguistic data for Comparing candidate counts.
+
+## Slide 109: Comparing candidate counts
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+The mean silhouette is largest at $K=4$, where it equals 0.506. The ten-centroid partition has mean silhouette 0.496, while its post-fit ARI against intended vowels is 0.755, the largest in this fitted grid at $K=10$.
+
+## Slide 110: Comparing candidate counts
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+This disagreement is the empirical lesson. Silhouette rewards cohesion and separation under the fitted geometry; intended-vowel ARI evaluates agreement with external experimental metadata. The two criteria answer different questions.
+
+## Slide 111: Limits of the score
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Silhouettes inherit the distance, scaling, and fitted partition. Compact groups separated by gaps tend to score well, while systematically overlapping categories may not. A singleton cluster conventionally receives silhouette zero because within-cluster cohesion cannot be estimated from a pair.
+
+## Slide 112: Limits of the score
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Thus, the candidate with the largest mean silhouette is best only among the fitted partitions under this score. It does not establish the number of phonological categories.
+
+## Slide 113: Checking cohesion and separation
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Which observed averages produce the reference token's negative silhouette?
+
+## Slide 114: Checking cohesion and separation
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Why does $b(i)$ use the nearest alternative cluster?
+
+## Slide 115: Checking cohesion and separation
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Which $K$ maximizes the intrinsic silhouette criterion?
+
+## Slide 116: Checking cohesion and separation
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Which $K$ maximizes alignment with withheld intended-vowel metadata?
+
+## Slide 117: Checking cohesion and separation
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+Why can both answers be correct for their respective targets?
+
+## Slide 118: Checking cohesion and separation
+
+Source note: `latent-structure/silhouette-scores.qmd`
+
+A silhouette diagnoses a fitted partition under the same geometry used to form it. The speaker-blocked validation page instead asks how centroids estimated from other speakers reconstruct a complete unseen speaker panel.
+
+## Slide 119: Validation without outcome labels
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-We now turn to Validation without outcome labels. A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token.
+Now we turn to Validation without outcome labels.
 
-## Slide 80: Validation without outcome labels
-
-Source note: `latent-structure/unsupervised-validation.qmd`
-
-A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token. Now connect the notation back to the linguistic comparison.
-
-## Slide 81: Reconstructing the rows and speaker folds
+## Slide 120: Validation without outcome labels
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-The folds are balanced within the paper's men, women, and children speaker groups. All rows from one speaker stay in one fold. A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token. Now connect the notation back to the linguistic comparison.
+A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token.
 
-## Slide 82: Predicting a held-out token
-
-Source note: `latent-structure/unsupervised-validation.qmd`
-
-Let be centroids estimated without the held-out speaker. Token $i$ receives the nearest fixed center: Now connect the notation back to the linguistic comparison.
-
-## Slide 83: Predicting a held-out token: equation 1
+## Slide 121: Reconstructing the rows and speaker folds
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes predicting a held-out token: equation 1. Let Keep track of what each term refers to in the linguistic dataset.
+The folds are balanced within the paper's men, women, and children speaker groups. All rows from one speaker stay in one fold.
 
-## Slide 84: Predicting a held-out token: equation 2
-
-Source note: `latent-structure/unsupervised-validation.qmd`
-
-The displayed expression formalizes predicting a held-out token: equation 2. be centroids estimated without the held-out speaker. Token $i$ receives the nearest fixed center: Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 85: Predicting a held-out token: equation 3
+## Slide 122: Predicting a held-out token
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes predicting a held-out token: equation 3. Its squared reconstruction loss is Keep track of what each term refers to in the linguistic dataset.
+Let
 
-## Slide 86: Keeping the new unit new
+$$
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_1,
+\ldots,
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_K
+$$
 
-Source note: `latent-structure/unsupervised-validation.qmd`
+be centroids estimated without the held-out speaker.
 
-The relevant separation rule comes from grouped cross-validation: a test speaker cannot contribute another token to training. The following helper computes each held-out token's nearest training centroid. Each speaker contributes one mean loss at each $K$, so speakers receive equal weight in the displayed uncertainty summary. That distinction will matter again on the next slide.
-
-## Slide 87: Why reconstruction loss does not select a category count
-
-Source note: `latent-structure/unsupervised-validation.qmd`
-
-A codebook with $K+1$ centers can reproduce a $K$-center codebook by duplicating one center. Its population reconstruction loss can thus decrease or remain constant as capacity increases. Finite training samples and local optimization may make a validation curve wiggle, but the target still rewards added representational capacity. Held-out loss can compare how efficiently declared codebook sizes represent new panels, or it can be paired with a separately declared complexity budget. It does not estimate a phonological inventory by itself. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 88: The calibration-panel target
+## Slide 123: Predicting a held-out token
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-The within-speaker scores were computed from each speaker's complete unlabeled panel before the split. Thus, held-out speakers influence their own normalization but do not influence the fitted centroids. This prediction information set may be appropriate when a complete acoustic calibration panel is available. It is unavailable for a first isolated token. This use of test-panel measurements is deliberate rather than hidden preprocessing leakage. The claim must name the adapted target. Notice what is observed and what is supplied by the model.
+Token $i$ receives the nearest fixed center:
 
-## Slide 89: Checking the held-out target
+$$
+\widehat z_i
+=
+\underset{k\in\{1,\ldots,K\}}{\operatorname{argmin}}
+\left\lVert
+\mathbf{x}_i-
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_k
+\right\rVert^2.
+$$
+
+## Slide 124: Predicting a held-out token
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-1. Why do all rows from a speaker move together? 2. Which fitted objects exclude the held-out speaker entirely? 3. What information from the held-out speaker is used for normalization? 4. Why does lower held-out reconstruction loss favor larger codebooks? 5. What new-speaker claim does this design not support? Speaker-blocked reconstruction loss evaluates transfer of a centroid representation to complete unseen-speaker panels. The next page replaces hard nearest-centroid geometry with a probability model that retains component spread and overlap. The interpretation is conditional on the sampling and measurement design.
+Its squared reconstruction loss is
 
-## Slide 90: Validation without outcome labels
+$$
+L_i
+=
+\min_k
+\left\lVert
+\mathbf{x}_i-
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_k
+\right\rVert^2.
+$$
+
+## Slide 125: Predicting a held-out token
 
 Source note: `latent-structure/unsupervised-validation.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Validation without outcome labels. Read the pattern before attaching a model interpretation to it.
+The held-out row does not update a centroid before it is scored.
 
-## Slide 91: Gaussian mixtures
+## Slide 126: Keeping the new unit new
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-We now turn to Gaussian mixtures. The Peterson-Barney production space contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A **Gaussian mixture model (GMM)** instead represents regions by weighted probability distributions, each with an estimated location and spread.
+The relevant separation rule comes from grouped cross-validation: a test speaker cannot contribute another token to training. The following helper computes each held-out token's nearest training centroid.
 
-## Slide 92: Gaussian mixtures
+## Slide 127: Keeping the new unit new
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The Peterson-Barney production space contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A **Gaussian mixture model (GMM)** instead represents regions by weighted probability distributions, each with an estimated location and spread. The interpretation is conditional on the sampling and measurement design.
+Each speaker contributes one mean loss at each $K$, so speakers receive equal weight in the displayed uncertainty summary.
 
-## Slide 93: One Gaussian component
+## Slide 128: Keeping the new unit new
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s measurements. Component $k$ has mean and covariance Notice what is observed and what is supplied by the model.
+This figure shows observed linguistic data for Keeping the new unit new.
 
-## Slide 94: One Gaussian component: equation 1
+## Slide 129: Keeping the new unit new
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes one gaussian component: equation 1. Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s measurements. Component $k$ has mean Keep track of what each term refers to in the linguistic dataset.
+Held-out mean loss is 0.096 for ten centroids and 0.067 for fifteen. The decline shows that more centers represent the complete held-out panels more compactly under this loss.
 
-## Slide 95: One Gaussian component: equation 2
+## Slide 130: Why reconstruction loss does not select a category count
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes one gaussian component: equation 2. and covariance Keep track of what each term refers to in the linguistic dataset.
+A codebook with $K+1$ centers can reproduce a $K$-center codebook by duplicating one center. Its population reconstruction loss can thus decrease or remain constant as capacity increases. Finite training samples and local optimization may make a validation curve wiggle, but the target still rewards added representational capacity.
 
-## Slide 96: One Gaussian component: equation 3
+## Slide 131: Why reconstruction loss does not select a category count
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes one gaussian component: equation 3. Its density is Keep track of what each term refers to in the linguistic dataset.
+Held-out loss can compare how efficiently declared codebook sizes represent new panels, or it can be paired with a separately declared complexity budget. It does not estimate a phonological inventory by itself.
 
-## Slide 97: One Gaussian component: equation 4
+## Slide 132: The calibration-panel target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes one gaussian component: equation 4. For F1 and F2, Keep track of what each term refers to in the linguistic dataset.
+The within-speaker scores were computed from each speaker's complete unlabeled panel before the split. Thus, held-out speakers influence their own normalization but do not influence the fitted centroids. This prediction information set may be appropriate when a complete acoustic calibration panel is available. It is unavailable for a first isolated token.
 
-## Slide 98: Combining components
+## Slide 133: The calibration-panel target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-Component $k$ receives weight with That distinction will matter again on the next slide.
+This use of test-panel measurements is deliberate rather than hidden preprocessing leakage. The claim must name the adapted target.
 
-## Slide 99: Combining components: equation 1
+## Slide 134: Checking the held-out target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes combining components: equation 1. Component $k$ receives weight Keep track of what each term refers to in the linguistic dataset.
+Why do all rows from a speaker move together?
 
-## Slide 100: Combining components: equation 2
+## Slide 135: Checking the held-out target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes combining components: equation 2. with Keep track of what each term refers to in the linguistic dataset.
+Which fitted objects exclude the held-out speaker entirely?
 
-## Slide 101: Combining components: equation 3
+## Slide 136: Checking the held-out target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The displayed expression formalizes combining components: equation 3. The mixture density is Keep track of what each term refers to in the linguistic dataset.
+What information from the held-out speaker is used for normalization?
 
-## Slide 102: Fitting the declared ten-component model
+## Slide 137: Checking the held-out target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-We fix a ten-component `EVI` covariance family before fitting. In `mclust`, `EVI` is diagonal with equal volume and varying shape. Thus, covariance ellipses are axis-aligned, share a determinant, and may allocate their spread differently between the two formant dimensions. The fitted weights sum to observed, and every covariance matrix is positive definite. These are model checks, not linguistic interpretations of the component numbers. The interpretation is conditional on the sampling and measurement design.
+Why does lower held-out reconstruction loss favor larger codebooks?
 
-## Slide 103: Plotting the fitted distributions with the data
+## Slide 138: Checking the held-out target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The ellipses show 90% contours under each fitted Gaussian component. They are model summaries laid over the raw transformed points; they are not boundaries inferred from intended-vowel labels. The Peterson-Barney production space contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A **Gaussian mixture model (GMM)** instead represents regions by weighted probability distributions, each with an estimated location and spread. The interpretation is conditional on the sampling and measurement design.
+What new-speaker claim does this design not support?
 
-## Slide 104: Post-fit alignment and uncertainty
+## Slide 139: Checking the held-out target
 
-Source note: `latent-structure/gaussian-mixtures.qmd`
+Source note: `latent-structure/unsupervised-validation.qmd`
 
-The hard component assignments have ARI observed against the withheld intended-vowel metadata, while mean classification uncertainty is observed. The former describes post-fit alignment. The latter summarizes how much posterior mass remains outside the most probable component. The Peterson-Barney production space contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A **Gaussian mixture model (GMM)** instead represents regions by weighted probability distributions, each with an estimated location and spread. Notice what is observed and what is supplied by the model.
+Speaker-blocked reconstruction loss evaluates transfer of a centroid representation to complete unseen-speaker panels. The next page replaces hard nearest-centroid geometry with a probability model that retains component spread and overlap.
 
-## Slide 105: Components are not phonemes
-
-Source note: `latent-structure/gaussian-mixtures.qmd`
-
-A fitted Gaussian component is a distributional object under the chosen measurements, transformation, component count, and covariance restriction. Several components may cover productions from one elicitation category, and one component may cover overlapping productions from several categories. The speaker-relative transformation may reduce anatomy-related differences, but it can also remove sociolinguistically relevant variation. Moreover, F3 and dynamic information remain outside the model. A potential worry is thus that a sharp component reflects an incomplete acoustic representation. Post-fit alignment cannot eliminate that limitation. Notice what is observed and what is supplied by the model.
-
-## Slide 106: Covariance collapse
+## Slide 140: Gaussian mixtures
 
 Source note: `latent-structure/gaussian-mixtures.qmd`
 
-An unrestricted Gaussian component can concentrate around very few rows while its covariance approaches singularity. The likelihood may then grow without representing a recurring acoustic region. Positive-definiteness checks, covariance restrictions, and fitting diagnostics must precede interpretation. The `EVI` restriction used here limits the fitted geometry. It does not establish that every acoustic region truly has diagonal covariance. Use the graph or equation to say the result in ordinary language.
+Our next step is Gaussian mixtures.
 
-## Slide 107: Checking the observation model
-
-Source note: `latent-structure/gaussian-mixtures.qmd`
-
-1. What do the fitted means and covariance matrices represent? 2. Why must the fitted weights sum to one? 3. Which covariance properties does `EVI` hold equal or allow to vary? 4. Why are the intended-vowel labels unnecessary for the displayed ellipses? 5. A Gaussian mixture assigns every token the sum of weighted component densities. The next page normalizes those observed contributions into conditional membership probabilities. That distinction will matter again on the next slide.
-
-## Slide 108: Gaussian mixtures
+## Slide 141: Gaussian mixtures
 
 Source note: `latent-structure/gaussian-mixtures.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Gaussian mixtures. Read the pattern before attaching a model interpretation to it.
+The Peterson-Barney production space contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A **Gaussian mixture model (GMM)** instead represents regions by weighted probability distributions, each with an estimated location and spread.
 
-## Slide 109: Posterior membership
+## Slide 142: One Gaussian component
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s measurements. Component $k$ has mean
+
+$$
+\boldsymbol{\mu}_k\in\mathbb{R}^p
+$$
+
+and covariance
+
+$$
+\boldsymbol{\Sigma}_k\in\mathbb{R}^{p\times p}.
+$$
+
+## Slide 143: One Gaussian component
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Its density is
+
+$$
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+=
+\frac{
+\exp\left[
+-\frac{1}{2}
+(\mathbf{x}_i-\boldsymbol{\mu}_k)^{\mathsf T}
+\boldsymbol{\Sigma}_k^{-1}
+(\mathbf{x}_i-\boldsymbol{\mu}_k)
+\right]
+}{
+(2\pi)^{p/2}|\boldsymbol{\Sigma}_k|^{1/2}
+}.
+$$
+
+## Slide 144: One Gaussian component
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+For F1 and F2,
+
+$$
+\boldsymbol{\Sigma}_k
+=
+\begin{bmatrix}
+\sigma^2_{F1,k}&\sigma_{F1,F2,k}\\
+\sigma_{F1,F2,k}&\sigma^2_{F2,k}
+\end{bmatrix}.
+$$
+
+## Slide 145: One Gaussian component
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The mean locates the component, while the covariance controls the scale and orientation of its equal-density ellipses.
+
+## Slide 146: Combining components
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Component $k$ receives weight
+
+$$
+\pi_k\geq0,
+$$
+
+with
+
+$$
+\sum_{k=1}^{K}\pi_k=1.
+$$
+
+## Slide 147: Combining components
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The mixture density is
+
+$$
+f(\mathbf{x}_i)
+=
+\sum_{k=1}^{K}
+\pi_k
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k).
+$$
+
+## Slide 148: Combining components
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Every component contributes density to every token, even when one contribution is much larger than the others.
+
+## Slide 149: Fitting the declared ten-component model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+We fix a ten-component `EVI` covariance family before fitting. In `mclust`, `EVI` is diagonal with equal volume and varying shape. Thus, covariance ellipses are axis-aligned, share a determinant, and may allocate their spread differently between the two formant dimensions.
+
+## Slide 150: Fitting the declared ten-component model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The fitted weights sum to 1, and every covariance matrix is positive definite. These are model checks, not linguistic interpretations of the component numbers.
+
+## Slide 151: Plotting the fitted distributions with the data
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+This figure shows observed linguistic data for Plotting the fitted distributions with the data.
+
+## Slide 152: Plotting the fitted distributions with the data
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The ellipses show 90% contours under each fitted Gaussian component. They are model summaries laid over the raw transformed points; they are not boundaries inferred from intended-vowel labels.
+
+## Slide 153: Post-fit alignment and uncertainty
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The hard component assignments have ARI 0.801 against the withheld intended-vowel metadata, while mean classification uncertainty is 0.071. The former describes post-fit alignment. The latter summarizes how much posterior mass remains outside the most probable component.
+
+## Slide 154: Components are not phonemes
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+A fitted Gaussian component is a distributional object under the chosen measurements, transformation, component count, and covariance restriction. Several components may cover productions from one elicitation category, and one component may cover overlapping productions from several categories.
+
+## Slide 155: Components are not phonemes
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The speaker-relative transformation may reduce anatomy-related differences, but it can also remove sociolinguistically relevant variation. Moreover, F3 and dynamic information remain outside the model. A potential worry is thus that a sharp component reflects an incomplete acoustic representation. Post-fit alignment cannot eliminate that limitation.
+
+## Slide 156: Covariance collapse
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+An unrestricted Gaussian component can concentrate around very few rows while its covariance approaches singularity. The likelihood may then grow without representing a recurring acoustic region. Positive-definiteness checks, covariance restrictions, and fitting diagnostics must precede interpretation.
+
+## Slide 157: Covariance collapse
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+The `EVI` restriction used here limits the fitted geometry. It does not establish that every acoustic region truly has diagonal covariance.
+
+## Slide 158: Checking the observation model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+What do the fitted means and covariance matrices represent?
+
+## Slide 159: Checking the observation model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Why must the fitted weights sum to one?
+
+## Slide 160: Checking the observation model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Which covariance properties does `EVI` hold equal or allow to vary?
+
+## Slide 161: Checking the observation model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+Why are the intended-vowel labels unnecessary for the displayed ellipses?
+
+## Slide 162: Checking the observation model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+What does the post-fit ARI establish, and why does it not identify components with phonemes?
+
+## Slide 163: Checking the observation model
+
+Source note: `latent-structure/gaussian-mixtures.qmd`
+
+A Gaussian mixture assigns every token the sum of weighted component densities. The next page normalizes those observed contributions into conditional membership probabilities.
+
+## Slide 164: Posterior membership
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-We now turn to Posterior membership. A Gaussian mixture assigns density to every observed acoustic vector. We now ask how the weighted component contributions divide for one Peterson-Barney token. The **posterior probability of component membership**, often expressed as **responsibilities**, applies Bayes' rule inside the fitted mixture.
+Next, we take up Posterior membership.
 
-## Slide 110: Posterior membership
-
-Source note: `latent-structure/posterior-membership.qmd`
-
-A Gaussian mixture assigns density to every observed acoustic vector. We now ask how the weighted component contributions divide for one Peterson-Barney token. The **posterior probability of component membership**, often expressed as **responsibilities**, applies Bayes' rule inside the fitted mixture. Now connect the notation back to the linguistic comparison.
-
-## Slide 111: Loading and fitting the fixed mixture
+## Slide 165: Posterior membership
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-The intended-vowel column is retained in `vowels` but is not passed to `Mclust()`. A Gaussian mixture assigns density to every observed acoustic vector. We now ask how the weighted component contributions divide for one Peterson-Barney token. The **posterior probability of component membership**, often expressed as **responsibilities**, applies Bayes' rule inside the fitted mixture. Keep the observational unit fixed while you interpret the result.
+A Gaussian mixture assigns density to every observed acoustic vector. We now ask how the weighted component contributions divide for one Peterson-Barney token. The **posterior probability of component membership**, often expressed as **responsibilities**, applies Bayes' rule inside the fitted mixture.
 
-## Slide 112: Conditioning on an unobserved component
-
-Source note: `latent-structure/posterior-membership.qmd`
-
-Let be the unobserved component label. Before observing $\mathbf{x}_i$, Notice what is observed and what is supplied by the model.
-
-## Slide 113: Conditioning on an unobserved component: equation 1
+## Slide 166: Loading and fitting the fixed mixture
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-The displayed expression formalizes conditioning on an unobserved component: equation 1. Let Keep track of what each term refers to in the linguistic dataset.
+The intended-vowel column is retained in `vowels` but is not passed to `Mclust()`.
 
-## Slide 114: Conditioning on an unobserved component: equation 2
-
-Source note: `latent-structure/posterior-membership.qmd`
-
-The displayed expression formalizes conditioning on an unobserved component: equation 2. be the unobserved component label. Before observing $\mathbf{x}_i$, Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 115: Conditioning on an unobserved component: equation 3
+## Slide 167: Conditioning on an unobserved component
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-The displayed expression formalizes conditioning on an unobserved component: equation 3. Conditional on component $k$, Keep track of what each term refers to in the linguistic dataset.
+Let
 
-## Slide 116: Conditioning on an unobserved component: equation 4
+$$
+Z_i\in\{1,\ldots,K\}
+$$
 
-Source note: `latent-structure/posterior-membership.qmd`
+be the unobserved component label.
 
-The displayed expression formalizes conditioning on an unobserved component: equation 4. Bayes' rule gives Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 117: Conditioning on an unobserved component: equation 5
-
-Source note: `latent-structure/posterior-membership.qmd`
-
-The displayed expression formalizes conditioning on an unobserved component: equation 5. Substituting the mixture density yields Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 118: Conditioning on an unobserved component: equation 6
+## Slide 168: Conditioning on an unobserved component
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-The displayed expression formalizes conditioning on an unobserved component: equation 6. The denominator normalizes the weighted contributions, so Keep track of what each term refers to in the linguistic dataset.
+Before observing $\mathbf{x}_i$,
 
-## Slide 119: Calculating every responsibility directly
+$$
+\mathbb{P}(Z_i=k)=\pi_k.
+$$
 
-Source note: `latent-structure/posterior-membership.qmd`
-
-The direct calculation agrees with `mclust`'s expectation step to numerical tolerance. We use the observed token with the greatest fitted uncertainty as the worked case. For row observed, the three largest responsibilities are observed. They sum to observed, while the remaining components receive negligible mass. The hard assignment keeps only component observed and discards this overlap. Keep the observational unit fixed while you interpret the result.
-
-## Slide 120: Hard assignments and uncertainty
+## Slide 169: Conditioning on an unobserved component
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-A hard assignment is Define fitted uncertainty as Now connect the notation back to the linguistic comparison.
+Conditional on component $k$,
 
-## Slide 121: Hard assignments and uncertainty: equation 1
+$$
+f(\mathbf{x}_i\mid Z_i=k)
+=
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k).
+$$
 
-Source note: `latent-structure/posterior-membership.qmd`
-
-The displayed expression formalizes hard assignments and uncertainty: equation 1. A hard assignment is Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 122: Hard assignments and uncertainty: equation 2
-
-Source note: `latent-structure/posterior-membership.qmd`
-
-The displayed expression formalizes hard assignments and uncertainty: equation 2. Define fitted uncertainty as Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 123: Inspecting intended-vowel metadata after fitting
+## Slide 170: Conditioning on an unobserved component
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-The x-axis uses intended-vowel metadata only after every responsibility has been calculated. Differences across labels describe where the fixed F1-F2 mixture is more or less decisive. They do not estimate listener accuracy. A Gaussian mixture assigns density to every observed acoustic vector. We now ask how the weighted component contributions divide for one Peterson-Barney token. The **posterior probability of component membership**, often expressed as **responsibilities**, applies Bayes' rule inside the fitted mixture. Notice what is observed and what is supplied by the model.
+Bayes' rule gives
 
-## Slide 124: Component numbers and conditioning
+$$
+\mathbb{P}(Z_i=k\mid\mathbf{x}_i)
+=
+\frac{
+\mathbb{P}(Z_i=k)f(\mathbf{x}_i\mid Z_i=k)
+}{
+f(\mathbf{x}_i)
+}.
+$$
 
-Source note: `latent-structure/posterior-membership.qmd`
-
-Exchanging all parameters for two components leaves the mixture density unchanged and merely exchanges responsibility columns. This **label switching** means that the integer attached to a component has no stable phonological meaning across separate fits. Moreover, a responsibility is not the probability that an intended label is correct. It is conditional on the observed F1-F2 vector, fixed component count, `EVI` covariance family, speaker-relative transformation, and estimated parameters. It does not integrate uncertainty about any of those choices. Keep the observational unit fixed while you interpret the result.
-
-## Slide 125: Checking the normalized contributions
-
-Source note: `latent-structure/posterior-membership.qmd`
-
-1. Which weighted contributions produce the three largest memberships for row observed? 2. Why does each responsibility row sum to one? 3. What information does the hard component label discard for this token? 4. Why can component numbers change across equivalent fits? 5. Posterior membership normalizes observed weighted component densities and retains fitted overlap. The next page uses these responsibilities as weights in iterative parameter updates. Use the graph or equation to say the result in ordinary language.
-
-## Slide 126: Posterior membership
+## Slide 171: Conditioning on an unobserved component
 
 Source note: `latent-structure/posterior-membership.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Posterior membership. Read the pattern before attaching a model interpretation to it.
+Substituting the mixture density yields
 
-## Slide 127: Expectation-maximization
+$$
+r_{ik}
+=
+\mathbb{P}(Z_i=k\mid\mathbf{x}_i)
+=
+\frac{
+\pi_k\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+}{
+\sum_{j=1}^{K}
+\pi_j\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_j,\boldsymbol{\Sigma}_j)
+}.
+$$
+
+## Slide 172: Conditioning on an unobserved component
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+The denominator normalizes the weighted contributions, so
+
+$$
+\sum_{k=1}^{K}r_{ik}=1.
+$$
+
+## Slide 173: Calculating every responsibility directly
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+The direct calculation agrees with `mclust`'s expectation step to numerical tolerance. We use the observed token with the greatest fitted uncertainty as the worked case.
+
+## Slide 174: Calculating every responsibility directly
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+For row 1493, the three largest responsibilities are 0.396, 0.379, 0.225. They sum to 1, while the remaining components receive negligible mass. The hard assignment keeps only component 8 and discards this overlap.
+
+## Slide 175: Hard assignments and uncertainty
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+A hard assignment is
+
+$$
+\widehat z_i
+=
+\underset{k}{\operatorname{argmax}}
+r_{ik}.
+$$
+
+## Slide 176: Hard assignments and uncertainty
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Define fitted uncertainty as
+
+$$
+u_i
+=
+1-\max_k r_{ik}.
+$$
+
+## Slide 177: Hard assignments and uncertainty
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+This quantity is zero when one component receives all posterior mass and grows as the mass is distributed across competitors. It remains conditional on the fitted mixture.
+
+## Slide 178: Hard assignments and uncertainty
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Mean fitted uncertainty is 0.071, and 13.0% of observed tokens have uncertainty above the declared descriptive threshold.
+
+## Slide 179: Inspecting intended-vowel metadata after fitting
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+This figure shows observed linguistic data for Inspecting intended-vowel metadata after fitting.
+
+## Slide 180: Inspecting intended-vowel metadata after fitting
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+The x-axis uses intended-vowel metadata only after every responsibility has been calculated. Differences across labels describe where the fixed F1-F2 mixture is more or less decisive. They do not estimate listener accuracy.
+
+## Slide 181: Component numbers and conditioning
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Exchanging all parameters for two components leaves the mixture density unchanged and merely exchanges responsibility columns. This **label switching** means that the integer attached to a component has no stable phonological meaning across separate fits.
+
+## Slide 182: Component numbers and conditioning
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Moreover, a responsibility is not the probability that an intended label is correct. It is conditional on the observed F1-F2 vector, fixed component count, `EVI` covariance family, speaker-relative transformation, and estimated parameters. It does not integrate uncertainty about any of those choices.
+
+## Slide 183: Checking the normalized contributions
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Which weighted contributions produce the three largest memberships for row 1493?
+
+## Slide 184: Checking the normalized contributions
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Why does each responsibility row sum to one?
+
+## Slide 185: Checking the normalized contributions
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+What information does the hard component label discard for this token?
+
+## Slide 186: Checking the normalized contributions
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Why can component numbers change across equivalent fits?
+
+## Slide 187: Checking the normalized contributions
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Why is membership uncertainty not a measure of intended-vowel correctness?
+
+## Slide 188: Checking the normalized contributions
+
+Source note: `latent-structure/posterior-membership.qmd`
+
+Posterior membership normalizes observed weighted component densities and retains fitted overlap. The next page uses these responsibilities as weights in iterative parameter updates.
+
+## Slide 189: Expectation-maximization
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-We now turn to Expectation-maximization. If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The **expectation-maximization (EM) algorithm** alternates those two calculations when neither side is known.
+Our next step is Expectation-maximization.
 
-## Slide 128: Expectation-maximization
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The **expectation-maximization (EM) algorithm** alternates those two calculations when neither side is known. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 129: Complete and observed data
+## Slide 190: Expectation-maximization
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-Let the current parameters be If component label $Z_i$ were observed, define Now connect the notation back to the linguistic comparison.
+If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The **expectation-maximization (EM) algorithm** alternates those two calculations when neither side is known.
 
-## Slide 130: Complete and observed data: equation 1
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes complete and observed data: equation 1. Let the current parameters be Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 131: Complete and observed data: equation 2
+## Slide 191: Complete and observed data
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-The displayed expression formalizes complete and observed data: equation 2. If component label $Z_i$ were observed, define Keep track of what each term refers to in the linguistic dataset.
+Let the current parameters be
 
-## Slide 132: Complete and observed data: equation 3
+$$
+\boldsymbol{\theta}^{(t)}
+=
+\left\{
+\pi_k^{(t)},
+\boldsymbol{\mu}_k^{(t)},
+\boldsymbol{\Sigma}_k^{(t)}
+\right\}_{k=1}^{K}.
+$$
 
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes complete and observed data: equation 3. The complete-data log likelihood would be Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 133: The expectation step
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-Given $\boldsymbol{\theta}^{(t)}$, calculate Since The interpretation is conditional on the sampling and measurement design.
-
-## Slide 134: The expectation step: equation 1
+## Slide 192: Complete and observed data
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-The displayed expression formalizes the expectation step: equation 1. Given $\boldsymbol{\theta}^{(t)}$, calculate Keep track of what each term refers to in the linguistic dataset.
+If component label $Z_i$ were observed, define
 
-## Slide 135: The expectation step: equation 2
+$$
+I_{ik}=\mathbf{1}[Z_i=k].
+$$
 
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes the expectation step: equation 2. Since Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 136: The expectation step: equation 3
+## Slide 193: Complete and observed data
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-The displayed expression formalizes the expectation step: equation 3. the EM auxiliary objective is Keep track of what each term refers to in the linguistic dataset.
+The complete-data log likelihood would be
 
-## Slide 137: The maximization step
+$$
+\ell_{\mathrm{complete}}(\boldsymbol{\theta})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+I_{ik}
+\left[
+\log\pi_k+
+\log\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
 
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The effective token count for component $k$ is The updated weight and mean are Use the graph or equation to say the result in ordinary language.
-
-## Slide 138: The maximization step: equation 1
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes the maximization step: equation 1. The effective token count for component $k$ is Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 139: The maximization step: equation 2
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes the maximization step: equation 2. The updated weight and mean are Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 140: The maximization step: equation 3
+## Slide 194: Complete and observed data
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-The displayed expression formalizes the maximization step: equation 3. and Keep track of what each term refers to in the linguistic dataset.
+The indicator retains the term for the token's component and zeros the others. But $I_{ik}$ is unobserved.
 
-## Slide 141: The maximization step: equation 4
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes the maximization step: equation 4. For an unrestricted Gaussian component, the covariance update is Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 142: Implementing EM on the observed vectors
+## Slide 195: The expectation step
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-All six observed-data traces are non-decreasing within numerical tolerance, but their final log likelihoods differ. The best three starts finish at observed, while the weakest finishes at observed. This is direct evidence of local-solution sensitivity in the PB52 fit. If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The **expectation-maximization (EM) algorithm** alternates those two calculations when neither side is known. That distinction will matter again on the next slide.
+Given $\boldsymbol{\theta}^{(t)}$, calculate
 
-## Slide 143: Verifying one component update
+$$
+r_{ik}^{(t)}
+=
+\mathbb{P}(Z_i=k\mid\mathbf{x}_i,\boldsymbol{\theta}^{(t)})
+=
+\frac{
+\pi_k^{(t)}
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k^{(t)},\boldsymbol{\Sigma}_k^{(t)})
+}{
+\sum_{j=1}^{K}
+\pi_j^{(t)}
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_j^{(t)},\boldsymbol{\Sigma}_j^{(t)})
+}.
+$$
 
-Source note: `latent-structure/expectation-maximization.qmd`
-
-For component observed, the effective count is observed, and the responsibility-weighted mean is (observed, observed). These values come from all observed token vectors, weighted by their fitted responsibilities. If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The **expectation-maximization (EM) algorithm** alternates those two calculations when neither side is known. Notice what is observed and what is supplied by the model.
-
-## Slide 144: Likelihood monotonicity
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The observed-data log likelihood is Exact EM updates do not decrease this quantity. That guarantee concerns progress from one starting point; it does not guarantee the largest attainable likelihood. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 145: Likelihood monotonicity
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The displayed expression formalizes likelihood monotonicity. The observed-data log likelihood is Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 146: Local solutions and variance constraints
-
-Source note: `latent-structure/expectation-maximization.qmd`
-
-The variance floor prevents an estimated diagonal variance from approaching zero. It is a declared computational constraint, not an observed linguistic variance. Without such protection, a component may collapse around very few tokens and yield a misleadingly large likelihood. Several starts remain necessary because monotonic ascent can lead to distinct local optima. A fixed seed reproduces the collection of starts; it does not make the first solution globally best. That distinction will matter again on the next slide.
-
-## Slide 147: Checking the alternating algorithm
+## Slide 196: The expectation step
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-1. Which quantities are calculated in the expectation step? 2. How does the empirical effective count instantiate $N_k$? 3. How are the displayed component means reconstructed from responsibilities? 4. What does monotonic observed-data likelihood guarantee? 5. What do the distinct final likelihoods show? 6. EM alternates conditional membership calculation with responsibility-weighted parameter updates. The next page compares declared component counts and covariance families while keeping the feature representation fixed. Now connect the notation back to the linguistic comparison.
+Since
 
-## Slide 148: Expectation-maximization
+$$
+\mathbb{E}[I_{ik}\mid\mathbf{x}_i,\boldsymbol{\theta}^{(t)}]
+=r_{ik}^{(t)},
+$$
+
+the EM auxiliary objective is
+
+$$
+Q(\boldsymbol{\theta}\mid\boldsymbol{\theta}^{(t)})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+r_{ik}^{(t)}
+\left[
+\log\pi_k+
+\log\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+## Slide 197: The expectation step
 
 Source note: `latent-structure/expectation-maximization.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Expectation-maximization. Read the pattern before attaching a model interpretation to it.
+The expectation step replaces each missing hard label with a probability vector under the current fit.
 
-## Slide 149: Choosing a mixture with BIC
+## Slide 198: The maximization step
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+The effective token count for component $k$ is
+
+$$
+N_k^{(t)}
+=
+\sum_{i=1}^{N}r_{ik}^{(t)}.
+$$
+
+## Slide 199: The maximization step
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+The updated weight and mean are
+
+$$
+\pi_k^{(t+1)}
+=
+\frac{N_k^{(t)}}{N}
+$$
+
+and
+
+$$
+\boldsymbol{\mu}_k^{(t+1)}
+=
+\frac{1}{N_k^{(t)}}
+\sum_{i=1}^{N}r_{ik}^{(t)}\mathbf{x}_i.
+$$
+
+## Slide 200: The maximization step
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+For an unrestricted Gaussian component, the covariance update is
+
+$$
+\boldsymbol{\Sigma}_k^{(t+1)}
+=
+\frac{1}{N_k^{(t)}}
+\sum_{i=1}^{N}
+r_{ik}^{(t)}
+\left(\mathbf{x}_i-\boldsymbol{\mu}_k^{(t+1)}\right)
+\left(\mathbf{x}_i-\boldsymbol{\mu}_k^{(t+1)}\right)^{\mathsf T}.
+$$
+
+## Slide 201: The maximization step
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+The transparent implementation below uses diagonal, component-specific covariance matrices, the `VVI` family in `mclust` terminology. It is intentionally distinct from the central ten-component `EVI` fit: the page exposes each update rather than reproducing that restricted optimizer.
+
+## Slide 202: Implementing EM on the observed vectors
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+All six observed-data traces are non-decreasing within numerical tolerance, but their final log likelihoods differ. The best three starts finish at -2874.576, while the weakest finishes at -2961.939. This is direct evidence of local-solution sensitivity in the PB52 fit.
+
+## Slide 203: Verifying one component update
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+For component 8, the effective count is 176.279, and the responsibility-weighted mean is (1.394, -0.667). These values come from all observed token vectors, weighted by their fitted responsibilities.
+
+## Slide 204: Likelihood monotonicity
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+The observed-data log likelihood is
+
+$$
+\ell(\boldsymbol{\theta})
+=
+\sum_{i=1}^{N}
+\log\left[
+\sum_{k=1}^{K}
+\pi_k
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+## Slide 205: Likelihood monotonicity
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+Exact EM updates do not decrease this quantity. That guarantee concerns progress from one starting point; it does not guarantee the largest attainable likelihood.
+
+## Slide 206: Likelihood monotonicity
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+This figure shows observed linguistic data for Likelihood monotonicity.
+
+## Slide 207: Local solutions and variance constraints
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+The variance floor prevents an estimated diagonal variance from approaching zero. It is a declared computational constraint, not an observed linguistic variance. Without such protection, a component may collapse around very few tokens and yield a misleadingly large likelihood.
+
+## Slide 208: Local solutions and variance constraints
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+Several starts remain necessary because monotonic ascent can lead to distinct local optima. A fixed seed reproduces the collection of starts; it does not make the first solution globally best.
+
+## Slide 209: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+Which quantities are calculated in the expectation step?
+
+## Slide 210: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+How does the empirical effective count instantiate $N_k$?
+
+## Slide 211: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+How are the displayed component means reconstructed from responsibilities?
+
+## Slide 212: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+What does monotonic observed-data likelihood guarantee?
+
+## Slide 213: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+What do the distinct final likelihoods show?
+
+## Slide 214: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+Why is the variance floor computational rather than linguistic evidence?
+
+## Slide 215: Checking the alternating algorithm
+
+Source note: `latent-structure/expectation-maximization.qmd`
+
+EM alternates conditional membership calculation with responsibility-weighted parameter updates. The next page compares declared component counts and covariance families while keeping the feature representation fixed.
+
+## Slide 216: Choosing a mixture with BIC
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-We now turn to Choosing a mixture with BIC. A Gaussian mixture requires both a component count and a covariance family. We use the **Bayesian information criterion (BIC)** to compare a declared grid on the speaker-relative Peterson-Barney representation, then distinguish the selected distributional model from the ten-component model used to teach membership and external alignment.
+Our next step is Choosing a mixture with BIC.
 
-## Slide 150: Choosing a mixture with BIC
-
-Source note: `latent-structure/choosing-a-mixture.qmd`
-
-A Gaussian mixture requires both a component count and a covariance family. We use the **Bayesian information criterion (BIC)** to compare a declared grid on the speaker-relative Peterson-Barney representation, then distinguish the selected distributional model from the ten-component model used to teach membership and external alignment. Keep the observational unit fixed while you interpret the result.
-
-## Slide 151: Reconstructing the candidate data
+## Slide 217: Choosing a mixture with BIC
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-The covariance families and component range are fixed before intended-vowel agreement is inspected. A candidate specification contains the component count $K$, covariance family $\mathcal C$, and remaining procedure $\mathcal R$: Changing the scaling or start policy during the comparison would change $\mathcal R$ and thus the candidate being ranked. Notice what is observed and what is supplied by the model.
+A Gaussian mixture requires both a component count and a covariance family. We use the **Bayesian information criterion (BIC)** to compare a declared grid on the speaker-relative Peterson-Barney representation, then distinguish the selected distributional model from the ten-component model used to teach membership and external alignment.
 
-## Slide 152: Reconstructing the candidate data
-
-Source note: `latent-structure/choosing-a-mixture.qmd`
-
-The displayed expression formalizes reconstructing the candidate data. The covariance families and component range are fixed before intended-vowel agreement is inspected. A candidate specification contains the component count $K$, covariance family $\mathcal C$, and remaining procedure $\mathcal R$: Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 153: BIC and its sign convention
+## Slide 218: Reconstructing the candidate data
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-For maximized likelihood $L$, $q$ estimated parameters, and $n$ likelihood contributions, define Smaller values are preferred under this convention. `mclust` reports the negative quantity, That distinction will matter again on the next slide.
+The covariance families and component range are fixed before intended-vowel agreement is inspected. A candidate specification contains the component count $K$, covariance family $\mathcal C$, and remaining procedure $\mathcal R$:
 
-## Slide 154: BIC and its sign convention: equation 1
+$$
+M=\langle K,\mathcal C,\mathcal R\rangle.
+$$
 
-Source note: `latent-structure/choosing-a-mixture.qmd`
-
-The displayed expression formalizes bic and its sign convention: equation 1. For maximized likelihood $L$, $q$ estimated parameters, and $n$ likelihood contributions, define Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 155: BIC and its sign convention: equation 2
+## Slide 219: Reconstructing the candidate data
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-The displayed expression formalizes bic and its sign convention: equation 2. Smaller values are preferred under this convention. `mclust` reports the negative quantity, Keep track of what each term refers to in the linguistic dataset.
+Changing the scaling or start policy during the comparison would change $\mathcal R$ and thus the candidate being ranked.
 
-## Slide 156: Fitting the declared grid
-
-Source note: `latent-structure/choosing-a-mixture.qmd`
-
-The grid selects the observed-component observed model with BIC observed. The fixed ten-component `EVI` model has BIC observed. These values are obtained from the fitted likelihoods, parameter counts, and observed token count shown in the table. A Gaussian mixture requires both a component count and a covariance family. We use the **Bayesian information criterion (BIC)** to compare a declared grid on the speaker-relative Peterson-Barney representation, then distinguish the selected distributional model from the ten-component model used to teach membership and external alignment. That distinction will matter again on the next slide.
-
-## Slide 157: Distributional fit and label alignment differ
+## Slide 220: BIC and its sign convention
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-The BIC-selected model has post-fit ARI observed, while the ten-component `EVI` model has ARI observed. BIC prefers the first density specification; the external intended-vowel partition aligns more closely with the second hard classification. This K10/G14 distinction should remain explicit. A particular mixture can be useful for teaching category-aligned uncertainty without being the BIC-selected density model. That distinction will matter again on the next slide.
+For maximized likelihood $L$, $q$ estimated parameters, and $n$ likelihood contributions, define
 
-## Slide 158: Interpreting the sample size
+$$
+\operatorname{BIC}
+=
+-2\log L+q\log n.
+$$
 
-Source note: `latent-structure/choosing-a-mixture.qmd`
-
-The criterion uses $n=observed$ token contributions because that is the likelihood fitted by the software. It does not imply that the study sampled that many independent speakers. The rows come from observed speakers with repeated productions. The usual BIC approximation presumes an appropriate independence structure. A token-level mixture that omits repeated-speaker dependence does not gain that structure from the penalty. Thus, the values can rank these declared software fits, while their asymptotic evidence interpretation remains limited. Use the graph or equation to say the result in ordinary language.
-
-## Slide 159: Candidate-set and fit limits
-
-Source note: `latent-structure/choosing-a-mixture.qmd`
-
-BIC compares only the supplied component counts, covariance families, representation, and fitting controls. It cannot repair omitted F3 information, within-speaker dependence, or an unsuitable Gaussian family. Mixture label permutations and weakly represented components also complicate the regularity assumptions behind simple information-criterion arguments. The selected component count need not equal a phonological inventory. A vowel's productions may occupy several Gaussian regions, while overlapping intended vowels may share one region. That distinction will matter again on the next slide.
-
-## Slide 160: Checking the BIC comparison
+## Slide 221: BIC and its sign convention
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-1. How is each displayed BIC reconstructed from log likelihood and parameter count? 2. Why is the `mclust` sign reversed before plotting? 3. Which declared model minimizes conventional BIC? 4. Which fixed model aligns more closely with intended-vowel metadata? 5. Why does the token count not represent independent speakers? 6. BIC ranks a declared candidate grid under a token-level likelihood and penalty. The next page compares the fixed K10 and G14 candidates by predictive density on complete held-out speakers. Keep the observational unit fixed while you interpret the result.
+Smaller values are preferred under this convention. `mclust` reports the negative quantity,
 
-## Slide 161: Choosing a mixture with BIC
+$$
+\operatorname{BIC}_{\texttt{mclust}}
+=
+2\log L-q\log n,
+$$
+
+so its larger value is better.
+
+## Slide 222: BIC and its sign convention
 
 Source note: `latent-structure/choosing-a-mixture.qmd`
 
-Start with the axes and the observed values. Observed data and fitted quantities for Choosing a mixture with BIC. Read the pattern before attaching a model interpretation to it.
+We convert the sign before plotting.
 
-## Slide 162: Validating a mixture on held-out speakers
+## Slide 223: Fitting the declared grid
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+The grid selects the 14-component EEI model with BIC 6070.892. The fixed ten-component `EVI` model has BIC 6090.392. These values are obtained from the fitted likelihoods, parameter counts, and observed token count shown in the table.
+
+## Slide 224: Fitting the declared grid
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+This figure shows observed linguistic data for Fitting the declared grid.
+
+## Slide 225: Distributional fit and label alignment differ
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+The BIC-selected model has post-fit ARI 0.736, while the ten-component `EVI` model has ARI 0.801. BIC prefers the first density specification; the external intended-vowel partition aligns more closely with the second hard classification.
+
+## Slide 226: Distributional fit and label alignment differ
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+This K10/G14 distinction should remain explicit. A particular mixture can be useful for teaching category-aligned uncertainty without being the BIC-selected density model.
+
+## Slide 227: Interpreting the sample size
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+The criterion uses $n=1520$ token contributions because that is the likelihood fitted by the software. It does not imply that the study sampled that many independent speakers. The rows come from 76 speakers with repeated productions.
+
+## Slide 228: Interpreting the sample size
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+The usual BIC approximation presumes an appropriate independence structure. A token-level mixture that omits repeated-speaker dependence does not gain that structure from the penalty. Thus, the values can rank these declared software fits, while their asymptotic evidence interpretation remains limited.
+
+## Slide 229: Candidate-set and fit limits
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+BIC compares only the supplied component counts, covariance families, representation, and fitting controls. It cannot repair omitted F3 information, within-speaker dependence, or an unsuitable Gaussian family. Mixture label permutations and weakly represented components also complicate the regularity assumptions behind simple information-criterion arguments.
+
+## Slide 230: Candidate-set and fit limits
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+The selected component count need not equal a phonological inventory. A vowel's productions may occupy several Gaussian regions, while overlapping intended vowels may share one region.
+
+## Slide 231: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+How is each displayed BIC reconstructed from log likelihood and parameter count?
+
+## Slide 232: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+Why is the `mclust` sign reversed before plotting?
+
+## Slide 233: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+Which declared model minimizes conventional BIC?
+
+## Slide 234: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+Which fixed model aligns more closely with intended-vowel metadata?
+
+## Slide 235: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+Why does the token count not represent independent speakers?
+
+## Slide 236: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+What does the selected component count leave unresolved linguistically?
+
+## Slide 237: Checking the BIC comparison
+
+Source note: `latent-structure/choosing-a-mixture.qmd`
+
+BIC ranks a declared candidate grid under a token-level likelihood and penalty. The next page compares the fixed K10 and G14 candidates by predictive density on complete held-out speakers.
+
+## Slide 238: Validating a mixture on held-out speakers
 
 Source note: `latent-structure/validating-a-mixture.qmd`
 
-We now turn to Validating a mixture on held-out speakers. BIC penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation.
+Now we turn to Validating a mixture on held-out speakers.
 
-## Slide 163: Validating a mixture on held-out speakers
-
-Source note: `latent-structure/validating-a-mixture.qmd`
-
-BIC penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation. The interpretation is conditional on the sampling and measurement design.
-
-## Slide 164: Reconstructing the data and speaker folds
+## Slide 239: Validating a mixture on held-out speakers
 
 Source note: `latent-structure/validating-a-mixture.qmd`
 
-The folds exclude every one of a held-out speaker's observed rows from mixture estimation. The held-out speaker's unlabeled panel still determines that speaker's within-speaker standardization, so the analysis predicts density for an adapted complete panel rather than a first isolated token. BIC penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation. Use the graph or equation to say the result in ordinary language.
+BIC penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation.
 
-## Slide 165: Held-out log loss
-
-Source note: `latent-structure/validating-a-mixture.qmd`
-
-For a mixture fit to training speakers, the log loss of token $i$ is Smaller loss means that the fitted model assigns greater density to the held-out acoustic vector. For two candidates $A$ and $B$, the paired token difference is Notice what is observed and what is supplied by the model.
-
-## Slide 166: Held-out log loss: equation 1
+## Slide 240: Reconstructing the data and speaker folds
 
 Source note: `latent-structure/validating-a-mixture.qmd`
 
-The displayed expression formalizes held-out log loss: equation 1. For a mixture fit to training speakers, the log loss of token $i$ is Keep track of what each term refers to in the linguistic dataset.
+The folds exclude every one of a held-out speaker’s 20 rows from mixture estimation. Each held-out speaker supplies an unlabeled panel for within-speaker standardization. The target is thus an adapted complete panel, not a first isolated token.
 
-## Slide 167: Held-out log loss: equation 2
-
-Source note: `latent-structure/validating-a-mixture.qmd`
-
-The displayed expression formalizes held-out log loss: equation 2. Smaller loss means that the fitted model assigns greater density to the held-out acoustic vector. For two candidates $A$ and $B$, the paired token difference is Keep track of what each term refers to in the linguistic dataset.
-
-## Slide 168: Fitting and scoring both candidates
+## Slide 241: Held-out log loss
 
 Source note: `latent-structure/validating-a-mixture.qmd`
 
-Mean speaker log loss is observed for K10 and observed for G14. The paired mean difference, G14 minus K10, is observed, and G14 has lower loss for observed of speakers. The figure keeps the 76 paired speaker comparisons visible. Points left of zero favor G14 under predictive density; points right of zero favor K10. That distinction will matter again on the next slide.
+For a mixture fit to training speakers, the log loss of token $i$ is
 
-## Slide 169: External alignment after prediction
+$$
+L_i(M)
+=
+-\log p_M
+(\mathbf{x}_i\mid D_{\mathrm{train}}).
+$$
 
-Source note: `latent-structure/validating-a-mixture.qmd`
-
-K10 has the larger post-fit ARI in all observed folds. Thus, the model with slightly better mean held-out density aligns less closely with intended-vowel metadata. Predictive density and experimental-label alignment remain separate validation targets. BIC penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation. Notice what is observed and what is supplied by the model.
-
-## Slide 170: Information-set and dependence limits
-
-Source note: `latent-structure/validating-a-mixture.qmd`
-
-The coordinate system includes each held-out speaker's unlabeled calibration panel, though no held-out token enters mixture estimation. This is the same explicit prediction information set used for centroid validation. The mixture likelihood still treats transformed token rows as conditionally independent and does not model their shared speaker normalization. Fold averages are computational summaries, not independent samples. Speaker-level paired values describe the variation relevant to the claim without pretending that repeated folds create new speakers. Use the graph or equation to say the result in ordinary language.
-
-## Slide 171: Checking the validation design
+## Slide 242: Held-out log loss
 
 Source note: `latent-structure/validating-a-mixture.qmd`
 
-1. Why must all rows from one speaker stay in one test fold? 2. What does a negative G14-minus-K10 difference mean? 3. Which candidate has the lower mean held-out log loss? 4. Which candidate has the higher external ARI in every fold? 5. Speaker-blocked log loss slightly favors G14 on average, while external alignment favors K10 in every fold. This disagreement is informative because the criteria evaluate different consequences of the same label-blind acoustic fits. Use the graph or equation to say the result in ordinary language.
+Smaller loss means that the fitted model assigns greater density to the held-out acoustic vector. For two candidates $A$ and $B$, the paired token difference is
 
-## Slide 172: Validating a mixture on held-out speakers
+$$
+d_i=L_i(B)-L_i(A).
+$$
 
-Source note: `latent-structure/validating-a-mixture.qmd`
-
-Start with the axes and the observed values. Observed data and fitted quantities for Validating a mixture on held-out speakers. Read the pattern before attaching a model interpretation to it.
-
-## Slide 173: Interpretation
+## Slide 243: Held-out log loss
 
 Source note: `latent-structure/validating-a-mixture.qmd`
 
-Speaker-blocked log loss slightly favors G14 on average, while external alignment favors K10 in every fold. This disagreement is informative because the criteria evaluate different consequences of the same label-blind acoustic fits. Notice what is observed and what is supplied by the model.
+A negative value favors candidate $B$ for that token. Because speakers are the held-out groups, we first average token losses within speaker and compare the resulting paired speaker means.
+
+## Slide 244: Fitting and scoring both candidates
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Mean speaker log loss is 1.938 for K10 and 1.932 for G14. The paired mean difference, G14 minus K10, is -0.0066, and G14 has lower loss for 57.9% of speakers.
+
+## Slide 245: Fitting and scoring both candidates
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+This figure shows observed linguistic data for Fitting and scoring both candidates.
+
+## Slide 246: Fitting and scoring both candidates
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+The figure keeps the 76 paired speaker comparisons visible. Points left of zero favor G14 under predictive density; points right of zero favor K10.
+
+## Slide 247: External alignment after prediction
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+K10 has the larger post-fit ARI in all 5 folds. Thus, the model with slightly better mean held-out density aligns less closely with intended-vowel metadata. Predictive density and experimental-label alignment remain separate validation targets.
+
+## Slide 248: Information-set and dependence limits
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+The coordinate system includes each held-out speaker's unlabeled calibration panel, though no held-out token enters mixture estimation. This is the same explicit prediction information set used for centroid validation.
+
+## Slide 249: Information-set and dependence limits
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+The mixture likelihood still treats transformed token rows as conditionally independent and does not model their shared speaker normalization. Fold averages are computational summaries, not independent samples. Speaker-level paired values describe the variation relevant to the claim without pretending that repeated folds create new speakers.
+
+## Slide 250: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Why must all rows from one speaker stay in one test fold?
+
+## Slide 251: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+What does a negative G14-minus-K10 difference mean?
+
+## Slide 252: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Which candidate has the lower mean held-out log loss?
+
+## Slide 253: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Which candidate has the higher external ARI in every fold?
+
+## Slide 254: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Why can predictive density, BIC, and intended-vowel alignment favor different candidates?
+
+## Slide 255: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Which first-token prediction is not evaluated here?
+
+## Slide 256: Checking the validation design
+
+Source note: `latent-structure/validating-a-mixture.qmd`
+
+Speaker-blocked log loss slightly favors G14 on average, while external alignment favors K10 in every fold. This disagreement is informative because the criteria evaluate different consequences of the same label-blind acoustic fits.

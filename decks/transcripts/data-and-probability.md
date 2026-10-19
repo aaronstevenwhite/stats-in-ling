@@ -24,13 +24,13 @@ A linguistic record does not determine its own statistical unit. An audio file m
 
 Source note: `foundations/index.qmd`
 
-This choice creates the **representation problem (RP)**: before we count anything, we must decide what one row represents and which differences among speakers, items, and tokens remain visible. The same problem arises with every kind of linguistic data. A corpus can be divided into documents, sentences, word tokens, or word types. A reading-time experiment can retain one row for each trial or average those trials by participant or sentence.
+Before we count anything, we must specify the unit of observation and decide which differences among speakers, items, and tokens remain visible. The same issue arises with every kind of linguistic data. A corpus can be divided into documents, sentences, word tokens, or word types. A reading-time experiment can retain one row for each trial or average those trials by participant or sentence.
 
 ## Slide 5: From linguistic records to probabilities
 
 Source note: `foundations/index.qmd`
 
-We identify the observations and comparisons before assigning probability to outcomes and events.
+This module defines the observations, determines which comparisons answer a linguistic question, and then introduces probabilities over possible outcomes and events.
 
 ## Slide 6: Linguistic data and comparisons
 
@@ -94,13 +94,13 @@ The data source is Hillenbrand et al. (1995). It provides American English /hVd/
 
 Source note: `foundations/linguistic-data.qmd`
 
-What, exactly, is one datum in an acoustic study? We call the decision that answers this question **unit choice**. A record, such as an audio file, may contain several candidate observations, and several records may contribute to one speaker-level summary. Thus file count does not determine sample size.
+What, exactly, is one datum in an acoustic study? This question asks us to specify the **unit of observation**, the entity represented by one row of the analysis table. A record, such as an audio file, may contain several candidate observations, and several records may contribute to one speaker-level summary. Thus file count does not determine sample size.
 
 ## Slide 16: Turning linguistic records into data
 
 Source note: `foundations/linguistic-data.qmd`
 
-We make unit choice concrete with Hillenbrand et al.'s (1995) study of American English vowels. The study recorded 45 men, 48 women, and 46 children producing 12 vowels in /hVd/ words, measured duration and formant contours, and asked listeners to identify the intended vowels. The complete teaching table is the audited `phonTools::h95` table from package version 0.2-2.2 under the package's BSD-2-Clause license. One row is one /hVd/ vowel token from one speaker; each speaker contributes one token for each vowel. The package imputed 10 originally missing F2 values and 41 originally missing F3 values, so this table cannot be used to study the release's natural missingness. The data record gives the source, preprocessing, license, and checksum.
+We make the unit of observation concrete with Hillenbrand et al.'s (1995) study of American English vowels. The study recorded 45 men, 48 women, and 46 children producing 12 vowels in /hVd/ words, measured duration and formant contours, and asked listeners to identify the intended vowels. The complete teaching table is the audited `phonTools::h95` table from package version 0.2-2.2 under the package's BSD-2-Clause license. One row is one /hVd/ vowel token from one speaker; each speaker contributes one token for each vowel. The package imputed 10 originally missing F2 values and 41 originally missing F3 values, so this table cannot be used to study the release's natural missingness. The data record gives the source, preprocessing, license, and checksum.
 
 ## Slide 17: Unit and observation key
 
@@ -226,7 +226,7 @@ The next topic is Turning a question into a comparison.
 
 Source note: `foundations/making-sense-of-data.qmd`
 
-How much higher is F1 in *hid* /ɪ/ than in *heed* /i/ for the speakers in the Hillenbrand study? A numerical subtraction is interpretable only after we align its unit, response, linguistic contrast, comparison, and target. We call failures of this alignment the **comparison-alignment problem**.
+How much higher is F1 in *hid* /ɪ/ than in *heed* /i/ for the speakers in the Hillenbrand study? A numerical subtraction is interpretable only after its unit, response, linguistic contrast, comparison, and target have been specified consistently.
 
 ## Slide 37: Turning a question into a comparison
 
@@ -386,7 +386,7 @@ The data source is Türk et al. (2022), UD Turkish BOUN 2.18. It provides manual
 
 Source note: `foundations/zipfs-law.qmd`
 
-Word types in corpora tend to show a broad inverse relation between frequency and frequency rank. But estimating both quantities from the same counts builds a downward relation into the display. We call this dependence the **same-sample rank problem**.
+Word types in corpora tend to show a broad inverse relation between frequency and frequency rank. But computing rank and frequency from the same counts makes the two axes mathematically dependent, so the fitted relation is partly induced by the ranking operation.
 
 ## Slide 60: A first pattern: Zipf's law
 
@@ -581,7 +581,7 @@ The next topic is Sample spaces.
 
 Source note: `foundations/possibilities-and-events.qmd`
 
-We sample one annotated interrogative-pronoun token from a finite corpus extract. What, exactly, can happen? The **outcome-representation problem** is the need to decide whether an outcome is a token, a surface form, a lemma, or an annotated lemma-relation combination before assigning probabilities.
+We sample one annotated interrogative-pronoun token from a finite corpus extract. Before assigning probabilities, the sample space must specify whether an outcome is a token, a surface form, a lemma, or an annotated lemma-relation combination.
 
 ## Slide 87: Sample spaces
 
@@ -911,13 +911,13 @@ The next topic is Sigma-algebras.
 
 Source note: `foundations/event-spaces.qmd`
 
-If a model assigns a probability to the event that a token has lemma *ne*, which other events must it measure? It must include the complement, and it must keep unions of measurable events available. We call this requirement the **closure problem**.
+If a model assigns a probability to the event that a token has lemma *ne*, which other events must it measure? A sigma-algebra must include the complement and must be closed under countable unions.
 
 ## Slide 132: Sigma-algebras
 
 Source note: `foundations/event-spaces.qmd`
 
-Basically, we solve the closure problem by collecting events in a way that never strands us without a required complement or union. More specifically, a **sigma-algebra**, also called an event space, is a collection $\mathcal F$ that contains the sample space and is closed under complements and countable unions.
+Basically, we collect events in a way that never leaves out a required complement or union. More specifically, a **sigma-algebra**, also called an event space, is a collection $\mathcal F$ that contains the sample space and is closed under complements and countable unions.
 
 ## Slide 133: A one-generator event space
 
@@ -1091,7 +1091,7 @@ Next, we take up Generating sigma-algebras.
 
 Source note: `foundations/generating-event-spaces.qmd`
 
-Suppose we want to assign probabilities to the full three-way lemma distinction and the two-way dependency-relation distinction. What is the smallest sigma-algebra that supports both questions? We call finding that collection the **generation problem**.
+Suppose we want to assign probabilities to the full three-way lemma distinction and the two-way dependency-relation distinction. We therefore seek the smallest sigma-algebra generated by both partitions.
 
 ## Slide 157: Generating sigma-algebras
 
@@ -1249,7 +1249,7 @@ Now we turn to Probability measures.
 
 Source note: `foundations/probability-measures.qmd`
 
-The sample space $\Omega$ specifies token outcomes, and the sigma-algebra $\mathcal F$ specifies measurable groupings. We now need a numerical assignment that does not contradict those objects. We call this requirement the **coherence problem**.
+The sample space $\Omega$ specifies token outcomes, and the sigma-algebra $\mathcal F$ specifies measurable groupings. A probability measure assigns numbers to those events while satisfying the Kolmogorov axioms.
 
 ## Slide 179: Probability measures
 
@@ -2117,7 +2117,7 @@ The next topic is Bayes' rule.
 
 Source note: `foundations/bayes-rule.qmd`
 
-The probability that a retained *ne* token is an object and the probability that a retained object token has lemma *ne* reverse the target and reference events. The **conditional-direction problem** is that one cannot be read directly from the other.
+The probability that a retained *ne* token is an object and the probability that a retained object token has lemma *ne* condition on different events. One cannot be read directly from the other.
 
 ## Slide 288: Bayes' rule
 
@@ -2277,7 +2277,7 @@ Now we turn to Independence.
 
 Source note: `foundations/independence.qmd`
 
-Does learning that a retained token has lemma *ne* change the probability that it is annotated as an object? The **conditional-invariance question** compares
+Does learning that a retained token has lemma *ne* change the probability that it is annotated as an object? We compare
 
 $$
 \mathbb{P}(O)

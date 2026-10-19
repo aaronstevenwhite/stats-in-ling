@@ -1,12 +1,12 @@
 # Course revamp specification
 
-This document is the controlling specification for the new notes and problem sets. It replaces the candidate sequencing in `CONTENT-EXPANSION-PLAN.md` whenever the two conflict. The older document remains useful as a dataset-research notebook, but a proposed dataset or analysis is not part of the course until it passes the gates below.
+This document is the controlling specification for the new notes and problem sets. It replaces the candidate sequencing in `CONTENT-EXPANSION-PLAN.md` whenever the two conflict. The older document remains useful as a dataset-research notebook, but a proposed dataset or analysis is not part of the course until it meets the requirements below.
 
 ## What the revamp is meant to repair
 
 The current materials have three separable problems. First, many note pages identify a statistical object but stop before developing the object through a linguistic problem, a formal definition, an implementation, and a diagnostic. Second, the site currently ends at mixed-effects models even though the syllabus continues through model evaluation, experimental design, latent structure, and custom model design. Third, several assignments ask students to run an analysis whose empirical behavior does not support the intended lesson.
 
-I refer to the joint repair as the **notes--assessment alignment requirement (NAAR)**. A topic belongs in the course only when (i) its page has no forward dependency, (ii) its linguistic application uses a defensible unit and estimand, and (iii) any assignment depending on it has been run end to end and produces the intended contrast.
+A topic belongs in the course only when (i) its page has no forward dependency, (ii) its linguistic application uses a defensible unit and estimand, and (iii) any assignment depending on it has been run end to end and produces the intended contrast.
 
 ## Fixed design constraints
 
@@ -16,12 +16,13 @@ The rebuild has ten nonnegotiable constraints.
 2. **One-new-concept rule.** A concept page introduces one principal statistical object or technique. It may use earlier material, but it may not rely on a method introduced later.
 3. **Application separation.** An application page may combine methods that have already been introduced. It may not introduce an additional method under cover of a dataset example.
 4. **Theory-bearing predictors.** Predictors must encode a linguistic hypothesis, a design contrast, or a specific source of measurement variation. Convenience columns are not sufficient merely because they improve fit.
-5. **Coherent-run rule.** Dataset use is organized into named empirical runs rather than one-off page examples. A run may occupy adjacent pages or include a dependency-linked return declared in the dataset manifest when every segment preserves the same observational units, preprocessing, and empirical target. A new question, a new preprocessing pipeline, or a graded task constitutes a new run and requires its own audit gate. Assignments use transfer datasets unless the frozen assignment map explicitly reserves a notes dataset.
+5. **Dataset continuity.** Reuse a dataset across adjacent pages when those pages preserve the same observational units, preprocessing, and empirical target. A new question, preprocessing pipeline, or graded task requires a separate audit. Assignments use transfer datasets unless the frozen assignment map explicitly reserves a notes dataset.
 6. **Empirical validation.** No assignment ships from a plausible analysis plan. Its source, preprocessing, fitted results, robustness, runtime, and answer key must all be frozen first.
 7. **Structural notation.** Use $\langle\cdot\rangle$ when defining a formally assembled structure, including a probability space, measurable space, observation key, structured outcome, or model specification. Reserve $(\cdot)$ for coordinate points, parameter vectors, intervals, and ordinary realized value tuples.
-8. **Data-derived quantities.** Symbolic definitions and derivations may remain general. Every displayed probability, expectation, variance, fitted parameter, interval, test statistic, loss, and other worked numerical quantity must be computed from an identified linguistic dataset by visible R code. We refer to this requirement as the **data-derived quantity rule (DQR)**.
+8. **Data-derived quantities.** Symbolic definitions and derivations may remain general. Every displayed probability, expectation, variance, fitted parameter, interval, test statistic, loss, and other worked numerical quantity must be computed from an identified linguistic dataset by visible R code.
 9. **Restrained scientific plots.** Every empirical plot must expose the observations or empirical mass relevant to the claim. When a model and observations share a meaningful scale, the plot must show them together. Graphics use direct axis labels with units, neutral observations, no more than one accent color unless grouping requires more, and only the annotation needed to identify the focal statistic, threshold, held-out boundary, selected rank, or influential observation.
 10. **Paper-first analysis.** Before a dataset can support notes prose, the developer must read its primary paper, release documentation, representation or annotation guidelines, and original analysis code when available. An evidence card then states what the released observations encode, reconciles paper and release counts, records the source pin and license, and bounds the claims that a simplified classroom analysis may support. A source-aligned pilot must pass before a proposed analysis becomes an approved empirical run.
+11. **Established terminology and notation.** Use only terms, abbreviations, and mathematical notation established in the relevant statistical or linguistic literature. Do not coin pedagogical names, labels, acronyms, or symbols. Describe a local limitation or comparison directly when no standard term exists.
 
 ## Course dependency spine
 
@@ -46,7 +47,7 @@ Model criticism follows regression because residuals and predictions require a f
 Each concept page must do enough work for a student to reconstruct the object, rather than merely recognize its name. The default page thus contains the following moves, with sections merged only when the concept is genuinely small.
 
 1. **Linguistic problem.** Begin with a concrete representational or inferential problem.
-2. **Naming move.** Name the new object and state what problem it solves.
+2. **Standard terminology.** Introduce the established name for the object and state what problem it solves. If no established term exists, describe the issue directly without coining a label or abbreviation.
 3. **Formal statement.** Give the definition, model, or algorithm using only established notation.
 4. **Worked derivation.** Work through the mathematics using quantities computed from the page's linguistic dataset. A symbolic derivation may precede substitution, but a schematic numerical example may not.
 5. **Implementation.** Show all R code needed to load the source, define the analysis subset, transform variables, compute or fit the target, and draw the figure. Connect each step to the formal statement; no page may depend on hidden in-memory state from another page.
@@ -83,7 +84,7 @@ The planned rotation distributes applications across subfields.
 | Phonetics and sociophonetics | Hillenbrand for continuous measurements, paired inference, and imputation; Peterson--Barney for latent vowel structure |
 | Psycholinguistics and acquisition | Provo for lexical probabilities, Bayesian computation, linear modeling, and model comparison; MALD for multiple-regression criticism and Gaussian mixed models; Natural Stories for prediction targets; ManyBabies for design and power |
 | Syntax and lexical semantics | the English dative alternation for joint distributions; the pinned CC BY-SA SuperTelicity release for Bernoulli models; VALEX with MegaAcceptability for distributional prediction; privacy-safe Turkish PropBank for annotation agreement |
-| Semantic representation and grammar engineering | graph-aware UCCA French--English for paired structural counts; Jacy/Tanaka Japanese MRS for grammar-analysis coverage, never usage frequency; both paper-first gates have passed for these narrow uses |
+| Semantic representation and grammar engineering | graph-aware UCCA French--English for paired structural counts; Jacy/Tanaka Japanese MRS for grammar-analysis coverage, never usage frequency; the relevant papers support both of these narrow uses |
 | Semantics and pragmatics | MegaVeridicality and MegaOrientation for ordinal models, interactions, and unseen-verb evaluation; CommitmentBank as the PS4 transfer dataset; the public MegaNegRaising balanced subset for bounded models; UDS for the binary annotator-aware measurement capstone; aspectual similarity remains blocked reference evidence until its public source and title are reconciled |
 | Phonology and typology | CMUdict for discrete random variables and waiting counts; Turkish UniMorph for finite populations and contingency inference; PHOIBLE 2.0 for factorization |
 

@@ -30,13 +30,13 @@ The Provo Corpus records eye-movement measures and predictability norms for word
 
 Source note: `regression-models/index.qmd`
 
-A regression model addresses the **response--predictor mapping problem (RPM)**: which parameter of a response distribution should depend on which observed predictors, and through which function? The response distribution states which measurements are possible and how they vary; the regression function states how its parameters change across predictor values represented in the data.
+A regression model specifies which parameter of a response distribution depends on which observed predictors, and through which function. The response distribution states which measurements are possible and how they vary; the regression function states how its parameters change across predictor values represented in the data.
 
 ## Slide 6: Regression models
 
 Source note: `regression-models/index.qmd`
 
-The RPM assumes the earlier distinction among an estimand, an estimator, and an estimate, along with the fact that a likelihood holds the observations fixed. The pages return to those objects when they do explanatory work rather than rederiving them for every model family.
+This specification assumes the earlier distinction among an estimand, an estimator, and an estimate, along with the fact that a likelihood holds the observations fixed. The pages return to those objects when they do explanatory work rather than rederiving them for every model family.
 
 ## Slide 7: Linear regression
 
@@ -102,13 +102,13 @@ Source note: `regression-models/regression-models.qmd`
 
 This function asks how the center of a response changes across observed linguistic contexts. It does not yet require the center to be a straight line.
 
-## Slide 17: The Provo Regression Sequence
+## Slide 17: Provo word-position data
 
 Source note: `regression-models/regression-models.qmd`
 
-We develop this idea with the **Provo Regression Sequence (PRS)**. Luke and Christianson (2018) collected cloze norms and eye movements for 55 English passages; the Provo OSF release is available under CC BY 4.0. The course table retains complete content-word positions. A row is a word position nested in a passage after first-fixation durations have been aggregated across readers. It is not a participant trial.
+We develop this idea with data from the Provo Corpus. Luke and Christianson (2018) collected cloze norms and eye movements for 55 English passages; the Provo OSF release is available under CC BY 4.0. The course table retains complete content-word positions. A row is a word position nested in a passage after first-fixation durations have been aggregated across readers. It is not a participant trial.
 
-## Slide 18: The Provo Regression Sequence
+## Slide 18: Provo word-position data
 
 Source note: `regression-models/regression-models.qmd`
 
@@ -120,7 +120,7 @@ $$
 
 **modeled cloze surprisal**, and let $Y_i$ be the mean log first-fixation duration at position $i$.
 
-## Slide 19: The Provo Regression Sequence
+## Slide 19: Provo word-position data
 
 Source note: `regression-models/regression-models.qmd`
 
@@ -162,13 +162,13 @@ The bin means tend to increase with modeled cloze surprisal. This pattern licens
 
 Source note: `regression-models/regression-models.qmd`
 
-What is the observational unit in the PRS?
+What is the observational unit in the Provo analysis?
 
 ## Slide 25: Conditional means: answer 1
 
 Source note: `regression-models/regression-models.qmd`
 
-One PRS observation is a retained content-word position within a Provo passage, with first-fixation duration already aggregated across readers.
+One observation is a retained content-word position within a Provo passage, with first-fixation duration already aggregated across readers.
 
 ## Slide 26: Conditional means: question 2
 
@@ -228,13 +228,13 @@ Source note: `regression-models/simple-linear-regression.qmd`
 
 The word *simple* means that the model has one predictor. The word *linear* means that the coefficients enter as a weighted sum.
 
-## Slide 35: Fitting the PRS line
+## Slide 35: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
 We return to the Provo position summaries and center modeled cloze surprisal at its observed mean. Centering makes the intercept correspond to an observed reference point; the next page derives that equivalence.
 
-## Slide 36: Fitting the PRS line
+## Slide 36: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
@@ -246,13 +246,13 @@ $$
 \widehat\beta_0+\widehat\beta_1(x_i-\overline x).
 $$
 
-## Slide 37: Fitting the PRS line
+## Slide 37: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
 At mean modeled cloze surprisal, the fitted mean log first-fixation duration is 5.2950. Each additional bit of modeled cloze surprisal is associated with a change of 0.0089 log milliseconds in the fitted position mean.
 
-## Slide 38: Fitting the PRS line
+## Slide 38: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
@@ -266,19 +266,19 @@ m(x+1)-m(x)
 =\beta_1.
 $$
 
-## Slide 39: Fitting the PRS line
+## Slide 39: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
 Thus the intercept locates the line, while the slope gives its change per predictor unit.
 
-## Slide 40: Fitting the PRS line
+## Slide 40: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
 This figure shows reader-aggregated Provo positions and the fitted straight-line conditional mean.
 
-## Slide 41: Fitting the PRS line
+## Slide 41: Fitting the Provo regression line
 
 Source note: `regression-models/simple-linear-regression.qmd`
 
@@ -344,7 +344,7 @@ Source note: `regression-models/centering-predictors.qmd`
 
 The intercept of a regression is the fitted conditional mean where every predictor equals zero. **Centering** changes that reference value while preserving all fitted comparisons.
 
-## Slide 52: Reparameterizing the PRS
+## Slide 52: Reparameterizing the Provo regression
 
 Source note: `regression-models/centering-predictors.qmd`
 
@@ -354,7 +354,7 @@ $$
 X_i^c=X_i-c.
 $$
 
-## Slide 53: Reparameterizing the PRS
+## Slide 53: Reparameterizing the Provo regression
 
 Source note: `regression-models/centering-predictors.qmd`
 
@@ -369,25 +369,25 @@ m(X_i)
 \end{aligned}
 $$
 
-## Slide 54: Reparameterizing the PRS
+## Slide 54: Reparameterizing the Provo regression
 
 Source note: `regression-models/centering-predictors.qmd`
 
 Thus centering changes the intercept from $\beta_0$ to $\beta_0+\beta_1c$. It leaves the slope and every fitted value unchanged.
 
-## Slide 55: Reparameterizing the PRS
+## Slide 55: Reparameterizing the Provo regression
 
 Source note: `regression-models/centering-predictors.qmd`
 
 The observed center is 4.791 bits. After centering, the intercept is 5.2950, the fitted mean at that observed predictor average. The two slopes differ by only 8.7e-18, and the largest fitted-value difference is 2.7e-15.
 
-## Slide 56: Reparameterizing the PRS
+## Slide 56: Reparameterizing the Provo regression
 
 Source note: `regression-models/centering-predictors.qmd`
 
-The PRS on the centered predictor scale. The vertical reference marks observed mean modeled cloze surprisal.
+The Provo regression on the centered predictor scale. The vertical reference marks observed mean modeled cloze surprisal.
 
-## Slide 57: Reparameterizing the PRS
+## Slide 57: Reparameterizing the Provo regression
 
 Source note: `regression-models/centering-predictors.qmd`
 
@@ -451,7 +451,7 @@ Our next step is Transforming a response.
 
 Source note: `regression-models/response-transformations.qmd`
 
-The PRS response is a mean of log first-fixation durations. A **response transformation** changes the scale on which the model treats effects as additive. For a positive duration $T$,
+The Provo regression response is a mean of log first-fixation durations. A **response transformation** changes the scale on which the model treats effects as additive. For a positive duration $T$,
 
 $$
 Y=\log T
@@ -517,7 +517,7 @@ This figure shows observed position-level geometric mean durations and two back-
 
 Source note: `regression-models/response-transformations.qmd`
 
-At the observed predictor center, the fitted geometric mean is 199.3 ms, while the working lognormal arithmetic mean of position-level geometric means is 200.2 ms. The small difference is computed from the actual PRS residual scale.
+At the observed predictor center, the fitted geometric mean is 199.3 ms, while the working lognormal arithmetic mean of position-level geometric means is 200.2 ms. The small difference is computed from the actual Provo regression residual scale.
 
 ## Slide 74: What the prepared response means
 
@@ -583,7 +583,7 @@ Next, we take up Fitting a linear regression.
 
 Source note: `regression-models/frequentist-linear-regression.qmd`
 
-The PRS specifies a straight-line conditional mean. We now need an estimation rule. **Ordinary least squares (OLS)** chooses the coefficients whose fitted values minimize the residual sum of squares.
+The Provo regression specifies a straight-line conditional mean. We now need an estimation rule. **Ordinary least squares (OLS)** chooses the coefficients whose fitted values minimize the residual sum of squares.
 
 ## Slide 85: From discrepancies to an objective
 
@@ -633,13 +633,13 @@ $$
 \widehat\beta_0=\overline y-\widehat\beta_1\overline x.
 $$
 
-## Slide 88: Computing the PRS estimate
+## Slide 88: Computing the Provo regression estimate
 
 Source note: `regression-models/frequentist-linear-regression.qmd`
 
 The fitted slope is 0.008883 log milliseconds per bit. Squaring makes large vertical discrepancies count more heavily, which is one reason a few unusual responses may affect the fit.
 
-## Slide 89: Computing the PRS estimate
+## Slide 89: Computing the Provo regression estimate
 
 Source note: `regression-models/frequentist-linear-regression.qmd`
 
@@ -662,19 +662,19 @@ $$
 +C.
 $$
 
-## Slide 90: Computing the PRS estimate
+## Slide 90: Computing the Provo regression estimate
 
 Source note: `regression-models/frequentist-linear-regression.qmd`
 
 For fixed $\sigma$, maximizing this likelihood is equivalent to minimizing SSE. OLS and Gaussian maximum likelihood thus select the same coefficient estimates.
 
-## Slide 91: Computing the PRS estimate
+## Slide 91: Computing the Provo regression estimate
 
 Source note: `regression-models/frequentist-linear-regression.qmd`
 
 This figure shows reader-aggregated Provo positions and the OLS conditional mean.
 
-## Slide 92: Computing the PRS estimate
+## Slide 92: Computing the Provo regression estimate
 
 Source note: `regression-models/frequentist-linear-regression.qmd`
 
@@ -738,7 +738,7 @@ The next topic is Uncertainty in a fitted slope.
 
 Source note: `regression-models/linear-regression-uncertainty.qmd`
 
-The fitted PRS slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a repeated-sampling model.
+The fitted Provo regression slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a repeated-sampling model.
 
 ## Slide 103: Conventional OLS uncertainty
 
@@ -933,13 +933,13 @@ R^2
 1-\frac{\operatorname{SSE}}{\operatorname{SST}}.
 $$
 
-## Slide 126: Computing $R^2$ for the PRS
+## Slide 126: Computing $R^2$ for the Provo regression
 
 Source note: `regression-models/coefficient-of-determination.qmd`
 
 The straight line reduces squared error by 5.56 percent relative to the mean-only predictor for these retained position summaries. The remaining proportion, 94.44 percent, is not automatically measurement error. It includes lexical, contextual, passage, reader-aggregation, and functional-form variation that this one-predictor line does not represent.
 
-## Slide 127: Computing $R^2$ for the PRS
+## Slide 127: Computing $R^2$ for the Provo regression
 
 Source note: `regression-models/coefficient-of-determination.qmd`
 
@@ -953,7 +953,7 @@ $$
 
 where $\operatorname{SSR}=\sum_i(\widehat y_i-\overline y)^2$.
 
-## Slide 128: Computing $R^2$ for the PRS
+## Slide 128: Computing $R^2$ for the Provo regression
 
 Source note: `regression-models/coefficient-of-determination.qmd`
 
@@ -963,13 +963,13 @@ $$
 R^2=\frac{\operatorname{SSR}}{\operatorname{SST}}.
 $$
 
-## Slide 129: Computing $R^2$ for the PRS
+## Slide 129: Computing $R^2$ for the Provo regression
 
 Source note: `regression-models/coefficient-of-determination.qmd`
 
-This figure shows provo positions, the mean-only baseline, and the fitted PRS line.
+This figure shows provo positions, the mean-only baseline, and the fitted Provo regression line.
 
-## Slide 130: Computing $R^2$ for the PRS
+## Slide 130: Computing $R^2$ for the Provo regression
 
 Source note: `regression-models/coefficient-of-determination.qmd`
 
@@ -1033,7 +1033,7 @@ Next, we take up Residuals.
 
 Source note: `regression-models/residuals.qmd`
 
-The PRS line assigns each word position a fitted conditional mean. A **residual** is the observed response minus that fitted value:
+The Provo regression line assigns each word position a fitted conditional mean. A **residual** is the observed response minus that fitted value:
 
 $$
 e_i=y_i-\widehat y_i.
@@ -1045,7 +1045,7 @@ Source note: `regression-models/residuals.qmd`
 
 A positive residual marks a position above the fitted line; a negative residual marks one below it. The residual is observable after fitting. It is not the unobserved population error $\varepsilon_i$.
 
-## Slide 142: Computing the PRS residuals
+## Slide 142: Computing the Provo regression residuals
 
 Source note: `regression-models/residuals.qmd`
 
@@ -1057,7 +1057,7 @@ $$
 -2\sum_i(y_i-\beta_0-\beta_1x_i)=0.
 $$
 
-## Slide 143: Computing the PRS residuals
+## Slide 143: Computing the Provo regression residuals
 
 Source note: `regression-models/residuals.qmd`
 
@@ -1067,25 +1067,25 @@ $$
 \sum_i e_i=0.
 $$
 
-## Slide 144: Computing the PRS residuals
+## Slide 144: Computing the Provo regression residuals
 
 Source note: `regression-models/residuals.qmd`
 
-The PRS residuals sum to -5.33e-15. That algebraic property is not evidence that positive and negative discrepancies are equally plausible in every region of the predictor.
+The Provo regression residuals sum to -5.33e-15. That algebraic property is not evidence that positive and negative discrepancies are equally plausible in every region of the predictor.
 
-## Slide 145: Computing the PRS residuals
+## Slide 145: Computing the Provo regression residuals
 
 Source note: `regression-models/residuals.qmd`
 
 This figure shows observed Provo position summaries with the fitted line, followed by the same discrepancies on a residual scale.
 
-## Slide 146: Computing the PRS residuals
+## Slide 146: Computing the Provo regression residuals
 
 Source note: `regression-models/residuals.qmd`
 
-PRS residuals against fitted values. The blue curve is a descriptive loess smooth.
+Provo regression residuals against fitted values. The blue curve is a descriptive loess smooth.
 
-## Slide 147: Computing the PRS residuals
+## Slide 147: Computing the Provo regression residuals
 
 Source note: `regression-models/residuals.qmd`
 
@@ -1155,7 +1155,7 @@ A **regression check** compares a model prediction with an observable pattern. T
 
 Source note: `regression-models/checking-linear-regression.qmd`
 
-For the PRS, we check a linear conditional mean, stable residual location across passages, and approximately normal residual shape.
+For the Provo regression, we check a linear conditional mean, stable residual location across passages, and approximately normal residual shape.
 
 ## Slide 159: Linear form and passage structure
 
@@ -1191,7 +1191,7 @@ If the normal working model were exact, ordered standardized residuals would tra
 
 Source note: `regression-models/checking-linear-regression.qmd`
 
-This figure shows normal quantiles against ordered PRS residuals. The line passes through the empirical quartiles.
+This figure shows normal quantiles against ordered Provo regression residuals. The line passes through the empirical quartiles.
 
 ## Slide 165: Residual shape
 
@@ -1403,7 +1403,7 @@ $$
 
 Source note: `regression-models/influence.qmd`
 
-Large residuals and high leverage can jointly produce a large $D_i$. But the PRS retains passages as a grouping unit, so deleting one position is not the only relevant perturbation. We also refit after deleting each whole passage.
+Large residuals and high leverage can jointly produce a large $D_i$. But the Provo regression retains passages as a grouping unit, so deleting one position is not the only relevant perturbation. We also refit after deleting each whole passage.
 
 ## Slide 195: Cook's distance and grouped deletion
 
@@ -1421,7 +1421,7 @@ This figure shows observed Provo positions with the full fit in blue and the fit
 
 Source note: `regression-models/influence.qmd`
 
-The two lines remain close. That stability is specific to the fitted PRS slope under these passage deletions. It does not show that the missing reader-level grouping is unimportant.
+The two lines remain close. That stability is specific to the fitted Provo regression slope under these passage deletions. It does not show that the missing reader-level grouping is unimportant.
 
 ## Slide 198: Influence: question 1
 
@@ -1439,7 +1439,7 @@ Residual size measures disagreement with the fitted line, while leverage measure
 
 Source note: `regression-models/influence.qmd`
 
-Which deletion unit matches the remaining PRS grouping structure?
+Which deletion unit matches the remaining Provo regression grouping structure?
 
 ## Slide 201: Influence: answer 2
 
@@ -1481,7 +1481,7 @@ The next topic is Bayesian linear regression.
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
-The PRS likelihood can be combined with a prior to produce a posterior distribution over regression lines. The response model remains
+The Provo Gaussian linear model can be combined with a prior to produce a posterior distribution over regression lines. The response model remains
 
 $$
 \mathbf Y\mid\boldsymbol\beta,\sigma^2
@@ -1495,7 +1495,7 @@ Source note: `regression-models/bayesian-linear-regression.qmd`
 
 What changes is that uncertainty about $\boldsymbol\beta$ and $\sigma^2$ is represented before and after observing the responses.
 
-## Slide 209: A conjugate teaching bridge
+## Slide 209: A conjugate prior specification
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
@@ -1513,7 +1513,7 @@ $$
 \sigma^2\sim\operatorname{InverseGamma}(a_0,d_0).
 $$
 
-## Slide 210: A conjugate teaching bridge
+## Slide 210: A conjugate prior specification
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
@@ -1549,25 +1549,25 @@ d_0+\frac12
 \right).
 $$
 
-## Slide 211: Computing the PRS posterior
+## Slide 211: Computing the posterior
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
 The posterior mean slope is 0.008872, with a central interval from 0.007099 to 0.010686.
 
-## Slide 212: Computing the PRS posterior
+## Slide 212: Computing the posterior
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
-The coefficient-prior location and scale use the observed Provo response and predictor scales. The inverse-gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. We call this the **empirical-prior bridge (EPB)**. It is useful for connecting conjugate algebra to regression, but it is not an independently specified confirmatory prior.
+The coefficient-prior location and scale use the observed Provo response and predictor scales. The inverse-gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. These data-dependent priors are useful for connecting conjugate algebra to regression, but they are not independently specified confirmatory priors.
 
-## Slide 213: Computing the PRS posterior
+## Slide 213: Computing the posterior
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
 This figure shows provo positions with the posterior mean line and a central posterior interval for the conditional mean.
 
-## Slide 214: Computing the PRS posterior
+## Slide 214: Computing the posterior
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
@@ -1589,13 +1589,13 @@ The Gaussian linear response model, including the straight conditional mean and 
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
-Why is the EPB not a confirmatory prior analysis?
+Why is this not a confirmatory prior analysis?
 
 ## Slide 218: Bayesian linear regression: answer 2
 
 Source note: `regression-models/bayesian-linear-regression.qmd`
 
-The EPB coefficient and variance priors are calibrated from the observed predictor, response, and OLS residual scales rather than specified independently before seeing the data.
+The coefficient and variance priors are calibrated from the observed predictor, response, and OLS residual scales rather than specified independently before seeing the data.
 
 ## Slide 219: Bayesian linear regression: question 3
 
@@ -1639,19 +1639,19 @@ Source note: `regression-models/multiple-regression.qmd`
 
 Simple regression compares conditional means across one predictor. **Multiple regression** lets several observed predictors contribute to the same conditional mean, so each slope becomes a partial comparison.
 
-## Slide 226: The MALD Regression Sequence
+## Slide 226: MALD word-item data
 
 Source note: `regression-models/multiple-regression.qmd`
 
-We now begin the **MALD Regression Sequence (MRS)**. Tucker et al. (2019) describe the Massive Auditory Lexical Decision database and analyze lexical frequency as a predictor of response time. The MALD 1.1 release is available under CC BY-NC 4.0.
+We now use data from the Massive Auditory Lexical Decision database (MALD). Tucker et al. (2019) describe the database and analyze lexical frequency as a predictor of response time. The MALD 1.1 release is available under CC BY-NC 4.0.
 
-## Slide 227: The MALD Regression Sequence
+## Slide 227: MALD word-item data
 
 Source note: `regression-models/multiple-regression.qmd`
 
 The course table contains word items summarized over correct retained trials whose response times and frequency satisfy the documented filters. One row is one word item, not one participant response. The table retains the number and dispersion of contributing trials, but it cannot recover participant effects. We model mean log auditory lexical-decision time from SUBTLEX frequency, acoustic duration, and phone count.
 
-## Slide 228: The MALD Regression Sequence
+## Slide 228: MALD word-item data
 
 Source note: `regression-models/multiple-regression.qmd`
 
@@ -1668,35 +1668,35 @@ $$
 
 where $F_i^c$ is centered log SUBTLEX frequency, $D_i^c$ is centered log acoustic duration, and $P_i^c$ is centered phone count.
 
-## Slide 229: The MALD Regression Sequence
+## Slide 229: MALD word-item data
 
 Source note: `regression-models/multiple-regression.qmd`
 
 Holding acoustic duration and phone count fixed, a one-unit increase in log frequency is associated with -0.0172 log response-time units. Holding the other two predictors fixed is a model comparison, not an experimental intervention.
 
-## Slide 230: The MALD Regression Sequence
+## Slide 230: MALD word-item data
 
 Source note: `regression-models/multiple-regression.qmd`
 
 This figure shows mALD item summaries and the fitted frequency relation at observed mean duration and phone count.
 
-## Slide 231: The MALD Regression Sequence
+## Slide 231: MALD word-item data
 
 Source note: `regression-models/multiple-regression.qmd`
 
-The MRS explains 29.3 percent of item-level squared variation under this specification. That quantity concerns correct-trial summaries. It is not a participant-level model and should not be presented as a reproduction of Tucker et al.’s crossed mixed-effects analysis.
+The fitted MALD regression explains 29.3 percent of item-level squared variation under this specification. That quantity concerns correct-trial summaries. It is not a participant-level model and should not be presented as a reproduction of Tucker et al.’s crossed mixed-effects analysis.
 
 ## Slide 232: Adding predictors: question 1
 
 Source note: `regression-models/multiple-regression.qmd`
 
-What is one MRS observation?
+What is one observation in the MALD analysis?
 
 ## Slide 233: Adding predictors: answer 1
 
 Source note: `regression-models/multiple-regression.qmd`
 
-One MRS observation is one MALD word item summarized over its retained correct trials.
+One observation is one MALD word item summarized over its retained correct trials.
 
 ## Slide 234: Adding predictors: question 2
 
@@ -1750,7 +1750,7 @@ A regression formula is converted into a numeric **design matrix**. Each row rep
 
 Source note: `regression-models/design-matrices.qmd`
 
-The MRS can be written
+The MALD regression can be written
 
 $$
 \mathbf y=\mathbf X\boldsymbol\beta+\boldsymbol\varepsilon.
@@ -1900,7 +1900,7 @@ A categorical predictor has labels rather than intrinsic numerical distances. **
 
 Source note: `regression-models/coding-categorical-predictors.qmd`
 
-We restrict this page to the three largest lexical part-of-speech classes in the MRS: noun, verb, and adjective. MALD's part-of-speech field is a word-form summary from SUBTLEX, not a token annotation in sentential context.
+We restrict this page to the three largest lexical part-of-speech classes in the MALD regression: noun, verb, and adjective. MALD's part-of-speech field is a word-form summary from SUBTLEX, not a token annotation in sentential context.
 
 ## Slide 262: Treatment coding in MALD
 
@@ -2467,7 +2467,7 @@ Now we turn to Correlated predictors.
 
 Source note: `regression-models/correlated-predictors.qmd`
 
-We now return to the MALD Regression Sequence. A partial coefficient compares items that differ in one predictor while holding the others fixed. **Predictor collinearity** arises when the observed design contains relatively few such comparisons because predictor columns move together.
+We now return to the MALD word-item data. A partial coefficient compares items that differ in one predictor while holding the others fixed. **Predictor collinearity** arises when the observed design contains relatively few such comparisons because predictor columns move together.
 
 ## Slide 344: Overlap in the MALD item design
 
@@ -2899,7 +2899,7 @@ $$
 
 Source note: `regression-models/heteroscedasticity.qmd`
 
-The MRS provides two related spread measurements: absolute residuals from the item-mean model and the stored within-item standard deviation of correct log response times.
+The MALD regression provides two related spread measurements: absolute residuals from the item-mean model and the stored within-item standard deviation of correct log response times.
 
 ## Slide 407: Residual spread across MALD frequency
 
