@@ -1,174 +1,173 @@
 ---
-title: "Summarizing posterior draws"
+title: "Summarizing a posterior distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [posterior distribution page](posterior-distributions.qmd) represented uncertainty over parameter values. Suppose an analysis produces $S=4{,}000$ draws of a difference $\Delta$ between two response probabilities:
+The [posterior-distribution page](posterior-distributions.qmd) defined the finite-resource bridge (FRB). We now summarize its $\operatorname{Beta}(43,79)$ posterior without changing the estimand or the sampling caveat.
+
+```{r}
+#| label: load-unimorph-posterior-summaries
+library(ggplot2)
+
+population <- read.csv(
+  "data/unimorph-turkish/verb-past-population.csv",
+  stringsAsFactors = FALSE
+)
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
+)
+
+N <- nrow(population)
+K <- sum(population$t_initial)
+n <- nrow(sample_120)
+k <- sum(sample_120$t_initial)
+resource_share <- K / N
+unit_count <- 1L
+alpha_post <- unit_count + k
+beta_post <- unit_count + n - k
+
+posterior_mean <- alpha_post / (alpha_post + beta_post)
+posterior_variance <- alpha_post * beta_post /
+  ((alpha_post + beta_post)^2 * (alpha_post + beta_post + 1))
+interval_probs <- seq(.025, .975, length.out = 3L)
+posterior_quantiles <- qbeta(interval_probs, alpha_post, beta_post)
+probability_above_resource <- 1 - pbeta(
+  resource_share, alpha_post, beta_post
+)
+
+stopifnot(N == 588L, K == 200L, n == 120L, k == 42L)
+data.frame(
+  mean = posterior_mean,
+  variance = posterior_variance,
+  q025 = posterior_quantiles[1],
+  median = posterior_quantiles[2],
+  q975 = posterior_quantiles[3],
+  probability_above_known_resource_share = probability_above_resource
+)
+```
+
+## Center and spread
+
+For $\Theta\mid\mathbf z\sim\operatorname{Beta}(\alpha',\beta')$,
 
 $$
-\Delta^{(1)},\ldots,\Delta^{(4000)}.
+\mathbb{E}[\Theta\mid\mathbf z]
+=\frac{\alpha'}{\alpha'+\beta'},
 $$
 
-The empirical distribution of the draws approximates the posterior distribution of $\Delta$ conditional on the observed data $\mathbf{Y}=\mathbf{y}$. For compactness, we write this conditioning event as $\mathbf{y}$ below. This approximation is justified only when the draws were produced by a valid computational procedure; the later pages on [checking Markov chains](checking-markov-chains.qmd) explain that requirement. The draws retain more information than one estimate and one interval, but a results paragraph still needs a small set of interpretable quantities.
-
-A [**posterior summary**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is a calculation performed on the posterior distribution. It is not an additional model and does not create new evidence. We must first state whether the linguistic claim concerns direction, magnitude, or a predicted response; the summary then selects the corresponding aspect of the uncertainty already represented by the draws.
-
-## Locating the posterior center
-
-The posterior mean is approximated by
+and
 
 $$
-\widehat{\mathbb{E}}[\Delta\mid\mathbf{y}]
+\operatorname{Var}[\Theta\mid\mathbf z]
 =
-\frac{1}{S}
-\sum_{s=1}^{S}\Delta^{(s)}.
+\frac{\alpha'\beta'}
+{(\alpha'+\beta')^2(\alpha'+\beta'+1)}.
 $$
 
-The posterior median is the middle draw after sorting. In R:
+The FRB posterior mean is `r sprintf("%.6f", posterior_mean)`, and its variance is `r sprintf("%.6f", posterior_variance)`. The posterior median is `r sprintf("%.6f", posterior_quantiles[2])`. The mean minimizes posterior expected squared-error loss; a median minimizes posterior expected absolute-error loss. Thus neither center is automatically the preferred estimate without a loss function.
 
-```r
-mean(draws$delta)
-median(draws$delta)
-```
+## Credible intervals and directional probabilities
 
-Suppose five equally weighted illustrative draws are
+An equal-tailed 95% credible interval uses the posterior quantiles
 
 $$
--.09,\;-.07,\;-.06,\;-.05,\;.02.
+\left[
+F^{-1}_{\Theta\mid\mathbf z}(.025),
+F^{-1}_{\Theta\mid\mathbf z}(.975)
+\right].
 $$
 
-Their mean is
+For the FRB it is [`r sprintf("%.6f", posterior_quantiles[1])`, `r sprintf("%.6f", posterior_quantiles[3])`]. Conditional on the exchangeable model, prior, and observed sample, 95% of the posterior mass lies in this interval. This is not the repeated-sampling interpretation of a confidence interval.
+
+The probability that the counterfactual exchangeable share exceeds the known resource share is
 
 $$
-\frac{-.09-.07-.06-.05+.02}{5}=-.05,
-$$
-
-while their median is $-.06$. The positive tail pulls the mean upward. With a symmetric posterior, the two centers will tend to be similar. With a skewed posterior, their difference records the different way each summary treats the tail.
-
-Neither quantity is automatically *the* Bayesian estimate. A [**loss function**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) assigns a cost to an estimation error. Squared-error loss uses the squared distance between an estimate and the parameter value, while absolute-error loss uses the absolute distance. The posterior mean minimizes posterior expected squared-error loss, and a posterior median minimizes posterior expected absolute-error loss. Thus the choice of a point summary depends on what kinds of error the analysis treats as costly, and it should not hide the rest of the posterior distribution.
-
-## Constructing a credible interval
-
-An equal-tailed 95 percent credible interval uses the $.025$ and $.975$ posterior quantiles:
-
-```r
-quantile(draws$delta, c(.025, .975))
-```
-
-The earlier [confidence interval page](confidence-intervals.qmd) attached a coverage interpretation to a repeated sampling procedure, while a credible interval has a different interpretation. If the posterior quantiles are
-
-$$
-[-.08,-.02],
-$$
-
-then 95 percent of the posterior probability represented by the fitted model lies between those values. This is a probability statement about $\Delta$ conditional on the likelihood, prior, and observed data. When the endpoints are computed from a finite set of draws, they also have Monte Carlo error; that numerical error is not part of the posterior interval itself.
-
-The conditioning clause matters. A credible interval does not guarantee that the model represents the linguistic sampling process or that the prior was appropriate. It describes uncertainty inside the fitted model.
-
-A 95 percent confidence interval has a different interpretation. Its 95 percent refers to long run coverage of an interval procedure across repeated samples. The two intervals can have similar numerical endpoints while licensing different probability statements.
-
-## Calculating a directional probability
-
-If the linguistic hypothesis predicts a negative response probability difference, define the event
-
-$$
-B_\Delta
-\equiv
-\{\omega\in\Omega\mid\Delta(\omega)<0\}.
-$$
-
-Here $\Delta:\Omega\to\mathbb{R}$ is the random variable that maps each outcome $\omega$ to a response probability difference. Let $\mathbf{1}_{B_\Delta}:\Omega\to\{0,1\}$ denote the indicator of $B_\Delta$, so that
-
-$$
-\mathbf{1}_{B_\Delta}(\omega)
+\mathbb{P}\!\left(\Theta>\frac{K}{N}\mid\mathbf z\right)
 =
-\begin{cases}
-1 & \text{if }\omega\in B_\Delta,\\
-0 & \text{if }\omega\notin B_\Delta.
-\end{cases}
+\int_{K/N}^1
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)\,\mathrm d\theta.
 $$
 
-The directional posterior probability is $\mathbb{P}(B_\Delta\mid\mathbf{y})$. Estimate it with the proportion of posterior draws in $B_\Delta$:
+Its value is `r sprintf("%.6f", probability_above_resource)`. This comparison does not make $K/N$ uncertain and should not be read as evidence that the file's known proportion has changed.
 
-```r
-mean(draws$delta < 0)
+```{r}
+#| label: plot-unimorph-posterior-summary
+#| fig-cap: "FRB posterior density. The shaded region is the central 95% interval; the vertical line is the known pinned-resource share."
+plot_grid <- data.frame(theta = seq(0.15, 0.58, length.out = 1000L))
+plot_grid$density <- dbeta(plot_grid$theta, alpha_post, beta_post)
+plot_grid$inside <- with(
+  plot_grid,
+  theta >= posterior_quantiles[1] & theta <= posterior_quantiles[3]
+)
+
+plot_opacity <- 0.18
+ggplot(plot_grid, aes(theta, density)) +
+  geom_area(data = subset(plot_grid, inside), fill = "#8B1A1A", alpha = plot_opacity) +
+  geom_line(color = "#8B1A1A", linewidth = 0.85) +
+  geom_vline(xintercept = resource_share, color = "grey30", linewidth = 0.6) +
+  labs(x = "Modeled share of t-initial lexeme cells", y = "Posterior density") +
+  theme_classic(base_size = 12)
 ```
 
-If 3,800 of 4,000 draws are negative, the estimate is
+## Transform before summarizing
+
+Suppose the linguistic report uses odds rather than a probability. Define
 
 $$
-\mathbb{P}(B_\Delta\mid\mathbf{y})
-\approx
-\frac{1}{4000}
-\sum_{s=1}^{4000}
-\mathbf{1}_{B_\Delta}(\omega^{(s)})
-=
-\frac{3800}{4000}
-=.95.
+G(\Theta)=\frac{\Theta}{1-\Theta}.
 $$
 
-The value $.95$ is a Monte Carlo estimate of a directional posterior probability. It is not a p value because it does not describe a tail probability for a test statistic under a null sampling distribution, nor does it describe the size of the association. A posterior probability near $.95$ can accompany a very small negative difference.
-
-Thus report direction together with a magnitude and interval on a meaningful scale. Replacing every posterior with a new verbal evidence label would discard the quantities that the analysis was designed to estimate.
-
-## Transforming each draw before summarizing
-
-Suppose $\Theta$ is a response probability, whose odds are $\Theta/(1-\Theta)$. Transform every posterior draw:
-
-```r
-odds <- draws$theta / (1 - draws$theta)
-quantile(odds, c(.025, .5, .975))
-```
-
-Transforming the endpoints of an equal-tailed interval with this monotonic function gives the same interval endpoints as transforming every draw and taking the corresponding quantiles. But the mean of transformed draws is generally not the transformation of the posterior mean:
+The mean of the transformed quantity generally differs from the transformation of the mean:
 
 $$
-\mathbb{E}\left[\frac{\Theta}{1-\Theta}\mid\mathbf{y}\right]
+\mathbb{E}[G(\Theta)\mid\mathbf z]
 \ne
-\frac{\mathbb{E}[\Theta\mid\mathbf{y}]}{1-\mathbb{E}[\Theta\mid\mathbf{y}]}.
+G\!\left(\mathbb{E}[\Theta\mid\mathbf z]\right).
 $$
 
-Compute the estimand within every posterior draw, then summarize the resulting distribution. This procedure is necessary when an estimand combines several parameters or uses a nonlinear transformation.
+For a beta posterior, the first expectation exists when $\beta'>1$ and equals $\alpha'/(\beta'-1)$.
 
-## Preserving joint uncertainty in a contrast
+```{r}
+#| label: transform-unimorph-posterior
+expected_odds <- alpha_post / (beta_post - 1)
+odds_at_expected_probability <- posterior_mean / (1 - posterior_mean)
+odds_interval <- posterior_quantiles[c(1, 3)] /
+  (1 - posterior_quantiles[c(1, 3)])
 
-Suppose a model contains response probabilities $\Theta_A$ and $\Theta_B$ for two linguistic conditions. Separate summaries do not retain which values occurred together in one posterior draw.
-
-For each draw $s$, compute the condition difference:
-
-$$
-\Delta^{(s)}
-=\Theta_A^{(s)}-\Theta_B^{(s)}.
-$$
-
-The collection of $\Delta^{(s)}$ values approximates the posterior distribution of the probability difference. Separate marginal intervals or quantiles for $\Theta_A$ and $\Theta_B$ do not determine this distribution because they discard which values occur together in a draw. There is one useful exception: by linearity of expectation, the difference between the two posterior means equals the posterior mean of $\Delta$. That equality does not recover its interval, quantiles, or directional probability.
-
-```r
-probability_difference <- draws$theta_a - draws$theta_b
-
-quantile(probability_difference, c(.025, .5, .975))
-mean(probability_difference > 0)
+data.frame(
+  expected_odds = expected_odds,
+  odds_at_posterior_mean = odds_at_expected_probability,
+  odds_q025 = odds_interval[1],
+  odds_q975 = odds_interval[2]
+)
 ```
 
-This calculation also fixes the comparison. The output is a probability difference for two declared conditions, not two unrelated marginal summaries.
+Compute the estimand within each posterior value or draw, then summarize that distribution. The same rule preserves joint uncertainty when a contrast depends on several parameters.
 
 ## Matching the summary to the claim
 
-A parameter summary answers a parameter question, a response probability contrast answers a question about predicted outcomes, and a directional probability answers a sign question. These targets overlap, but they are not interchangeable.
+A center answers a location question, an interval describes posterior concentration, and a directional probability answers a threshold question. None of these summaries turns the FRB into a model of Turkish token frequency. The row remains a lexeme--paradigm cell, and the bridge remains an independent-draw model imposed for instruction.
 
-For instance, a claim that one embedding environment has a higher probability of a *yes* judgment should be supported by category probabilities or their contrast. A parameter on another scale may explain how the model represents that change, but it is not itself a change in the observed response category.
+## Check your understanding
 
-Selecting response-scale summaries after inspecting many predictor profiles can exaggerate a dramatic pattern. Predeclare the theoretically diagnostic profiles or show a complete small grid of conditions. Posterior computation does not remove researcher choice from reporting.
+1. Which loss functions select the posterior mean and median?
+2. How does a 95% credible interval differ from a 95% confidence interval?
+3. Why does $\mathbb{P}(\Theta>K/N\mid\mathbf z)$ not update $K/N$?
+4. Why should a nonlinear estimand be transformed before it is summarized?
 
-::: {.callout-note title="Problem Set 4 connection"}
-[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) summarizes posterior parameters. [Task 4](../problem-sets/ps4/ps4.qmd#task-4-add-embedding-environment) compares predicted responses across embedding environments. These tasks are included here because parameter summaries and response scale comparisons support different parts of the projection claim.
-:::
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-::: {.callout-note title="Check the inferential claim"}
-What probability statement does a 95 percent credible interval support? How would you estimate $\mathbb{P}(\Delta>0\mid\mathbf{y})$ from draws? Why should a multi-parameter predicted contrast be calculated within each draw?
-:::
+1. Squared-error loss selects the posterior mean; absolute-error loss selects a posterior median. <!-- dqr-allow: empirical-answer -->
+2. A 95% credible interval contains 95% posterior mass conditional on the model, prior, and data; a 95% confidence procedure covers the fixed parameter in 95% of repeated samples under its reference model. <!-- dqr-allow: empirical-answer -->
+3. $K/N$ is computed from the complete pinned resource and remains fixed; the posterior probability concerns the counterfactual FRB parameter $\Theta$. <!-- dqr-allow: empirical-answer -->
+4. For nonlinear $G$, $\mathbb{E}[G(\Theta)\mid\mathbf z]$ generally differs from $G(\mathbb{E}[\Theta\mid\mathbf z])$, so the transformation must be applied to each posterior value first. <!-- dqr-allow: empirical-answer -->
 
-## What posterior summaries add
+</details>
 
-Posterior means, medians, intervals, directional probabilities, and derived contrasts describe different features of one fitted posterior distribution. The appropriate summary follows from the estimand. Nonlinear or multi-parameter targets must be computed within each draw before they are summarized. The [posterior predictive page](predictive-distributions.qmd) uses the same draw-by-draw rule to generate complete future observations.
-
-Before turning to prediction, the [next page](conjugate-priors.qmd) shows a posterior distribution whose form can be derived without simulation.
+The [next page](conjugate-priors.qmd) derives the algebra that produced this posterior family.

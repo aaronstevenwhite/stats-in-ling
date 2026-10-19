@@ -1,153 +1,120 @@
 ---
 title: "Conditional expectation"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [expected value page](expected-values.qmd) averaged with respect to a complete distribution, while the [marginal distribution page](marginal-distributions.qmd) recovered a one-variable distribution by summing out another variable. But a psycholinguistic question often concerns how the response center differs across conditions. Conditional expectation averages the response under one conditional distribution.
+A marginal mean averages across all dative tokens. If recipient length differs between NP and PP realizations, that average conceals structured variation. A **conditional expectation** gives the mean within a specified condition.
 
-Suppose $Y$ is word reading time and $X$ records whether the target word is highly predictable in context. Work on [word predictability and reading time](https://doi.org/10.1016/j.cognition.2013.02.013) motivates this kind of contrast, though the numbers below are constructed and do not reproduce that study.
+## Definition
 
-For low predictability, let the conditional PMF be
+For discrete $X$ and $Y$,
 
-| reading time $y$ | $p_{Y\mid X}(y\mid\mathrm{low})$ |
-|---:|---:|
-| 400 ms | $.20$ |
-| 500 ms | $.50$ |
-| 600 ms | $.30$ |
+$$
+\mathbb{E}[X\mid Y=y]
+=\sum_x x\,\mathbb{P}(X=x\mid Y=y).
+$$
 
-For high predictability, let it be
+For a conditional density, the analogous definition is
 
-| reading time $y$ | $p_{Y\mid X}(y\mid\mathrm{high})$ |
-|---:|---:|
-| 400 ms | $.60$ |
-| 500 ms | $.30$ |
-| 600 ms | $.10$ |
+$$
+\mathbb{E}[X\mid Y=y]
+=\int_{-\infty}^{\infty}x f_{X\mid Y}(x\mid y)\,\mathrm dx.
+$$
 
-Each table is a complete distribution of $Y$ within one value of $X$.
+Writing $m(y)=\mathbb{E}[X\mid Y=y]$ makes the **conditional-mean function** explicit. The conditional expectation $\mathbb{E}[X\mid Y]=m(Y)$ is itself a random variable: its value depends on the realized category of $Y$.
 
-## Averaging within low predictability
+The **law of total expectation** reconnects conditional and marginal means:
 
-The expected reading time is
+$$
+\mathbb{E}[X]
+=\sum_y \mathbb{E}[X\mid Y=y]\mathbb{P}(Y=y).
+$$
+
+Indeed, substituting the conditional PMF gives
 
 $$
 \begin{aligned}
-\mathbb{E}[Y\mid X=\mathrm{low}]
-&=400(.20)+500(.50)+600(.30)\\
-&=80+250+180\\
-&=510\text{ ms}.
+\mathbb{E}[X]
+&=\sum_x x\sum_y\mathbb{P}(X=x,Y=y)\\
+&=\sum_y\left[
+  \sum_x x\,\mathbb{P}(X=x\mid Y=y)
+  \right]\mathbb{P}(Y=y).
 \end{aligned}
 $$
 
-## Averaging within high predictability
-
-The corresponding expectation is
-
-$$
-\begin{aligned}
-\mathbb{E}[Y\mid X=\mathrm{high}]
-&=400(.60)+500(.30)+600(.10)\\
-&=240+150+60\\
-&=450\text{ ms}.
-\end{aligned}
-$$
-
-These values are [**conditional expectations**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/04%3A_Expected_Value/4.07%3A_Conditional_Expected_Value). Each expectation uses the conditional distribution of $Y$ at one declared value of $X$.
-
-Let the codomain of $Y$ be countable. For a value $x$ with $p_X(x)>0$, provided the absolute sum is finite,
-
-$$
-\mathbb{E}[Y\mid X=x]
-\equiv\sum_{y\in\operatorname{cod}(Y)}y\,p_{Y\mid X}(y\mid x).
-$$
-
-When a conditional density $f_{Y\mid X}(\,\cdot\mid x)$ exists and the absolute integral is finite,
-
-$$
-\mathbb{E}[Y\mid X=x]
-\equiv\int y f_{Y\mid X}(y\mid x)\,\mathrm{d}y.
-$$
-
-## Treating the conditional mean as a function
-
-Define
-
-$$
-m(x)\equiv\mathbb{E}[Y\mid X=x].
-$$
-
-For the two predictability conditions,
-
-$$
-m(\mathrm{low})=510
-$$
-
-and
-
-$$
-m(\mathrm{high})=450.
-$$
-
-The function maps a predictor value to the center of the response distribution under that condition. A conditional mean difference can support a claim about modeled response times, but by itself it does not identify a particular lexical-access or integration mechanism. Regression models later specify how this function changes with one or more predictors.
-
-The conditional contrast is
-
-$$
-m(\mathrm{high})-m(\mathrm{low})
-=450-510
-=-60\text{ ms}.
-$$
-
-Under the constructed model, the conditional mean for high predictability is 60 ms lower than the conditional mean for low predictability.
-
-## Recovering the marginal mean from the mixture
-
-Suppose high predictability contexts receive probability $.70$ and low predictability contexts receive $.30$. The marginal expectation is
-
-$$
-\begin{aligned}
-\mathbb{E}[Y]
-&=.70(450)+.30(510)\\
-&=315+153\\
-&=468\text{ ms}.
-\end{aligned}
-$$
-
-This is an application of iterated expectation:
-
-$$
-\mathbb{E}[Y]
-=\mathbb{E}\!\left[\mathbb{E}[Y\mid X]\right].
-$$
-
-The outer expectation averages the conditional means using the distribution of $X$.
-
-## Checking the values in base R
+## Recipient length by realization
 
 ```{r}
-#| eval: false
-time <- c(400, 500, 600)
-mass_low <- c(.20, .50, .30)
-mass_high <- c(.60, .30, .10)
+#| label: dative-conditional-expectation
+library(ggplot2)
 
-mean_low <- sum(time * mass_low)
-mean_high <- sum(time * mass_high)
-marginal_mean <- .30 * mean_low + .70 * mean_high
+dative <- read.csv(
+  "data/english-dative/dative-alternation.csv",
+  stringsAsFactors = FALSE,
+  na.strings = c("", "NA")
+)
 
-c(mean_low, mean_high, marginal_mean)
+conditional <- aggregate(
+  recipient_length_words ~ recipient_realization,
+  data = dative,
+  FUN = function(x) c(n = length(x), expectation = mean(x))
+)
+conditional <- data.frame(
+  realization = conditional$recipient_realization,
+  n = conditional$recipient_length_words[, "n"],
+  conditional_expectation = conditional$recipient_length_words[, "expectation"]
+)
+conditional$realization_probability <- conditional$n / sum(conditional$n)
+conditional$mixture_contribution <-
+  conditional$realization_probability * conditional$conditional_expectation
+marginal_expectation <- mean(dative$recipient_length_words)
+reconstructed_expectation <- sum(conditional$mixture_contribution)
+
+stopifnot(
+  sum(conditional$n) == nrow(dative),
+  abs(sum(conditional$realization_probability) - 1) < 1e-12,
+  abs(reconstructed_expectation - marginal_expectation) < 1e-12
+)
+
+conditional
 ```
 
-The returned values are 510, 450, and 468.
+The conditional mean is `r sprintf("%.3f", conditional$conditional_expectation[conditional$realization == "NP"])` words for NP recipients and `r sprintf("%.3f", conditional$conditional_expectation[conditional$realization == "PP"])` words for PP recipients. Weighting those means by the empirical realization probabilities reconstructs the marginal mean of `r sprintf("%.3f", marginal_expectation)` words.
 
-## Distinguishing a mixture change from a conditional change
+```{r}
+#| label: plot-dative-conditional-expectation
+#| fig-cap: "Observed recipient lengths by realization. Accent points mark the conditional means."
+ggplot(dative, aes(recipient_realization, recipient_length_words)) +
+  geom_jitter(width = 0.14, height = 0, color = "grey55", alpha = 0.10, # dqr-allow: algorithm-setting
+              size = 0.8) +
+  geom_point(data = conditional,
+             aes(realization, conditional_expectation),
+             color = "#8B1A1A", size = 2.5, inherit.aes = FALSE) +
+  labs(x = "Recipient realization", y = "Recipient length (words)") +
+  theme_classic(base_size = 12)
+```
 
-The marginal mean can change because the proportions of the conditions change, even when the conditional distributions remain fixed. If the share of high predictability contexts changes, the marginal mean changes even when both conditional PMFs remain fixed.
-
-Report conditional means and the condition mixture separately. A marginal difference need not imply that the within condition response process changed.
+The difference is descriptive. It does not by itself show that constituent length causes realization, because the source paper identifies several correlated syntactic, semantic, and discourse predictors.
 
 ## Check your understanding
 
-1. Recalculate the marginal mean if high and low predictability are equally probable.
-2. Does changing the probability of high predictability alter either conditional mean?
-3. What does the function $m(x)$ return?
-4. Explain the two averaging stages in iterated expectation.
+1. Reconstruct each conditional mean from a conditional PMF rather than row-level averaging.
+2. Verify every term in the law of total expectation from `conditional`.
+3. What would the conditional-expectation function look like if the two group means were equal?
+4. Why is the observed mean difference not a causal effect?
 
-Conditional expectation compares response centers across conditions. The [next page](covariance.qmd) summarizes whether paired deviations of two numerical variables tend to share a direction.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The conditional PMFs give $\mathbb{E}[R\mid\mathrm{NP}]=1.328086$ and $\mathbb{E}[R\mid\mathrm{PP}]=3.303887$ words. <!-- dqr-allow: empirical-answer -->
+2. The total-expectation terms are $0.739810(1.328086)=0.982531$ and $0.260190(3.303887)=0.859638$, which sum to $\mathbb{E}[R]=1.842170$. <!-- dqr-allow: empirical-answer -->
+3. If the group means were equal, the conditional-expectation function would be constant at that common mean for both NP and PP realizations. <!-- dqr-allow: empirical-answer -->
+4. The mean difference is descriptive rather than causal because realization was not randomly assigned and covaries with other properties of the corpus tokens. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [covariance page](covariance.qmd) returns to the paired recipient and theme lengths and measures their linear co-variation.

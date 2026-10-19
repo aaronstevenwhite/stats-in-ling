@@ -1,163 +1,142 @@
 ---
 title: "Correlation"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](covariance.qmd) showed that covariance depends on both association and measurement scale. Correlation divides covariance by the [standard deviations](standard-deviation.qmd) of the two variables. To make this concrete, consider the English dative alternation: corpus work has asked how properties such as recipient pronominality are associated with the choice between the double-object and prepositional-dative constructions ([Bresnan et al. 2007](https://web.stanford.edu/~bresnan/qs-submit.pdf)). Suppose $X$ records whether a dative recipient is pronominal and $Y$ records whether the double-object construction is used:
+Covariance changes when either variable is rescaled. **Correlation** divides covariance by both standard deviations, producing a unitless measure of linear association.
+
+## Definition
+
+For variables with positive finite variances,
 
 $$
-X=1\text{ for a pronominal recipient}
+\rho_{R,T}
+=\operatorname{Corr}(R,T)
+=\frac{\operatorname{Cov}(R,T)}
+{\sqrt{\operatorname{Var}[R]\operatorname{Var}[T]}}.
 $$
 
-and
+Equivalently, if
 
 $$
-Y=1\text{ for a double object construction}.
+Z_R=\frac{R-\mathbb{E}[R]}{\operatorname{SD}(R)},
+\qquad
+Z_T=\frac{T-\mathbb{E}[T]}{\operatorname{SD}(T)},
 $$
 
-Consider this constructed joint PMF. It isolates two binary annotations for the calculation; it is not an empirical estimate from the cited corpus and does not encode the other predictors studied there.
-
-| | $Y=0$ | $Y=1$ |
-|---|---:|---:|
-| $X=0$ | $.30$ | $.20$ |
-| $X=1$ | $.10$ | $.40$ |
-
-The table suggests a positive linear association, but covariance depends on the numerical scales. [**Correlation**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) standardizes covariance by the two standard deviations:
+then
 
 $$
-\rho_{XY}
-\equiv\frac{\operatorname{Cov}(X,Y)}
- {\sigma_X\sigma_Y}.
+\rho_{R,T}=\mathbb{E}[Z_RZ_T].
 $$
 
-The quantity is defined when both standard deviations are positive and finite.
+Cauchy--Schwarz implies $-1\leq\rho_{R,T}\leq1$. The endpoints occur only under exact positive or negative linear dependence.
 
-## Computing the means and covariance
-
-The target probabilities are
+Correlation is symmetric, $\rho_{R,T}=\rho_{T,R}$. For nonzero $a$ and $c$,
 
 $$
-\mathbb{E}[X]=p_X(1)=.50
+\operatorname{Corr}(aR+b,cT+d)
+=\operatorname{sign}(ac)\operatorname{Corr}(R,T).
 $$
 
-and
+Thus positive unit conversions leave correlation unchanged, while reversing exactly one axis reverses its sign.
 
-$$
-\mathbb{E}[Y]=p_Y(1)=.60.
-$$
-
-Since $XY=1$ only in the lower right cell,
-
-$$
-\mathbb{E}[XY]=.40.
-$$
-
-An equivalent covariance formula is
-
-$$
-\operatorname{Cov}(X,Y)
-=\mathbb{E}[XY]-\mathbb{E}[X]\mathbb{E}[Y].
-$$
-
-Thus
-
-$$
-\operatorname{Cov}(X,Y)
-=.40-.50(.60)
-=.10.
-$$
-
-## Computing the two standard deviations
-
-For a zero and one variable with target probability $\pi$, the variance is $\pi(1-\pi)$. Thus
-
-$$
-\operatorname{Var}(X)=.50(.50)=.25
-$$
-
-and
-
-$$
-\operatorname{Var}(Y)=.60(.40)=.24.
-$$
-
-The standard deviations are
-
-$$
-\sigma_X=.50
-$$
-
-and
-
-$$
-\sigma_Y=\sqrt{.24}\approx.490.
-$$
-
-The correlation is
-
-$$
-\begin{aligned}
-\rho_{XY}
-&=\frac{.10}{.50\sqrt{.24}}\\
-&\approx.408.
-\end{aligned}
-$$
-
-The positive value reflects the concentration of mass in the two matching cells, especially $X=1,Y=1$.
-
-## Verifying the calculation in base R
+## Standardizing the dative lengths
 
 ```{r}
-#| eval: false
-x <- c(0, 0, 1, 1)
-y <- c(0, 1, 0, 1)
-mass <- c(.30, .20, .10, .40)
+#| label: dative-correlation
+library(ggplot2)
 
-mean_x <- sum(x * mass)
-mean_y <- sum(y * mass)
-cov_xy <- sum((x - mean_x) * (y - mean_y) * mass)
-sd_x <- sqrt(sum((x - mean_x)^2 * mass))
-sd_y <- sqrt(sum((y - mean_y)^2 * mass))
+dative <- read.csv(
+  "data/english-dative/dative-alternation.csv",
+  stringsAsFactors = FALSE,
+  na.strings = c("", "NA")
+)
+R <- dative$recipient_length_words
+T <- dative$theme_length_words
 
-cov_xy / (sd_x * sd_y)
+population_variance <- function(x) mean((x - mean(x))^2)
+population_covariance <- function(x, y) {
+  mean((x - mean(x)) * (y - mean(y)))
+}
+
+covariance_RT <- population_covariance(R, T)
+sd_R <- sqrt(population_variance(R))
+sd_T <- sqrt(population_variance(T))
+rho <- covariance_RT / (sd_R * sd_T)
+
+z_R <- (R - mean(R)) / sd_R
+z_T <- (T - mean(T)) / sd_T
+standardized_joint <- as.data.frame(
+  table(z_recipient = z_R, z_theme = z_T),
+  responseName = "count"
+)
+standardized_joint$z_recipient <-
+  as.numeric(as.character(standardized_joint$z_recipient))
+standardized_joint$z_theme <-
+  as.numeric(as.character(standardized_joint$z_theme))
+standardized_joint <- subset(standardized_joint, count > 0)
+
+stopifnot(
+  abs(rho - cor(R, T)) < 1e-12,
+  abs(mean(z_R)) < 1e-12,
+  abs(mean(z_T)) < 1e-12,
+  abs(mean(z_R * z_T) - rho) < 1e-12
+)
+
+data.frame(covariance_RT, sd_R, sd_T, correlation = rho)
 ```
 
-The result is approximately `.408`.
+The empirical correlation is `r sprintf("%.3f", rho)`. The positive sign agrees with the covariance, but standardization shows that the linear association is very small relative to the two marginal spreads.
 
-## Reading the scale
+```{r}
+#| label: plot-dative-correlation
+#| fig-cap: "Standardized dative length pairs. Point area gives the number of tokens at each pair."
+ggplot(standardized_joint, aes(z_theme, z_recipient, size = count)) +
+  geom_hline(yintercept = 0, color = "grey70", linewidth = 0.5) +
+  geom_vline(xintercept = 0, color = "grey70", linewidth = 0.5) +
+  geom_point(color = "grey30", alpha = 0.65) + # dqr-allow: algorithm-setting
+  scale_size_area(max_size = 7) +
+  labs(x = "Standardized theme length",
+       y = "Standardized recipient length",
+       size = "Token count") +
+  theme_classic(base_size = 12)
+```
 
-Correlation lies between $-1$ and $1$.
+## What near-zero correlation does not establish
 
-| value | linear pattern |
-|---:|---|
-| $1$ | perfect increasing linear relation |
-| $0$ | no linear association |
-| $-1$ | perfect decreasing linear relation |
+A near-zero correlation rules out only a strong linear relation in this empirical table. It does not establish independence: the joint distribution can retain nonlinear structure, and both variables are associated with other properties of the construction. Nor does it license a causal conclusion about constituent planning.
 
-Intermediate values summarize direction and degree of linear association. A value of zero does not rule out a nonlinear relationship.
-
-## Examining why positive unit changes cancel
-
-If $X^*=a+bX$ with $b>0$, then the covariance with $Y$ is multiplied by $b$ and the standard deviation of $X$ is also multiplied by $b$. The factor cancels in the correlation.
-
-Adding a constant changes the mean but not the centered deviations. Thus converting a measurement by a positive linear unit transformation does not change correlation.
-
-Reversing a binary coding uses a negative slope and flips the sign. The interpretation must remain tied to the outcome coded as 1.
-
-## Correlation does not identify a causal direction
-
-A correlation is not a directional causal effect. Correlation is symmetric:
+The usual sample correlation can be written
 
 $$
-\rho_{XY}=\rho_{YX}.
+r
+=\frac{\sum_i(R_i-\overline R)(T_i-\overline T)}
+{\sqrt{\sum_i(R_i-\overline R)^2}
+ \sqrt{\sum_i(T_i-\overline T)^2}}.
 $$
 
-It does not select a response, adjust for other variables, or identify what would happen under an intervention. Those claims need a design and model that represent direction.
+The common denominator convention cancels, which is why R's `cor()` agrees with the population-standardized calculation above.
 
 ## Check your understanding
 
-1. Recompute the covariance if the lower right cell changes to $.30$ and the lower left changes to $.20$ while the margins are allowed to change.
-2. Why does adding 100 to every value of a continuous $X$ leave correlation unchanged?
-3. What happens to the sign if the coding of $Y$ is reversed?
-4. Give one nonlinear relationship that could have correlation near zero.
+1. Recompute correlation as the mean product of the standardized values.
+2. Multiply recipient length by a unit-conversion constant and verify that correlation is unchanged.
+3. Compare the joint plot with the marginal plots. What information is unique to each?
+4. Give a dependent relationship whose correlation could be zero.
 
-This completes the random variables and distributions module. The [next module](../statistical-inference/index.qmd) begins the distinction between population quantities, samples, and estimators.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The mean product of the population-standardized recipient and theme lengths is $0.031530$, equal to their empirical correlation. <!-- dqr-allow: empirical-answer -->
+2. Multiplying recipient length by any positive conversion constant multiplies its covariance and standard deviation by the same factor, leaving the correlation at $0.031530$. <!-- dqr-allow: empirical-answer -->
+3. The joint plot shows which recipient and theme lengths occur together, whereas the marginal plots show each length distribution without preserving pairings. <!-- dqr-allow: empirical-answer -->
+4. A symmetric nonlinear relation such as $T=(R-\mathbb{E}[R])^2$ can be deterministic while having zero correlation with $R$. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+This closes the distribution chapter. The statistical-inference chapter next asks what an observed sample can say about an unknown quantity.

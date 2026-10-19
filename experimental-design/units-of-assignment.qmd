@@ -1,88 +1,145 @@
 ---
 title: "Units of assignment"
+execute:
+  cache: false
 ---
 
-Suppose an experiment compares novel-talker keyword recognition after multi-talker exposure to Chinese-accented English with recognition after a control exposure. Each listener completes 40 test trials, so a study with 24 listeners produces 960 rows. What receives the exposure condition?
+The ManyBabies Consortium tested infants' preference for infant-directed speech (IDS) over adult-directed speech (ADS) in a shared multi-laboratory experiment. The primary report describes the stimuli, protocol, exclusions, and analyses ([The ManyBabies Consortium 2020](https://doi.org/10.1177/2515245919900809)); the frozen course table comes from the [official analysis repository at commit `dc3eb5b`](https://github.com/manybabies/mb1-analysis-public/tree/dc3eb5b3578057096d337203635c0759d2fc04b6). We begin with that table rather than with a small constructed design.
 
-The answer is the listener, not the trial. Exposure happens once, before any of the 40 test responses are collected. The [**unit of assignment**](https://openstax.org/books/introductory-statistics-2e/pages/1-4-experimental-design-and-ethics), also called the *experimental unit*, is the smallest entity that can independently receive a condition under the actual procedure. Identifying this unit is the first step in reconstructing what was randomized and how many independent assignments the study contains.
+```{r}
+manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
 
-## Assignment and observation are different maps
+stopifnot(
+  nrow(manybabies) == 37264L,
+  length(unique(manybabies$infant_id)) == 2329L,
+  length(unique(manybabies$lab_id)) == 67L,
+  all(table(manybabies$infant_id) == 16L),
+  all(is.na(manybabies$looking_time_seconds) == manybabies$trial_missing)
+)
+```
 
-Let $r$ index rows in the recorded table. Each row belongs to an assignment unit $g(r)$, and that unit receives condition $Z_{g(r)}$. The condition attached to row $r$ is thus
+Each infant could encounter sixteen 18-second test stimuli: eight IDS stimuli and eight ADS stimuli. The official exclusion code then completed every retained infant's record to sixteen possible test-trial rows. A row may thus contain an included looking time, recorded trial metadata without an included looking time, or a completed measurement opportunity without recorded trial metadata. No missing looking time has been imputed.
+
+## Assignment and measurement are different maps
+
+The [**unit of assignment**](https://openstax.org/books/introductory-statistics-2e/pages/1-4-experimental-design-and-ethics), also called the experimental unit, is the smallest entity that can independently receive a condition under the actual procedure. Let $r$ index possible trial rows and let $g(r)$ map row $r$ to its infant. If $Z_i$ is infant $i$'s assigned trial order, then
 
 $$
 Z_r=Z_{g(r)}.
 $$
 
-When the listener is the unit of assignment, every row from the same listener has the same value of $g(r)$ and the same assigned condition. If there are $N=960$ rows but $G=24$ listeners, then there are 24 independent assignments, not 960. The rows remain useful because they measure each listener repeatedly. But they do not multiply the number of times exposure was assigned.
+All sixteen possible rows from one infant share one order assignment. The rows do not represent sixteen independent assignments.
 
-The [**unit of observation**](https://bookdown.org/pkaldunn/Book/UnitsObsAnalysis.html) answers a different question. It is the entity represented by one measured response, here a listener's keyword response on one test sentence. The [unit of analysis](../foundations/linguistic-data.qmd) describes the entities compared by a particular statistical calculation. And the **sampling unit** is the entity drawn when we sample from a target population, such as a listener recruited from a community or a sentence selected from a pool of materials. These units can coincide, but they need not. The earlier [prediction-target page](../model-criticism-and-prediction/prediction-targets.qmd) makes a related but separate choice: its *prediction unit* is the kind of new row or group to which a fitted model must transfer.
+Other maps are needed as well. Let $l(r)$ identify the laboratory, $p(r)$ the paired stimulus when its metadata were recorded, and $R_r$ indicate whether an included looking time is present. The recorded outcome is then available only when $R_r=1$. These maps keep five roles apart:
 
-## Working through a small study
+1. a possible trial row is a measurement opportunity;
+2. an infant is the sampling unit and the order-assignment unit;
+3. a laboratory is a cluster within which infants were recruited and tested;
+4. a paired stimulus recurs across infants;
+5. a nonmissing looking time is an observed outcome.
 
-Consider four listeners, each of whom responds to three test sentences.
-
-| listener | exposure | sentence | keyword correct |
-|:--|:--|:--|--:|
-| P1 | multi-talker | s1 | 1 |
-| P1 | multi-talker | s2 | 1 |
-| P1 | multi-talker | s3 | 0 |
-| P2 | control | s1 | 0 |
-| P2 | control | s2 | 1 |
-| P2 | control | s3 | 0 |
-| P3 | multi-talker | s1 | 1 |
-| P3 | multi-talker | s2 | 1 |
-| P3 | multi-talker | s3 | 1 |
-| P4 | control | s1 | 1 |
-| P4 | control | s2 | 0 |
-| P4 | control | s3 | 0 |
-
-There are 12 observations because 12 keyword responses were recorded. There are only four assignment units because exposure condition could vary independently only across listeners. The assignment counts are two multi-talker and two control listeners. There are also three sampled sentence items. Repeating each sentence across listeners gives information about that sentence; it does not turn the three sentences into 12 independently sampled items.
-
-We can recover both counts from the table.
+The distinction is empirical in this release. The following code reconstructs the infant table and every count from the RDS file.
 
 ```{r}
-trials <- data.frame(
-  listener = rep(paste0("P", 1:4), each = 3),
-  exposure = rep(c("multi_talker", "control", "multi_talker", "control"), each = 3),
-  sentence = rep(paste0("s", 1:3), times = 4),
-  correct = c(1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 0)
+usable_by_infant <- aggregate(
+  cbind(
+    usable_trials = as.integer(!manybabies$trial_missing),
+    metadata_rows = as.integer(manybabies$trial_metadata_observed)
+  ) ~ infant_id + lab_id,
+  data = manybabies,
+  FUN = sum
 )
 
-nrow(trials)
-listener_assignment <- unique(trials[c("listener", "exposure")])
-nrow(listener_assignment)
-table(listener_assignment$exposure)
+registers_by_infant <- tapply(
+  manybabies$register[!manybabies$trial_missing],
+  manybabies$infant_id[!manybabies$trial_missing],
+  function(x) length(unique(x))
+)
+
+usable_by_infant$registers_with_data <- 0L
+usable_by_infant$registers_with_data[
+  match(names(registers_by_infant), usable_by_infant$infant_id)
+] <- as.integer(registers_by_infant)
+
+unit_counts <- data.frame(
+  unit = c(
+    "possible trial rows",
+    "rows with recorded trial metadata",
+    "rows with included looking time",
+    "included infant identifiers",
+    "infants with an included looking time",
+    "infants represented in both registers",
+    "laboratories",
+    "paired stimulus IDs"
+  ),
+  count = c(
+    nrow(manybabies),
+    sum(manybabies$trial_metadata_observed),
+    sum(!manybabies$trial_missing),
+    length(unique(manybabies$infant_id)),
+    sum(usable_by_infant$usable_trials > 0L),
+    sum(usable_by_infant$registers_with_data == 2L),
+    length(unique(manybabies$lab_id)),
+    length(unique(stats::na.omit(manybabies$stimulus_id)))
+  )
+)
+
+knitr::kable(unit_counts, format.args = list(big.mark = ","))
 ```
 
-The call to `unique()` implements the definition above. It retains one row for each distinct assignment unit and its condition. A design audit should perform this reduction before counting assignments.
+The table contains `r format(nrow(manybabies), big.mark = ",")` possible trial rows but only `r format(length(unique(manybabies$infant_id)), big.mark = ",")` infant assignment units. Looking time is included on `r format(sum(!manybabies$trial_missing), big.mark = ",")` rows. And only `r format(sum(usable_by_infant$registers_with_data == 2L), big.mark = ",")` infants can enter the paired IDS-minus-ADS summary developed on the [within-participant page](within-participant-designs.qmd).
 
-## Asking what could have varied independently
+## Unequal information within laboratories
 
-The most reliable diagnostic is counterfactual and procedural: under the actual assignment procedure, what could have received a different condition? In the exposure study, one test trial could not switch exposure while the other trials from the same listener remained unchanged. The listener is thus the assignment unit.
+Infants are nested within laboratories, but the number of included trials varies across infants. The gray points below are infants; the blue point is the laboratory median. Laboratory labels are suppressed because the figure concerns the dependence structure, not a ranking of sites.
 
-The same question applies at other levels. If an instructional intervention is assigned by classroom and responses are collected from individual students, the classroom is the assignment unit. If an acoustic manipulation is applied once to an entire recording, the recording is the assignment unit even when several acoustic measurements are extracted from it. And if an item version is independently chosen for each presentation, the presentation may be the assignment unit, subject to the participant and list constraints imposed by the design.
+```{r}
+#| fig-width: 6.2
+#| fig-height: 6
+#| fig-alt: "Included looking-time trials for every infant, grouped by laboratory, with a median point for each laboratory."
 
-## Response rows do not count assignments
+ggplot2::ggplot(
+  usable_by_infant,
+  ggplot2::aes(
+    x = stats::reorder(lab_id, usable_trials, FUN = median),
+    y = usable_trials
+  )
+) +
+  ggplot2::geom_point(
+    alpha = 0.22, # dqr-allow: algorithm-setting
+    size = 0.75,
+    color = "grey25",
+    position = ggplot2::position_jitter(width = 0.18, height = 0)
+  ) +
+  ggplot2::stat_summary(
+    fun = median,
+    geom = "point",
+    color = "#2C6E9B",
+    size = 1.6
+  ) +
+  ggplot2::coord_flip() +
+  ggplot2::labs(
+    x = "Laboratory",
+    y = "Included looking-time trials per infant"
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    axis.text.y = ggplot2::element_blank(),
+    axis.ticks.y = ggplot2::element_blank()
+  )
+```
 
-Treating the unit represented by a row as an independent assignment unit would count 960 assignments rather than 24. The resulting uncertainty would appear too small because responses sharing one assignment are treated as if exposure had been assigned repeatedly. This is the same dependence problem developed for [repeated linguistic observations](../regression-models/structured-data.qmd), now stated in terms of the assignment procedure.
+Additional trials may improve the measurement of a particular infant's looking behavior, and additional infants may improve the comparison across infants. They are not interchangeable. Likewise, eight recurring paired stimuli supply repeated material measurements, not eight additional infant assignments.
 
-The number of response rows does not change the number of independent condition assignments. A model may represent the fact that responses share participants, but it cannot create assignment variation that the experiment did not produce.
+## What this release can establish
 
-## Writing the design in three sentences
+The final table begins after participant- and laboratory-level exclusions. It can establish the units present in the released analysis table, but it cannot reconstruct the full recruitment process from the retained records alone. This limit is why a design audit should name the unit at each stage rather than infer recruitment from the number of rows.
 
-Before collection, write one sentence for each unit.
-
-1. One row of the raw data represents one keyword response to one test sentence.
-2. Exposure condition is assigned once to each listener.
-3. Responses are repeated within listeners and sentences; test talkers may create a third grouping if several talkers are sampled.
-
-This compact description exposes the design before model notation obscures it. It also records which repeated units the earlier [mixed effects models](../regression-models/structured-data.qmd) must preserve when they are applied to this study.
-
-::: {.callout-note title="Audit the assignment unit"}
-1. A classroom receives a teaching method, and each student supplies five responses. What is the assignment unit, and what is the observation unit?
-2. A participant hears 60 words, with accent independently selected for each word subject to equal condition counts. What could receive a different condition under the procedure?
-3. Why can additional trials improve measurement without adding independent assignments?
+::: {.callout-note title="Audit the ManyBabies units"}
+1. Why do sixteen possible rows for one infant still represent one order assignment?
+2. Which map identifies dependence induced by testing infants in the same laboratory?
+3. Why do additional trials and additional infants provide different kinds of information?
+4. Which infants can enter an infant-weighted IDS-minus-ADS comparison?
 :::
 
-The unit of assignment is the smallest entity whose condition could vary independently under the actual design. Separating it from observation, analysis, and sampling units fixes both the level at which assignment operates and the populations over which a later claim might generalize.
+The unit of assignment is the smallest entity whose assigned condition could vary independently under the procedure. In ManyBabies 1, order varies between infants, register varies within infants, and looking-time measurements repeat within infants, laboratories, and paired stimuli. The next page asks what the public release can and cannot establish about the [assignment mechanism](random-assignment.qmd).

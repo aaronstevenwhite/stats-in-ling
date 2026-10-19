@@ -1,126 +1,259 @@
 ---
-title: "Bounded similarity judgments"
+title: "MegaVeridicality: prediction for unseen verbs"
+execute: {warning: false, message: false}
 ---
 
-White, Grimm, and Glass's Experiment 2 asks whether two event descriptions assigned the same PropBank sense label are judged more similar than descriptions assigned different labels. Participants rated within-verb pairs on an integer slider from 0, *completely identical*, to 100, *extremely different*. Lower values thus indicate greater perceived similarity. Equality of PropBank labels is an annotation-based operationalization of sense identity; it is not unmediated semantic ground truth.
+The [preceding ordinal-mixed-model page](ordinal-mixed-models.qmd) used MegaVeridicality to describe respondent and verb heterogeneity. This worked analysis asks a different question: does the polarity-by-task interaction improve response probabilities for clause-embedding verbs absent from fitting?
 
-The analysis uses the response-support checks introduced for [bounded responses](bounded-responses.qmd) and the repeated-participant and repeated-item structure introduced with [random intercepts](random-intercepts.qmd). It compares an ordinary linear mixed model benchmark with [ordered-beta regression](ordered-beta-regression.qmd).
+The data remain the raw ordered judgments from White and Rawlins ([2018](https://ling.auf.net/lingbuzz/004012/current.pdf)) and the [official MegaVeridicality project release](https://megaattitude.io/projects/mega-veridicality/). One row is one *no*, *maybe*, or *yes* response. The validation folds are frozen by verb before any model is fit.
 
-::: {.callout-note title="Scope of the teaching analysis"}
-The teaching analysis uses the slider response, the repeated participant and sentence-pair design, and the same-sense contrast. It replaces the original probabilistic same-sense score with binary equality of PropBank labels. Telicity and durativity predictors remain outside this application, so the analysis supports only the narrower comparison developed below.
-:::
+## From ordered responses to a likelihood
 
-## Constructing a within-verb teaching extract
+For ordered category $k$ and fixed-effect location $\eta_i$, define
 
-The full study contains 10,800 test judgments. The [preparation script](../data/aspectual-similarity/prepare.R) constructs the teaching extract from that release. We retain test trials whose two descriptions are contentful, then restrict the data to verbs with both same-sense and different-sense pairs. This restriction ensures that the same-sense contrast is represented within every retained verb.
+$$
+\mathbb{P}(Y_i=k\mid\mathbf x_i)
+=F(\kappa_k-\eta_i)-F(\kappa_{k-1}-\eta_i),
+$$
 
-```r
-ratings <- read.csv(
-  "../data/aspectual-similarity/within-verb-similarity.csv"
+where $F$ is the logistic cumulative distribution, $\kappa_0=-\infty$, and $\kappa_3=\infty$. The likelihood is
+
+$$
+L(\boldsymbol\beta,\boldsymbol\kappa)
+=\prod_i\mathbb{P}(Y_i=y_i\mid\mathbf x_i),
+$$
+
+and its mean log score on held-out judgments is
+
+$$
+\frac{1}{n_{\mathrm{test}}}
+\sum_{i\in\mathrm{test}}
+\log\mathbb{P}(Y_i=y_i\mid\mathbf x_i).
+$$
+
+Larger values indicate that a model assigns more probability to the observed held-out responses.
+
+## Preparing the frozen verb folds
+
+```{r}
+#| label: megaveridicality-fold-setup
+library(ordinal)
+library(ggplot2)
+
+judgments <- read.csv(
+  "data/megaveridicality/megaveridicality-v1-active-native.csv"
+)
+verb_folds <- read.csv("data/megaveridicality/verb-folds.csv")
+judgments <- merge(
+  judgments,
+  verb_folds,
+  by = "verb",
+  all.x = TRUE,
+  sort = FALSE
 )
 
+stopifnot(!anyNA(judgments$fold))
+
+judgments$outcome <- ordered(
+  judgments$response,
+  levels = c("no", "maybe", "yes")
+)
+judgments$polarity <- factor(
+  judgments$polarity,
+  levels = c("positive", "negative")
+)
+judgments$task <- factor(
+  judgments$task,
+  levels = c("direct", "conditional")
+)
+
+fold_summary <- aggregate(
+  verb ~ fold,
+  data = unique(judgments[c("verb", "fold")]),
+  FUN = length
+)
+names(fold_summary)[names(fold_summary) == "verb"] <- "held_out_verbs"
+fold_summary
+```
+
+Every judgment for a verb belongs to the same fold. When fold $k$ is assessed, the training data contain no row from any fold-$k$ verb. This is a lexical-unit holdout, not a random row split.
+
+## Showing the population model on the response scale
+
+The full-data display below is descriptive. It compares raw cell proportions with a population cumulative-logit model containing the interaction.
+
+```{r}
+#| label: megaveridicality-population-fit
+population_fit <- clm(
+  outcome ~ polarity * task,
+  data = judgments,
+  link = "logit",
+  Hess = FALSE,
+  control = clm.control(
+    gradTol = 1e-3,
+    maxIter = 100L
+  )
+)
+
+raw_probabilities <- as.data.frame(table(
+  judgments$polarity,
+  judgments$task,
+  judgments$outcome,
+  dnn = c("polarity", "task", "response")
+))
+names(raw_probabilities)[names(raw_probabilities) == "Freq"] <- "responses"
+raw_probabilities$probability <- ave(
+  raw_probabilities$responses,
+  raw_probabilities$polarity,
+  raw_probabilities$task,
+  FUN = function(x) x / sum(x)
+)
+
+prediction_cells <- expand.grid(
+  polarity = factor(
+    c("positive", "negative"),
+    levels = levels(judgments$polarity)
+  ),
+  task = factor(
+    c("direct", "conditional"),
+    levels = levels(judgments$task)
+  )
+)
+probability_matrix <- predict(
+  population_fit,
+  newdata = prediction_cells,
+  type = "prob"
+)$fit
+
+fitted_probabilities <- do.call(
+  rbind,
+  lapply(seq_len(nrow(prediction_cells)), function(row) {
+    data.frame(
+      polarity = prediction_cells$polarity[[row]],
+      task = prediction_cells$task[[row]],
+      response = factor(
+        colnames(probability_matrix),
+        levels = levels(judgments$outcome),
+        ordered = TRUE
+      ),
+      probability = probability_matrix[row, ]
+    )
+  })
+)
+
+ggplot(raw_probabilities, aes(x = response)) +
+  geom_col(
+    aes(y = probability),
+    width = 0.68,
+    fill = "grey80",
+    color = "grey45"
+  ) +
+  geom_point(
+    data = fitted_probabilities,
+    aes(y = probability),
+    color = "#1F5A85",
+    size = 2.2
+  ) +
+  facet_grid(task ~ polarity) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Veridicality response", y = "Response probability") +
+  theme_classic()
+```
+
+The mixed model on the preceding page adds respondent and verb deviations to this location structure. Those deviations are essential for describing observed heterogeneity. For the validation comparison, however, every assessment verb is new, so we compare two population `clm` specifications and ask only whether the fixed interaction transfers.
+
+## Comparing additive and interaction models by held-out verb
+
+```{r}
+#| label: megaveridicality-heldout
+mean_log_score <- function(fit, data) {
+  probability <- predict(
+    fit,
+    newdata = data,
+    type = "prob"
+  )$fit
+  probability <- pmax(probability, 1e-12)
+  if (is.null(dim(probability))) {
+    return(mean(log(probability)))
+  }
+  observed_column <- match(
+    as.character(data$outcome),
+    colnames(probability)
+  )
+  observed_probability <- probability[cbind(
+    seq_len(nrow(data)),
+    observed_column
+  )]
+  mean(log(observed_probability))
+}
+
+fold_results <- lapply(sort(unique(judgments$fold)), function(fold) {
+  training <- judgments[judgments$fold != fold, ]
+  assessment <- judgments[judgments$fold == fold, ]
+
+  additive_fit <- clm(
+    outcome ~ polarity + task,
+    data = training,
+    link = "logit",
+    Hess = FALSE
+  )
+  interaction_fit <- clm(
+    outcome ~ polarity * task,
+    data = training,
+    link = "logit",
+    Hess = FALSE
+  )
+
+  data.frame(
+    fold = fold,
+    held_out_verbs = length(unique(assessment$verb)),
+    held_out_rows = nrow(assessment),
+    additive_mean_log_score = mean_log_score(
+      additive_fit,
+      assessment
+    ),
+    interaction_mean_log_score = mean_log_score(
+      interaction_fit,
+      assessment
+    )
+  )
+})
+
+cross_validation <- do.call(rbind, fold_results)
+cross_validation$gain <- with(
+  cross_validation,
+  interaction_mean_log_score - additive_mean_log_score
+)
+cross_validation
+```
+
+The row-weighted interaction gain is computed from the held-out folds:
+
+```{r}
+#| label: megaveridicality-heldout-summary
+weighted_gain <- with(
+  cross_validation,
+  weighted.mean(gain, held_out_rows)
+)
 c(
-  ratings = nrow(ratings),
-  participants = length(unique(ratings$participant_id)),
-  verbs = length(unique(ratings$verb)),
-  pairs = length(unique(ratings$sentence_pair_id))
+  folds_favoring_interaction = sum(cross_validation$gain > 0),
+  row_weighted_mean_log_score_gain = weighted_gain
 )
 ```
 
-The result contains 4,405 ratings from 202 participants, 14 verbs, and 218 sentence pairs. One row is a participant by pair judgment. Participants and sentence pairs repeat, so neither the ratings nor the pair-level predictor are independently replicated 4,405 times.
-
-The deterministic [preparation script](../data/aspectual-similarity/prepare.R) asserts these counts and verifies that every retained verb has both predictor values. The [adapted CSV](../data/aspectual-similarity/within-verb-similarity.csv) has SHA-256 checksum `b19edbb7463a6767274e3dde78e902b0e8777424a21d7fdf231ea1e6d0e25f35`.
-
-## Inspecting the response before fitting
-
-```r
-hist(
-  ratings$dissimilarity,
-  breaks = seq(-.5, 100.5, by = 1),
-  xlab = "Dissimilarity rating",
-  main = "Within-verb similarity judgments"
-)
-
-mean(ratings$dissimilarity %in% c(0, 100))
-aggregate(dissimilarity ~ same_sense, ratings, mean)
+```{r}
+#| label: plot-megaveridicality-cv
+ggplot(
+  cross_validation,
+  aes(x = factor(fold), y = gain)
+) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_point(size = 2, color = "#1F5A85") +
+  labs(
+    x = "Held-out verb fold",
+    y = "Interaction minus additive mean log score"
+  ) +
+  theme_classic()
 ```
 
-Every integer value from 0 through 100 occurs. Exact endpoints account for 20.8% of the teaching extract, so standard beta regression cannot use the observed responses without altering them. Nudging one fifth of the observations inward would also make the arbitrary nudge part of one fifth of the pointwise likelihood contributions. Endpoint use varies across participants: some never use an endpoint, while others use one on every retained trial.
-
-Same-sense pairs have a mean dissimilarity of 55.9; different-sense pairs have a mean of 76.4. This 20.4-point raw difference is theoretically relevant, but it does not yet account for repeated participants or pairs.
-
-## A linear mixed model benchmark
-
-Fit a linear mixed-effects benchmark with normally distributed errors and participant and sentence-pair intercepts:
-
-```r
-linear_fit <- lme4::lmer(
-  dissimilarity ~ factor(same_sense) + verb_type +
-    (1 | participant_id) + (1 | sentence_pair_id),
-  data = ratings,
-  REML = FALSE
-)
-```
-
-The fit estimates a -20.1-point same-sense contrast. Its participant, sentence-pair, and residual standard deviations are 13.5, 14.7, and 21.3 points, respectively. Thus the contrast survives a basic dependence repair.
-
-But the likelihood fails the support check. For fixed-effect predictions $\widehat\mu_i$ and residual scale $\widehat\sigma$, compute
-
-```r
-mu <- predict(linear_fit, re.form = NA)
-sigma <- sigma(linear_fit)
-
-illegal_mass <- mean(
-  pnorm(0, mu, sigma) + 1 - pnorm(100, mu, sigma)
-)
-```
-
-The result is 10.1%. The benchmark places about one tenth of its fixed-effect predictive mass outside a scale that participants could not leave. The coefficient answers the intended contrast, while the response distribution makes predictions the task cannot produce.
-
-This is why model criticism should identify the specific discrepancy. “The residuals are nonnormal” would not tell us whether the problem is skew, tail weight, dependence, or support. Here the model assigns positive probability to values outside the response support, and that discrepancy is exact and measurable.
-
-## Replacing the response distribution
-
-Use the same predictor and dependence structure with an ordered-beta likelihood:
-
-```r
-ratings$dissimilarity_01 <- ratings$dissimilarity / 100
-
-ordered_beta_fit <- ordbetareg::ordbetareg(
-  dissimilarity_01 ~ factor(same_sense) + verb_type +
-    (1 | participant_id) + (1 | sentence_pair_id),
-  data = ratings,
-  chains = 4,
-  cores = 4,
-  warmup = 1000,
-  iter = 3000,
-  control = list(adapt_delta = .99),
-  seed = 20260825
-)
-```
-
-The audited teaching pilot estimates a same-sense coefficient of -.870 on the latent scale, with a 95% interval of [-1.052, -.692]. This coefficient is not measured in slider points.
-
-We next check the endpoint predictions. The median predicted endpoint mass is 20.78%, with a 95% interval of [19.35%, 22.33%], compared with 20.82% in the observed data. The released full Experiment 2 model also recovers the zero mass, one mass, mean, and standard deviation in its complete data. Its reported convergence diagnostics do not show a computational warning.
-
-The latent coefficient is not an 87-point response change. Its negative sign shifts the entire predictive distribution toward greater similarity: more probability near zero, lower interior values, and less probability at 100. The interpretation thus comes from predicted response distributions, not from multiplying the coefficient by 100.
-
-## Reading the comparison in stages
-
-The raw means show the expected direction: same-sense pairs receive lower dissimilarity ratings. The linear mixed model shows that the direction remains after accounting for repeated participants and sentence pairs. Its predictive distribution then reveals a separate problem, since about one tenth of its probability lies outside the response scale. Ordered-beta regression removes that support failure and reproduces the observed endpoint proportion.
-
-The restricted extract answers a narrower question than the full paper. Exact PropBank label equality is directly observed here, while the paper's full analysis propagates probabilistic sense, telicity, and durativity measures and permits richer by-verb variation. The teaching extract supports a comparison of same-sense and different-sense contentful pairs among verbs represented by both pair types. It does not show that one 20-point contrast applies to every English verb.
-
-## LING 414 extension
-
-Return to the full released analysis and replace exact same-sense with its probabilistic score. Then compare a fixed-effects-only fit with the dependence-aware model for the telicity-by-same-sense and durativity-by-same-sense interactions. The telicity interaction disappears after participant and sentence-pair structure enters, while the durativity interaction shows the reverse pattern. This contrast supplies a concrete pseudoreplication diagnosis, but it should follow the simpler bounded-response lesson rather than serve as its entry point.
-
-## Data, license, and citation
-
-The teaching extract is adapted from data collected by Aaron Steven White, Scott Grimm, and Lelia Glass. The data are licensed [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/), and the teaching extract is shared under the same terms. Ordered-beta regression follows [Kubinec](https://doi.org/10.1017/pan.2022.20).
-
-::: {.callout-note title="Two recurring questions"}
-**What counts as a new observation?** For the narrow fitted model, a new judgment may come from an observed participant and pair; a stronger claim requires new participants, new pairs, or new verbs and a validation design that holds out the corresponding unit.
-
-**What breaks the simpler model?** Exact endpoints and 10.1% predictive probability outside the permitted response range break the response model even though the mean same-sense contrast is stable.
-:::
+The interaction improves the mean log score in every frozen fold, but the row-weighted gain is small. Thus the interaction has consistent predictive support while the additive model remains a live comparison. The result does not classify verbs, estimate respondent variation, or reproduce the paper's normalized responsivity analysis. It asks one narrow question about transferring a population interaction to unseen verbs.

@@ -1,116 +1,116 @@
 ---
 title: "A corpus proportion"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](independent-sampling.qmd) introduced the IID Bernoulli sampling statement. We now use one corpus extract to make that statement concrete before constructing a likelihood. The source is the training portion of the [Universal Dependencies English Web Treebank](https://universaldependencies.org/treebanks/en_ewt/), which contains web text annotated with dependency relations and morphological features.
+The IID model on the [preceding page](independent-sampling.qmd) used the actual accusative labels in UD Turkish BOUN. We now connect that coding to the mean and variance of a Bernoulli variable.
 
-The extract is retained here because the following maximum-likelihood page uses its exact count and coding. Our immediate question is deliberately narrow: what exactly was counted, and what would one shared Bernoulli probability mean for those rows? This is a continuity example, not a claim that one corpus proportion is a sufficient analysis of pronoun case.
+## From annotation to random variable
 
-## Loading the teaching extract
+One row remains one personal-pronoun token nested in a sampled sentence. The binary response is a deterministic recoding of the source UD `Case` value:
 
-The stored file contains one row for each personal pronoun token that preprocessing classified as accusative or nonaccusative.
+$$
+X_i=\mathbb I\{\text{case}_i=\text{Acc}\}.
+$$
 
 ```{r}
-#| label: load-pronoun-case
-#| echo: true
-pronoun_case <- read.csv("../slides-archive/lecture7/pronoun_data.csv")
+#| label: load-ud-corpus-proportion
+library(ggplot2)
 
-head(pronoun_case)
+pronouns <- read.csv(
+  "data/ud-turkish-boun/personal-pronoun-cases.csv",
+  stringsAsFactors = FALSE
+)
+pronouns$accusative_check <- as.integer(pronouns$case == "Acc")
+
+stopifnot(identical(pronouns$accusative, pronouns$accusative_check))
+
+n <- nrow(pronouns)
+k <- sum(pronouns$accusative)
+p_hat <- mean(pronouns$accusative)
+bernoulli_variance <- p_hat * (1 - p_hat)
+
+data.frame(
+  tokens = n,
+  accusative_tokens = k,
+  observed_proportion = p_hat,
+  fitted_bernoulli_variance = bernoulli_variance
+)
 ```
 
-The response is coded
+For $X\sim\operatorname{Bernoulli}(p)$, the two possible values give
 
 $$
-X_i=
-\begin{cases}
-1 & \text{accusative},\\
-0 & \text{nonaccusative}.
-\end{cases}
+\mathbb{E}[X]
+=0(1-p)+1(p)=p
 $$
 
-This coding makes the observed sample mean equal to the accusative proportion.
+and, because $X^2=X$,
 
-## Inspecting the response before summarizing
+$$
+\begin{aligned}
+\operatorname{Var}[X]
+&=\mathbb{E}[X^2]-\mathbb{E}[X]^2\\
+&=p-p^2\\
+&=p(1-p).
+\end{aligned}
+$$
+
+The sample analogue of the mean is
+
+$$
+\widehat p=\overline X
+=\frac{1}{n}\sum_{i=1}^n X_i
+=\frac{k}{n}.
+$$
+
+For this release, the visible code yields $\widehat p=$ `r sprintf("%.4f", p_hat)` and the fitted Bernoulli variance `r sprintf("%.4f", bernoulli_variance)`.
+
+## Variation hidden by the pooled proportion
 
 ```{r}
-#| label: check-pronoun-case
-#| echo: true
-table(pronoun_case$accusative)
+#| label: plot-ud-corpus-proportion
+register_summary <- aggregate(
+  accusative ~ register,
+  data = pronouns,
+  FUN = function(x) c(tokens = length(x), proportion = mean(x))
+)
+register_plot <- data.frame(
+  register = register_summary$register,
+  tokens = register_summary$accusative[, "tokens"],
+  proportion = register_summary$accusative[, "proportion"]
+)
+
+ggplot(register_plot, aes(register, proportion)) +
+  geom_hline(yintercept = p_hat, color = "#8B1A1A", linewidth = 0.7) +
+  geom_point(aes(size = tokens), color = "grey25") +
+  scale_size_area(max_size = 5) +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) + # dqr-allow: algorithm-setting
+  labs(x = "BOUN register", y = "Accusative proportion", size = "Tokens") +
+  theme_classic(base_size = 12)
 ```
 
-The table contains
-
-$$
-n=12{,}280
-$$
-
-token observations. Of these,
-
-$$
-k=3{,}327
-$$
-
-are coded accusative and 8,953 are coded nonaccusative.
-
-The observed proportion is
-
-$$
-\widehat{\pi}=\frac{k}{n}
-=\frac{3327}{12280}
-\approx.271.
-$$
-
-The same calculation in R is
-
-```{r}
-#| label: summarize-pronoun-case
-#| echo: true
-mean(pronoun_case$accusative)
-```
-
-The numerical agreement checks the coding and count calculation.
-
-## Stating what one observation represents
-
-One row represents one extracted personal pronoun token. The response records a binary label produced by an older teaching heuristic. Forms that distinguish case on their surface, such as *I* and *me*, were labeled from the word form. The syncretic forms *you* and *it* were labeled nonaccusative when their basic dependency relation was [`nsubj`](https://universaldependencies.org/en/dep/nsubj.html) and accusative otherwise.
-
-This label is not the UD morphological [`Case`](https://universaldependencies.org/en/feat/Case.html) feature. In the English UD guidelines, `Case=Nom` is called direct case and `Case=Acc` is called oblique case. By contrast, `nsubj` and `obj` name syntactic relations. The fallback treats every non-`nsubj` occurrence of *you* or *it* as accusative, including relations for which that inference is not licensed. We retain the binary file so the likelihood calculation remains reproducible, but refer to the response as the **heuristic accusative label** throughout.
-
-The row does not represent one speaker, one document, or one pronoun type. Documents and forms repeat across token observations. The web treebank also does not constitute a random sample of all English pronoun uses.
-
-Thus the analysis statement is deliberately narrow:
-
-> One observation is one extracted personal pronoun token in the teaching file. The response indicates whether the older preprocessing heuristic assigned that token the accusative label. The immediate estimate is the heuristic-label proportion in this extract.
-
-## Declaring the working model
-
-For the calculations that follow, assume
-
-$$
-X_i
-\mathrel{\overset{\mathrm{IID}}{\sim}}
-\operatorname{Bernoulli}(\pi).
-$$
-
-Under this model, $\pi$ is one shared probability of receiving the heuristic accusative label in the represented token sampling process. The independence assumption factors the sample probability, and the identical distribution assumption gives every token the same $\pi$.
-
-Both claims are strong: pronoun case depends on grammatical function, lexical form, construction, and annotation decisions, while tokens in one document may also be dependent.
-
-The simple model is used to isolate the likelihood calculation. It should not be mistaken for a final linguistic theory.
-
-## Separating the response from a theoretical predictor
-
-The binary column records an outcome. It does not explain why one form bears accusative case or why the rate changes across syntactic positions.
-
-A theoretically interesting analysis might compare grammatical functions, local syntactic configurations, pronoun paradigms, or construction types. Those predictors would encode proposals about the distribution of direct and oblique pronoun forms rather than merely reproduce the observed response.
-
-A precise estimate of $.271$ can describe this extract under the coding rule while leaving the linguistic mechanism unexplained. It is not an estimate of the proportion of tokens bearing `Case=Acc` in the current UD annotation. The response proportion is a description of the heuristic labels, not an explanation of the case system.
+The pooled proportion describes the release under this coding. It does not explain case choice, and the register differences suggest that one shared probability may be too restrictive. Case depends on grammatical function and construction, while token rows also inherit sentence-level dependence.
 
 ## Check your understanding
 
-1. Verify the observed proportion from $k=3{,}327$ and $n=12{,}280$.
-2. What does one row represent, and which higher-level units repeat?
-3. Which two claims are encoded by the IID notation?
-4. Give one theoretically motivated predictor for a substantive pronoun case analysis.
+1. Why does the mean of the indicator equal a proportion?
+2. Derive the Bernoulli variance using $\mathbb{E}[X^2]$.
+3. What does the red line represent in the figure?
+4. Name a syntactic predictor that a substantive model of Turkish case might include.
 
-On the [maximum-likelihood page](maximum-likelihood.qmd), we ask which value of $\pi$ makes this observed sequence most probable under the working model.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The indicator is one for an accusative token and zero otherwise, so its sample mean is the number of accusative tokens divided by the number of tokens. <!-- dqr-allow: empirical-answer -->
+2. $\mathbb{E}[X^2]=\mathbb{E}[X]=p$ because $X^2=X$. Thus $\operatorname{Var}[X]=p-p^2=p(1-p)$. <!-- dqr-allow: empirical-answer -->
+3. The red line is the pooled accusative proportion across all qualifying BOUN release rows. <!-- dqr-allow: empirical-answer -->
+4. A substantive model might include grammatical function, such as whether the pronoun is a direct object. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](maximum-likelihood.qmd) asks which shared probability makes the observed release labels most probable under the working model.

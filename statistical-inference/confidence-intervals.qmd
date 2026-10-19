@@ -1,126 +1,118 @@
 ---
 title: "Confidence intervals"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The preceding pages separated a point estimate from its [standard error](standard-errors.qmd). A [**confidence interval**](https://online.stat.psu.edu/stat200/Lesson04) is a procedure that combines those two quantities to produce a range of parameter values.
+A **confidence-interval procedure** maps each possible sample to a lower and upper endpoint. Its coverage is a property of that repeated-sampling procedure, not a posterior probability assigned to one realized interval.
 
-The word *procedure* matters. Confidence is a long-run property of the rule that generates intervals, not a probability attached to the fixed endpoints observed in one study. We will first derive the rule while the data are still random and only then interpret the interval produced by the observed sample.
+## Normal and t procedures
 
-## Identifying the target and estimate
-
-Suppose a perception study compares mean [prosodic-prominence](https://doi.org/10.1146/annurev-linguistics-031120-101954) ratings in two conditions. Prominence concerns the extent to which a word or syllable stands out relative to surrounding material. It is a perceptual and phonological notion that may depend on several cues, not another name for duration or fundamental frequency. The population contrast is
+If $\overline X$ has standard error $\sigma/\sqrt n$, a normal-reference interval is
 
 $$
-\Delta=\mu_A-\mu_B.
+\overline X\pm z_{1-\alpha/2}\frac{\sigma}{\sqrt n}.
 $$
 
-This parameter is the estimand, while the difference between sample means, $\widehat{\Delta}$, is the estimator. The observed data produce the estimate
+When $\sigma$ is estimated by $s$, the one-sample t interval is
 
 $$
-\widehat{\delta}=.42
+\overline X\pm t_{1-\alpha/2,n-1}\frac{s}{\sqrt n}.
 $$
 
-rating points. Its estimated standard error is
+The confidence coefficient is defined through repeated sampling:
 
 $$
-\widehat{\operatorname{SE}}(\widehat{\Delta})=.15.
+\mathbb{P}_\theta\{L(\mathbf X)\leq\theta\leq U(\mathbf X)\}=1-\alpha.
 $$
 
-The estimate and standard error answer different questions: the estimate locates the observed contrast, while the standard error describes how much that estimator would vary across samples under the model.
+## Coverage in the Hillenbrand ESR
 
-## Constructing a normal interval
-
-Suppose repeated samples make the studentized estimator approximately standard normal under the declared sampling model:
-
-$$
-\frac{\widehat{\Delta}-\Delta}
-{\widehat{\operatorname{SE}}(\widehat{\Delta})}
-\approx N(0,1).
-$$
-
-About 95% of a standard normal distribution lies between $-1.96$ and $1.96$. This gives the event
-
-$$
--1.96
-\leq
-\frac{\widehat{\Delta}-\Delta}
-{\widehat{\operatorname{SE}}(\widehat{\Delta})}
-\leq
-1.96.
-$$
-
-Now multiply all three parts by the positive estimated standard error and then move $\widehat{\Delta}$ across the inequalities. These licensed algebraic moves place the unknown parameter between two random endpoints:
-
-$$
-\widehat{\Delta}
--1.96\widehat{\operatorname{SE}}(\widehat{\Delta})
-\leq \Delta \leq
-\widehat{\Delta}
-+1.96\widehat{\operatorname{SE}}(\widehat{\Delta}).
-$$
-
-For the observed study,
-
-$$
-.42\mathbin{\pm}1.96(.15)
-=.42\mathbin{\pm}.294.
-$$
-
-The realized interval is thus
-
-$$
-[.126,.714].
-$$
-
-## Interpreting coverage across samples
-
-Before data are sampled, the endpoints are random variables $L(\mathbf{X})$ and $U(\mathbf{X})$. The population parameter $\Delta$ is fixed. Write $\mathbb{P}_{\Delta}$ for probability under the sampling model indexed by that fixed parameter. The [**coverage probability**](https://online.stat.psu.edu/stat100/Lesson09) of the interval procedure is the probability that the random interval contains the fixed parameter. A 95% confidence procedure satisfies
-
-$$
-\mathbb{P}_{\Delta}
-\left(
-\left\{\omega\in\Omega\mid
-L(\mathbf{X}(\omega))\leq\Delta\leq U(\mathbf{X}(\omega))
-\right\}
-\right)
-\approx.95.
-$$
-
-Imagine repeating the complete study many times. Each sample produces a different estimate, standard error, and interval. About 95% of those intervals contain the fixed parameter when the model and approximation are appropriate.
+We repeatedly draw adult-women /I/ speaker rows from the empirical reference. The empirical cohort mean is the fixed target. The simulation evaluates both the t procedure and a normal procedure that treats the ESR standard deviation as known.
 
 ```{r}
-#| label: simulate-interval-coverage
-#| echo: true
+#| label: hillenbrand-ci-coverage
+library(ggplot2)
 
-set.seed(118)
-delta <- .40
-se <- .15
-estimate <- rnorm(100000, mean = delta, sd = se)
-lower <- estimate - 1.96 * se
-upper <- estimate + 1.96 * se
-coverage <- mean(lower <= delta & delta <= upper)
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+x <- subset(vowels, speaker_type == "woman" & vowel == "I")$duration_ms
+theta <- mean(x)
+sigma <- sqrt(mean((x - theta)^2))
+n <- length(x)
 
-stopifnot(abs(coverage - .95) < .01)
+set.seed(20261020)
+replicates <- 20000L
+simulation <- do.call(rbind, lapply(seq_len(replicates), function(draw) {
+  sample_x <- sample(x, n, replace = TRUE)
+  estimate <- mean(sample_x)
+  estimated_se <- sd(sample_x) / sqrt(n)
+  known_se <- sigma / sqrt(n)
+  data.frame(
+    draw = draw,
+    estimate_ms = estimate,
+    t_lower_ms = estimate - qt(0.975, n - 1L) * estimated_se,
+    t_upper_ms = estimate + qt(0.975, n - 1L) * estimated_se,
+    z_lower_ms = estimate - qnorm(0.975) * known_se,
+    z_upper_ms = estimate + qnorm(0.975) * known_se
+  )
+}))
+
+simulation$t_covers <- with(simulation, t_lower_ms <= theta & theta <= t_upper_ms)
+simulation$z_covers <- with(simulation, z_lower_ms <= theta & theta <= z_upper_ms)
+
+coverage <- data.frame(
+  procedure = c("t interval", "known-sigma normal interval"),
+  coverage = c(mean(simulation$t_covers), mean(simulation$z_covers)),
+  average_width_ms = c(mean(simulation$t_upper_ms - simulation$t_lower_ms),
+                       mean(simulation$z_upper_ms - simulation$z_lower_ms))
+)
+stopifnot(all(abs(coverage$coverage - 0.95) < 0.01))
 coverage
 ```
 
-This simulation uses a known standard error and an exactly normal sampling distribution, so its coverage should be close to $.95$. It illustrates the repeated-sampling definition. It does not verify the assumptions for the prominence study.
+The t procedure covers the empirical target in `r scales::percent(coverage$coverage[1], accuracy = 0.01)` of ESR draws and has average width `r sprintf("%.3f", coverage$average_width_ms[1])` ms.
 
-## Interpreting the realized interval
+```{r}
+#| label: plot-hillenbrand-ci-coverage
+#| fig-cap: "The first sixty t intervals from empirical speaker resamples. Red intervals miss the empirical target line."
+display <- simulation[seq_len(60L), ]
+display$coverage <- ifelse(display$t_covers, "Covers target", "Misses target")
 
-After observing the data, the endpoints $.126$ and $.714$ are fixed. The parameter either lies inside them or it does not. Under the frequentist model used here, the statement “there is a 95% probability that $\Delta$ lies in this interval” is not licensed.
+ggplot(display,
+       aes(draw, estimate_ms, ymin = t_lower_ms, ymax = t_upper_ms,
+           color = coverage)) +
+  geom_hline(yintercept = theta, color = "grey35", linewidth = 0.6) +
+  geom_linerange(linewidth = 0.45) +
+  geom_point(size = 0.9) +
+  scale_color_manual(values = c("Covers target" = "grey60",
+                                "Misses target" = "#8B1A1A")) +
+  labs(x = "Repeated sample", y = "Mean /I/ duration interval (ms)", color = NULL) +
+  theme_classic(base_size = 12)
+```
 
-That statement transfers a probability assigned to varying intervals onto a fixed parameter and one fixed interval. A Bayesian credible interval can support a posterior probability statement, but it is a different inferential object. The distinction is developed on the page about [posterior summaries](posterior-summaries.qmd).
-
-The interval also does not describe the distribution of participant responses. It does not imply that 95% of individual prominence differences fall between $.126$ and $.714$. Response variation and estimator uncertainty are different quantities.
-
-## Stating the conditions for coverage
-
-The nominal 95% rate depends on the standard error and the reference distribution. Dependence among observations, severe skew at a small sample size, or a misspecified response model can change the actual coverage. Reporting “95%” does not override those conditions.
+After an interval is observed, it either covers this fixed target or does not. The confidence coefficient describes the procedure across samples. And the ESR coverage remains conditional on the observed cohort rather than representing the original recruitment process.
 
 ## Check your understanding
 
-1. Which object is fixed before sampling, the interval or $\Delta$?
-2. What changes across repeated studies?
-3. Recalculate the interval if the estimated standard error is $.25$.
-4. Why does a confidence interval for a mean not contain 95% of the observations?
+1. What varies in the coverage probability?
+2. Why is the t interval slightly wider on average here?
+3. What does a red interval mean in the figure?
+4. Why does empirical-reference coverage not guarantee coverage for all American English speakers?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The sample, estimate, and interval endpoints vary across repetitions; the empirical target and confidence procedure remain fixed. <!-- dqr-allow: empirical-answer -->
+2. The $t$ interval estimates the response scale and uses a critical value slightly larger than the corresponding normal critical value, making its average width slightly greater. <!-- dqr-allow: empirical-answer -->
+3. A red interval from that repeated sample does not contain the fixed empirical cohort mean. <!-- dqr-allow: empirical-answer -->
+4. The simulation resamples the observed cohort and does not reproduce probability sampling from all American English speakers. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](exact-binomial-intervals.qmd) studies an interval for a probability near a boundary.

@@ -2,133 +2,331 @@
 title: "Parameter recovery"
 ---
 
-Suppose a model for gated annotations fits without warnings and returns an estimate for every item and annotator quantity. Successful computation does not show that the data contain enough information to distinguish those quantities. Several parameter combinations may produce nearly identical response distributions.
+A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. Here the simulation preserves the exact item--annotator incidence pattern of the UDS natural-parts extract introduced on the [first page](generative-stories.qmd).
 
-A [**parameter recovery**](https://mc-stan.org/learn-stan/case-studies/rasch_and_2pl.html) analysis tests the complete inference procedure on simulated data whose generating values are known. It asks whether the procedure can return those values under its own assumptions and under a design resembling the planned analysis. This is different from formal identifiability: an identified parameter may recover poorly in a sparse design, while an unidentified absolute location cannot be recovered without first fixing a coordinate convention.
+This is an audited model simulation, not a substitute for linguistic data. Its rows, item identities, annotator identities, and imbalance come from the released annotation design. The generating values and success thresholds were fixed before the released responses were fit.
 
-## The recovery loop
+## Loading the released design and audited cache
 
-One recovery replicate contains four steps.
+```{r}
+#| label: load-uds-recovery
+#| message: false
+#| warning: false
 
-1. Choose generating parameter values and a sample design.
-2. Simulate latent quantities and recorded responses from the custom model.
-3. Fit the planned model to the simulated responses.
-4. Compare the fitted summaries with the generating values.
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+cache_path <- "data/uds/uds-natural-parts-teaching-cache.rds"
+uds_cache <- readRDS(cache_path)
 
-The fitting step is essential. Inspecting simulated observations alone tests the generator, not the ability of the inference procedure to recover its parameters.
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$item_id)) == 1000L,
+  length(unique(uds$annotator_id)) == 12L,
+  nrow(uds_cache$recovery) == 12L,
+  nrow(uds_cache$population_draws) == 400L,
+  ncol(uds_cache$item_effect_draws) == 1000L,
+  ncol(uds_cache$annotator_effect_draws) == 12L,
+  identical(uds_cache$item_levels, unique(uds$item_id)),
+  identical(uds_cache$annotator_levels, unique(uds$annotator_id)),
+  identical(
+    digest::digest(file = cache_path, algo = "sha256"),
+    "19b9920f55506717d9b54667f9495f9703d6e5fc213b5f4fb4350f99096bfb08"
+  ),
+  identical(
+    unname(uds_cache$provenance$source_csv_sha256),
+    "a9d49305fe6b4780a0f3da845bd3d6bc8ed8908c3664c6931180d4346a46e2f8"
+  ),
+  identical(
+    unname(uds_cache$provenance$source_fit_sha256),
+    "f48a5b9d37fc91728804366515b8c34864fa69f9ece7755f33a6007a4641005c"
+  ),
+  identical(
+    unname(uds_cache$provenance$stan_sha256),
+    "5d85750a5090c6b1cd709844336372e945ec85e68f8391f0c72d7a8141329fc0"
+  ),
+  identical(uds_cache$provenance$fit_seeds, 880001:880004),
+  identical(
+    uds_cache$provenance$retained_cache_rows,
+    seq(4L, 3200L, by = 8L)
+  )
+)
 
-Repeat the loop across many simulated datasets and across parameter settings that affect identifiability. The unit of evaluation is then a generating value paired with an estimate from one complete fit.
+uds$item_index <- match(uds$item_id, uds_cache$item_levels)
+uds$annotator_index <- match(
+  uds$annotator_id,
+  uds_cache$annotator_levels
+)
 
-## Beginning with one binary quantity
+recovery <- uds_cache$recovery
+generating_values <- c(
+  alpha = -2.1, # dqr-allow: algorithm-setting
+  sigma_item = 1.6, # dqr-allow: algorithm-setting
+  sigma_annotator = 1.6 # dqr-allow: algorithm-setting
+)
 
-Consider a simple gate with true affirmative probability $\pi=.75$. Suppose 20 independent annotations produce 16 affirmatives. The estimated proportion is
+cache_record <- data.frame(
+  quantity = c(
+    "Audited posterior draws retained",
+    "Warmup iterations per released-data chain",
+    "Retained iterations per released-data chain"
+  ),
+  value = c(
+    nrow(uds_cache$population_draws),
+    uds_cache$provenance$warmup_per_chain,
+    uds_cache$provenance$retained_per_chain
+  )
+)
 
-$$
-\widehat\pi=\frac{16}{20}=.80,
-$$
+stopifnot(
+  all(abs(
+    recovery$alpha_estimate - recovery$alpha_error -
+      generating_values[["alpha"]]
+  ) < 1e-10),
+  all(abs(
+    recovery$sigma_item_estimate /
+      (1 + recovery$sigma_item_relative_error) -
+      generating_values[["sigma_item"]]
+  ) < 1e-10),
+  all(abs(
+    recovery$sigma_annotator_estimate /
+      (1 + recovery$sigma_annotator_relative_error) -
+      generating_values[["sigma_annotator"]]
+  ) < 1e-10)
+)
 
-so the estimation error in this replicate is
+knitr::kable(cache_record)
+```
 
-$$
-\widehat\pi-\pi=.80-.75=.05.
-$$
+The compact cache contains `r nrow(uds_cache$recovery)` completed recovery fits and `r nrow(uds_cache$population_draws)` deterministic draws from the later released-data fit. Rendering uses the cache; it does not silently refit Stan.
 
-This one error does not estimate bias. It is one draw from the recovery procedure. Recall from [estimator bias](../statistical-inference/estimator-bias.qmd) and [mean squared error](../statistical-inference/mean-squared-error.qmd) that repeated samples are needed to describe the distribution of estimation error.
+## The complete Stan program
 
-## Summarizing repeated recovery
+The crossed response model constructs item and annotator deviations by centering non-centered standard-normal vectors. Centering the realized vectors fixes their finite-sample sums at zero.
 
-For simulation $s$, let $\widehat\theta_s$ be the estimate and $\theta_s$ the generating value. Across $S$ simulations, estimated bias is
+```{r}
+#| label: define-uds-stan-program
+#| eval: false
+
+stan_program <- '
+data {
+  int<lower=1> N;
+  int<lower=1> I;
+  int<lower=1> A;
+  array[N] int<lower=1, upper=I> item;
+  array[N] int<lower=1, upper=A> annotator;
+  array[N] int<lower=0, upper=1> response;
+}
+
+parameters {
+  real alpha;
+  real<lower=0> sigma_item;
+  real<lower=0> sigma_annotator;
+  vector[I] z_item_raw;
+  vector[A] z_annotator_raw;
+}
+
+transformed parameters {
+  vector[I] z_item = z_item_raw - mean(z_item_raw);
+  vector[A] z_annotator = z_annotator_raw - mean(z_annotator_raw);
+  vector[I] item_effect = sigma_item * z_item;
+  vector[A] annotator_effect = sigma_annotator * z_annotator;
+}
+
+model {
+  alpha ~ normal(0, 2.5);
+  sigma_item ~ normal(0, 2);
+  sigma_annotator ~ normal(0, 2);
+  z_item_raw ~ std_normal();
+  z_annotator_raw ~ std_normal();
+
+  response ~ bernoulli_logit(
+    alpha + item_effect[item] + annotator_effect[annotator]
+  );
+}
+'
+```
+
+## The exact recovery generator and fitting call
+
+The code below is the executable core of one audited replicate. It uses the observed row indices without changing which annotator saw which item. The full audit ran replicates 1 through 12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains used seeds $740000+100s+c$ for chain $c$.
+
+```{r}
+#| label: recovery-generator-and-fit
+#| eval: false
+
+model <- cmdstanr::cmdstan_model(
+  cmdstanr::write_stan_file(stan_program)
+)
+
+recover_one <- function(replicate) {
+  set.seed(7300L + replicate)
+
+  z_item <- stats::rnorm(length(uds_cache$item_levels))
+  z_item <- z_item - mean(z_item)
+  z_annotator <- stats::rnorm(length(uds_cache$annotator_levels))
+  z_annotator <- z_annotator - mean(z_annotator)
+
+  true_item_effect <- generating_values[["sigma_item"]] * z_item
+  true_annotator_effect <-
+    generating_values[["sigma_annotator"]] * z_annotator
+  eta <-
+    generating_values[["alpha"]] +
+    true_item_effect[uds$item_index] +
+    true_annotator_effect[uds$annotator_index]
+
+  simulated_response <- stats::rbinom(
+    nrow(uds),
+    size = 1,
+    prob = stats::plogis(eta)
+  )
+
+  stan_data <- list(
+    N = nrow(uds),
+    I = length(uds_cache$item_levels),
+    A = length(uds_cache$annotator_levels),
+    item = uds$item_index,
+    annotator = uds$annotator_index,
+    response = simulated_response
+  )
+
+  lapply(seq_len(2L), function(chain) {
+    model$sample(
+      data = stan_data,
+      chains = 1,
+      parallel_chains = 1,
+      chain_ids = chain,
+      iter_warmup = 400,
+      iter_sampling = 400,
+      seed = 740000L + 100L * replicate + chain,
+      adapt_delta = 0.95,
+      refresh = 0
+    )
+  })
+}
+
+recovery_fits <- lapply(seq_len(12L), recover_one)
+```
+
+The archived run combined the two chain files after each call. Every reported result below comes from that chain-specific run stored in the tracked compact cache.
+
+## Declaring the recovery gate
+
+For replicate $s$, an error is $\widehat\theta_s-\theta_s$. Across $S$ replicates, estimated bias and root mean squared error are
 
 $$
 \widehat{\operatorname{Bias}}
-=\frac{1}{S}\sum_{s=1}^{S}(\widehat\theta_s-\theta_s),
+=\frac{1}{S}\sum_{s=1}^S(\widehat\theta_s-\theta_s),
 $$
-
-and root mean squared error is
 
 $$
 \operatorname{RMSE}
-=\sqrt{\frac{1}{S}\sum_{s=1}^{S}
+=\sqrt{\frac{1}{S}\sum_{s=1}^S
 (\widehat\theta_s-\theta_s)^2}.
 $$
 
-If the procedure returns an interval in every simulation, we can also estimate its [coverage probability](../statistical-inference/confidence-intervals.qmd#interpreting-coverage-across-samples). This is the proportion of simulated intervals that contain the generating value. For a confidence interval, coverage is a repeated-sampling property of the interval procedure. Bayesian posterior intervals can also be checked through simulation, though an interval from one fitted dataset still has a posterior interpretation.
-
-The code below uses the [exact binomial confidence interval](../statistical-inference/exact-binomial-intervals.qmd) introduced earlier. We will calculate bias, root mean squared error, and coverage probability separately. Small errors of opposite signs can cancel when we calculate bias while still producing a large root mean squared error.
-
-## Implementing a minimal recovery study
-
-The following code uses the observed affirmative proportion as the estimator and an exact binomial interval. A custom model recovery study replaces these two lines with simulation from and fitting of the complete model.
+The audit used medians and recovery correlations because the target includes population scales and high-dimensional latent orderings. Its prespecified thresholds were: median absolute intercept error at most $.25$; median absolute relative errors at most $.15$ for the item scale and $.25$ for the annotator scale; median correlations at least $.60$ for item effects, $.90$ for annotator effects, and $.65$ for conditional item probabilities; maximum key-parameter $\widehat R$ at most $1.05$; and no divergent transitions.
 
 ```{r}
-recover_gate_once <- function(probability, n_annotations) {
-  response <- rbinom(
-    n = n_annotations,
-    size = 1,
-    prob = probability
-  )
+#| label: summarize-uds-recovery
 
-  fit <- binom.test(sum(response), length(response))
-
-  data.frame(
-    generating = probability,
-    estimate = mean(response),
-    lower = fit$conf.int[1],
-    upper = fit$conf.int[2]
-  )
-}
-
-set.seed(731)
-
-recovery <- do.call(
-  rbind,
-  replicate(
-    n = 500,
-    expr = recover_gate_once(
-      probability = 0.75,
-      n_annotations = 20
-    ),
-    simplify = FALSE
-  )
+recovery_summary <- data.frame(
+  quantity = c(
+    "Median absolute intercept error",
+    "Median absolute relative item-scale error",
+    "Median absolute relative annotator-scale error",
+    "Median item-effect correlation",
+    "Median annotator-effect correlation",
+    "Median item-probability correlation",
+    "Largest key-parameter R-hat",
+    "Divergent transitions"
+  ),
+  result = c(
+    stats::median(abs(recovery$alpha_error)),
+    stats::median(abs(recovery$sigma_item_relative_error)),
+    stats::median(abs(recovery$sigma_annotator_relative_error)),
+    stats::median(recovery$item_effect_correlation),
+    stats::median(recovery$annotator_effect_correlation),
+    stats::median(recovery$item_probability_correlation),
+    max(recovery$maximum_key_rhat),
+    sum(recovery$divergences)
+  ),
+  # Prespecified decision criteria, fixed before the released-data fit.
+  threshold = c(0.25, 0.15, 0.25, 0.60, 0.90, 0.65, 1.05, 0) # dqr-allow: algorithm-setting
 )
 
-recovery$error <- recovery$estimate - recovery$generating
-recovery$covers <- with(
-  recovery,
-  lower <= generating & generating <= upper
+stopifnot(
+  recovery_summary$result[[1]] <= recovery_summary$threshold[[1]],
+  recovery_summary$result[[2]] <= recovery_summary$threshold[[2]],
+  recovery_summary$result[[3]] <= recovery_summary$threshold[[3]],
+  recovery_summary$result[[4]] >= recovery_summary$threshold[[4]],
+  recovery_summary$result[[5]] >= recovery_summary$threshold[[5]],
+  recovery_summary$result[[6]] >= recovery_summary$threshold[[6]],
+  recovery_summary$result[[7]] <= recovery_summary$threshold[[7]],
+  recovery_summary$result[[8]] == recovery_summary$threshold[[8]]
 )
 
-c(
-  bias = mean(recovery$error),
-  rmse = sqrt(mean(recovery$error^2)),
-  coverage = mean(recovery$covers)
-)
+knitr::kable(recovery_summary, digits = 3)
 ```
 
-The simulation fixes the gate probability and sample size, then repeats the generator and fitter 500 times. The resulting summaries are conditional on those choices. They do not describe recovery for rarer gates, fewer annotations, or a larger custom model.
+## Seeing variation across complete fits
 
-## Testing difficult regions
+```{r}
+#| label: plot-uds-recovery
+#| fig-width: 7.4
+#| fig-height: 3.5
+#| fig-cap: "Posterior medians from twelve complete recovery fits. Horizontal lines mark the generating values."
 
-Recovery at one convenient setting provides narrow evidence. A gated model should be tested across gate rates, annotator counts, item counts, item variation, and annotator variation. Values near a boundary deserve particular attention because few responses may reach one branch of the instrument.
+recovery_plot <- rbind(
+  data.frame(
+    replicate = recovery$replicate,
+    quantity = "Population location",
+    truth = generating_values[["alpha"]],
+    estimate = recovery$alpha_estimate
+  ),
+  data.frame(
+    replicate = recovery$replicate,
+    quantity = "Item scale",
+    truth = generating_values[["sigma_item"]],
+    estimate = recovery$sigma_item_estimate
+  ),
+  data.frame(
+    replicate = recovery$replicate,
+    quantity = "Annotator scale",
+    truth = generating_values[["sigma_annotator"]],
+    estimate = recovery$sigma_annotator_estimate
+  )
+)
 
-For latent item quantities, recovery should be checked under the identifying convention used during fitting. If only item contrasts or ranks are identified, evaluate those targets rather than demanding recovery of an arbitrary absolute origin. The target must also keep its linguistic unit: recovering predicate-node effects does not establish recovery of verb-lemma properties, and recovering predicate--argument effects does not establish categorical thematic roles.
+ggplot2::ggplot(
+  recovery_plot,
+  ggplot2::aes(replicate, estimate)
+) +
+  ggplot2::geom_hline(
+    data = unique(recovery_plot[c("quantity", "truth")]),
+    ggplot2::aes(yintercept = truth),
+    color = "grey65"
+  ) +
+  ggplot2::geom_point(color = "steelblue4", alpha = 0.8, size = 2) + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~ quantity, scales = "free_y") +
+  ggplot2::scale_x_continuous(
+    breaks = c(1, 4, 8, 12) # dqr-allow: scale-boundary
+  ) +
+  ggplot2::labs(x = "Recovery replicate", y = "Posterior median") +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
 
-Computation belongs in the record as well. Nonconvergence, divergent transitions, or excessive runtime at one parameter setting are failures of the planned procedure under that setting. Discarding failed fits can make recovery appear better than the procedure actually performs.
+The gate passed. But item recovery remains the weakest part of the result: with two or three responses per item, recovery supports a regularized ordering in aggregate, not a precise lexical interpretation for every predicate node.
 
-## What recovery does and does not establish
-
-Successful recovery shows that the fitter can retrieve parameters when data are generated by the same model. Real annotations may arise from a different response process. [Posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd) and sensitivity analyses address parts of that mismatch.
-
-Failed recovery is more decisive. If the procedure cannot recover a parameter under its own assumptions at the planned sample size, a precise interpretation of that parameter in real data is not supported. The model may need a narrower target, a stronger design, or fewer components. Conversely, successful parameter recovery does not validate the linguistic account. It establishes computational and design adequacy under the assumed generator, not that the generator describes annotators.
-
-State the conclusion in terms of the simulation that was actually run. The procedure recovered a specific quantity over a stated range under a stated design. Extending that result to real annotation behavior requires separate evidence.
+Successful recovery shows that the fitter can retrieve the declared targets when data arise from this model under this incidence design. It does not establish that real annotators follow the generator. The released-data analysis still requires posterior predictive checks and measurement limitations.
 
 ::: {.callout-note title="Check the recovery claim"}
-1. Why must fitting occur inside every recovery replicate?
-2. Can small average bias coexist with poor recovery in individual simulations?
-3. Which parameter regions are likely to be difficult for a gated model?
-4. What does failed recovery imply for interpretation of a real data estimate?
-5. What does successful recovery fail to establish?
+1. Why is the observed incidence pattern held fixed?
+2. Why must fitting occur inside every replicate?
+3. Which recovery target is weakest in this design?
+4. What does successful recovery fail to establish?
 :::
 
-Parameter recovery pairs known generating values with estimates from the complete planned procedure. Bias, error, coverage, and computational failures describe different aspects of recovery. With this gate in place, the final page combines the preceding components in a narrow [UDS measurement model](uds-measurement-model.qmd).
+[Previous: Writing a joint model](writing-a-joint-model.qmd) · [Next: Annotations are measurements](annotations-as-measurements.qmd)

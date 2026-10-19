@@ -1,175 +1,118 @@
 ---
 title: "A straight-line mean"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](regression-models.qmd) represented a regression through its conditional mean function $m(x)=\mathbb{E}[Y\mid X=x]$. We now impose one restriction on that function.
-
-Suppose we represent the conditional mean of log reading time as
+The [conditional-mean page](regression-models.qmd) left $m(x)=\mathbb{E}[Y\mid X=x]$ unrestricted. **Simple linear regression** imposes
 
 $$
 m(x)=\beta_0+\beta_1x.
 $$
 
-This is the mean function for [**simple linear regression**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85). It contains one predictor and two coefficients.
+The word *simple* means that the model has one predictor. The word *linear* means that the coefficients enter as a weighted sum.
 
-The word *simple* refers to the number of predictors, not to the linguistic
-question or the difficulty of fitting the model. The word *linear* refers to the
-way the coefficients enter the mean function. With one predictor, that function
-is a straight line.
+## Fitting the PRS line
 
-## Reading the intercept
-
-Set $x=0$:
-
-$$
-m(0)=\beta_0+\beta_1(0)=\beta_0.
-$$
-
-The intercept $\beta_0$ is the expected response when the predictor equals zero.
-
-If $\beta_0=5.70$, the model assigns expected log reading time 5.70 to a word with surprisal 0 bits. Whether that reference point is linguistically informative depends on the observed predictor range.
-
-An intercept remains part of the equation even when zero lies outside the
-observed range. It locates the line. But its linguistic interpretation may then
-depend on extrapolation. If the study contains words between 2 and 9 bits, the
-data do not directly show the response distribution at 0 bits.
-
-## Reading the slope
-
-Compare the mean at $x$ with the mean one unit higher:
-
-$$
-\begin{aligned}
-m(x+1)-m(x)
-&=[\beta_0+\beta_1(x+1)]-[\beta_0+\beta_1x]\\
-&=\beta_1.
-\end{aligned}
-$$
-
-The slope $\beta_1$ is the change in expected response for a one-unit increase in the predictor.
-
-If $\beta_1=.06$, one additional bit of surprisal is associated with a $.06$ increase in expected log reading time.
-
-The coefficient has units. Here it is measured in log milliseconds per bit. If
-surprisal were measured in nats instead of bits, the numerical coefficient would
-change because one unit on the predictor scale would represent a different
-amount of information.
-
-The sign determines the direction:
-
-| slope | mean pattern |
-|---:|---|
-| $\beta_1>0$ | expected response increases with $x$ |
-| $\beta_1=0$ | expected response does not change with $x$ |
-| $\beta_1<0$ | expected response decreases with $x$ |
-
-The slope also determines differences across larger predictor changes. For two
-values $x_a$ and $x_b$,
-
-$$
-m(x_b)-m(x_a)=\beta_1(x_b-x_a).
-$$
-
-With $\beta_1=.06$, a four-bit contrast corresponds to an expected log-time
-difference of $.24$. This is the same result whether the comparison is from 3 to
-7 bits or from 4 to 8 bits. The constant slope is the principal constraint of
-the straight-line mean.
-
-## Calculating a small prediction table
-
-Take $\beta_0=5.70$ and $\beta_1=.06$. Then
-
-| surprisal $x$ | calculation | conditional mean $m(x)$ |
-|---:|---:|---:|
-| 2 | $5.70+.06(2)$ | $5.82$ |
-| 5 | $5.70+.06(5)$ | $6.00$ |
-| 8 | $5.70+.06(8)$ | $6.18$ |
-
-The three points lie on one line. The increase from 2 to 5 bits is $.18$, and
-the increase from 5 to 8 bits is also $.18$. A different pattern, such as a
-sharp increase only above 7 bits, cannot be represented by this mean function.
-
-## Adding observation-level variation
-
-The line specifies only a conditional mean. Individual reading times still vary around it.
-
-Ordinary linear regression adds a normally distributed error term:
-
-$$
-Y_i\mid X_i=x_i
-\sim
-\mathcal{N}(\beta_0+\beta_1x_i,\sigma^2).
-$$
-
-Equivalently,
-
-$$
-Y_i=\beta_0+\beta_1x_i+\varepsilon_i,
-\qquad
-\varepsilon_i\sim\mathcal{N}(0,\sigma^2).
-$$
-
-The coefficients describe systematic change in the conditional mean. The parameter $\sigma$ describes response variation around that mean, assumed constant across predictor values.
-
-For a word with 5 bits of surprisal, the expected response is 6.00 under the
-worked model. The normal distribution says that an individual log reading time
-may fall above or below 6.00. If $\sigma=.20$, an observed value of 6.14 is not a
-contradiction. It is one possible realization from a distribution centered at
-6.00.
-
-We can simulate six responses at declared predictor values:
+We return to the Provo position summaries and center modeled cloze surprisal at its observed mean. Centering makes the intercept correspond to an observed reference point; the [next page](centering-predictors.qmd) derives that equivalence.
 
 ```{r}
-#| label: simulate-simple-linear-responses
-#| echo: true
-set.seed(214)
+#| label: fit-provo-simple-regression
+library(ggplot2)
 
-x <- c(2, 3, 4, 6, 7, 8)
-conditional_mean <- 5.70 + .06 * x
-y <- rnorm(length(x), mean = conditional_mean, sd = .20)
-
-data.frame(
-  surprisal = x,
-  conditional_mean = conditional_mean,
-  simulated_response = y
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
 )
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+surprisal_center <- mean(provo$cloze_surprisal_bits)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - surprisal_center
+
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+coefficient_table <- coef(summary(fit))
+
+stopifnot(
+  nrow(provo) == 1593L,
+  length(unique(provo$Text_ID)) == 55L,
+  isTRUE(all.equal(mean(provo$cloze_surprisal_c), 0, tolerance = 1e-12))
+)
+
+coefficient_table
 ```
 
-The conditional means lie exactly on the declared line. The simulated responses
-do not. Regression represents both facts: systematic change in the center and
-unexplained variation around that center.
+The fitted conditional mean is
 
-Thus the complete model makes three commitments:
+$$
+\widehat m(x_i)
+=
+\widehat\beta_0+\widehat\beta_1(x_i-\overline x).
+$$
 
-1. the conditional mean is linear;
-2. responses around that mean are normally distributed; and
-3. the conditional response variance is the same at every $x$.
+At mean modeled cloze surprisal, the fitted mean log first-fixation duration is `r sprintf("%.4f", coef(fit)[["(Intercept)"]])`. Each additional bit of modeled cloze surprisal is associated with a change of `r sprintf("%.4f", coef(fit)[["cloze_surprisal_c"]])` log milliseconds in the fitted position mean.
 
-It also inherits a sampling commitment from the earlier inference pages. The
-observations are treated as conditionally independent under this simple model.
-Repeated words from the same participant or repeated observations of the same
-item may violate that claim. The equation does not stop being linear, but the
-complete probability model is then missing the repeated structure.
+The slope is a contrast between conditional means:
 
-## Separating a line from a causal claim
+$$
+m(x+1)-m(x)
+=
+\{\beta_0+\beta_1(x+1)\}
+-\{\beta_0+\beta_1x\}
+=\beta_1.
+$$
 
-A positive $\beta_1$ describes a conditional association under the model. It
-does not by itself show that surprisal causes longer reading times. Word length,
-frequency, position, and other lexical or contextual properties may vary with
-surprisal.
+Thus the intercept locates the line, while the slope gives its change per predictor unit.
 
-Moving from a fitted association to a causal statement requires a design-based identification argument. Adding a normal response
-distribution or estimating the slope precisely does not supply that argument. A
-causal claim needs a design or identification argument that distinguishes the
-proposed cause from alternative sources of the association.
+```{r}
+#| label: plot-provo-simple-regression
+#| fig-cap: "Reader-aggregated Provo positions and the fitted straight-line conditional mean."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - surprisal_center
+grid$fitted <- predict(fit, newdata = grid)
 
-::: {.callout-note title="Calculate two means"}
-1. If $\beta_0=5.70$ and $\beta_1=.06$, calculate $m(3)$ and $m(7)$. How much
-   does the expected response change across that four-bit difference?
-2. Why does a conditional mean of 6.00 not require every observed response at
-   that predictor value to equal 6.00?
-3. Give one response pattern that a straight-line mean cannot represent.
-4. Explain why the fitted surprisal association does not by itself license a causal interpretation.
-:::
+point_opacity <- 0.22
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.9) +
+  geom_line(
+    data = grid,
+    aes(cloze_surprisal_bits, fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
 
-The [centering page](centering-predictors.qmd) changes the reference value for the intercept without changing this fitted line.
+The line summarizes an average item-position association. A potential worry is that the plotted cloud contains nested passages. That concern is well founded: ordinary standard errors do not represent passage clustering, and reader clustering cannot be recovered from this table. We address the remaining passage identifier on the [uncertainty page](linear-regression-uncertainty.qmd).
+
+## Check your understanding
+
+1. Which conditional means are compared by the slope?
+2. Why does a one-bit increase have the same fitted change everywhere on the line?
+3. Does the positive slope show that surprisal causes longer fixations?
+4. Which dependence structure remains visible in the table?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The slope compares $m(x+1)$ with $m(x)$: fitted mean log FFD at predictor values one bit apart. <!-- dqr-allow: empirical-answer -->
+2. The straight-line restriction makes $m(x+1)-m(x)=\beta_1$ for every $x$. <!-- dqr-allow: empirical-answer -->
+3. No. The slope is an observational item-position association and does not identify a causal effect of surprisal. <!-- dqr-allow: empirical-answer -->
+4. Passage membership remains visible through `Text_ID`; reader dependence cannot be recovered after aggregation. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](centering-predictors.qmd) changes the reference point without changing the fitted relation.

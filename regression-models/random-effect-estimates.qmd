@@ -1,79 +1,123 @@
 ---
 title: "Group-specific estimates"
+execute: {warning: false, message: false}
 ---
 
-The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model thus gives each observed group a partially pooled estimate of its deviation from the population relation. These values are often called [**conditional modes**](https://lme4.github.io/lme4/reference/ranef.html) in a frequentist fit or [**group-specific estimates**](https://lme4.github.io/lme4/reference/ranef.html) more generally.
+The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model gives each observed group a partially pooled estimate of its deviation from the population relation. In a frequentist `lme4` fit, `ranef()` reports these values as **conditional modes**.
 
-They are useful summaries of the fitted group structure. They are not raw group means, independently estimated fixed coefficients, or error free rankings.
+They are useful summaries of the fitted group structure. They are not raw group means, independently estimated coefficients, or error-free rankings.
 
-## Constructing the group estimate
+## Defining the conditional mode
 
-Suppose a random intercept model has population baseline $\widehat\beta_0$ and estimated speaker deviation $\widehat b_j$. The fitted speaker baseline is
+For participant $p$, collect the intercept and frequency-slope deviations in $\mathbf b_p$. Conditional on fitted population coefficients and variance components, the estimate is
 
 $$
-\widehat\beta_0+\widehat b_j.
+\widehat{\mathbf b}_p
+=\operatorname*{arg\,max}_{\mathbf b_p}
+\left{
+\log f(\mathbf y_p\mid\mathbf b_p,\widehat{\boldsymbol\beta},\widehat\sigma)
++\log g(\mathbf b_p\mid\widehat{\boldsymbol\Sigma}_p)
+\right}.
 $$
 
-The deviation answers a conditional question: given the population coefficients, variance components, and this speaker's observations, where does the model place the speaker relative to the population center?
+The first term rewards values that fit the participant's trials. The second rewards values plausible under the estimated participant distribution. Their combination produces partial pooling.
 
-The estimate is partially pooled through the shared group distribution. A speaker with an unusually high raw mean based on two noisy tokens will usually have an estimated deviation closer to zero than that raw difference. A speaker with many consistent observations receives less shrinkage.
+For a simple intercept-only normal model, the same balance appears in
 
-Raw group means and partially pooled estimates differ most for groups with little information or high within-group noise.
+$$
+\widehat b_p
+=\frac{n_p\tau_p^2}{n_p\tau_p^2+\sigma^2}
+(\overline y_p-\beta_0).
+$$
 
-## Extracting both kinds of quantity
+The MALD focal model uses a two-dimensional participant vector, so software performs the corresponding multivariate calculation.
 
-With `lme4`, `ranef()` returns estimated deviations and `coef()` adds the population coefficients to return group-specific coefficients.
+## Extracting estimates and conditional uncertainty
 
-```r
-speaker_deviations <- ranef(fit_intercepts)$participant
-speaker_coefficients <- coef(fit_intercepts)$participant
+```{r}
+#| label: mald-ranef
+library(lme4)
+library(ggplot2)
 
-head(speaker_deviations)
-head(speaker_coefficients)
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
+
+standardize <- function(x) {
+  as.numeric(scale(x))
+}
+
+mald$z_frequency <- standardize(mald$log_frequency_subtlex)
+mald$z_duration <- standardize(mald$log_duration)
+mald$z_trial <- standardize(mald$trial_order)
+
+fit <- lmer(
+  log_rt ~ z_frequency + z_duration + z_trial +
+    (1 + z_frequency | participant_id) +
+    (1 | item),
+  data = mald,
+  control = lmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+participant_effects <- ranef(fit, condVar = TRUE)$participant_id
+conditional_variance <- attr(participant_effects, "postVar")
+
+intercepts <- data.frame(
+  participant = rownames(participant_effects),
+  estimate = participant_effects[["(Intercept)"]],
+  conditional_se = sqrt(conditional_variance[1L, 1L, ]),
+  row.names = NULL
+)
+intercepts <- intercepts[order(intercepts$estimate), ]
+intercepts$order <- seq_len(nrow(intercepts))
+
+head(intercepts)
 ```
 
-If the model contains only a participant random intercept, the first table reports $\widehat b_{0j}$. The second reports $\widehat\beta_0+\widehat b_{0j}$ and repeats any population slopes.
+The participant-level standard deviation in `VarCorr(fit)` describes variation across the modeled participant population. A row's `conditional_se` instead describes local uncertainty for one participant's conditional mode, conditional on the fitted population parameters. The two quantities answer different questions.
 
-These tables should be interpreted with the model formula in view. A deviation of 20 ms is relative to the model's baseline predictor values. Changing a coding reference or centering a continuous predictor changes the intercept meaning.
-
-## Displaying the estimates and their uncertainty
-
-A caterpillar plot orders group deviations and displays their conditional uncertainty.
-
-```r
-library(lattice)
-
-dotplot(ranef(fit_intercepts, condVar = TRUE))
+```{r}
+#| label: plot-mald-ranef
+ggplot(intercepts, aes(x = estimate, y = order)) +
+  geom_errorbarh(
+    aes(
+      xmin = estimate - 1.96 * conditional_se,
+      xmax = estimate + 1.96 * conditional_se
+    ),
+    height = 0,
+    color = "grey65"
+  ) +
+  geom_vline(xintercept = 0, color = "grey80", linewidth = 0.4) +
+  geom_point(size = 0.9, color = "#1F5A85") +
+  labs(
+    x = "Participant conditional mode (log response time)",
+    y = "Participants ordered by conditional mode"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
 ```
 
-The plot can reveal groups with weak information, groups with unusual fitted deviations, and a group distribution that may not resemble the assumed shape. It is a model diagnostic and descriptive display.
+The intervals overlap heavily through much of the ordering. A participant placed above another by point estimate need not have a stably higher baseline. Rank uncertainty is part of the result.
 
-The intervals are conditional on estimated population parameters in common frequentist implementations. They do not include every source of uncertainty. A Bayesian posterior for each group effect can represent parameter uncertainty more fully, but the ranks remain uncertain there as well.
+## Distinguishing deviations from group-specific coefficients
 
-## Random-effect estimates and multiple testing
+For participant $p$, the group-specific intercept is
 
-The model assumes that the group deviations arise from one population distribution. Testing every speaker against zero and labeling speakers whose intervals exclude zero changes the scientific target. It treats sampled groups as a collection of separate hypotheses and creates a multiple comparison problem.
+$$
+\widehat\beta_0+\widehat b_{0p},
+$$
 
-If particular speakers, dialects, or corpora are the scientific targets, their planned comparisons should be represented explicitly in the population relation. Random effects are not a substitute for declaring those targets.
+and the group-specific frequency slope is
 
-## Treating ranks as uncertain
+$$
+\widehat\beta_f+\widehat b_{1p}.
+$$
 
-The displayed order is based on point estimates. Neighboring groups can exchange ranks across plausible parameter values. A plot that places speaker 17 above speaker 9 does not establish a stable population ordering.
+`ranef(fit)` returns the deviations $\widehat b_{0p}$ and $\widehat b_{1p}$; `coef(fit)` adds the population coefficients. Both depend on the predictor reference points. Here the intercept refers to mean log frequency, mean log duration, and mean trial order because the predictors were standardized.
 
-Rank uncertainty is often greatest in the middle, where many deviations are similar. Extreme estimates may also move substantially when their groups have few observations. Reporting the first and last point estimate without uncertainty can thus overstate what the data say.
-
-## Using the estimates for appropriate questions
-
-Group estimates can help with three tasks:
-
-1. checking whether a few groups dominate a fitted pattern;
-2. describing the scale of modeled group variation;
-3. generating a new, separately tested hypothesis about measured group properties.
-
-They should not replace the population coefficient when the groups were sampled for generalization. Nor should they be correlated with a new group predictor using only the point estimates as if those estimates were observed without error. A measured group predictor belongs in the multilevel model itself.
-
-::: {.callout-note title="Compare raw and partially pooled group estimates"}
-Two speakers have the same raw mean. One contributes three tokens and the other contributes three hundred. Why might their pooled deviations differ? Which additional quantities would you inspect before comparing their ranks?
-:::
-
-The [next page](random-slopes.qmd) relaxes the common slope assumption by allowing a predictor association to vary across groups.
+Testing every conditional mode against zero would replace a population model with many separate hypotheses and would create a multiple-comparison problem. If a particular listener or dialect is a planned scientific target, that target should enter the population relation explicitly. The modes here describe modeled heterogeneity among sampled MALD listeners; they are not independently observed traits. The [next page](random-slopes.qmd) examines the participant-specific frequency associations.

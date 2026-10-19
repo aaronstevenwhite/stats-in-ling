@@ -1,14 +1,38 @@
 ---
 title: "Within-cluster loss"
+execute:
+  cache: false
 ---
 
-K-means requires the number of centroids $K$ before fitting. How should we choose it? A small $K$ may force rather different speaker profiles into one group. A large $K$ may assign separate centroids to irregularities that do not recur. Recall from [training and test data](../model-criticism-and-prediction/training-and-test-data.qmd) that training loss rewards flexibility on the observations used for fitting. It thus cannot identify a true count of linguistic groups.
+K-means requires a centroid count before fitting. We now trace the training loss across a declared grid using the same [speaker-relative Peterson-Barney representation](distance-and-scaling.qmd), seed policy, and multi-start fitting rule at every count.
 
-Plotting the fitted within-cluster loss against $K$ produces the standard [**elbow plot**](https://online.stat.psu.edu/stat505/Lesson14). The [**elbow method**](https://online.stat.psu.edu/stat505/Lesson14) looks for a point after which another centroid produces a much smaller reduction than earlier centroids did.
+## Reconstructing the acoustic representation
 
-## Defining the loss at each group count
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
 
-For a fitted K-means partition with $K$ centroids, write
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+```
+
+## Loss at a declared centroid count
+
+For the K-means fit with $K$ centroids, write
 
 $$
 W_K
@@ -19,156 +43,102 @@ W_K
 \right\rVert^2.
 $$
 
-The subscript $K$ records that both the assignments and centroids were fit under that candidate count. Lower $W_K$ means that the represented rows lie closer to their assigned centroids on the training representation. It does not yet say what the centroids mean linguistically.
-
-To measure what the next centroid adds, define the reduction
+The subscript records that both assignments and centroids were estimated under candidate count $K$. The reduction obtained by adding centroid $K$ is
 
 $$
 \Delta_K
 =
-W_{K-1}-W_K
+W_{K-1}-W_K,
+\qquad K\geq2.
 $$
 
-for $K\geq2$. A larger $\Delta_K$ means that moving from $K-1$ to $K$ centroids substantially improves fitted compactness.
+A larger $\Delta_K$ means that the additional centroid removes more squared reconstruction error from the fitted rows.
 
-## Why the optimum curve cannot rise
+## Why the optimal curve cannot rise
 
-Suppose we have a fitted solution with $K$ centroids. A model with $K+1$ centroids can reproduce that solution by placing the additional centroid on an existing centroid and leaving the assignments unchanged.
-
-Since the $K+1$ model can do at least this well and may find a better partition,
+A model with $K+1$ centroids can reproduce a $K$-centroid solution by duplicating one existing center and retaining the assignments. Since the larger model can do at least this well,
 
 $$
 W_{K+1}\leq W_K.
 $$
 
-Thus, training loss cannot tell us to stop by reaching a minimum and then rising. Its minimum occurs at the largest permitted $K$, including the degenerate case of one centroid per distinct row.
+Thus, the globally minimized training loss reaches its smallest value at the largest permitted $K$. A computed curve can still rise if an algorithm reaches a poorer local solution for one candidate; several starts reduce that computational failure without changing the mathematical relation.
 
-The globally minimized within-cluster loss decreases monotonically as $K$ increases because greater flexibility is evaluated on the same observations used to fit it. A reported K-means curve can still rise when the fitting algorithm reaches a poorer [local minimum](k-means.qmd#initial-values-can-change-the-solution) for one value of $K$. Multiple starts reduce that computational problem but do not change the monotonicity of the global optimum.
-
-## Calculating an elbow curve
-
-Suppose repeated K-means fits give
-
-| $K$ | $W_K$ |
-|---:|---:|
-| 1 | 500 |
-| 2 | 280 |
-| 3 | 190 |
-| 4 | 165 |
-| 5 | 148 |
-
-The first reduction is
-
-$$
-\Delta_2
-=
-500-280
-=
-220.
-$$
-
-The remaining reductions are
-
-$$
-\Delta_3=280-190=90,
-$$
-
-$$
-\Delta_4=190-165=25,
-$$
-
-and
-
-$$
-\Delta_5=165-148=17.
-$$
-
-The move from two to three centroids still removes 90 squared units. Later moves remove only 25 and 17. A reader might place the elbow near $K=3$ because the rate of improvement becomes much smaller after that point. That statement is about this numerical curve, not evidence that the speakers come in three natural types.
-
-This interpretation is a judgment about the shape of the curve. The number 3 is not produced by a universal cutoff.
-
-## Fitting and plotting the curve in R
-
-Fit every candidate with several initializations so that a poor start is less likely to distort one point on the curve.
+## Fitting the observed loss curve
 
 ```{r}
-#| eval: false
+seed <- 1952L
+k_grid <- 1:15
+kmeans_fits <- vector("list", length(k_grid))
+loss_rows <- vector("list", length(k_grid))
 
-candidate_k <- 1:10
+for (k in k_grid) {
+  set.seed(seed + k)
+  fit <- stats::kmeans(
+    X,
+    centers = k,
+    nstart = 100L,
+    iter.max = 200L,
+    algorithm = "Hartigan-Wong"
+  )
+  kmeans_fits[[k]] <- fit
+  loss_rows[[k]] <- data.frame(
+    k = k,
+    total_within_cluster_loss = fit$tot.withinss,
+    iterations = fit$iter
+  )
+}
 
-set.seed(214)
+loss_curve <- dplyr::bind_rows(loss_rows) |>
+  dplyr::mutate(
+    absolute_drop = dplyr::lag(total_within_cluster_loss) -
+      total_within_cluster_loss,
+    proportional_drop = absolute_drop /
+      dplyr::lag(total_within_cluster_loss)
+  )
 
-within_loss <- vapply(
-  candidate_k,
-  function(k) {
-    kmeans(
-      X_scaled,
-      centers = k,
-      nstart = 50
-    )$tot.withinss
-  },
-  numeric(1)
-)
+stopifnot(all(diff(loss_curve$total_within_cluster_loss) <= 1e-8))
+knitr::kable(loss_curve, digits = 3)
 ```
 
-Plot the loss rather than printing only the selected value.
+The observed curve falls from `r round(loss_curve$total_within_cluster_loss[loss_curve$k == min(k_grid)], 3)` at the smallest candidate to `r round(loss_curve$total_within_cluster_loss[loss_curve$k == max(k_grid)], 3)` at the largest. The ten-centroid fit has loss `r round(loss_curve$total_within_cluster_loss[loss_curve$k == 10], 3)`, and adding the eleventh centroid reduces the loss by `r round(loss_curve$absolute_drop[loss_curve$k == 11], 3)`.
 
 ```{r}
-#| eval: false
+#| fig-width: 7
+#| fig-height: 4.2
+#| fig-alt: "Within-cluster sum of squares for K-means fits to the Peterson and Barney vowel tokens across one through fifteen centroids."
 
-plot(
-  candidate_k,
-  within_loss,
-  type = "b",
-  xlab = "Number of centroids",
-  ylab = "Within-cluster sum of squares"
-)
+ggplot2::ggplot(loss_curve, ggplot2::aes(
+  x = k, y = total_within_cluster_loss
+)) +
+  ggplot2::geom_line(color = "#2B6CB0", linewidth = 0.7) +
+  ggplot2::geom_point(color = "#2B6CB0", size = 1.7) +
+  ggplot2::scale_x_continuous(breaks = seq(1, 15, by = 2)) +
+  ggplot2::labs(
+    x = "Number of centroids",
+    y = "Within-cluster sum of squares"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
 ```
 
-The reductions can be displayed directly.
+## The elbow is a visual judgment
 
-```{r}
-#| eval: false
+An [**elbow plot**](https://online.stat.psu.edu/stat505/Lesson14) displays $W_K$ against $K$. The [**elbow method**](https://online.stat.psu.edu/stat505/Lesson14) looks for a count after which additional centroids produce much smaller reductions. The Peterson-Barney curve supplies real reductions, but it does not supply a universal cutoff for what counts as small.
 
-data.frame(
-  added_centroid = candidate_k[-1],
-  loss_reduction = -diff(within_loss)
-)
-```
+The curve drops quickly at low counts and then flattens. More than one bend remains visually defensible, however. Reporting the complete curve keeps this judgment visible.
 
-The code uses the same representation, scaling, starting policy, and fitting settings at every $K$. Changing these choices midway would make the points belong to different procedures.
+## Loss remains tied to the representation
 
-## The elbow may be ambiguous
+Within-cluster loss depends on feature units, columns, and row count. Replacing speaker-relative scores with raw hertz would change the vertical scale and could change the fitted partitions. Duplicating F2 would give it twice the influence.
 
-Some curves decline smoothly without a visible bend. Two readers may also locate different elbows on the same curve. This is not a computational error. The elbow rule does not define how large the reduction ratio must be.
-
-An elbow is often ambiguous. The plot can narrow attention to a range of plausible counts without selecting one mechanically.
-
-A potential response is to search for a more elaborate curve transformation until a bend appears. That changes the rule after seeing the result. A better report shows the original loss curve, states the candidate range, and treats the elbow as one diagnostic.
-
-## Loss values depend on the representation
-
-Within-cluster loss depends on the feature units, number of columns, and number of rows. A loss of 190 has no standalone linguistic interpretation.
-
-If formants are measured in hertz rather than kilohertz, raw squared distances change. If a feature is duplicated, it receives additional influence. If the sample contains more tokens, the sum has more terms.
-
-Thus, loss curves from differently constructed representations should not be compared as though their vertical axes measured one common quantity. Refit and reinterpret the complete curve under each declared representation.
-
-## Training compactness does not imply performance on held-out rows
-
-The elbow describes the rows used to estimate the centroids. It does not show that the partition is stable under another sample or that the centroids represent new speakers.
-
-Increasing $K$ can create a small cluster around one unusual training row. This reduces $W_K$ but may not improve representation of any new row. Held-out validation later in the module will evaluate performance on rows excluded from fitting.
-
-The elbow also says nothing about whether rows are closer to their assigned cluster than to an alternative. The [next page](silhouette-scores.qmd) adds that row-level comparison.
+Training compactness also does not establish a vowel inventory. Every additional centroid increases representational capacity on the same observations used to estimate it. The monotone loss curve cannot decide that one count is linguistically correct merely by reaching a minimum.
 
 ## Checking the loss curve
 
-1. Why can $W_{K+1}$ not exceed $W_K$ for an optimally fit solution?
-2. Which reduction in the worked table is largest?
-3. Why might a reader place the elbow near $K=3$?
-4. What makes the elbow rule judgment-dependent?
-5. Why should losses from raw and standardized representations not be placed on one common scale?
-6. What property of new rows is not measured by the fitted loss curve?
+1. Why must an optimal $W_{K+1}$ be no greater than $W_K$?
+2. Which additions produce the largest empirical reductions in this table?
+3. Why can two readers locate different elbows on the same curve?
+4. Why is the loss scale not comparable with a raw-hertz analysis?
+5. What linguistic claim is not licensed by the smallest displayed loss?
 
-The elbow plot shows how training compactness changes as centroids are added. Its monotonicity makes a visual elbow possible but prevents training loss from identifying a linguistic category count by itself. The [next page](silhouette-scores.qmd) evaluates each row relative to both its assigned cluster and its nearest alternative cluster.
+The loss curve shows how training compactness changes with capacity. The [next page](silhouette-scores.qmd) asks whether each observed token is closer on average to its assigned cluster than to its nearest alternative cluster.

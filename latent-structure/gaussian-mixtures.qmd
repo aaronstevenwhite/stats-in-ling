@@ -1,46 +1,60 @@
 ---
 title: "Gaussian mixtures"
+execute:
+  cache: false
 ---
 
-Suppose we retain F1 and F2 frequency measurements for a collection of vowel tokens. The scatterplot may contain several overlapping dense regions. The linguistic question is how those acoustic regions relate to the vowel categories intended in the elicitation task. K-means assigns every token to one centroid and treats every direction around a centroid alike after scaling. The observed regions may instead differ in spread, orientation, and overlap.
+The [Peterson-Barney production space](representing-objects.qmd) contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A [**Gaussian mixture model (GMM)**](https://scikit-learn.org/stable/modules/mixture.html) instead represents regions by weighted probability distributions, each with an estimated location and spread.
 
-A [**Gaussian mixture model (GMM)**](https://scikit-learn.org/stable/modules/mixture.html) represents the observations as arising from several weighted Gaussian component distributions. Each component extends the earlier [normal distribution](../random-variables-and-distributions/normal-distribution.qmd) to several jointly modeled measurements, with its own mean vector and [covariance](../random-variables-and-distributions/covariance.qmd). Every component contributes some density to every observed token.
+## Reconstructing the feature matrix
 
-::: {.callout-note title="Reading: Peterson and Barney vowel measurements"}
-Read Peterson and Barney's [study of vowel control methods](https://doi.org/10.1121/1.1906875). The study used 76 speakers---33 men, 28 women, and 15 children---who each produced two randomized lists containing ten monophthongal vowels in /hVd/ words. Focus on the relation among the intended vowel in the elicitation word, the acoustic measurements, and the separate listener-identification task.
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+suppressPackageStartupMessages(library(mclust))
 
-**Why this reading?** The formant-frequency measurements motivate overlapping Gaussian components, while the age/sex speaker groupings show why raw acoustic geometry contains substantial between-speaker variation. The elicitation words provide external information for interpreting components after fitting. They do not turn an acoustic component into a phonological category.
-:::
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
 
-::: {.callout-note title="Data documentation"}
-The [`phonTools::pb52` documentation](https://search.r-project.org/CRAN/refmans/phonTools/html/pb52.html) and the [Praat table documentation](https://www.fon.hum.uva.nl/praat/manual/Create_formant_table__Peterson___Barney_1952_.html) describe the released acoustic table: 1,520 rows, comprising two productions of each of ten words by each of 76 speakers, with F0 and F1--F3 recorded in hertz. The paper reports a listener task, but listener-level responses are not columns in this table. Thus, the table supports an analysis of productions and their acoustic measurements, not a token-level analysis of listener responses.
-:::
+vowels <- pb52 |>
+  dplyr::mutate(row_id = dplyr::row_number()) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
 
-## Defining one Gaussian component
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+stopifnot(
+  max(abs(tapply(vowels$z_f1, vowels$speaker, mean))) < 1e-12,
+  max(abs(tapply(vowels$z_f2, vowels$speaker, mean))) < 1e-12
+)
+```
 
-Let $\mathbf{x}_i\in\mathbb{R}^p$ be the measurements for token $i$. Component $k$ has mean vector
+## One Gaussian component
+
+Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s measurements. Component $k$ has mean
 
 $$
-\boldsymbol{\mu}_k
-\in
-\mathbb{R}^p
+\boldsymbol{\mu}_k\in\mathbb{R}^p
 $$
 
-and covariance matrix
+and covariance
 
 $$
-\boldsymbol{\Sigma}_k
-\in
-\mathbb{R}^{p\times p}.
+\boldsymbol{\Sigma}_k\in\mathbb{R}^{p\times p}.
 $$
 
 Its density is
 
 $$
 \mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_k,
-\boldsymbol{\Sigma}_k)
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
 =
 \frac{
 \exp\left[
@@ -50,173 +64,187 @@ $$
 (\mathbf{x}_i-\boldsymbol{\mu}_k)
 \right]
 }{
-(2\pi)^{p/2}
-|\boldsymbol{\Sigma}_k|^{1/2}
+(2\pi)^{p/2}|\boldsymbol{\Sigma}_k|^{1/2}
 }.
 $$
 
-The mean locates the component center. The covariance controls its scale and orientation. In two formant dimensions, equal-density contours form ellipses when the covariance is unrestricted.
-
-## Reading a two-dimensional covariance
-
-For F1 and F2, write
+For F1 and F2,
 
 $$
 \boldsymbol{\Sigma}_k
 =
 \begin{bmatrix}
-\sigma^2_{F1,k}
-&
-\sigma_{F1,F2,k}\\
-\sigma_{F1,F2,k}
-&
-\sigma^2_{F2,k}
+\sigma^2_{F1,k}&\sigma_{F1,F2,k}\\
+\sigma_{F1,F2,k}&\sigma^2_{F2,k}
 \end{bmatrix}.
 $$
 
-The diagonal entries describe marginal spread along F1 and F2. The off-diagonal covariance describes whether deviations from the component means tend to occur together.
+The mean locates the component, while the covariance controls the scale and orientation of its equal-density ellipses.
 
-A positive covariance tilts the ellipse toward joint increases. A negative covariance tilts it toward an increase in one formant and decrease in the other. Zero covariance aligns the ellipse with the measurement axes, though it does not imply that the complete vowel system is independent across formants.
+## Combining components
 
-This covariance geometry is one way a Gaussian component differs from the spherical groups favored by K-means.
-
-## Combining components with weights
-
-Let $K$ be the number of components. Component $k$ receives mixing weight
+Component $k$ receives weight
 
 $$
 \pi_k\geq0,
 $$
 
-and the weights satisfy
+with
 
 $$
 \sum_{k=1}^{K}\pi_k=1.
 $$
 
-Using the [marginalization rule for a joint distribution](../random-variables-and-distributions/marginal-distributions.qmd), the mixture density for observation $i$ is
+The mixture density is
 
 $$
-p(\mathbf{x}_i)
+f(\mathbf{x}_i)
 =
 \sum_{k=1}^{K}
 \pi_k
 \mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_k,
-\boldsymbol{\Sigma}_k).
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k).
 $$
 
-Every term is nonnegative, and the component weights determine their prior prevalence in the mixture. The model does not have to choose one hard group before assigning density to the observation.
+Every component contributes density to every token, even when one contribution is much larger than the others.
 
-## Calculating one mixture density
+## Fitting the declared ten-component model
 
-Suppose a one-dimensional mixture has two components. At a particular formant value, component 1 has density 0.08 and weight 0.60. Component 2 has density 0.02 and weight 0.40.
-
-The weighted contribution from component 1 is
-
-$$
-0.60(0.08)=0.048.
-$$
-
-The weighted contribution from component 2 is
-
-$$
-0.40(0.02)=0.008.
-$$
-
-The mixture density is their sum:
-
-$$
-p(x_i)
-=
-0.048+0.008
-=
-0.056.
-$$
-
-Component 1 contributes more density at this observation, but component 2 still contributes. The [next page](posterior-membership.qmd) normalizes these contributions into membership probabilities.
-
-## Reproducing the density in R
-
-For a one-dimensional Gaussian mixture with known parameters, `dnorm()` provides each component density.
+We fix a ten-component `EVI` covariance family before fitting. In `mclust`, `EVI` is diagonal with equal volume and varying shape. Thus, covariance ellipses are axis-aligned, share a determinant, and may allocate their spread differently between the two formant dimensions.
 
 ```{r}
-#| eval: false
-
-x_i <- 0
-weight <- c(0.60, 0.40)
-
-# Choose parameters that give densities 0.08 and 0.02
-# at the same observation.
-component_sd <- rep(
-  1 / (0.08 * sqrt(2 * pi)),
-  2
+seed <- 1952L
+set.seed(seed)
+fit_g10 <- mclust::Mclust(
+  X,
+  G = 10L,
+  modelNames = "EVI",
+  verbose = FALSE
 )
 
-component_mean <- c(
-  0,
-  component_sd[2] * sqrt(2 * log(4))
+stopifnot(
+  fit_g10$G == 10L,
+  fit_g10$modelName == "EVI",
+  abs(sum(fit_g10$parameters$pro) - 1) < 1e-12
 )
 
-component_density <- dnorm(
-  x_i,
-  mean = component_mean,
-  sd = component_sd
-)
+sigma <- fit_g10$parameters$variance$sigma
+component_parameters <- dplyr::bind_rows(lapply(
+  seq_len(fit_g10$G),
+  function(component) {
+    covariance <- sigma[, , component]
+    stopifnot(all(eigen(covariance, symmetric = TRUE)$values > 0))
+    data.frame(
+      component = component,
+      weight = fit_g10$parameters$pro[component],
+      mean_z_f1 = fit_g10$parameters$mean[1, component],
+      mean_z_f2 = fit_g10$parameters$mean[2, component],
+      variance_z_f1 = covariance[1, 1],
+      covariance_z_f1_z_f2 = covariance[1, 2],
+      variance_z_f2 = covariance[2, 2]
+    )
+  }
+))
 
-weighted_contribution <- weight * component_density
-mixture_density <- sum(weighted_contribution)
-
-component_density
-weighted_contribution
-mixture_density
+knitr::kable(component_parameters, digits = 3)
 ```
 
-The printed component densities are 0.08 and 0.02 apart from numerical rounding. The computational structure matches the formal definition: evaluate each density, multiply by its weight, and sum.
+The fitted weights sum to `r round(sum(component_parameters$weight), 3)`, and every covariance matrix is positive definite. These are model checks, not linguistic interpretations of the component numbers.
 
-For our illustrative vowel analysis, $\mathbf{x}_i$ contains F1 and F2, so each component evaluation uses a bivariate mean and covariance. The source table also contains F0 and F3; leaving them out is a feature-selection decision, not an absence in the original data. Fitting the selected parameters comes later. For now, we define only the observation model they must satisfy.
+## Plotting the fitted distributions with the data
 
-## Covariance restrictions state category geometry
+```{r}
+ellipse_points <- function(mean, covariance, component, level = 0.90) { # dqr-allow: algorithm-setting
+  eig <- eigen(covariance, symmetric = TRUE)
+  angles <- seq(0, 2 * pi, length.out = 181L)
+  unit_circle <- rbind(cos(angles), sin(angles))
+  transform <- eig$vectors %*%
+    diag(sqrt(eig$values), nrow = 2L) *
+    sqrt(stats::qchisq(level, df = 2L))
+  points <- t(transform %*% unit_circle)
+  data.frame(
+    component = factor(component),
+    z_f1 = points[, 1] + mean[1],
+    z_f2 = points[, 2] + mean[2]
+  )
+}
 
-A mixture must say which covariance parameters can differ across components. A restrictive model may give all components one shared spherical covariance. A flexible model may give every component its own unrestricted covariance matrix.
+ellipses <- dplyr::bind_rows(lapply(
+  seq_len(fit_g10$G),
+  function(component) {
+    ellipse_points(
+      fit_g10$parameters$mean[, component],
+      sigma[, , component],
+      component
+    )
+  }
+))
+```
 
-The shared spherical model says that every component has the same spread in all measured directions. That may be implausible for vowel formants. The unrestricted model can represent differently shaped and tilted clouds, but it estimates more parameters and may behave poorly for a sparsely represented component.
+```{r}
+#| fig-width: 7
+#| fig-height: 4.5
+#| fig-alt: "Peterson and Barney vowel tokens in within-speaker standardized F1-F2 space with fitted ten-component Gaussian mixture means and ninety-percent component ellipses."
 
-The covariance structure determines each component's geometry. This modeling assumption is substantive, not merely computational.
+ggplot2::ggplot(vowels, ggplot2::aes(x = z_f2, y = z_f1)) +
+  ggplot2::geom_point(color = "grey35", alpha = 0.24, size = 0.6) + # dqr-allow: algorithm-setting
+  ggplot2::geom_path(
+    data = ellipses,
+    ggplot2::aes(x = z_f2, y = z_f1, group = component),
+    inherit.aes = FALSE,
+    color = "#2B6CB0",
+    linewidth = 0.65
+  ) +
+  ggplot2::geom_point(
+    data = component_parameters,
+    ggplot2::aes(x = mean_z_f2, y = mean_z_f1),
+    inherit.aes = FALSE,
+    color = "black",
+    shape = 4,
+    size = 2.1,
+    stroke = 0.9
+  ) +
+  ggplot2::scale_x_reverse() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::labs(
+    x = "Within-speaker standardized F2",
+    y = "Within-speaker standardized F1"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
 
-## Mapping the model to Peterson and Barney
+The ellipses show 90% contours under each fitted Gaussian component. They are model summaries laid over the raw transformed points; they are not boundaries inferred from intended-vowel labels.
 
-In the Peterson and Barney table, a row is one recorded vowel token, while each speaker contributes 20 rows: ten elicitation words times two repetitions. The mixture features can be F1 and F2. Elicitation-word and intended-vowel metadata are withheld from fitting and used afterward to describe component alignment.
+## Post-fit alignment and uncertainty
 
-Raw formant frequencies contain between-speaker differences associated with vocal-tract anatomy as well as dialectal and other production differences. A mixture of raw F1 and F2 may thus allocate components partly to speaker groups. Standardizing formants within speaker changes the target to a speaker-relative acoustic representation. It may reduce some anatomical variation, but normalization can also remove sociolinguistically relevant variation; [Rankinen and de Jong](https://doi.org/10.1177/0023830920929379), for instance, show that this tradeoff depends on the normalization procedure.
+```{r}
+external_ari <- mclust::adjustedRandIndex(
+  fit_g10$classification,
+  vowels$vowel
+)
+mean_uncertainty <- mean(fit_g10$uncertainty)
+```
 
-Better alignment after normalization does not make each component identical to one phoneme, and a preferred component count need not equal the ten intended vowels. The fitted components and the linguistic categories remain different objects.
+The hard component assignments have ARI `r round(external_ari, 3)` against the withheld intended-vowel metadata, while mean classification uncertainty is `r round(mean_uncertainty, 3)`. The former describes post-fit alignment. The latter summarizes how much posterior mass remains outside the most probable component.
 
-## A component is not a phoneme
+## Components are not phonemes
 
-A fitted Gaussian component is a distributional summary under the chosen measurements, transformations, component count, and covariance restrictions. It is not automatically a phonological category.
+A fitted Gaussian component is a distributional object under the chosen measurements, transformation, component count, and covariance restriction. Several components may cover productions from one elicitation category, and one component may cover overlapping productions from several categories.
 
-Several components may describe productions associated with one elicitation category because of speaker or token-to-token variation. One component may cover overlapping acoustic regions associated with several intended vowels. The mixture likelihood itself does not know which interpretation is linguistically correct.
+The speaker-relative transformation may reduce anatomy-related differences, but it can also remove sociolinguistically relevant variation. Moreover, F3 and dynamic information remain outside the model. A potential worry is thus that a sharp component reflects an incomplete acoustic representation. Post-fit alignment cannot eliminate that limitation.
 
-Comparing fitted components with intended labels does not make the analysis supervised. The labels are external evidence used after fitting. They can diagnose alignment without determining the fitted objective.
+## Covariance collapse
 
-## Guarding against collapsing covariance
+An unrestricted Gaussian component can concentrate around very few rows while its covariance approaches singularity. The likelihood may then grow without representing a recurring acoustic region. Positive-definiteness checks, covariance restrictions, and fitting diagnostics must precede interpretation.
 
-An unrestricted Gaussian component can concentrate around very few observations with a very small covariance. Its density may become extremely large, producing a degenerate likelihood fit.
-
-This is a likelihood singularity: a component covariance can collapse around one observation as its likelihood grows without bound. Covariance restrictions, regularization, minimum component sizes, and careful fitting controls may be needed. A high likelihood is not trustworthy when it arises from a nearly singular component around one token.
-
-The failure matters linguistically because an apparent tiny acoustic group may be a numerical collapse rather than a recurring pattern in vowel production.
+The `EVI` restriction used here limits the fitted geometry. It does not establish that every acoustic region truly has diagonal covariance.
 
 ## Checking the observation model
 
-1. What do $\boldsymbol{\mu}_k$ and $\boldsymbol{\Sigma}_k$ describe?
-2. Why do the mixture weights sum to one?
-3. How is the hand-calculated density 0.056 obtained?
-4. What can an unrestricted covariance represent that a spherical covariance cannot?
-5. Why should intended vowel labels remain outside the fitted formant mixture?
-6. How can raw formants cause components to track speaker anatomy?
-7. Why can covariance collapse create a misleading component?
+1. What do the fitted means and covariance matrices represent?
+2. Why must the fitted weights sum to one?
+3. Which covariance properties does `EVI` hold equal or allow to vary?
+4. Why are the intended-vowel labels unnecessary for the displayed ellipses?
+5. What does the post-fit ARI establish, and why does it not identify components with phonemes?
 
-A Gaussian mixture assigns each observed acoustic vector the weighted sum of several component densities. Component means, covariances, and weights define a probability model whose geometry is more flexible than a hard centroid partition. Those components remain distributional objects under the selected measurements. The [next page](posterior-membership.qmd) uses Bayes' rule to calculate how the component contributions divide responsibility for one observed token.
+A Gaussian mixture assigns every token the sum of weighted component densities. The [next page](posterior-membership.qmd) normalizes those observed contributions into conditional membership probabilities.

@@ -1,130 +1,100 @@
 ---
 title: "Estimator bias"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-An estimator has a [sampling distribution](properties-of-estimators.qmd) with both a spread and a center. The [standard error](standard-errors.qmd) describes the spread, while the [**bias**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/07%3A_Point_Estimation/7.01%3A_Estimators) describes whether the center lands on the intended target, the estimand:
+Sampling variability describes how estimates change. **Estimator bias** asks whether their sampling-distribution center coincides with a named target:
 
 $$
-\operatorname{Bias}(\widehat{\Theta})
-=\mathbb{E}[\widehat{\Theta}]-\theta.
+\operatorname{Bias}(T;\theta)=\mathbb{E}[T(\mathbf X)]-\theta.
 $$
 
-The expectation averages the estimates that the rule would produce across possible samples generated under the model. Bias thus belongs to an estimator under a sampling model.
+An estimator is unbiased for $\theta$ when this difference is zero.
 
-## Keeping three objects distinct
+## A target-specific comparison
 
-Suppose the target is the population mean consonant duration $\mu$, which we estimate with the sample mean $\overline{X}$. One observed dataset produces the numerical estimate $\overline{x}=82$ ms.
-
-| object | notation | role |
-|---|---|---|
-| estimand | $\mu$ | population quantity being targeted |
-| estimator | $\overline{X}$ | rule applied to a random sample |
-| estimate | $\overline{x}=82$ | rule applied to the observed sample |
-
-Only the estimator has bias. The estimand is the target, and the estimate is one realized number.
-
-## Showing that the sample mean is unbiased
-
-Let $X_1,\ldots,X_n$ have a common population mean $\mu$. The sample mean is
-
-$$
-\overline{X}=\frac{1}{n}\sum_{i=1}^nX_i.
-$$
-
-The [linearity of expectation result derived earlier](../random-variables-and-distributions/linearity-of-expectation.qmd) gives
-
-$$
-\begin{aligned}
-\mathbb{E}[\overline{X}]
-&=\mathbb{E}\left[\frac{1}{n}\sum_{i=1}^nX_i\right]\\
-&=\frac{1}{n}\sum_{i=1}^n\mathbb{E}[X_i]\\
-&=\frac{1}{n}\sum_{i=1}^n\mu\\
-&=\frac{n\mu}{n}\\
-&=\mu.
-\end{aligned}
-$$
-
-Thus
-
-$$
-\operatorname{Bias}(\overline{X})
-=\mathbb{E}[\overline{X}]-\mu
-=0.
-$$
-
-Independence was not required for this expectation calculation. A common mean and linearity were sufficient. Independence matters for the usual standard-error formula, but it does not enter this proof of unbiasedness.
-
-## Separating realized error from bias
-
-Suppose the population mean is $80$ ms and one sample yields $\overline{x}=82$ ms. The realized estimation error is
-
-$$
-\overline{x}-\mu=82-80=2\text{ ms}.
-$$
-
-The sample mean remains unbiased. Other possible samples would yield estimates below 80 ms, above 80 ms, and perhaps exactly at 80 ms. Their errors average to zero under the model.
-
-An observed estimate is not biased merely because it missed the target in one sample: a realized error describes one sample, while bias describes the center of a distribution over possible samples.
-
-## Constructing a biased rule
-
-Now consider a different estimator:
-
-$$
-\widetilde{M}=.9\overline{X}+10.
-$$
-
-This rule moves every sample mean ten percent of the way toward 100 ms. Its expectation is
-
-$$
-\begin{aligned}
-\mathbb{E}[\widetilde{M}]
-&=.9\mathbb{E}[\overline{X}]+10\\
-&=.9\mu+10.
-\end{aligned}
-$$
-
-Its bias is thus
-
-$$
-\begin{aligned}
-\operatorname{Bias}(\widetilde{M})
-&=(.9\mu+10)-\mu\\
-&=10-.1\mu.
-\end{aligned}
-$$
-
-If $\mu=80$ ms, then
-
-$$
-\mathbb{E}[\widetilde{M}]=.9(80)+10=82
-$$
-
-and the bias is 2 ms. If $\mu=120$ ms, the expectation is 118 ms and the bias is $-2$ ms. If $\mu=100$ ms, the bias is zero.
+We use the empirical mean adult-women /I/ duration in the Hillenbrand cohort as $\theta$. We compare the sample mean and sample median, both calculated from speaker-row resamples of the observed adult-women size. The median is not being judged as an estimator of the population median; it is deliberately being evaluated against the mean target.
 
 ```{r}
-#| label: verify-estimator-bias
-#| echo: true
+#| label: hillenbrand-estimator-bias
+library(ggplot2)
 
-mu <- c(80, 100, 120)
-expected_estimate <- .9 * mu + 10
-bias <- expected_estimate - mu
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+women_hid <- subset(vowels, speaker_type == "woman" & vowel == "I")
+x <- women_hid$duration_ms
+theta <- mean(x)
+n <- length(x)
 
-stopifnot(isTRUE(all.equal(bias, c(2, 0, -2))))
-data.frame(mu, expected_estimate, bias)
+set.seed(20261019)
+replicates <- 20000L
+draws <- replicate(replicates, sample(x, n, replace = TRUE), simplify = FALSE)
+mean_estimates <- vapply(draws, mean, numeric(1))
+median_estimates <- vapply(draws, median, numeric(1))
+
+bias_table <- data.frame(
+  estimator = c("Sample mean", "Sample median"),
+  expected_estimate_ms = c(mean(mean_estimates), mean(median_estimates)),
+  bias_ms = c(mean(mean_estimates), mean(median_estimates)) - theta
+)
+
+stopifnot(abs(bias_table$bias_ms[bias_table$estimator == "Sample mean"]) < 0.25)
+bias_table
 ```
 
-Bias is a property of an estimator under a particular sampling model and parameter value. The same estimator may have positive bias at one value, negative bias at another, and zero bias at a third. State the estimator, sampling model, and parameter values when describing its bias.
+For the mean estimator, linearity of expectation gives
 
-## Bias is not the only property
+$$
+\begin{aligned}
+\mathbb{E}[\overline X]
+&=\mathbb{E}\left[\frac{1}{n}\sum_{i=1}^nX_i\right]\\
+&=\frac{1}{n}\sum_{i=1}^n\mathbb{E}[X_i]\\
+&=\theta.
+\end{aligned}
+$$
 
-The transformed rule may vary less across samples because it multiplies $\overline{X}$ by $.9$. That reduced spread could sometimes compensate for its displacement from the target. Unbiasedness alone thus does not rank all estimation procedures.
+The simulation estimates its bias at `r sprintf("%.3f", bias_table$bias_ms[1])` ms. The sample median's estimated bias for this *mean* target is `r sprintf("%.3f", bias_table$bias_ms[2])` ms.
+
+```{r}
+#| label: plot-hillenbrand-estimator-bias
+#| fig-cap: "Sampling distributions of two estimators for the empirical mean. The vertical line is the named mean target."
+bias_plot <- rbind(
+  data.frame(estimator = "Sample mean", estimate_ms = mean_estimates),
+  data.frame(estimator = "Sample median", estimate_ms = median_estimates)
+)
+
+ggplot(bias_plot, aes(estimate_ms)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 38,
+                 fill = "grey75", color = "white") +
+  geom_vline(xintercept = theta, color = "#8B1A1A", linewidth = 0.7) +
+  facet_wrap(~estimator, ncol = 1) +
+  labs(x = "Estimate of mean /I/ duration (ms)", y = "Simulation density") +
+  theme_classic(base_size = 12)
+```
+
+A realized estimate can lie far from $\theta$ even when its estimator is unbiased. Conversely, an estimator may have nonzero bias but small spread. Bias is thus one property of an estimator, not a complete ranking.
 
 ## Check your understanding
 
-1. An unbiased estimator produces an estimate 5 ms above the target. Is this a contradiction?
-2. What is the bias of $\widetilde{M}$ when $\mu=60$ ms?
-3. At what value of $\mu$ is $\widetilde{M}$ unbiased?
-4. Why did the proof for $\overline{X}$ not require independence?
+1. Why is the sample median biased in this analysis without being generally defective?
+2. What expectation appears in the definition of bias?
+3. Distinguish realized estimation error from estimator bias.
+4. Which target would make the sample median a more natural estimator?
 
-The [mean-squared-error page](mean-squared-error.qmd) combines an estimator's variance and bias into one measure of expected error.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The median is evaluated against the empirical mean, not against the median. Its bias is target-specific and does not make it a defective estimator in general. <!-- dqr-allow: empirical-answer -->
+2. Bias uses the sampling expectation $\mathbb{E}[T(\mathbf X)]$ and subtracts the named target $\theta$. <!-- dqr-allow: empirical-answer -->
+3. Realized error is $T(\mathbf x)-\theta$ for one sample; bias is $\mathbb{E}[T(\mathbf X)]-\theta$ across the sampling distribution. <!-- dqr-allow: empirical-answer -->
+4. For this empirical sampling reference, the natural target is the empirical median of adult-women /I/ durations in the observed Hillenbrand cohort; under a broader sampling model, it would be the corresponding population median. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [mean-squared-error page](mean-squared-error.qmd) combines spread and bias in one target-specific criterion.

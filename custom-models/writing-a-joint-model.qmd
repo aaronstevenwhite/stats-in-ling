@@ -2,124 +2,169 @@
 title: "Writing a joint model"
 ---
 
-Suppose several annotators give binary responses to the same property question about predicates in context. Depending on the question, the item might instead be a predicate--argument pair; we fix it here as one predicate node so that the indices have a stable linguistic interpretation. A data-generating process says that each node has an unobserved response propensity and that each response is drawn from the probability implied by that propensity.
+The [preceding page](generative-stories.qmd) introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later.
 
-A [**joint probability model**](https://bruno.nicenboim.me/bayescogsci/ch-custom.html) assigns one probability factor to every random step in the data-generating process. This is the [product rule](../foundations/probability-factorization.qmd) applied to the annotation process. The product states which quantities are conditionally independent and which observations share an unobserved item value.
+A **joint probability model** assigns one factor to every random step in a data-generating process. This is the [product rule](../foundations/probability-factorization.qmd) applied to the annotation process. The product states which quantities are conditionally independent and which observations share an unobserved item value.
 
-## Beginning with the simplest response process
+## Loading the observed-pair set
 
-Let predicate-node item $i$ have an unobserved log-odds value $\theta_i$ for an affirmative response under the stated protocol. For current purposes, all annotators use the same [logistic response mapping](../regression-models/logistic-regression.qmd). The probability of an affirmative response is
+```{r}
+#| label: load-uds-joint
+#| message: false
+#| warning: false
 
-$$
-\pi_i=\operatorname{logit}^{-1}(\theta_i),
-$$
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
 
-and each recorded response follows
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$item_id)) == 1000L,
+  length(unique(uds$annotator_id)) == 12L,
+  setequal(unique(uds$natural_parts), 0:1),
+  !anyDuplicated(paste(uds$item_id, uds$annotator_id, sep = "::"))
+)
 
-$$
-Y_{ij}\sim\operatorname{Bernoulli}(\pi_i).
-$$
+observed_pairs <- uds[c("item_id", "annotator_id", "natural_parts")]
+```
 
-As in the earlier account of [random effects and partial pooling](../regression-models/random-effects.qmd), the item values follow a population distribution,
-
-$$
-\theta_i\sim\mathcal{N}(\mu_\theta,\tau_\theta^2).
-$$
-
-This population distribution has already been motivated in the grouped model sequence. Here it supplies the item generating step needed for the joint distribution. We leave stable annotator tendencies out of this first model and introduce them only after the item model is explicit.
+Let $\mathcal O$ be the `r format(nrow(observed_pairs), big.mark = ",")` item--annotator pairs stored in `observed_pairs`. The likelihood has one response factor for each row in this set. It does not add factors for item--annotator combinations that were never observed.
 
 ## Translating steps into factors
 
-Let $\mathcal O$ be the set of observed item and annotator pairs. For observed responses $\mathbf{y}$ and item values $\boldsymbol\theta$, the joint distribution is
+Let $\theta_i$ be the log odds of a yes response for predicate-node item $i$ in the item-only model. Then
 
 $$
-p(\mathbf{y},\boldsymbol\theta
-\mid\mu_\theta,\tau_\theta)
+\pi_i=\operatorname{logit}^{-1}(\theta_i),
+\qquad
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_i),
+$$
+
+and the item values follow
+
+$$
+\theta_i\sim\mathcal N(\mu_\theta,\tau_\theta^2).
+$$
+
+For observed responses $\mathbf y$ and item values $\boldsymbol\theta$, the joint distribution is
+
+$$
+f(\mathbf y,\boldsymbol\theta\mid\mu_\theta,\tau_\theta)
 =
-\prod_i p(\theta_i\mid\mu_\theta,\tau_\theta)
+\prod_i f(\theta_i\mid\mu_\theta,\tau_\theta)
 \prod_{(i,j)\in\mathcal O}p(y_{ij}\mid\theta_i).
 $$
 
-The first product corresponds to generating each item value. The second corresponds to generating every recorded annotation conditional on its item's value. Writing the product over $\mathcal O$ allows different items to be seen by different annotators. The repeated occurrence of $\theta_i$ in the response factors records the fact that responses to one item share that latent item value.
+The first product generates one item value per predicate node. The second generates each recorded response conditional on the item value named by that row. Repeated occurrences of $\theta_i$ record the fact that responses to one predicate node share information.
 
-The order of the products does not describe temporal order. Multiplication is commutative. The conditional arguments inside each factor carry the dependency claim.
+The order of multiplication does not describe temporal order. Multiplication is commutative; the conditional arguments carry the dependency claim.
 
-## Working through two items
+## Fitting the item-only model
 
-Suppose item 1 has affirmative probability $.75$ and receives responses 1 and 1. Item 2 has affirmative probability $.50$ and receives responses 1 and 0. Conditional on the item probabilities, the response contribution is
-
-$$
-\begin{aligned}
-p(1,1,1,0\mid\pi_1=.75,\pi_2=.50)
-&=(.75)(.75)(.50)(1-.50)\\
-&=.140625.
-\end{aligned}
-$$
-
-The two responses to item 1 use the same $.75$ probability. The two responses to item 2 use the same $.50$ probability. This is how the joint expression records shared item structure without treating the item mean as another observation.
-
-To complete the joint density, multiply this response contribution by the density assigned to each $\theta_i$. Since $\theta_1=\operatorname{logit}(.75)$ and $\theta_2=\operatorname{logit}(.50)=0$, the item factors are
-
-$$
-p(\theta_1\mid\mu_\theta,\tau_\theta)
-p(\theta_2\mid\mu_\theta,\tau_\theta).
-$$
-
-## Computing the joint log density in base R
+The following fit evaluates the empirical item-only model. It uses every row in $\mathcal O$ and partially pools the `r length(unique(uds$item_id))` item deviations. This is an intermediate analysis: omitting annotator effects is a declared simplification, not a claim that annotators have identical response locations.
 
 ```{r}
-joint_log_density <- function(y, item, theta, mu_theta, tau_theta) {
-  response_probability <- plogis(theta[item])
+#| label: fit-uds-item-only
+#| message: false
+#| warning: false
 
-  response_terms <- dbinom(
-    x = y,
-    size = 1,
-    prob = response_probability,
-    log = TRUE
+item_only_fit <- lme4::glmer(
+  natural_parts ~ 1 + (1 | item_id),
+  data = uds,
+  family = stats::binomial(),
+  control = lme4::glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 100000)
   )
-
-  item_terms <- dnorm(
-    x = theta,
-    mean = mu_theta,
-    sd = tau_theta,
-    log = TRUE
-  )
-
-  sum(response_terms) + sum(item_terms)
-}
-
-y <- c(1, 1, 1, 0)
-item <- c(1, 1, 2, 2)
-theta <- qlogis(c(.75, .50))
-
-joint_log_density(
-  y = y,
-  item = item,
-  theta = theta,
-  mu_theta = 0,
-  tau_theta = 1
 )
+
+stopifnot(
+  is.null(item_only_fit@optinfo$conv$lme4$messages),
+  !lme4::isSingular(item_only_fit, tol = 1e-4)
+)
+
+item_levels <- rownames(lme4::ranef(item_only_fit)$item_id)
+item_effect <- lme4::ranef(item_only_fit)$item_id[, 1]
+item_fit <- data.frame(
+  item_id = item_levels,
+  fitted_probability = stats::plogis(
+    unname(lme4::fixef(item_only_fit)[[1]]) + item_effect
+  ),
+  raw_proportion = as.numeric(tapply(
+    uds$natural_parts,
+    factor(uds$item_id, levels = item_levels),
+    mean
+  ))
+)
+
+joint_summary <- data.frame(
+  quantity = c(
+    "population location",
+    "item scale",
+    "integrated log likelihood"
+  ),
+  value = c(
+    unname(lme4::fixef(item_only_fit)[[1]]),
+    sqrt(unname(lme4::VarCorr(item_only_fit)$item_id[1, 1])),
+    as.numeric(stats::logLik(item_only_fit))
+  )
+)
+
+knitr::kable(joint_summary, digits = 3)
 ```
 
-`theta[item]` repeats the appropriate item value for each response row. `dbinom()` calculates the four conditional response terms, while `dnorm()` calculates one population term for each item value. The function evaluates the joint density at supplied parameter values. It does not fit them.
+The integrated log likelihood combines the response factors with the item population rather than treating the fitted item deviations as independent observations. Its numerical value depends on the complete UDS response matrix and the stated item-only model.
+
+## Comparing raw summaries with fitted item probabilities
+
+```{r}
+#| label: plot-uds-item-only
+#| fig-width: 5.8
+#| fig-height: 4.2
+#| fig-cap: "Raw item response proportions and fitted probabilities from the item-only model."
+
+ggplot2::ggplot(
+  item_fit,
+  ggplot2::aes(raw_proportion, fitted_probability)
+) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, color = "grey70") +
+  ggplot2::geom_point(color = "steelblue4", alpha = 0.25, size = 1) + # dqr-allow: algorithm-setting
+  ggplot2::scale_x_continuous(
+    breaks = c(0, 1 / 3, 1 / 2, 2 / 3, 1), # dqr-allow: scale-boundary
+    labels = c("0", "1/3", "1/2", "2/3", "1") # dqr-allow: scale-boundary
+  ) +
+  ggplot2::scale_y_continuous(limits = c(0, 1)) +
+  ggplot2::labs(
+    x = "Raw item yes proportion",
+    y = "Item-only fitted probability"
+  ) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
+
+The vertical bands arise because `r sum(table(uds$item_id) == 2L)` items have two responses and `r sum(table(uds$item_id) == 3L)` have three. The fitted values move raw endpoints toward the item population. This is partial pooling, not recovery of a context-free lexical category.
 
 ## Separating observations from summaries
 
-The raw annotations appear in the conditional response product. An item mean calculated from those same annotations is a deterministic summary of the responses, not a new independent measurement.
+For item $i$ with $n_i$ responses, the raw mean
 
-For item 1, the raw responses $(1,1)$ determine the mean 1. Multiplying the joint model by a second likelihood term for that mean would count the same responses twice. The mean may be used in a descriptive or predictive check, but it should not reenter as independent data.
+$$
+\bar Y_i=\frac{1}{n_i}\sum_{j:(i,j)\in\mathcal O}Y_{ij}
+$$
 
-## Deterministic summaries in the joint distribution
+is determined by response rows already in the likelihood. Multiplying the joint model by a second likelihood term for $\bar Y_i$ would count the same annotations twice. The mean may appear in a plot or predictive check, as it does above, but it is not another measurement.
 
-Including a response and its deterministic summary as separate observations double counts the evidence. The resulting model appears to have more evidence than the annotation protocol produced. Its intervals may be too narrow, and its fit can be dominated by a summary already implied by the raw data.
-
-The duplication can be detected by tracing each likelihood term to the random step and recorded event it represents. If two factors point to the same recorded responses without a second measurement process, one of them is duplicated.
+This trace from probability factors to recorded events is the **factor audit**. If two likelihood factors point to the same recorded responses without a second measurement process, one factor is duplicated.
 
 ::: {.callout-note title="Check the joint model"}
-1. Which product generates latent item values?
-2. Which term makes two responses to item 1 share information?
-3. Why does the order of multiplication not state the dependency structure?
-4. Why is an item mean not an additional response when the raw annotations already enter the likelihood?
+1. Which product generates the latent item values?
+2. Why is the response product indexed by $\mathcal O$?
+3. Why does multiplication order not state the dependency structure?
+4. Why is an item mean not an additional response?
+5. Which simplification does the item-only fit make?
 :::
 
-A joint model translates each random step into one probability factor. Its conditional arguments state which observations share unobserved quantities. Tracing each factor to a recorded event prevents deterministic summaries from being counted twice. We next extend the response step with a stable [annotator effect](annotator-effects.qmd).
+A joint model translates each random step into one probability factor. Before fitting the larger crossed model to released responses, we test whether its parameters can be [recovered under the observed incidence design](parameter-recovery.qmd).
+
+[Previous: Data-generating processes](generative-stories.qmd) · [Next: Parameter recovery](parameter-recovery.qmd)

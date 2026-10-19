@@ -2,91 +2,298 @@
 title: "Comparing predictive loss"
 ---
 
-The [grouped-validation page](grouped-cross-validation.qmd) returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their losses on those same groups. The uncertainty calculation then reuses the [paired-mean procedure](../statistical-inference/paired-mean-inference.qmd) on group-level loss differences.
+The [grouped-validation page](grouped-cross-validation.qmd) returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the transfer target visible.
 
-Suppose two models produce held-out predictions for the same passages. Reporting that Model B has lower aggregate RMSE than Model A gives a direction, but not the distribution of the improvement. A tiny gain concentrated in three passages supports a different claim from a modest gain observed throughout the corpus.
+## MegaOrientation
 
-A paired comparison computes both models' losses on the same held-out groups and summarizes their difference at that level. Pairing removes variation due merely to the two models being evaluated on different observations. It does not make the cross-validated losses independent, because the fitted training sets still overlap.
+[Moon and White (2020)](https://ling.auf.net/lingbuzz/005282/current.pdf) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale. The corrected [MegaOrientation v1.1 release](https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip) changes the released participant and verb inventories after items with irregular-inflection errors were rerun.
 
-## Pointwise differences
+The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. The teaching comparison is narrower. It restricts the release to verbs attested in at least two frames, fits population cumulative-logit models, and holds out every response from a verb together. Thus, the target is an unseen verb within the selected multi-frame inventory, not a reproduction of the paper's latent-type comparison.
 
-For observation $i$, define
-
-$$
-\Delta_i
-=
-L(y_i,\widehat{y}_{i,A})
--
-L(y_i,\widehat{y}_{i,B}).
-$$
-
-Positive $\Delta_i$ favors Model B because it has lower loss. Negative values favor Model A. The sign convention should be stated; “difference in RMSE” is otherwise ambiguous.
-
-If the predictive question concerns independent observations, the distribution of $\Delta_i$ may be the relevant evidence. If it concerns passages, positions within one passage should first be aggregated:
+The two models are
 
 $$
-\Delta_p
-=
-\frac{1}{n_p}
-\sum_{i:g(i)=p}\Delta_i.
+\begin{aligned}
+M_0 &: \text{response}\sim\text{orientation}+\text{frame},\\
+M_1 &: \text{response}\sim\text{orientation}*\text{frame}.
+\end{aligned}
 $$
 
-The mean $\overline{\Delta}$ then describes the average passage-level change in loss among the represented passages. A population interpretation requires an explicit sampling or exchangeability argument for passages; cross-validation alone does not supply one.
-
-## Why not test fold means?
-
-Computational folds do not necessarily correspond to sampling units. Ten folds may each contain positions from several passages, and their training sets overlap. A t test on ten fold means thus treats arbitrary partitions as independent replications.
-
-Returning losses to passages yields 55 paired passage comparisons in a 55-passage corpus, regardless of whether the models were computed with five grouped folds or leave-one-passage-out evaluation. These are still not a probability sample of every possible text, and their predictions arise from overlapping training sets. But they make the available passage-level variation visible rather than mislabeling arbitrary folds as linguistic replications.
-
-## Direction, magnitude, and heterogeneity
-
-A predictive comparison should report at least three quantities.
-
-1. **Aggregate direction and magnitude:** the overall RMSE or mean loss for each model and their difference.
-2. **Improvement rate:** the proportion of held-out groups with $\Delta_g>0$.
-3. **Variation:** an interval or full plot of the group differences.
-
-These quantities can disagree. Model B may have lower overall RMSE because it greatly improves a few difficult passages while slightly harming most others. That model could be useful for position-weighted prediction but provide weak evidence for a typical-passage improvement.
-
-Plotting $\Delta_g$ against group size and baseline loss can locate the source. A gain associated only with long passages may reflect weighting; a gain associated only with high-loss passages may reflect repair of one failure mode.
-
-## An interval for group-level improvement
-
-If held-out groups can be treated as independent draws under a sampling model *and* dependence induced by the overlapping fits is negligible for the intended approximation, a t interval for their mean loss difference is
+For response $y_i$, the ordinal log score is
 
 $$
-\overline{\Delta}
-\;\pm\;
-t_{1-\alpha/2,G-1}
-\frac{s_\Delta}{\sqrt{G}}.
+L_i(M)=-\log p_M(Y_i=y_i\mid x_i).
 $$
 
-The calculation is the same [paired-mean procedure](../statistical-inference/paired-mean-inference.qmd) introduced earlier, now applied to predictive losses rather than acoustic measurements. Its assumptions concern the group differences, and ordinary textbook coverage does not automatically account for dependence from overlapping cross-validation training sets. We should thus label this interval as an approximation. With few or highly heterogeneous groups, plotting every difference and reporting the descriptive mean is more informative than relying on the interval alone.
+Equivalently, we can compare the log probability itself, where larger values are better. The sign convention below reports $\log p_{M_1}-\log p_{M_0}$, so positive values favor the interaction.
 
-A descriptive group bootstrap can resample the $G$ stored group differences while holding the cross-validated predictions fixed. This conditional calculation does not reproduce variation from refitting the complete procedure on new training samples, but it respects the passage as the resampling unit. Resampling individual positions would instead overstate the number of independent passage transfers.
+## Held-out-verb comparison
 
-## Small gains and theoretical claims
+The code loads the tracked response table and frozen verb folds, fits both ordinal models in every fold, and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the `r length(unique(utils::read.csv("data/megaorientation/verb-folds-multiframe.csv")$verb))` verbs, preventing verbs with more judgment rows from receiving greater weight.
 
-A theoretically motivated predictor may have a coefficient in the expected direction yet produce little held-out improvement. This can happen because its unique contribution is small, its measurement is noisy, or the relevant pattern varies across groups. The predictive result does not erase the coefficient; it narrows the claim.
+```{r}
+#| label: megaorientation-predictive-comparison
+#| message: false
+#| warning: false
 
-For instance, the Provo analyses report associations between semantic and morphosyntactic predictability measures and eye-movement outcomes beyond full-form cloze probability. But if adding those predictors does not reliably reduce passage-level loss beyond lexical cloze, the evidence for *new-passage predictive contribution* is limited. This is a stronger and more specific statement than “the predictors do not matter,” and it does not adjudicate the paper's processing interpretation on its own.
+orientation <- utils::read.delim(
+  "data/megaorientation/megaorientation-v1.1.tsv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+verb_folds <- utils::read.csv(
+  "data/megaorientation/verb-folds-multiframe.csv",
+  stringsAsFactors = FALSE
+)
+orientation <- merge(
+  orientation,
+  verb_folds[c("verb", "fold")],
+  by = "verb",
+  sort = FALSE
+)
+orientation$outcome <- ordered(orientation$response, levels = 1:7)
+orientation$orientation <- factor(
+  orientation$orientation, levels = c("past", "future")
+)
+orientation$frame_code <- factor(orientation$frame_code)
 
-The reverse pattern is also possible. A model can improve prediction through a proxy that has no theoretical interpretation. Predictive success would then justify the model for that predictive use, but not the linguistic mechanism attributed to it.
+stopifnot(all(tapply(
+  orientation$fold, orientation$verb,
+  function(x) length(unique(x))
+) == 1))
 
-## Multiple comparisons
+ordinal_probabilities <- function(fit, newdata, formula) {
+  design <- model.matrix(formula, newdata)
+  eta <- drop(design[, names(fit$beta), drop = FALSE] %*% fit$beta)
+  cumulative <- plogis(outer(
+    eta,
+    fit$alpha,
+    function(linear_predictor, threshold) {
+      threshold - linear_predictor
+    }
+  ))
+  probability <- cbind(
+    cumulative[, 1],
+    cumulative[, -1, drop = FALSE] -
+      cumulative[, -ncol(cumulative), drop = FALSE],
+    1 - cumulative[, ncol(cumulative)]
+  )
+  probability <- pmax(probability, 1e-12)
+  probability / rowSums(probability)
+}
 
-Trying many response variables, losses, split rules, transformations, and predictor sets creates many opportunities for a favorable difference. A prespecified primary predictive question, loss, and model contrast control this flexibility. Secondary analyses can examine other choices as sensitivity checks, provided they are labeled and reported together.
+prediction_rows <- vector("list", length(unique(orientation$fold)))
+fold_rows <- vector("list", length(unique(orientation$fold)))
 
-The model sequence should also be nested in the scientific argument. A control model establishes performance from design and lexical variables; a lexical model tests full-form predictability; a graded model tests added partial information. Comparing every possible subset would replace the theory with a model tournament.
+for (fold in sort(unique(orientation$fold))) {
+  train <- orientation[orientation$fold != fold, ]
+  test <- orientation[orientation$fold == fold, ]
+
+  restricted_fit <- ordinal::clm(
+    outcome ~ orientation + frame_code,
+    data = train,
+    link = "logit",
+    Hess = FALSE,
+    control = ordinal::clm.control(maxIter = 200L, gradTol = 1e-3)
+  )
+  interaction_fit <- ordinal::clm(
+    outcome ~ orientation * frame_code,
+    data = train,
+    link = "logit",
+    Hess = FALSE,
+    control = ordinal::clm.control(maxIter = 200L, gradTol = 1e-3)
+  )
+
+  restricted_probability <- ordinal_probabilities(
+    restricted_fit, test, ~ orientation + frame_code
+  )
+  interaction_probability <- ordinal_probabilities(
+    interaction_fit, test, ~ orientation * frame_code
+  )
+  observed <- cbind(seq_len(nrow(test)), as.integer(test$outcome))
+  restricted_log_score <- log(restricted_probability[observed])
+  interaction_log_score <- log(interaction_probability[observed])
+
+  prediction_rows[[fold]] <- data.frame(
+    verb = test$verb,
+    fold = fold,
+    restricted_log_score = restricted_log_score,
+    interaction_log_score = interaction_log_score
+  )
+  fold_rows[[fold]] <- data.frame(
+    fold = fold,
+    held_out_verbs = length(unique(test$verb)),
+    held_out_rows = nrow(test),
+    interaction_minus_restricted = mean(
+      interaction_log_score - restricted_log_score
+    )
+  )
+}
+
+predictions <- do.call(rbind, prediction_rows)
+fold_scores <- do.call(rbind, fold_rows)
+verb_scores <- aggregate(
+  predictions[c("restricted_log_score", "interaction_log_score")],
+  list(verb = predictions$verb, fold = predictions$fold),
+  mean
+)
+verb_scores$interaction_minus_restricted <- with(
+  verb_scores, interaction_log_score - restricted_log_score
+)
+
+set.seed(20261106)
+verb_bootstrap <- replicate(
+  999L,
+  mean(sample(
+    verb_scores$interaction_minus_restricted,
+    nrow(verb_scores),
+    replace = TRUE
+  ))
+)
+comparison <- data.frame(
+  held_out_rows = nrow(predictions),
+  held_out_verbs = nrow(verb_scores),
+  row_weighted_gain = mean(
+    predictions$interaction_log_score - predictions$restricted_log_score
+  ),
+  verb_weighted_gain = mean(
+    verb_scores$interaction_minus_restricted
+  ),
+  bootstrap_low = quantile(verb_bootstrap, 0.025, names = FALSE),
+  bootstrap_high = quantile(verb_bootstrap, 0.975, names = FALSE),
+  folds_favoring_interaction = sum(
+    fold_scores$interaction_minus_restricted > 0
+  )
+)
+comparison
+
+ggplot2::ggplot(
+  verb_scores,
+  ggplot2::aes(factor(fold), interaction_minus_restricted)
+) +
+  ggplot2::geom_hline(
+    yintercept = 0, color = "grey55", linewidth = 0.45
+  ) +
+  ggplot2::geom_point(
+    position = ggplot2::position_jitter(width = 0.12, height = 0),
+    size = 0.8,
+      alpha = 0.35, # dqr-allow: algorithm-setting
+    color = "grey25"
+  ) +
+  ggplot2::geom_point(
+    data = fold_scores,
+    ggplot2::aes(factor(fold), interaction_minus_restricted),
+    inherit.aes = FALSE,
+    size = 2,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::labs(
+    x = "Held-out verb fold",
+    y = "Interaction minus restricted mean log score"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The interaction improves the verb-weighted mean log score by `r sprintf("%.5f", comparison$verb_weighted_gain)`, with a conditional verb-bootstrap interval of [`r sprintf("%.5f", comparison$bootstrap_low)`, `r sprintf("%.5f", comparison$bootstrap_high)`]. The row-weighted gain is `r sprintf("%.5f", comparison$row_weighted_gain)`, and `r comparison$folds_favoring_interaction` of `r nrow(fold_scores)` folds favor the interaction. The gray points show all held-out verb differences; the blue points show fold means.
+
+## Raw responses and the descriptive fit
+
+The predictive comparison uses held-out verbs. A full-data interaction fit serves a different purpose: it lets us check fitted ordinal probabilities against the empirical rating distribution in each represented frame-orientation cell.
+
+```{r}
+#| label: megaorientation-raw-fitted
+#| message: false
+#| warning: false
+
+full_interaction <- ordinal::clm(
+  outcome ~ orientation * frame_code,
+  data = orientation,
+  link = "logit",
+  Hess = FALSE
+)
+orientation_grid <- expand.grid(
+  orientation = levels(orientation$orientation),
+  frame_code = levels(orientation$frame_code)
+)
+orientation_grid$orientation <- factor(
+  orientation_grid$orientation,
+  levels = levels(orientation$orientation)
+)
+orientation_grid$frame_code <- factor(
+  orientation_grid$frame_code,
+  levels = levels(orientation$frame_code)
+)
+fitted_probability <- ordinal_probabilities(
+  full_interaction,
+  orientation_grid,
+  ~ orientation * frame_code
+)
+
+empirical <- as.data.frame(table(
+  orientation$frame_code,
+  orientation$orientation,
+  orientation$outcome,
+  dnn = c("frame_code", "orientation", "rating")
+))
+names(empirical)[4] <- "count"
+empirical$empirical_probability <- ave(
+  empirical$count,
+  empirical$frame_code,
+  empirical$orientation,
+  FUN = function(x) x / sum(x)
+)
+fitted <- do.call(rbind, lapply(
+  seq_len(nrow(orientation_grid)),
+  function(index) data.frame(
+    frame_code = as.character(orientation_grid$frame_code[index]),
+    orientation = as.character(orientation_grid$orientation[index]),
+    rating = as.character(seq_len(7)),
+    fitted_probability = fitted_probability[index, ]
+  )
+))
+raw_and_fitted <- merge(
+  empirical,
+  fitted,
+  by = c("frame_code", "orientation", "rating"),
+  sort = FALSE
+)
+raw_and_fitted$rating <- as.integer(raw_and_fitted$rating)
+
+ggplot2::ggplot(
+  raw_and_fitted,
+  ggplot2::aes(rating, empirical_probability, color = orientation)
+) +
+  ggplot2::geom_point(size = 1.4, alpha = 0.75) + # dqr-allow: algorithm-setting
+  ggplot2::geom_line(
+    ggplot2::aes(y = fitted_probability),
+    linewidth = 0.55
+  ) +
+  ggplot2::facet_wrap(~ frame_code) +
+  ggplot2::scale_color_manual(
+    values = c("past" = "grey35", "future" = "#2B6CB0") # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_x_continuous(breaks = seq_len(7)) +
+  ggplot2::labs(
+    x = "Acceptability rating",
+    y = "Response probability",
+    color = "Forced orientation"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The tracked comparison contains `r format(nrow(orientation), big.mark = ",")` judgments from `r length(unique(orientation$verb))` multi-frame verbs and `r nrow(unique(orientation[c("verb", "frame_code")]))` predicate-frame pairs. Points are empirical category probabilities; lines are the descriptive full-data interaction fit. Those fitted lines do not supply the held-out comparison numbers.
+
+## Scope of the gain
+
+The conditional bootstrap resamples the stored verb differences while holding the fitted cross-validation predictions fixed. It respects verb as the resampling unit, but it does not reproduce participant, item, or refitting uncertainty. The population models also omit participant and sentence-item effects. Thus, the interval is useful for the paired-loss lesson, not a full confirmatory analysis of the experiment.
+
+The interaction gain suggests that frame-specific orientation patterns help predict ratings for unseen verbs within this selected inventory. It does not turn acceptability into a directly observed temporal-orientation label, reproduce Moon and White's lexical-versus-structural theory comparison, or generalize to unrestricted English embedding verbs.
 
 ## Checking the comparison
 
-1. If $\Delta_p=L_{p,A}-L_{p,B}$ is positive, which model is favored?
-2. Why should word-position losses be aggregated before uncertainty is reported for a new-passage claim?
-3. Give a situation in which aggregate RMSE improves while fewer than half of passages improve.
-4. What does a coefficient in the expected direction establish that a held-out loss comparison does not, and vice versa?
+1. Why does a positive difference favor the interaction model?
+2. Why are log scores averaged within verbs before the primary mean is taken?
+3. What does the full-data probability plot check, and what does it not estimate?
+4. Which omitted sources of dependence limit the bootstrap interval?
 
-## What the comparison establishes
-
-A paired comparison evaluates two models on the same held-out responses and returns loss differences to the groups specified by the scientific claim. Direction, magnitude, improvement rate, and group variation jointly characterize the result. None of these summaries turns predictive association into a causal or processing explanation. [PS2](../assignments/index.qmd) applies this procedure to a theory-guided sequence of control, lexical, and graded-prediction models.
+A paired comparison evaluates two models on identical held-out groups and returns their differences to the unit specified by the scientific claim. The [previous page](grouped-cross-validation.qmd) developed grouped splitting with Natural Stories. The [next page](likelihood-ratio-tests.qmd) begins a five-page Provo sequence using two fixed Gaussian mean models.

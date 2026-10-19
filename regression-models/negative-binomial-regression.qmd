@@ -1,149 +1,92 @@
 ---
-title: "Negative binomial regression"
+title: "Negative-binomial regression"
+execute:
+  warning: false
+  message: false
 ---
 
-The earlier distribution chapter introduced the [negative binomial distribution](../random-variables-and-distributions/negative-binomial-distribution.qmd). In regression, its conditional mean is linked to predictors. Unlike the [quasi-Poisson model](quasi-poisson.qmd), a [**negative binomial regression**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) defines a complete response distribution whose variance can grow faster than its mean.
+The negative-binomial distribution relaxes the Poisson mean–variance equality while retaining nonnegative integer support. We continue with Storme's French liaison counts and use the paper-aligned liaison-by-final-consonant interaction.
 
-We retain a log-linked conditional mean but replace the Poisson response distribution with a negative binomial distribution. The application below uses a theoretically motivated comparison from French liaison.
-
-## Changing the mean variance relation
-
-Let the expected count for observation $i$ be $\mu_i$. In a common negative binomial parameterization,
-
-$$
-Y_i\sim\operatorname{NegBin}(\mu_i,\kappa),
-$$
-
-$$
-\operatorname{E}(Y_i)=\mu_i,
-$$
-
-$$
-\operatorname{Var}(Y_i)
-=\mu_i+\frac{\mu_i^2}{\kappa}.
-$$
-
-The parameter $\kappa$ controls response dispersion. A smaller value permits more variation. As $\kappa$ grows, the quadratic term approaches zero and the variance approaches the Poisson variance.
-
-Suppose $\mu_i=5$ and $\kappa=2$. The variance is
-
-$$
-5+\frac{5^2}{2}=17.5.
-$$
-
-A Poisson response with the same mean would have variance 5. If $\kappa=100$, the negative binomial variance becomes
-
-$$
-5+\frac{25}{100}=5.25,
-$$
-
-which is close to the Poisson value. The extra quadratic term allows the variance to exceed the mean.
-
-## Keeping the log linked mean
-
-The mean uses the same systematic relation as Poisson regression:
-
-$$
-\log\mu_i
-=\log t_i+
-\mathbf{x}_i^{\mathsf T}\boldsymbol{\beta},
-$$
-
-where $t_i$ is an optional exposure. The coefficient interpretation also remains multiplicative:
-
-$$
-\frac{\mu(x+1)}{\mu(x)}
-=e^{\beta_x}.
-$$
-
-The negative binomial dispersion parameter changes the response variance. It does not change the theoretical comparison represented by $\mathbf{x}_i$.
-
-::: {.callout-note title="Reading: Storme (2024), Sections 4.1 and 4.2.2"}
-[Storme, *French liaison is allomorphy, not allophony: Evidence from lexical statistics*](https://doi.org/10.1007/s11525-024-09429-8).
-
-Read Section 4.1, *Dataset and coding*, and Section 4.2.2, *Token frequency analysis*.
-
-**Why this reading?** The paper asks whether French liaison is better analyzed as allomorphy or allophony. The morphological analysis predicts that liaison should be concentrated among comparatively frequent morphemes. The analysis thus supplies a theory bearing liaison predictor, and final consonant controls phonotactic differences in lexical frequency.
-
-The paper motivates the negative binomial response by noting that the reconstructed response is an integer. That fact rules out some response models, but it does not distinguish a negative binomial distribution from a Poisson distribution. The analysis below first checks the Poisson variance restriction.
-:::
-
-## Constructing the response used in the paper
-
-The [released Study 1 data and code](https://doi.org/10.5281/zenodo.12733801) begin with frequency per million from Lexique 3.83. The code sums frequency over forms assigned to the same final morpheme, then multiplies by 100 to approximate a count in a corpus of 100 million tokens.
-
-```r
-liaison_words <- read.csv(
-  "https://zenodo.org/api/records/12733801/files/study1-data.csv/content"
-)
-
-liaison_counts <- aggregate(
-  freqfilms2 ~ final_morph + FinalConsonant + Liaison,
-  data = liaison_words,
-  FUN = sum
-)
-
-liaison_counts$count <-
-  as.integer(liaison_counts$freqfilms2 * 100)
-
-dim(liaison_counts)
-table(liaison_counts$Liaison)
+```{r}
+#| label: load-storme-nb
+#| echo: true
+path <- "data/storme-liaison/storme-liaison-counts.csv"
+if (file.exists(path)) {
+  storme <- read.csv(path)
+} else {
+  url <- paste0("https://zenodo.org/api/records/12733801/files/",
+                "study1-data.csv/content")
+  source_file <- tempfile(fileext = ".csv")
+  download.file(url, source_file, mode = "wb")
+  stopifnot(unname(tools::md5sum(source_file)) ==
+              "8a7788489b6820822cda3f338881f77e")
+  raw <- read.csv(source_file, check.names = FALSE)
+  storme <- aggregate(freqfilms2 ~ final_morph + FinalConsonant + Liaison,
+                      raw, sum)
+  storme$reconstructed_count <- as.integer(storme$freqfilms2 * 100)
+  names(storme)[1:4] <- c("final_morpheme", "final_consonant", "liaison",
+                          "frequency_per_million_sum")
+}
+storme$liaison <- factor(storme$liaison, levels = c("no", "yes"))
+storme$final_consonant <- factor(storme$final_consonant)
+additive <- MASS::glm.nb(reconstructed_count ~ liaison + final_consonant,
+                         storme, control = glm.control(maxit = 100L))
+interaction <- MASS::glm.nb(reconstructed_count ~ liaison * final_consonant,
+                            storme, control = glm.control(maxit = 100L))
 ```
 
-The resulting table contains 11,195 final morphemes. Of these, 4,925 are coded as liaison morphemes and 6,270 as nonliaison morphemes. The response is highly variable. Its median is 11 among nonliaison morphemes and 14 among liaison morphemes, while a small number of very frequent morphemes produce much larger counts.
+With mean $\mu_i$ and size $\theta$,
 
-This response should be described precisely. It is an integer reconstruction from a normalized frequency measure, not a released table of independently observed token totals. The reconstruction may be useful for studying lexical frequency, but the integer conversion does not itself license a count distribution.
+$$
+\mathbb{E}[Y_i]=\mu_i,
+\qquad
+\operatorname{Var}[Y_i]=\mu_i+\frac{\mu_i^2}{\theta}.
+$$
 
-## Diagnosing the Poisson restriction
+The log link keeps $\mu_i$ positive. The additive model's liaison coefficient is a common-ratio restriction:
 
-We first fit the theory bearing mean with a Poisson response. `Liaison` represents the morphological prediction. `FinalConsonant` controls the identity of the word final consonant.
-
-```r
-poisson_fit <- glm(
-  count ~ Liaison + FinalConsonant,
-  family = poisson(link = "log"),
-  data = liaison_counts
-)
-
-poisson_dispersion <-
-  sum(residuals(poisson_fit, type = "pearson")^2) /
-  df.residual(poisson_fit)
-
-poisson_dispersion
+```{r}
+#| label: additive-nb-summary
+#| echo: true
+c(theta = additive$theta,
+  additive_liaison_log_ratio = coef(additive)[["liaisonyes"]],
+  additive_liaison_ratio = exp(coef(additive)[["liaisonyes"]]))
 ```
 
-The Pearson dispersion ratio is about 1,365,928. This value is not a borderline judgment. The Poisson distribution represents far less conditional variation than the reconstructed counts contain. Its very small coefficient standard errors are thus not credible measures of uncertainty for this comparison.
+Storme's analysis includes the interaction, so a single common liaison ratio is not the paper-aligned result.
 
-## Fitting the negative binomial response
-
-We now change only the response distribution:
-
-```r
-library(MASS)
-
-negative_binomial_fit <- glm.nb(
-  count ~ Liaison + FinalConsonant,
-  data = liaison_counts
-)
-
-coef(summary(negative_binomial_fit))
-negative_binomial_fit$theta
+```{r}
+#| label: interaction-nb-contrasts
+#| echo: true
+grid <- expand.grid(liaison = levels(storme$liaison),
+                    final_consonant = levels(storme$final_consonant))
+grid$fitted <- predict(interaction, newdata = grid, type = "response")
+wide <- reshape(grid, idvar = "final_consonant", timevar = "liaison",
+                direction = "wide")
+wide$liaison_ratio <- wide$fitted.yes / wide$fitted.no
+wide
 ```
 
-The fitted dispersion parameter is about $.119$. This small value permits substantial count variation. The liaison coefficient is about $2.236$ on the log mean scale. Exponentiating returns the adjusted mean ratio:
-
-```r
-exp(coef(negative_binomial_fit)["Liaisonyes"])
+```{r}
+#| label: plot-nb-fit
+#| echo: true
+library(ggplot2)
+sampled <- do.call(rbind, lapply(
+  split(storme, interaction(storme$liaison, storme$final_consonant)),
+  function(x) if (nrow(x) <= 240L) x else x[seq(1L, nrow(x), length.out = 240L), ]
+))
+ggplot(sampled, aes(liaison, reconstructed_count)) +
+  geom_point(position = position_jitter(width = .12, height = 0),
+             size = .35, color = "grey45") +
+  geom_point(data = grid, aes(y = fitted), color = "#1F5A85", size = 2) +
+  scale_y_continuous(
+    transform = "log1p",
+    breaks = c(0, 10, 1000, 100000, 1000000), # dqr-allow: algorithm-setting
+    labels = c("0", "10", "1k", "100k", "1m") # dqr-allow: algorithm-setting
+  ) +
+  facet_wrap(~ final_consonant) +
+  labs(x = "Liaison status", y = "Reconstructed token count (log1p scale)") +
+  theme_classic()
 ```
 
-The ratio is about $9.35$. Conditional on final consonant, the fitted mean reconstructed count is about nine times as large for morphemes coded as participating in liaison as for morphemes coded as nonliaison. The direction matches the morphological prediction in the reading. It is lexical-statistical evidence bearing on the allomorphy analysis, not an acoustic measurement of liaison realization in speech.
-
-## Keeping the conclusion proportional to the design
-
-The negative binomial fit addresses the failed Poisson variance restriction. It does not establish that every relevant source of dependence or heterogeneity has been represented. The response derives from frequency estimates and an integer conversion. Morphemes may also be related through lexemes, paradigms, and grammatical classes not represented in the present model.
-
-Thus the defensible lesson has two parts. First, liaison status is associated with much greater reconstructed lexical frequency after final consonant is included. Second, the observed count variation is incompatible with Poisson uncertainty, while the negative binomial dispersion parameter lets the response variance exceed the mean. The second result supports use of the negative binomial over the Poisson for this table. It does not, on its own, settle the phonological analysis of liaison.
-
-::: {.callout-note title="Check the repair"}
-The negative binomial coefficient has the same linguistic interpretation as a log linked Poisson coefficient. Which new parameter changes the response variance? Which problem would remain if related morphemes were treated as independent?
-:::
+Liaison cells have higher fitted means for each represented consonant, but the ratios are strongly consonant-specific. The response is reconstructed from frequency values, and lexical rows may remain dependent. Thus this population fit illustrates the paper's formula without reproducing its Bayesian uncertainty or establishing an independent causal liaison effect.

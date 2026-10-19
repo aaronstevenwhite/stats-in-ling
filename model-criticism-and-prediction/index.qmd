@@ -2,28 +2,65 @@
 title: "Predicting observations the model did not see"
 ---
 
-Suppose a regression predicts a particular eye-movement measure, such as first-fixation duration, from word length, lexical frequency, and contextual predictability. The distinction among eye-movement measures matters: [first-fixation duration records the first fixation on a word, while gaze duration sums first-pass fixations on that word](https://doi.org/10.1371/journal.pone.0041766). Small [observed-minus-fitted residuals](../regression-models/residuals.qmd) show that fitted values are close to the responses used to estimate the coefficients. They do not tell us how the complete procedure will predict a response that was unavailable during fitting.
+The corrected [Natural Stories release](https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612), described by [Futrell et al. (2021)](https://doi.org/10.1007/s10579-020-09503-7), pairs self-paced reading times with lexical and contextual predictors in ten construction-enriched stories. The pinned data are distributed under CC BY-NC-SA 4.0. This unit begins with its participant-by-word-position responses.
 
-The phrase *unavailable during fitting* must be made precise. A reading-time dataset may contain repeated responses from readers and passages. We could omit one response while retaining other responses from the same reader and passage, omit every response from one reader, or omit every word position in one passage. The need to choose among these separations is the **prediction-unit problem (PUP)**. Each solution to the PUP evaluates a different prediction.
+```{r}
+#| label: prediction-index-data
 
-| predictive question | omitted during fitting | represented prediction |
+natural_all <- readRDS(
+  "data/natural-stories/natural-stories-corrected.rds"
+)
+complete_prediction_row <- with(
+  natural_all,
+  is.finite(log_rt) & is.finite(word_length) &
+    is.finite(log_unigram_frequency) & is.finite(gpt3_surprisal)
+)
+natural <- natural_all[complete_prediction_row, ]
+
+prediction_inventory <- data.frame(
+  object = c(
+    "complete response rows",
+    "participants",
+    "stories",
+    "sentences",
+    "contextual word positions"
+  ),
+  count = c(
+    nrow(natural),
+    length(unique(natural$participant_id)),
+    length(unique(natural$story_id)),
+    length(unique(natural$sentence_id)),
+    length(unique(paste(
+      natural$story_id,
+      natural$word_position,
+      sep = ":"
+    )))
+  )
+)
+
+prediction_inventory
+```
+
+An observed-minus-fitted residual describes a response used to estimate a model. It does not tell us how the complete procedure will predict a response unavailable during fitting. In Natural Stories, unavailable can mean one response row, every response from one participant, or every position in one story. This choice is the **prediction-unit problem (PUP)**.
+
+| predictive target | absent during fitting | still represented |
 |:--|:--|:--|
-| another trial | one response | another response from observed readers and passages |
-| a new reader | every response from one reader | responses from a reader absent during fitting |
-| a new passage | every position in one passage | responses from a passage absent during fitting |
+| another response row | that latency | its participant and story |
+| a new participant | every latency from that participant | the ten stories |
+| an omitted enriched story | every latency from that story | the participant sample |
 
-A random split over rows can evaluate the first question, provided that predictions are allowed to use information learned about the represented readers and passages. It cannot evaluate prediction for an unadapted reader or an unseen passage because other rows from that reader or passage remain available during fitting. This is the predictive version of the distinction between [conditional and population-level predictions](../regression-models/ordinal-mixed-models.qmd#stating-which-groups-are-represented-in-a-prediction).
+These targets are not interchangeable. A random row split cannot evaluate an absent participant or story because other rows from that group remain in training. Conversely, leave-one-story-out validation has only the released stories as transfer opportunities; the response-row count does not create that many independent text evaluations.
 
-## Defining the predictive comparison
+## Defining and scoring a prediction
 
-[What must be new at prediction time](prediction-targets.qmd) identifies which observations or groups must be absent during fitting and what information will be available about them. A [predictive loss](predictive-loss.qmd) assigns a numerical cost to each difference between an observation and its prediction. The aggregation of those losses determines whether readers, passages, or individual rows receive equal weight.
+[Prediction targets](prediction-targets.qmd) state which responses or groups are new and which predictors remain available. [Training and test data](training-and-test-data.qmd) then enforce that separation, including training-only estimation of predictor transformations. A [predictive loss](predictive-loss.qmd) assigns a numerical cost to each held-out prediction, while the [bias--variance tradeoff](bias-variance-tradeoff.qmd) explains why a procedure can follow one training sample closely and still vary across training samples.
 
-[Prediction bias and prediction variance](bias-variance-tradeoff.qmd) explain why a procedure can follow one training sample closely and still miss new responses. [Training and test data](training-and-test-data.qmd) then separate fitting from evaluation. [Cross-validation](cross-validation.qmd) rotates that separation so that each observation receives a prediction from a fit that did not use it; [leave-one-out cross-validation](leave-one-out-cross-validation.qmd) makes one row the test set at a time, while [grouped cross-validation](grouped-cross-validation.qmd) omits complete speakers, items, passages, or languages.
+[Cross-validation](cross-validation.qmd) rotates a row-level split. [Grouped cross-validation](grouped-cross-validation.qmd) instead moves complete participants or stories together. These pages use the same Natural Stories population regression so that changing the split changes the predictive claim rather than the fitted predictor set. The teaching fit omits participant and story effects to expose those targets; it does not reproduce the source paper's validation models.
 
 ## Comparing models
 
-Predictive comparison can evaluate a linguistic contrast. A control model might contain design and lexical predictors, while a second model adds a measure of morphosyntactic predictability. [Comparing predictive loss](comparing-predictive-loss.qmd) asks whether the added predictor changes loss on the same held-out observations. The coefficient for morphosyntactic predictability and the change in held-out loss are related, but they are not the same quantity. And neither quantity, by itself, identifies the processing mechanism that produced the eye movements.
+[Comparing predictive loss](comparing-predictive-loss.qmd) moves to MegaOrientation and evaluates additive and frame-specific ordinal models on verbs absent from fitting. This switch marks a conceptual break: the target becomes lexical transfer, and the response becomes ordered rather than continuous. The comparison thus follows the course's introduction to [cumulative-logit regression](../regression-models/ordinal-regression.qmd). Its population fits omit participant and item heterogeneity, and the comparison remains conditional on the release's acceptability-selected predicate-frame inventory.
 
-[Likelihood-ratio tests](likelihood-ratio-tests.qmd) and [information criteria](information-criteria.qmd) make different comparisons using the fitted likelihood. [PSIS-LOO](psis-loo.qmd) approximates leave-one-out prediction from posterior draws, while [WAIC](waic.qmd) uses a posterior-variance correction to the pointwise fitted predictive density.
+The final pages return to the Provo passage summaries used earlier in the course. [Likelihood-ratio tests](likelihood-ratio-tests.qmd) compare nested Gaussian models; [information criteria](information-criteria.qmd) add fit penalties; [leave-one-out cross-validation](leave-one-out-cross-validation.qmd), [PSIS-LOO](psis-loo.qmd), and [WAIC](waic.qmd) use matched observations and pointwise log-likelihood contributions. Each comparison keeps the response rows and candidate model family fixed.
 
-[PS2](../assignments/index.qmd) applies grouped cross-validation to reading-time data by withholding complete passages. The passage split, passage-level loss summaries, and interpretation all follow from the target of predicting responses in passages absent during fitting. Thus, the order of this module is deliberate: name the prediction unit, choose the loss, separate fitting from scoring, rotate that separation, and only then compare models.
+Successful prediction does not by itself identify a processing mechanism. The module thus proceeds in one order: name the prediction unit, separate fitting from scoring, choose and aggregate the loss, rotate the separation, and only then compare models.

@@ -1,14 +1,53 @@
 ---
 title: "Posterior membership"
+execute:
+  cache: false
 ---
 
-A Gaussian mixture assigns a density to every vowel token's acoustic vector. We often also want to know how the weighted component contributions divide for one particular token. A token near overlapping acoustic regions may be compatible with several components even when one contributes most.
+A Gaussian mixture assigns density to every observed acoustic vector. We now ask how the weighted component contributions divide for one Peterson-Barney token. The [**posterior probability of component membership**](https://scikit-learn.org/stable/modules/mixture.html), often expressed as [**responsibilities**](https://online.stat.psu.edu/stat505/Lesson14), applies Bayes' rule inside the fitted mixture.
 
-The [**posterior probability of component membership**](https://scikit-learn.org/stable/modules/mixture.html) gives the probability of each component label conditional on the observed measurements and fitted mixture parameters. It applies the [Bayes' rule introduced earlier](../foundations/bayes-rule.qmd) to the weighted densities from the previous page, producing probabilities that sum to one. In mixture-model software, these conditional probabilities are often called [**responsibilities**](https://online.stat.psu.edu/stat505/Lesson14).
+## Loading and fitting the fixed mixture
 
-Here *posterior* names conditioning on the observed token within a fitted mixture. We treat the estimated parameters as fixed, as standard EM software does. Thus, these responsibilities do not integrate uncertainty about the parameters, component count, or covariance family.
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+suppressPackageStartupMessages(library(mclust))
 
-## Introducing the unobserved label
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    )
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+set.seed(1952L)
+fit_g10 <- mclust::Mclust(
+  X,
+  G = 10L,
+  modelNames = "EVI",
+  verbose = FALSE
+)
+stopifnot(fit_g10$G == 10L, fit_g10$modelName == "EVI")
+```
+
+The intended-vowel column is retained in `vowels` but is not passed to `Mclust()`.
+
+## Conditioning on an unobserved component
 
 Let
 
@@ -16,218 +55,188 @@ $$
 Z_i\in\{1,\ldots,K\}
 $$
 
-be the unobserved component label for observation $i$. Before observing $\mathbf{x}_i$, the mixture gives
+be the unobserved component label. Before observing $\mathbf{x}_i$,
 
 $$
-P(Z_i=k)=\pi_k.
+\mathbb{P}(Z_i=k)=\pi_k.
 $$
 
-Conditional on component $k$, the observation density is
+Conditional on component $k$,
 
 $$
-p(\mathbf{x}_i\mid Z_i=k)
+f(\mathbf{x}_i\mid Z_i=k)
 =
 \mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_k,
-\boldsymbol{\Sigma}_k).
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k).
 $$
 
 Bayes' rule gives
 
 $$
-P(Z_i=k\mid\mathbf{x}_i)
+\mathbb{P}(Z_i=k\mid\mathbf{x}_i)
 =
 \frac{
-P(Z_i=k)
-p(\mathbf{x}_i\mid Z_i=k)
+\mathbb{P}(Z_i=k)f(\mathbf{x}_i\mid Z_i=k)
 }{
-p(\mathbf{x}_i)
+f(\mathbf{x}_i)
 }.
 $$
 
-Substituting the mixture terms yields
-
-$$
-P(Z_i=k\mid\mathbf{x}_i)
-=
-\frac{
-\pi_k
-\mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_k,
-\boldsymbol{\Sigma}_k)
-}{
-\sum_{j=1}^{K}
-\pi_j
-\mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_j,
-\boldsymbol{\Sigma}_j)
-}.
-$$
-
-To keep the notation readable, we suppress the fitted parameter vector in the conditioning set. We write this probability as
+Substituting the mixture density yields
 
 $$
 r_{ik}
 =
-P(Z_i=k\mid\mathbf{x}_i).
-$$
-
-The quantity $r_{ik}$ is the responsibility of component $k$ for observation $i$.
-
-## Completing the previous calculation
-
-The two weighted component contributions were
-
-$$
-0.048
-\qquad\text{and}\qquad
-0.008.
-$$
-
-Their sum, the mixture density, was 0.056. The first posterior membership is
-
-$$
-\begin{aligned}
-r_{i1}
-&=
-\frac{0.048}{0.056}\\
-&\approx0.857.
-\end{aligned}
-$$
-
-The second is
-
-$$
-\begin{aligned}
-r_{i2}
-&=
-\frac{0.008}{0.056}\\
-&\approx0.143.
-\end{aligned}
-$$
-
-They sum to one:
-
-$$
-0.857+0.143=1.
-$$
-
-Component 1 accounts for most of the fitted density at this observation, but component 2 remains possible under the model.
-
-## Why the probabilities sum to one
-
-The denominator is the sum of all component contributions. Thus,
-
-$$
-\sum_{k=1}^{K}r_{ik}
+\mathbb{P}(Z_i=k\mid\mathbf{x}_i)
 =
 \frac{
-\sum_{k=1}^{K}
-\pi_k
-\mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_k,
-\boldsymbol{\Sigma}_k)
+\pi_k\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
 }{
 \sum_{j=1}^{K}
-\pi_j
-\mathcal{N}
-(\mathbf{x}_i;
-\boldsymbol{\mu}_j,
-\boldsymbol{\Sigma}_j)
-}
-=
-1.
+\pi_j\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_j,\boldsymbol{\Sigma}_j)
+}.
 $$
 
-Membership is thus a normalization of the weighted densities. It does not require a separate distance rule.
-
-## Calculating membership in R
-
-```{r}
-#| eval: false
-
-weighted_contribution <- c(0.048, 0.008)
-
-responsibility <-
-  weighted_contribution /
-  sum(weighted_contribution)
-
-responsibility
-sum(responsibility)
-```
-
-For many observations, store weighted contributions in a matrix with one row per token and one column per component. Divide each row by its sum.
-
-```{r}
-#| eval: false
-
-responsibility_matrix <-
-  weighted_density_matrix /
-  rowSums(weighted_density_matrix)
-
-head(responsibility_matrix)
-```
-
-The row normalization implements the denominator in Bayes' rule.
-
-## Hard assignment discards uncertainty
-
-A hard assignment chooses
+The denominator normalizes the weighted contributions, so
 
 $$
-\widehat{z}_i
+\sum_{k=1}^{K}r_{ik}=1.
+$$
+
+## Calculating every responsibility directly
+
+```{r}
+conditional_density <- mclust::cdens(
+  X,
+  modelName = fit_g10$modelName,
+  parameters = fit_g10$parameters
+)
+weighted_density <- sweep(
+  conditional_density,
+  2,
+  fit_g10$parameters$pro,
+  "*"
+)
+mixture_density <- rowSums(weighted_density)
+responsibility <- sweep(weighted_density, 1, mixture_density, "/")
+
+package_estep <- mclust::estep(
+  X,
+  modelName = fit_g10$modelName,
+  parameters = fit_g10$parameters
+)
+
+stopifnot(
+  max(abs(rowSums(responsibility) - 1)) < 1e-10,
+  max(abs(responsibility - package_estep$z)) < 1e-10
+)
+
+uncertainty <- 1 - apply(responsibility, 1, max)
+reference_row <- which.max(uncertainty)
+```
+
+The direct calculation agrees with `mclust`'s expectation step to numerical tolerance. We use the observed token with the greatest fitted uncertainty as the worked case.
+
+```{r}
+reference_membership <- data.frame(
+  row_id = reference_row,
+  token_id = vowels$token_id[reference_row],
+  component = seq_len(fit_g10$G),
+  mixing_weight = fit_g10$parameters$pro,
+  conditional_density = conditional_density[reference_row, ],
+  weighted_contribution = weighted_density[reference_row, ],
+  mixture_density = mixture_density[reference_row],
+  posterior_membership = responsibility[reference_row, ]
+) |>
+  dplyr::arrange(dplyr::desc(posterior_membership)) |>
+  dplyr::mutate(posterior_rank = dplyr::row_number())
+
+knitr::kable(reference_membership, digits = 6)
+```
+
+For row `r reference_row`, the three largest responsibilities are `r paste(format(round(reference_membership$posterior_membership[1:3], 3), nsmall = 3), collapse = ", ")`. They sum to `r round(sum(reference_membership$posterior_membership[1:3]), 3)`, while the remaining components receive negligible mass. The hard assignment keeps only component `r reference_membership$component[1]` and discards this overlap.
+
+## Hard assignments and uncertainty
+
+A hard assignment is
+
+$$
+\widehat z_i
 =
 \underset{k}{\operatorname{argmax}}
 r_{ik}.
 $$
 
-The worked token is assigned to component 1. But the hard label hides the difference between memberships $(0.51,0.49)$ and $(0.99,0.01)$. Both yield label 1 even though the first observation lies near a modeled boundary and the second does not.
+Define fitted uncertainty as
 
-For Peterson and Barney vowel tokens, retaining the complete membership vector can reveal which elicitation categories occupy overlapping F1--F2 regions and which individual acoustic vectors receive diffuse assignments under the fitted mixture.
+$$
+u_i
+=
+1-\max_k r_{ik}.
+$$
 
-Converting posterior membership probabilities to one hard label removes information about component overlap.
+This quantity is zero when one component receives all posterior mass and grows as the mass is distributed across competitors. It remains conditional on the fitted mixture.
 
-## Keeping assignment and uncertainty separate
+```{r}
+membership_summary <- data.frame(
+  mean_uncertainty = mean(uncertainty),
+  fraction_above_point_2 = mean(uncertainty > 0.2)
+)
+knitr::kable(membership_summary, digits = 3)
+```
 
-A useful descriptive table contains both the most probable component and its probability.
+Mean fitted uncertainty is `r round(membership_summary$mean_uncertainty, 3)`, and `r scales::percent(membership_summary$fraction_above_point_2, accuracy = 0.1)` of observed tokens have uncertainty above the declared descriptive threshold.
 
-| token | assigned component | largest membership |
-|:--|--:|--:|
-| A | 1 | 0.98 |
-| B | 1 | 0.54 |
-| C | 2 | 0.91 |
+## Inspecting intended-vowel metadata after fitting
 
-Token B deserves inspection because its assignment is weak under the fitted model. A plot colored only by hard component would conceal this difference.
+```{r}
+#| fig-width: 7
+#| fig-height: 4.5
+#| fig-alt: "Fitted Gaussian-mixture membership uncertainty for each intended Peterson and Barney vowel, with raw token values and boxplots."
 
-The complete probability vector is preferable when more than two components overlap. The largest probability alone does not show whether the remaining mass belongs to one close competitor or several.
+plot_data <- vowels |>
+  dplyr::mutate(uncertainty = uncertainty)
 
-## Component numbers are arbitrary
+ggplot2::ggplot(
+  plot_data,
+  ggplot2::aes(x = reorder(vowel, uncertainty, stats::median), y = uncertainty)
+) +
+  ggplot2::geom_boxplot(
+    width = 0.62,
+    outlier.shape = NA,
+    fill = "grey88",
+    color = "grey25",
+    linewidth = 0.45
+  ) +
+  ggplot2::geom_jitter(
+    width = 0.12,
+    height = 0,
+    alpha = 0.18, # dqr-allow: algorithm-setting
+    size = 0.45
+  ) +
+  ggplot2::labs(
+    x = "Intended vowel (withheld during fitting)",
+    y = "Membership uncertainty"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
 
-If every parameter associated with component 1 is exchanged with the corresponding parameter for component 2, the mixture density is unchanged. Membership columns are exchanged as well.
+The x-axis uses intended-vowel metadata only after every responsibility has been calculated. Differences across labels describe where the fixed F1-F2 mixture is more or less decisive. They do not estimate listener accuracy.
 
-This permutation nonidentifiability is known as [**label switching**](https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html). The number attached to a component has no stable linguistic meaning. Across separate fits, component 1 may correspond to a differently numbered component with similar parameters.
+## Component numbers and conditioning
 
-Interpret a component through its mean, covariance, membership pattern, and relation to external variables. Do not interpret the integer label itself.
+Exchanging all parameters for two components leaves the mixture density unchanged and merely exchanges responsibility columns. This [**label switching**](https://mc-stan.org/docs/stan-users-guide/finite-mixtures.html) means that the integer attached to a component has no stable phonological meaning across separate fits.
 
-## Membership is conditional on the model
-
-A posterior membership of 0.857 is not the probability that the token's intended vowel label is correct, nor is it the probability that a phonological analysis is true. It is the probability of the fitted component label conditional on the measurements, component count, Gaussian form, covariance restrictions, transformations, and estimated parameters.
-
-If the model omits a relevant formant or uses an unsuitable covariance structure, the membership may be sharply estimated under a poor representation. High numerical certainty does not validate the component interpretation.
-
-These memberships are not arbitrary. They are exact consequences of the declared fitted mixture. Their interpretation should retain those conditions and be checked against external phonetic or experimental information.
+Moreover, a responsibility is not the probability that an intended label is correct. It is conditional on the observed F1-F2 vector, fixed component count, `EVI` covariance family, speaker-relative transformation, and estimated parameters. It does not integrate uncertainty about any of those choices.
 
 ## Checking the normalized contributions
 
-1. Which quantity appears in the denominator of every membership probability?
-2. Why do the memberships for one token sum to one?
-3. How are 0.857 and 0.143 obtained from the previous weighted densities?
-4. What information is lost when $(0.51,0.49)$ becomes hard label 1?
-5. Why can component 1 in one fit correspond to component 3 in another fit?
-6. Why is a membership of 0.99 not a 99 percent probability that a phoneme analysis is true?
+1. Which weighted contributions produce the three largest memberships for row `r reference_row`?
+2. Why does each responsibility row sum to one?
+3. What information does the hard component label discard for this token?
+4. Why can component numbers change across equivalent fits?
+5. Why is membership uncertainty not a measure of intended-vowel correctness?
 
-Posterior membership normalizes weighted component densities through Bayes' rule. It retains modeled overlap that a hard assignment discards, while remaining conditional on the declared mixture and its estimated parameters. The [next page](expectation-maximization.qmd) uses these responsibilities to alternate between membership calculation and parameter updates.
+Posterior membership normalizes observed weighted component densities and retains fitted overlap. The [next page](expectation-maximization.qmd) uses these responsibilities as weights in iterative parameter updates.

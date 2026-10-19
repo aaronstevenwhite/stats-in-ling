@@ -1,173 +1,158 @@
 ---
 title: "Conjugate priors"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [posterior distribution page](posterior-distributions.qmd) normalized a finite update by summing over the parameter values. A conjugate prior allows some continuous updates to be normalized by recognizing a familiar distribution family.
+The [posterior-distribution page](posterior-distributions.qmd) normalized a continuous update by recognizing a beta density. A prior is **conjugate** to a likelihood when the resulting posterior belongs to the same distribution family as the prior.
 
-Suppose a variationist study codes English *t/d*-deletion. This variable concerns whether word-final /t/ or /d/ is absent when it follows another consonant, as in a realization of *best man* without the final /t/ of *best*. Research on [*t/d*-deletion](https://www.cambridge.org/core/journals/language-variation-and-change/article/tddeletion-in-british-english-new-evidence-for-the-longlost-morphological-effect/4157F17EED627BA7938B11FA9D7BB816) shows conditioning by preceding and following segments, morphological class, speech style, and other properties of speakers and words. Our one-probability model is thus a constructed teaching simplification.
+## The FRB likelihood and prior
 
-$$
-D_i\mid\Pi=\pi
-\sim
-\operatorname{Bernoulli}(\pi).
-$$
-
-Here $D_i=1$ means that eligible token $i$ is coded as deleted, and $D_i=0$ means that it is coded as retained. The parameter $\Pi$ is the deletion probability for the population and linguistic environment declared by the study. We temporarily treat the eligible tokens as conditionally independent with a shared probability, then use a prior family for which the posterior update can be calculated algebraically.
-
-## Writing the beta prior
-
-Recall the [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) on the unit interval. Choose
+The finite-resource bridge (FRB) treats the Turkish UniMorph indicators as draws from a counterfactual exchangeable superpopulation:
 
 $$
-\Pi\sim\operatorname{Beta}(2,2).
+Z_i\mid\Theta=\theta
+\overset{\mathrm{iid}}{\sim}
+\operatorname{Bernoulli}(\theta).
 $$
 
-The beta density is
+The committed sample contains 42 *t*-initial endings among 120 lexeme--paradigm cells. These are type-level rows, not corpus tokens, and the actual sample was drawn without replacement.
+
+```{r}
+#| label: load-unimorph-conjugacy
+library(ggplot2)
+
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
+)
+n <- nrow(sample_120)
+k <- sum(sample_120$t_initial)
+
+unit_count <- 1L
+alpha <- unit_count
+beta <- unit_count
+alpha_post <- alpha + k
+beta_post <- beta + n - k
+
+stopifnot(n == 120L, k == 42L)
+data.frame(n, k, non_t_initial = n - k, alpha_post, beta_post)
+```
+
+For a $\operatorname{Beta}(\alpha,\beta)$ prior,
 
 $$
-f_\Pi(\pi)
+f_\Theta(\theta)
 =
 \frac{1}{B(\alpha,\beta)}
-\pi^{\alpha-1}(1-\pi)^{\beta-1},
-\qquad 0<\pi<1.
+\theta^{\alpha-1}(1-\theta)^{\beta-1},
+\qquad 0<\theta<1.
 $$
 
-For $\alpha=2$ and $\beta=2$, the density is symmetric around $.50$ and has less density near zero and one. Its mean is
+Conditional independence gives the likelihood
 
 $$
-\mathbb{E}[\Pi]
-=\frac{\alpha}{\alpha+\beta}
-=\frac{2}{4}
-=.50.
+\begin{aligned}
+p_{\mathbf Z\mid\Theta}(\mathbf z\mid\theta)
+&=
+\prod_{i=1}^n
+\theta^{z_i}(1-\theta)^{1-z_i}\\
+&=
+\theta^k(1-\theta)^{n-k}.
+\end{aligned}
 $$
 
-When deriving the posterior, terms that do not depend on $\pi$ can be absorbed into a proportionality constant:
-
-$$
-f_\Pi(\pi)\propto\pi^{2-1}(1-\pi)^{2-1}.
-$$
-
-## Writing the likelihood from counts
-
-Suppose the sample contains $d=\sum_{i=1}^{20}d_i=14$ deleted tokens and $r=20-d=6$ retained tokens. Under the conditional-independence assumption, the Bernoulli likelihood is
-
-$$
-p_{\mathbf D\mid\Pi}(\mathbf{d}\mid\pi)
-=\prod_{i=1}^{20}
-\pi^{d_i}(1-\pi)^{1-d_i}.
-$$
-
-Collecting equal powers gives the likelihood kernel
-
-$$
-p_{\mathbf D\mid\Pi}(\mathbf{d}\mid\pi)
-\propto
-\pi^{14}(1-\pi)^6.
-$$
-
-The sequence order does not enter this model, since only the number of deletions and retentions enters the kernel. This count reduction would no longer be adequate if the model represented speaker, word, or phonological-context differences.
-
-## Multiplying and recognizing the posterior family
+## Collecting powers
 
 Bayes' rule gives
 
 $$
 \begin{aligned}
-f_{\Pi\mid\mathbf D}(\pi\mid\mathbf{d})
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)
 &\propto
-p_{\mathbf D\mid\Pi}(\mathbf{d}\mid\pi)f_\Pi(\pi)\\
+p_{\mathbf Z\mid\Theta}(\mathbf z\mid\theta)f_\Theta(\theta)\\
 &\propto
-\pi^{14}(1-\pi)^6
-\pi^{2-1}(1-\pi)^{2-1}\\
+\theta^k(1-\theta)^{n-k}
+\theta^{\alpha-1}(1-\theta)^{\beta-1}\\
 &=
-\pi^{16-1}(1-\pi)^{8-1}.
+\theta^{\alpha+k-1}
+(1-\theta)^{\beta+n-k-1}.
 \end{aligned}
 $$
 
-The deletion exponent is $(\alpha-1)+d=(\alpha+d)-1$, and the retention exponent changes in the same way. This is the kernel of a beta density. Thus
+This is the kernel of another beta density:
 
 $$
-\Pi\mid\mathbf{D}=\mathbf{d}
+\Theta\mid\mathbf z
 \sim
-\operatorname{Beta}(16,8).
+\operatorname{Beta}(\alpha+k,\beta+n-k).
 $$
 
-In general, a $\operatorname{Beta}(\alpha,\beta)$ prior and Bernoulli data with $d$ deletions and $r$ retentions produce
-
-$$
-\Pi\mid\mathbf{D}=\mathbf{d}
-\sim
-\operatorname{Beta}(\alpha+d,\beta+r).
-$$
-
-The beta distribution is a [**conjugate prior**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) for the Bernoulli likelihood because the posterior remains in the beta family. Conjugacy names this family-preserving property; the [Stan User's Guide](https://mc-stan.org/docs/stan-users-guide/efficiency-tuning.html#exploiting-conjugacy) shows the same beta update computationally.
-
-## Calculating posterior summaries
-
-The posterior mean is
-
-$$
-\mathbb{E}[\Pi\mid\mathbf{D}=\mathbf{d}]
-=\frac{16}{16+8}
-=\frac{2}{3}
-\approx.667.
-$$
-
-The observed proportion is $14/20=.70$, and the posterior mean lies between the prior mean $.50$ and that observed proportion. The posterior interval is also available directly from beta quantiles.
+Thus the two posterior shape parameters are obtained by adding the focal and nonfocal counts to the corresponding prior shapes. With the support-calibrated $\operatorname{Beta}(1,1)$ prior, the result is a beta distribution with shape parameters `r alpha_post` and `r beta_post`.
 
 ```{r}
-#| label: beta-bernoulli-update
-#| echo: true
-
-alpha_prior <- 2
-beta_prior <- 2
-deletions <- 14
-retentions <- 6
-
-alpha_posterior <- alpha_prior + deletions
-beta_posterior <- beta_prior + retentions
-posterior_mean <- alpha_posterior /
-  (alpha_posterior + beta_posterior)
-posterior_interval <- qbeta(
-  c(.025, .975),
-  alpha_posterior,
-  beta_posterior
+#| label: plot-unimorph-conjugacy
+#| fig-cap: "Beta prior and posterior for the FRB, calculated from the observed 42 of 120 lexeme cells."
+theta <- seq(0, 1, length.out = 1001L)
+density <- rbind(
+  data.frame(theta, value = dbeta(theta, alpha, beta),
+             distribution = "Beta(1, 1) prior"),
+  data.frame(theta, value = dbeta(theta, alpha_post, beta_post),
+             distribution = sprintf("Beta(%d, %d) posterior",
+                                    alpha_post, beta_post))
 )
 
-stopifnot(alpha_posterior == 16)
-stopifnot(beta_posterior == 8)
-stopifnot(abs(posterior_mean - 2 / 3) < 1e-12)
-
-c(mean = posterior_mean,
-  lower = posterior_interval[1],
-  upper = posterior_interval[2])
+ggplot(density, aes(theta, value, linetype = distribution)) +
+  geom_line(color = "#8B1A1A", linewidth = 0.85) +
+  labs(x = "Modeled share of t-initial lexeme cells", y = "Density",
+       linetype = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
 ```
 
-## Interpreting the prior weight
+## The normalizing constant
 
-The posterior mean can be rewritten as
+Recognizing the kernel supplies the constant that makes the density integrate to one:
 
 $$
-\frac{\alpha+ d}{\alpha+\beta+d+r}
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)
 =
-\frac{\alpha+\beta}{\alpha+\beta+d+r}
-\frac{\alpha}{\alpha+\beta}
-+
-\frac{d+r}{\alpha+\beta+d+r}
-\frac{d}{d+r}.
+\frac{1}{B(\alpha+k,\beta+n-k)}
+\theta^{\alpha+k-1}(1-\theta)^{\beta+n-k-1}.
 $$
 
-This expression is a weighted average of the prior mean and observed deletion proportion. In that calculation, $\alpha+\beta$ acts like a prior weight. This behavior motivates [**pseudocount**](https://mc-stan.org/learn-stan/case-studies/pool-binary-trials.html) language, but the shape parameters are not literal unobserved tokens. One convention compares the beta kernel with a uniform $\operatorname{Beta}(1,1)$ density and uses $\alpha-1$ and $\beta-1$. Thus the density and its predictive implications are less ambiguous descriptions of the prior than an unqualified count metaphor.
+The beta function is
 
-Conjugacy is likewise a computational property, not a reason to choose the prior. A beta prior may be computationally convenient while placing implausible mass on deletion rates. [Prior predictive simulation](prior-predictive-distributions.qmd) checks that implication on the observation scale.
+$$
+B(a,b)
+=
+\int_0^1t^{a-1}(1-t)^{b-1}\,\mathrm dt.
+$$
 
-The posterior remains conditional on the Bernoulli model. If tokens are grouped within speakers, or deletion probabilities vary with phonological and morphological context, the simple update does not represent that structure.
+Conjugacy makes this calculation algebraic. It does not establish that the exchangeable Bernoulli likelihood matches the data-collection design.
+
+## What conjugacy buys, and what it does not
+
+The update is computationally convenient: it provides a normalized posterior, closed-form moments, and beta-binomial predictive masses. But convenience is separate from measurement and sampling. The known UniMorph resource contains 200 focal cells among 588, so the actual finite-resource design is hypergeometric. The FRB remains a stated superpopulation bridge rather than an analysis of uncertainty about the file.
 
 ## Check your understanding
 
-1. Begin with $\operatorname{Beta}(3,7)$ and observe eight deletions and two retentions. What is the posterior?
-2. What is the mean of that posterior?
-3. What property makes the beta prior conjugate here?
-4. Why does conjugacy not establish that a prior is linguistically appropriate?
+1. Which exponents are added in the beta--Bernoulli update?
+2. Why can order be omitted from this likelihood?
+3. What does recognizing the beta kernel provide?
+4. Why does conjugacy not justify the independent-draw assumption?
 
-Conjugacy makes this update easy to calculate, but it does not tell us whether the prior makes defensible predictions. The [next page](prior-predictive-distributions.qmd) checks those predictions on the response scale.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The prior exponents $\alpha-1$ and $\beta-1$ receive the focal count $k$ and nonfocal count $n-k$, yielding shapes $\alpha+k$ and $\beta+n-k$. <!-- dqr-allow: empirical-answer -->
+2. Conditional exchangeability makes every ordered binary sequence with the same $k$ contribute the same likelihood kernel $\theta^k(1-\theta)^{n-k}$. <!-- dqr-allow: empirical-answer -->
+3. Recognizing the beta kernel provides the normalized beta posterior, including its beta-function constant, moments, and predictive distribution. <!-- dqr-allow: empirical-answer -->
+4. Conjugacy is an algebraic relation between a prior and likelihood; it supplies no evidence that independent draws match the actual without-replacement design. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [prior-predictive page](prior-predictive-distributions.qmd) asks what this model predicts before the sample updates it.

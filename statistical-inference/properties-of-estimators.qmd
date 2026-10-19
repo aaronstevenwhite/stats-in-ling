@@ -1,148 +1,115 @@
 ---
-title: "Sampling distributions"
+title: "Properties of estimators"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [maximum likelihood page](maximum-likelihood.qmd) produced one estimate from one observed sample. We now study an estimator as a rule that could be applied to every possible sample. In a [lexical decision task](https://doi.org/10.3758/BF03193014), a participant classifies each presented letter string as a word or a nonword. Suppose the population probability of a correct classification is
+An estimate is one realized number. An **estimator** is the rule that would produce an estimate from every possible sample, and its **sampling distribution** describes the estimates that rule would produce across repeated samples.
 
-$$
-\pi=.75.
-$$
+## An empirical repeated-sampling reference
 
-We sample 20 independent trials and estimate that accuracy probability with the sample proportion, which might be $.70$ in one sample, $.80$ in another, and $.75$ in a third. The population parameter is unchanged while the sample summary varies. For current purposes, this is a teaching model: real lexical decision trials may share participants and items, so trial-level independence would need justification in an actual experiment.
+We use the vowel measurements of Hillenbrand et al. ([1995](https://doi.org/10.1121/1.411872)), distributed here through [`phonTools::h95`](https://cran.r-project.org/package=phonTools) under the package's BSD 2-Clause terms. The study recorded 45 adult men, 48 adult women, 27 boys, and 19 girls producing the same 12 /hVd/ vowels. One row is one vowel token nested within a speaker.
 
-Basically, we apply the same rule to every sample the model could have produced and collect the resulting estimates. More specifically, the distribution of that estimation rule across possible samples is its [**sampling distribution**](https://online.stat.psu.edu/stat200/Lesson04).
-
-## Keeping three objects distinct
-
-The estimand is the target population quantity:
-
-$$
-\pi=.75.
-$$
-
-The estimator is the rule applied before we know which sample will occur:
-
-$$
-\widehat{\Pi}
-=\frac{1}{20}\sum_{i=1}^{20}X_i.
-$$
-
-The capital notation emphasizes that $\widehat{\Pi}$ varies across possible samples.
-
-After one sample is observed, the estimator produces an estimate, perhaps
-
-$$
-\widehat{\pi}=.70.
-$$
-
-| object | varies across repeated samples? | role |
-|---|---|---|
-| estimand $\pi$ | no | fixed target under the model |
-| estimator $\widehat{\Pi}$ | yes | rule applied to any possible sample |
-| estimate $\widehat{\pi}$ | already realized | output for one observed sample |
-
-An estimate is one realized number. Bias, variance, and standard error are properties of the estimator across possible samples, so the distinction affects every calculation that follows.
-
-## Enumerating a very small sampling distribution
-
-Before simulating 20 trials, take $n=2$ and $\pi=.75$. The possible ordered samples and proportion estimates are
-
-| sample | probability | estimate |
-|---|---:|---:|
-| $(0,0)$ | $.25^2=.0625$ | $0$ |
-| $(0,1)$ | $.25(.75)=.1875$ | $.5$ |
-| $(1,0)$ | $.75(.25)=.1875$ | $.5$ |
-| $(1,1)$ | $.75^2=.5625$ | $1$ |
-
-Combine samples that produce the same estimate:
-
-| possible $\widehat{\Pi}$ | probability |
-|---:|---:|
-| $0$ | $.0625$ |
-| $.5$ | $.375$ |
-| $1$ | $.5625$ |
-
-This PMF is the sampling distribution for the sample proportion when $n=2$ and $\pi=.75$.
-
-Using the [expectation rule developed earlier](../random-variables-and-distributions/expected-values.qmd), its expected value is
-
-$$
-0(.0625)+.5(.375)+1(.5625)=.75.
-$$
-
-The center equals the estimand.
-
-## Simulating the larger case
-
-For $n=20$, enumeration is possible but tedious. Simulation gives an approximation.
+The teaching table contains complete duration measurements. Its F2 and F3 columns include package-supplied imputations, but those columns play no role here. We focus on the 48 adult women producing /I/ in *hid*. Repeated samples draw speaker rows with replacement from these observed durations. We call this construction the **empirical sampling reference** (ESR). It is useful for studying estimator behavior conditional on the cohort, but it does not reconstruct recruitment from all American English speakers.
 
 ```{r}
-#| eval: false
-set.seed(414)
+#| label: load-hillenbrand-estimators
+library(ggplot2)
 
-accuracy_estimates <- replicate(
-  10000,
-  mean(rbinom(20, size = 1, prob = .75))
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
 )
+women_hid <- subset(vowels, speaker_type == "woman" & vowel == "I")
+x <- women_hid$duration_ms
+target_mean <- mean(x)
+target_sd <- sqrt(mean((x - target_mean)^2))
 
-mean(accuracy_estimates)
-sd(accuracy_estimates)
+stopifnot(nrow(women_hid) == 48L, !anyDuplicated(women_hid$speaker_id))
+
+data.frame(
+  speakers = length(x),
+  empirical_mean_ms = target_mean,
+  empirical_median_ms = median(x),
+  empirical_sd_ms = target_sd,
+  minimum_ms = min(x),
+  maximum_ms = max(x)
+)
 ```
 
-The simulated center should be near $.75$. The simulated standard deviation should be near the analytic value derived below.
+## Estimators are random variables
 
-## Calculating center and spread
-
-Under IID Bernoulli sampling,
+For a sample $X_1,\ldots,X_n$, the sample-mean estimator is
 
 $$
-\mathbb{E}[\widehat{\Pi}]=\pi
+T(\mathbf X)=\overline X=\frac{1}{n}\sum_{i=1}^nX_i.
 $$
 
-and
+Before sampling, $T(\mathbf X)$ is a random variable. After observing one sample $\mathbf x$, $T(\mathbf x)$ is an estimate. A useful sampling distribution is described by its expectation and variance:
 
 $$
-\operatorname{Var}(\widehat{\Pi})
-=\frac{\pi(1-\pi)}{n}.
+\mathbb{E}[T(\mathbf X)]
+\qquad\text{and}\qquad
+\operatorname{Var}[T(\mathbf X)].
 $$
 
-For $\pi=.75$ and $n=20$,
+The following simulation uses the observed adult-women group size and a fixed seed. The resampling unit is a speaker row.
 
-$$
-\operatorname{Var}(\widehat{\Pi})
-=\frac{.75(.25)}{20}
-=.009375.
-$$
+```{r}
+#| label: simulate-hillenbrand-estimator
+set.seed(20261018)
+replicates <- 20000L
+sample_size <- nrow(women_hid)
+sample_means <- replicate(
+  replicates,
+  mean(sample(x, size = sample_size, replace = TRUE))
+)
 
-The sampling standard deviation is
+sampling_center <- mean(sample_means)
+sampling_sd <- sd(sample_means)
 
-$$
-\sqrt{.009375}\approx.0968.
-$$
+stopifnot(abs(sampling_center - target_mean) < 0.25)
 
-Estimates from samples of 20 can thus differ from the target by several percentage points under the model.
+data.frame(
+  replicates = replicates,
+  sample_size = sample_size,
+  target_mean_ms = target_mean,
+  mean_of_estimates_ms = sampling_center,
+  sampling_sd_ms = sampling_sd
+)
+```
 
-## Changing the sample size
+```{r}
+#| label: plot-hillenbrand-estimator
+#| fig-cap: "Empirical sampling distribution of the mean /I/ duration from speaker-row resamples. The line marks the empirical cohort mean."
+ggplot(data.frame(mean_ms = sample_means), aes(mean_ms)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 42,
+                 fill = "grey75", color = "white") +
+  geom_vline(xintercept = target_mean, color = "#8B1A1A", linewidth = 0.7) +
+  labs(x = "Mean /I/ duration in a speaker resample (ms)", y = "Simulation density") +
+  theme_classic(base_size = 12)
+```
 
-If $n$ increases to 100, the variance becomes
-
-$$
-\frac{.75(.25)}{100}=.001875,
-$$
-
-and the sampling standard deviation becomes approximately $.0433$. Though the population parameter has not changed, the estimator has become more stable because each estimate averages more independent observations.
-
-## A sampling distribution contains estimates
-
-The sampling distribution here contains possible sample proportions, not zero and one trial responses. It is a distribution of estimates across possible samples, not a distribution of individual response values.
-
-State what repeats. Entire samples repeat, and one estimate is computed from each sample.
+The estimates vary even though the empirical target remains fixed at `r sprintf("%.3f", target_mean)` ms. This distinction between response variation and estimator variation is the foundation for standard errors, bias, and confidence intervals.
 
 ## Check your understanding
 
-1. For $n=2$ and $\pi=.50$, enumerate the sampling distribution of the sample proportion.
-2. Which object is fixed in the repeated-sampling model, $\pi$ or $\widehat{\Pi}$?
-3. Why does increasing $n$ narrow the sampling distribution without changing the population accuracy?
-4. Distinguish an estimator from its realized estimate in one sentence.
+1. Which object changes across the ESR draws, and which target remains fixed?
+2. What is the resampling unit?
+3. Why would resampling all twelve vowel rows independently break the speaker structure?
+4. What population claim does this ESR not license?
 
-The next pages use this distribution in two ways. [Standard errors](standard-errors.qmd) summarize its spread, while [estimator bias](estimator-bias.qmd) compares its center with the target.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The resampled speaker rows, and thus the estimated means, change across draws; the empirical cohort mean remains fixed. <!-- dqr-allow: empirical-answer -->
+2. The resampling unit is one adult-woman speaker row for /I/ in *hid*. <!-- dqr-allow: empirical-answer -->
+3. The twelve vowel measurements from one speaker are dependent. Row-wise resampling would separate measurements that belong to the same speaker. <!-- dqr-allow: empirical-answer -->
+4. The ESR does not license a claim about all American English speakers or reproduce the study's recruitment process. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](standard-errors.qmd) relates the spread of this sampling distribution to sample size.

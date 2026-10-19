@@ -1,154 +1,119 @@
 ---
 title: "Leverage"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [residual diagnostics](checking-linear-regression.qmd) ask whether responses depart from fitted means in systematic ways. Leverage instead concerns where each observation falls among the predictor values used to fit the line.
+Residual size describes a response discrepancy. **Leverage** instead describes how unusual an observation's predictor row is within the fitted design.
 
-Residual size tells us whether a response lies far from its fitted conditional
-mean. It does not tell us whether the observation occupies an unusual position
-on the predictor. [**Leverage**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) measures the second property.
+## The hat matrix
 
-An observation at the edge of the predictor range can help determine the fitted
-slope even when its response lies close to the fitted line. Leverage quantifies
-this unusual predictor position.
-
-## Comparing positions on one predictor
-
-Consider five words with predictor values
+OLS fitted values can be written as
 
 $$
-\mathbf{x}=(2,3,4,5,11).
+\widehat{\mathbf Y}
+=
+\mathbf X(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf Y
+=
+\mathbf H\mathbf Y.
 $$
 
-The sample mean is
-
-$$
-\bar x=5.
-$$
-
-The word at $x=11$ is six units above the mean, while the word at $x=4$ is one
-unit below it. The first word occupies a more unusual design position, regardless
-of its observed response.
-
-For simple linear regression with an intercept, observation $i$ has leverage
+The matrix $\mathbf H$ maps observed responses to fitted values. Its diagonal element
 
 $$
 h_{ii}
-=\frac{1}{n}
-+\frac{(x_i-\bar x)^2}
-{\sum_{j=1}^n(x_j-\bar x)^2}.
+=
+\mathbf x_i^\top(\mathbf X^\top\mathbf X)^{-1}\mathbf x_i
 $$
 
-The first term gives every observation the same baseline leverage. The second
-term increases with squared distance from the predictor mean.
-
-For the five predictor values,
+is observation $i$'s leverage. For a simple regression with an intercept,
 
 $$
-\sum_{j=1}^5(x_j-\bar x)^2
-=(-3)^2+(-2)^2+(-1)^2+0^2+6^2
-=50.
+h_{ii}
+=
+\frac{1}{n}
++
+\frac{(x_i-\overline x)^2}
+{\sum_j(x_j-\overline x)^2}.
 $$
 
-The leverage at $x=4$ is
-
-$$
-h
-=\frac15+\frac{(-1)^2}{50}
-=.22.
-$$
-
-The leverage at $x=11$ is
-
-$$
-h
-=\frac15+\frac{6^2}{50}
-=.92.
-$$
-
-The edge observation has very high leverage because its predictor value is far
-from the center of this design.
-
-## Calculating every leverage value
+The formula makes the source of leverage explicit: predictor values far from the observed center have more capacity to determine the fitted line.
 
 ```{r}
-#| label: calculate-simple-leverage
-#| echo: true
-x <- c(2, 3, 4, 5, 11)
-n <- length(x)
+#| label: compute-provo-leverage
+library(ggplot2)
 
-leverage_by_hand <-
-  1 / n + (x - mean(x))^2 / sum((x - mean(x))^2)
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
 
-data.frame(x = x, leverage = leverage_by_hand)
-sum(leverage_by_hand)
-```
+X <- model.matrix(fit)
+hat_matrix <- X %*% solve(crossprod(X)) %*% t(X)
+provo$leverage <- diag(hat_matrix)
+provo$leverage_from_lm <- hatvalues(fit)
+high_leverage_cutoff <- 2 * ncol(X) / nrow(X)
+provo$high_leverage <- provo$leverage > high_leverage_cutoff
 
-With an intercept and one predictor, the leverage values sum to 2. This is the
-number of fitted coefficients. Their average is thus $2/n$, which gives a
-useful reference for identifying observations far above the design's usual
-leverage.
-
-The reference is descriptive, not an automatic deletion rule. A high-leverage
-observation may be exactly the observation needed to study the edge of a
-linguistically relevant range.
-
-## Retrieving leverage from a fitted model
-
-Leverage depends only on the predictor values used to fit the model. We can
-attach any response values to verify the software calculation:
-
-```{r}
-#| label: retrieve-fitted-leverage
-#| echo: true
-design_example <- data.frame(
-  x = x,
-  y = c(6.1, 6.4, 6.5, 6.8, 8.0)
+stopifnot(
+  max(abs(provo$leverage - provo$leverage_from_lm)) < 1e-12,
+  abs(sum(provo$leverage) - ncol(X)) < 1e-10
 )
 
-fit <- lm(y ~ x, data = design_example)
-
-cbind(
-  by_hand = leverage_by_hand,
-  from_model = hatvalues(fit)
+data.frame(
+  positions = nrow(provo),
+  coefficients = ncol(X),
+  leverage_sum = sum(provo$leverage),
+  cutoff = high_leverage_cutoff,
+  positions_above_cutoff = sum(provo$high_leverage)
 )
 ```
 
-The columns agree. If we changed all five responses but kept the predictor
-values fixed, the leverage values would remain unchanged.
+The leverage values sum to `r ncol(X)`, the number of fitted coefficients. The conventional twice-average threshold marks `r sum(provo$high_leverage)` observed positions for inspection; it is not a deletion rule.
 
-## Separating leverage from residual size
+```{r}
+#| label: plot-provo-leverage
+#| fig-cap: "Provo leverage across observed modeled cloze surprisal. Black points exceed twice the average leverage."
+point_opacity <- 0.35
+ggplot(provo, aes(cloze_surprisal_bits, leverage)) +
+  geom_hline(
+    yintercept = high_leverage_cutoff,
+    color = "grey55",
+    linetype = 2,
+    linewidth = 0.4
+  ) +
+  geom_point(color = "grey70", alpha = point_opacity, size = 0.8) +
+  geom_point(
+    data = subset(provo, high_leverage),
+    color = "black",
+    size = 1
+  ) +
+  labs(x = "Modeled cloze surprisal (bits)", y = "Leverage") +
+  theme_classic(base_size = 12)
+```
 
-An observation may have high leverage and a small residual. The point at $x=11$
-could lie almost exactly on the fitted line while still anchoring its right end.
-In contrast, a point near $x=5$ could have a very unusual response and a large
-residual while occupying an ordinary predictor position.
+High leverage is a design property. A high-leverage point can lie exactly on the fitted line and have little case-deletion effect. The [next page](influence.qmd) combines leverage with residual size.
 
-This gives two separate questions:
+## Check your understanding
 
-1. Is the response far from its fitted conditional mean?
-2. Is the predictor value far from the center of the observed design?
+1. Why does leverage not use the observed response?
+2. Why do the diagonal values sum to the number of coefficients?
+3. What makes a predictor value high leverage in simple regression?
+4. Why is a threshold not an automatic exclusion rule?
 
-Residuals answer the first. Leverage answers the second. A large residual and high leverage are thus different properties of an observation.
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-## Interpreting high leverage in a linguistic design
+1. Leverage depends only on the predictor row and the design matrix, not on the observed response value. <!-- dqr-allow: empirical-answer -->
+2. The hat matrix is an idempotent projection with trace equal to its rank, which is the number of estimable coefficients. <!-- dqr-allow: empirical-answer -->
+3. A value far from the observed predictor mean relative to the total predictor spread has high leverage. <!-- dqr-allow: empirical-answer -->
+4. The twice-average leverage threshold is a screening convention, not evidence of error; a high-leverage observation can be valid and have little influence when its residual is small. <!-- dqr-allow: empirical-answer -->
 
-Suppose the predictor is corpus frequency. A genuinely rare word may have high
-leverage after log frequency is entered into a small sample. Its position is not
-necessarily a recording error. It may instead reveal that the sample contains
-little information near that end of the frequency range.
-
-The first response should be to inspect the design and the observation's
-provenance. Is the value coded correctly? Does it belong to the target
-population? Is the edge of the range theoretically relevant? Only then should
-we ask how strongly it affects the fitted coefficients.
-
-That final question is influence, which the [next page](influence.qmd) introduces
-using case deletion.
-
-::: {.callout-note title="Locate the unusual design position"}
-1. Calculate the leverage for $x=5$ in the five-value example.
-2. Why can leverage be calculated without looking at the responses?
-3. Construct a case with high leverage and a small residual.
-4. Explain why residual magnitude and leverage answer different questions.
-:::
+</details>

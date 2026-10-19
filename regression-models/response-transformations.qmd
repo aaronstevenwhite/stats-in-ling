@@ -1,195 +1,136 @@
 ---
 title: "Transforming a response"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [straight-line mean](simple-linear-regression.qmd) does not determine the scale on which the response should be modeled. Reaction times are positive and often right skewed. Most responses cluster in a relatively narrow fast range, while a smaller number extend far into the slow tail. An ordinary linear regression fitted to raw milliseconds can consequently predict negative values and leave strongly skewed residuals.
-
-One possible response is to transform the measurement before fitting the model. For a positive response $Y_i$, define
+The PRS response is a mean of log first-fixation durations. A **response transformation** changes the scale on which the model treats effects as additive. For a positive duration $T$,
 
 $$
-Z_i=\log Y_i.
+Y=\log T
 $$
 
-The regression is then a model for the conditional mean of log response time:
+turns a multiplicative change in milliseconds into an additive change on the log scale.
+
+## What the prepared response means
+
+For position $i$, the course table stores a reader-aggregated mean log duration, $\overline{\log T}_i$. Exponentiating it gives
 
 $$
-Z_i
+G_i
 =
-\beta_0+\beta_1x_i+\epsilon_i,
-\qquad
-\epsilon_i\sim\mathcal{N}(0,\sigma^2).
+\exp\!\left(\overline{\log T}_i\right),
 $$
 
-The logarithm is the new concept. The linear regression machinery is unchanged.
-
-The transformation changes the scale on which the model treats effects as additive. On the raw scale, a linear model treats
-equal millisecond differences as comparable. On the log scale, it treats equal
-ratios as comparable.
-
-## Examining what the logarithm does
-
-Compare three response times:
-
-| milliseconds | natural log |
-|---:|---:|
-| 400 | 5.99 |
-| 800 | 6.68 |
-| 1600 | 7.38 |
-
-Doubling from 400 to 800 milliseconds adds about $.69$ on the log scale. Doubling again from 800 to 1600 adds the same amount. Equal ratios on the original scale become equal differences on the log scale.
-
-This property makes a linear coefficient multiplicative after back-transformation.
-
-The reverse is also true. Equal differences on the log scale become equal
-ratios on the original scale. Since
-
-$$
-\log(2y)-\log(y)=\log 2,
-$$
-
-doubling any positive response produces the same log difference. But adding 400
-milliseconds does not. The change from 400 to 800 is a doubling, while the
-change from 800 to 1200 is only a factor of 1.5.
-
-## Interpreting a coefficient as a ratio
-
-Suppose $x_i$ marks a high-surprisal word and
-
-$$
-\beta_1=.08.
-$$
-
-The expected log response differs by $.08$. Exponentiating gives
-
-$$
-e^{.08}\approx1.083.
-$$
-
-Thus the fitted geometric mean response is about 8.3 percent larger in the
-high-surprisal condition, under the model.
-
-For a small coefficient, $100\beta_1$ is a rough percentage approximation. Reporting $100(e^{\beta_1}-1)$ gives the exact multiplicative interpretation.
-
-If $\beta_1=-.10$, then
-
-$$
-e^{-.10}\approx.905.
-$$
-
-The fitted geometric mean is multiplied by about $.905$, a decrease of about
-9.5 percent. The approximation $100\beta_1=-10$ percent is close but not exact.
-
-For a two-unit predictor contrast, the ratio is
-
-$$
-e^{2\beta_1}.
-$$
-
-Coefficients remain expressed per predictor unit even after the response has
-been transformed.
-
-## Checking the transformation in R
+the geometric mean duration among the retained reader measurements for that position. It does not give the arithmetic mean duration.
 
 ```{r}
-#| label: inspect-log-response-transformation
-#| echo: true
-response_time <- c(400, 800, 1600)
+#| label: transform-provo-response
+library(ggplot2)
 
-data.frame(
-  response_time = response_time,
-  log_response_time = log(response_time),
-  recovered_response_time = exp(log(response_time))
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
 )
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+provo$ffd_geometric_mean_ms <- exp(provo$mean_log_ffd)
+
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+residual_sd <- summary(fit)$sigma
+
+stopifnot(
+  max(abs(
+    log(provo$ffd_geometric_mean_ms) - provo$mean_log_ffd
+  )) < 1e-12,
+  all(provo$ffd_geometric_mean_ms > 0)
+)
+
+summary(provo$ffd_geometric_mean_ms)
 ```
 
-Exponentiating recovers the original positive measurements up to numerical
-precision. The transformation is one-to-one on positive values, so no ordering
-information is lost. Its spacing changes.
-
-The positivity restriction matters. A response of zero has log value
-$-\infty$, and a negative response has no real-valued logarithm. A log response
-model thus requires a measurement whose meaningful support is strictly
-positive.
-
-## Back-transformation of a mean
-
-If
+Under the working model for the stored position summaries
 
 $$
-\log Y\sim\mathcal{N}(\mu,\sigma^2),
+Y_i\mid x_i\sim\mathcal N(\mu_i,\sigma^2),
 $$
 
-then
+two summaries of the back-transformed position response differ:
 
 $$
-\mathbb{E}[Y]=e^{\mu+\sigma^2/2},
+\operatorname{Median}(T_i\mid x_i)=\exp(\mu_i)
 $$
 
-not merely $e^\mu$. The quantity $e^\mu$ is the median of the implied lognormal distribution.
-
-Why does the mean differ? Exponentiation is nonlinear. Large positive log-scale
-deviations increase raw responses more than equally large negative deviations
-decrease them. The right tail thus pulls the raw-scale mean above $e^\mu$.
-
-Suppose
+but
 
 $$
-\mu=6
-\qquad\text{and}\qquad
-\sigma=.30.
+\mathbb{E}[T_i\mid x_i]=\exp(\mu_i+\sigma^2/2).
 $$
 
-Then the raw-scale median is
+The second identity follows from the lognormal moment-generating calculation. Back-transforming a fitted log mean without the variance term thus targets a conditional median, or equivalently a geometric mean of the stored position response under this model, rather than its arithmetic mean.
 
-$$
-e^6\approx403.4,
-$$
+```{r}
+#| label: plot-provo-response-transform
+#| fig-cap: "Observed position-level geometric mean durations and two back-transformed summaries from the fitted log-scale model."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+grid$mu <- predict(fit, newdata = grid)
+grid$conditional_geometric_mean <- exp(grid$mu)
+grid$working_lognormal_mean <- exp(grid$mu + residual_sd^2 / 2)
 
-while the raw-scale mean is
+point_opacity <- 0.2
+ggplot(provo, aes(cloze_surprisal_bits, ffd_geometric_mean_ms)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(
+    data = grid,
+    aes(cloze_surprisal_bits, conditional_geometric_mean),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  geom_line(
+    data = grid,
+    aes(cloze_surprisal_bits, working_lognormal_mean),
+    color = "black",
+    linetype = 2,
+    linewidth = 0.7
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Position geometric mean FFD (ms)"
+  ) +
+  theme_classic(base_size = 12)
+```
 
-$$
-e^{6+.30^2/2}
-=e^{6.045}
-\approx421.9.
-$$
+At the observed predictor center, the fitted geometric mean is `r sprintf("%.1f", exp(coef(fit)[["(Intercept)"]]))` ms, while the working lognormal arithmetic mean of position-level geometric means is `r sprintf("%.1f", exp(coef(fit)[["(Intercept)"]] + residual_sd^2 / 2))` ms. The small difference is computed from the actual PRS residual scale.
 
-The difference grows with $\sigma$. A single exponentiated fitted mean does not
-capture it.
+A potential worry is that this page diagnoses raw reader-time skew. It cannot. The prepared response has already averaged log duration by position, so the page demonstrates transformation and back-transformation of the stored summaries only.
 
-A model for mean log time is not automatically a model for mean raw time. We must keep the distinction between these targets when returning predictions to milliseconds.
+## Check your understanding
 
-The quantity $e^{\widehat\mu}$ cannot automatically be interpreted as a raw-scale mean. That interpretation silently replaces a median-like
-quantity with a mean. The correction depends on the modeled residual
-distribution and its variance.
+1. Why is `exp(mean_log_ffd)` a geometric mean?
+2. Which raw-scale summary includes the $\sigma^2/2$ term?
+3. Does a linear effect on log duration imply a constant millisecond difference?
+4. Why can this table not reveal the raw reader-level distribution?
 
-## Treating the transformation as part of the model
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-A transformation changes the response scale, residual pattern, coefficient interpretation, and predictive target. It should not be selected only because a histogram looks more symmetric.
+1. `exp(mean_log_ffd)` equals $\exp(\overline{\log T})$, the geometric mean of the retained positive durations. <!-- dqr-allow: empirical-answer -->
+2. The conditional arithmetic mean under the lognormal working model is $\mathbb{E}[T\mid x]=\exp(\mu+\sigma^2/2)$. <!-- dqr-allow: empirical-answer -->
+3. No. A constant additive change on the log scale is a constant multiplicative ratio on the millisecond scale, so the millisecond difference depends on the baseline. <!-- dqr-allow: empirical-answer -->
+4. The stored response already averages log durations over readers, so individual trial values and their distribution are unavailable. <!-- dqr-allow: empirical-answer -->
 
-The model should be checked on both scales. A satisfactory log-scale residual plot can coexist with poor predictions of the slow raw-time tail. Conversely, a raw-scale family such as a lognormal or shifted distribution may represent the measurement process more directly.
+</details>
 
-This is not a contest in which the most symmetric histogram wins. The scale of additivity should
-match the theoretical comparison and the response-generating process. If a
-processing account predicts proportional slowing, a log scale may state that
-claim directly. If it predicts an additive millisecond cost, a log response
-changes the target.
-
-## Reporting the modeled quantity
-
-A complete coefficient interpretation states both scales. For instance: "A
-one-bit surprisal increase was associated with a $.08$ increase in expected log
-reading time, corresponding to an 8.3 percent multiplicative change in the
-fitted geometric mean." This statement does not call the exponentiated value a
-raw-scale mean.
-
-Predicted raw observations can instead be generated from the complete log-scale
-response model and summarized on the raw scale. That procedure retains residual
-variation rather than exponentiating only the conditional mean.
-
-::: {.callout-note title="Track the response scale"}
-1. What original-scale relationship becomes additive after taking logs?
-2. If $\beta_1=-.10$, calculate the fitted multiplicative change.
-3. Why is $e^{\widehat{\mu}}$ not generally the predicted raw-scale mean?
-4. What happens when a response equals zero?
-5. Explain why exponentiating a fitted log-scale mean does not automatically give the raw-scale mean.
-:::
+The [next page](frequentist-linear-regression.qmd) derives the least-squares fit.

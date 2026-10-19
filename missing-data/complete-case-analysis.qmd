@@ -1,110 +1,219 @@
 ---
-title: "Complete case analysis"
+title: "Complete-case analysis"
 ---
 
-Suppose a study of American English /ɹ/ records duration, F2, and F3 for every production. The linguistic question concerns how an acoustic correlate of rhoticity varies across speakers or contexts: work on children's productions, for instance, compares F3, F2, and the F3--F2 distance with trained listeners' ratings ([Campbell et al. 2018](https://pmc.ncbi.nlm.nih.gov/articles/PMC6050150/)). If the formant procedure returns no usable F3 estimate for several long tokens, software requiring every measure may silently remove those rows. The analysis still runs, but it describes a selected set of productions.
+[Hillenbrand et al. (1995)](https://doi.org/10.1121/1.411872) recorded men, women, and children producing American English vowels in /hVd/ words. They measured formant contours from LPC spectra with interactive editing and selected the steady-state sample by visual inspection. We use the [pinned raw-data release](https://github.com/santiagobarreda/hillenbrand_et_al_1995/tree/6dd44decc8ef5b537cbb54732a3b00c8fa652e65), whose table retains unavailable formant measurements as `NA`.
 
-[**Complete-case analysis**](https://stefvanbuuren.name/fimd/sec-MCAR.html), also called listwise deletion, retains only rows observed on every variable required by the analysis. Its apparent simplicity hides two consequences. It reduces the amount of information, and it may change the target population from all eligible recorded productions to a selected subset. This second consequence is the **complete-case selection problem**.
+The row unit is one speaker-by-vowel token. The exact missing-cell pattern is a property of the released table, not a count reported in the 1995 article. An `NA` means that this release contains no usable numeric estimate in the intended cell; it does not mean 0 Hz, and the release does not name a cell-specific cause.
 
-## Defining the complete case indicator
+## Defining the analysis set
 
-Let $J$ be the set of variables required by an analysis. For row $i$, define
+[**Complete-case analysis**](https://stefvanbuuren.name/fimd/sec-MCAR.html), also called listwise deletion, retains only rows observed on every variable required by an analysis. Let $J$ be that set of variables. For token $i$,
 
 $$
 C_i=\prod_{j\in J}R_{ij}.
 $$
 
-Because each $R_{ij}$ is zero or one, $C_i=1$ only when every required value is observed. A complete case estimate of a mean is
+Because each $R_{ij}$ is zero or one, $C_i=1$ only when every required value is observed. A complete-case estimate of a mean is
 
 $$
 \bar Y_{C=1}
 =\frac{\sum_{i=1}^{n}C_iY_i}{\sum_{i=1}^{n}C_i}.
 $$
 
-This quantity is a mean over complete rows. It equals the mean over all eligible rows only under additional conditions on the [missingness mechanism](missingness-mechanisms.qmd) and the estimand.
+This is a mean over complete rows. It equals the mean over all eligible rows only under additional conditions on the [missingness mechanism](missingness-mechanisms.qmd) and the estimand.
 
-## Working through a selected subset
-
-Consider eight tokens. Duration is observed for every token, but F3 is missing for the three longest tokens.
-
-| token | duration | F3 | complete for duration and F3 |
-|:--|--:|--:|:--|
-| t1 | 100 | 2480 | yes |
-| t2 | 110 | 2510 | yes |
-| t3 | 120 | 2440 | yes |
-| t4 | 130 | 2460 | yes |
-| t5 | 140 | 2420 | yes |
-| t6 | 150 | missing | no |
-| t7 | 160 | missing | no |
-| t8 | 170 | missing | no |
-
-The mean duration over all eight tokens is
-
-$$
-\bar Y=\frac{100+110+120+130+140+150+160+170}{8}=135.
-$$
-
-The complete case mean is
-
-$$
-\bar Y_{C=1}=\frac{100+110+120+130+140}{5}=120.
-$$
-
-Deletion changes the mean by 15 milliseconds because the retained tokens are shorter. The complete-case mean is not arithmetically incorrect. It answers a different question: what is mean duration among recorded productions for which both duration and an F3 estimate were available? It does not answer whether F3 or F3--F2 tracks rhoticity, because duration is only the observed variable used here to expose selection.
-
-## Making deletion explicit in R
+We define $J$ using duration, F0, and the steady F1--F3 measurements.
 
 ```{r}
-acoustic <- data.frame(
-  token = paste0("t", 1:8),
-  duration = seq(100, 170, by = 10),
-  F3 = c(2480, 2510, 2440, 2460, 2420, NA, NA, NA)
+#| label: load-hillenbrand-complete-cases
+#| message: false
+#| warning: false
+
+hill <- utils::read.csv(
+  "data/hillenbrand-raw/hillenbrand-raw-formants.csv",
+  check.names = FALSE
 )
 
-required <- c("duration", "F3")
-acoustic$is_complete <- complete.cases(acoustic[required])
+steady_columns <- c(
+  "duration_ms", "f0_hz", "f1_steady_hz",
+  "f2_steady_hz", "f3_steady_hz"
+)
 
-table(acoustic$is_complete)
-mean(acoustic$duration)
-mean(acoustic$duration[acoustic$is_complete])
-aggregate(duration ~ is_complete, data = acoustic, FUN = mean)
+hill$complete_steady <- stats::complete.cases(hill[steady_columns])
+
+stopifnot(
+  nrow(hill) == 1668L,
+  length(unique(hill$speaker_id)) == 139L,
+  length(unique(hill$vowel)) == 12L,
+  !anyDuplicated(hill$token_id),
+  !anyDuplicated(paste(hill$speaker_id, hill$vowel, sep = "::")),
+  all(table(hill$speaker_id) == 12L),
+  sum(hill$complete_steady) == 1617L
+)
 ```
 
-The first mean is available here only because duration itself is observed for all rows. In a real analysis requiring F3 as a response, the missing F3 values cannot be used to calculate the full target. Comparing observed duration across complete and incomplete rows nevertheless shows that deletion selects shorter tokens.
+The analysis retains `r format(sum(hill$complete_steady), big.mark = ",")` of `r format(nrow(hill), big.mark = ",")` recorded tokens and removes `r sum(!hill$complete_steady)`. The complete-case indicator is stored in the table rather than left to a modeling function's implicit row deletion.
 
-## Several columns multiply the loss
+## Which steady measurements are absent?
 
-Complete case loss can be large even when each variable is mostly observed. Suppose five required measurements are independently observed in 90 percent of rows. A row is complete only when all five values are observed, so its probability of being complete is
+```{r}
+#| label: summarize-hillenbrand-steady-missingness
+
+steady_availability <- data.frame(
+  measurement = steady_columns,
+  observed = colSums(!is.na(hill[steady_columns])),
+  missing = colSums(is.na(hill[steady_columns]))
+)
+
+f2_f3_pattern <- as.data.frame(table(
+  f2_missing = is.na(hill$f2_steady_hz),
+  f3_missing = is.na(hill$f3_steady_hz)
+))
+names(f2_f3_pattern)[3] <- "tokens"
+
+stopifnot(
+  sum(is.na(hill$f2_steady_hz)) == 10L,
+  sum(is.na(hill$f3_steady_hz)) == 41L,
+  sum(is.na(hill$f2_steady_hz) & is.na(hill$f3_steady_hz)) == 0L
+)
+
+steady_availability
+f2_f3_pattern
+```
+
+Duration, F0, and steady F1 are observed for every token. `r sum(is.na(hill$f2_steady_hz))` tokens lack steady F2 while retaining steady F3; `r sum(is.na(hill$f3_steady_hz))` lack steady F3 while retaining steady F2; none lacks both. Thus the `r sum(!hill$complete_steady)` incomplete tokens are the union of two disjoint patterns in this five-variable analysis.
+
+## Deletion changes the observed composition
+
+Duration, F0, and F1 remain observed for both analysis sets, so they can expose selection without pretending to reveal the missing F2 or F3 values.
+
+```{r}
+#| label: compare-hillenbrand-analysis-sets
+
+observed_comparison <- do.call(
+  rbind,
+  lapply(
+    c("duration_ms", "f0_hz", "f1_steady_hz"),
+    function(measurement) {
+      values <- split(hill[[measurement]], hill$complete_steady)
+      data.frame(
+        measurement = measurement,
+        analysis_set = c("Incomplete", "Complete"),
+        tokens = vapply(values, length, integer(1)),
+        mean = vapply(values, mean, numeric(1)),
+        median = vapply(values, stats::median, numeric(1)),
+        row.names = NULL
+      )
+    }
+  )
+)
+
+observed_comparison$measurement <- factor(
+  observed_comparison$measurement,
+  levels = c("duration_ms", "f0_hz", "f1_steady_hz"),
+  labels = c("Duration (ms)", "F0 (Hz)", "Steady F1 (Hz)")
+)
+
+observed_comparison
+```
+
+The incomplete tokens average `r sprintf("%.2f", observed_comparison$mean[observed_comparison$measurement == "Duration (ms)" & observed_comparison$analysis_set == "Incomplete"])` ms, while the complete tokens average `r sprintf("%.2f", observed_comparison$mean[observed_comparison$measurement == "Duration (ms)" & observed_comparison$analysis_set == "Complete"])` ms. The corresponding F0 means are `r sprintf("%.2f", observed_comparison$mean[observed_comparison$measurement == "F0 (Hz)" & observed_comparison$analysis_set == "Incomplete"])` and `r sprintf("%.2f", observed_comparison$mean[observed_comparison$measurement == "F0 (Hz)" & observed_comparison$analysis_set == "Complete"])` Hz. These differences show that deletion selects on measurements we can inspect. They do not identify why F2 or F3 is unavailable.
+
+The selection also varies by vowel label.
+
+```{r}
+#| label: plot-hillenbrand-complete-cases
+#| fig-width: 6
+#| fig-height: 4.4
+
+vowel_completeness <- stats::aggregate(
+  complete_steady ~ vowel,
+  hill,
+  function(x) c(tokens = length(x), incomplete = sum(!x))
+)
+vowel_completeness <- data.frame(
+  vowel = vowel_completeness$vowel,
+  tokens = vowel_completeness$complete_steady[, "tokens"],
+  incomplete = vowel_completeness$complete_steady[, "incomplete"]
+)
+vowel_completeness$incomplete_proportion <- with(
+  vowel_completeness,
+  incomplete / tokens
+)
+vowel_completeness$vowel <- stats::reorder(
+  vowel_completeness$vowel,
+  vowel_completeness$incomplete_proportion
+)
+
+ggplot2::ggplot(
+  vowel_completeness,
+  ggplot2::aes(incomplete_proportion, vowel)
+) +
+  ggplot2::geom_col(fill = "#2B6F8A", width = 0.7) +
+  ggplot2::scale_x_continuous(
+    labels = scales::label_percent(accuracy = 1) # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::labs(
+    x = "Incomplete on the five steady measurements",
+    y = "Vowel label"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The released `er` category has `r with(subset(vowel_completeness, as.character(vowel) == "er"), incomplete)` incomplete tokens. By contrast, the released `eh`, `ih`, and `oo` categories have none. This is an empirical composition difference, not a diagnosis of the signal or the tracking procedure.
+
+## Several columns determine joint retention
+
+Even high marginal availability does not determine the complete-case rate. In general,
 
 $$
-P(C_i=1)=.9^5\approx.59.
+\mathbb{P}(C_i=1)
+=\mathbb{P}\left(\bigcap_{j\in J}\{R_{ij}=1\}\right).
 $$
 
-A dataset with 1,000 rows would retain about 590 complete rows on average. The exact retained count varies, and the independence assumption used in this calculation may fail. The hand calculation is meant to show why missingness accumulates across columns, not to predict an exact count for every dataset.
+If the indicators were independent, this joint probability would equal $\prod_{j\in J}\mathbb{P}(R_{ij}=1)$. The released data let us compare that independence calculation with the observed joint rate without inventing marginal probabilities.
+
+```{r}
+#| label: hillenbrand-joint-retention
+
+marginal_observation <- colMeans(!is.na(hill[steady_columns]))
+retention_comparison <- data.frame(
+  quantity = c(
+    "Product of five marginal observation rates",
+    "Observed complete-case rate"
+  ),
+  proportion = c(
+    prod(marginal_observation),
+    mean(hill$complete_steady)
+  )
+)
+
+marginal_observation
+retention_comparison
+```
+
+The product is `r scales::percent(retention_comparison$proportion[1], accuracy = 0.01)`, while the observed complete-case rate is `r scales::percent(retention_comparison$proportion[2], accuracy = 0.01)`. Their proximity here is a feature of this release's marginal rates and F2/F3 pattern; it is not a general property of complete-case deletion.
 
 ## When does deletion preserve a target?
 
-Under MCAR with respect to the variables in a stated analysis, complete rows form a random subset, so familiar complete-case estimates may remain unbiased for their full-data targets. MAR does not provide this guarantee automatically. If F3 availability depends on observed duration, and duration is related to the response or predictor of interest, unadjusted deletion can change the relevant distribution.
+Under MCAR with respect to the variables in a stated analysis, complete rows form a random subset, so familiar complete-case estimates may preserve their full-data targets. MAR does not provide this guarantee automatically. If formant availability depends on observed duration or vowel and these variables are related to the estimand, unadjusted deletion may change the relevant distribution.
 
-The relevant condition can also depend on the estimand. Missingness in a response and missingness in a predictor do not have identical consequences for every estimate. Thus, the report should state which variables define completeness and which complete row population the estimate describes.
+The condition also depends on the estimand. Missingness in a response and missingness in a predictor do not have identical consequences for every estimate. Thus a report should state which variables define $J$, how many rows remain, and which complete-row population the estimate describes.
 
-Complete case analysis may be reasonable when missingness is rare, the retained sample remains adequate, and the selection assumptions are plausible for the target. These are substantive conditions, not properties conferred by the `complete.cases()` function.
-
-## Complete-case analysis can change the target population
-
-Complete-case analysis can change the target population from all eligible observations to observations with complete records. This change often goes unreported when software drops rows automatically and reports only the final sample size.
-
-To diagnose it, record the number of rows before and after deletion, count missingness for every required variable, and compare observed characteristics across complete and incomplete rows. Such comparisons cannot reveal the missing values. They can show whether the retained subset differs on information that remains observed.
+Complete-case analysis may be reasonable when missingness is rare, the retained sample remains adequate, and the selection assumptions are plausible for the target. These are substantive conditions, not properties conferred by `complete.cases()`.
 
 ::: {.callout-warning title="Do not hide the analysis set"}
-Store the complete case indicator in the analysis table. Report the variables used to define it, the number of retained rows, and the observed differences between retained and removed rows.
+Store the complete-case indicator. Report the variables used to define it, the numbers retained and removed, and observed differences between the two sets.
 :::
 
-::: {.callout-note title="Check the deletion claim"}
-1. Which variables belong in $J$ for a particular analysis?
-2. Why is the complete case duration mean 15 milliseconds below the full mean in the worked example?
-3. If four independently observed variables are each present in 80 percent of rows, what proportion of rows is complete on average?
-4. What does comparing observed duration across complete and incomplete rows reveal, and what can it not reveal?
-:::
+## Checking the deletion claim
 
-Complete-case analysis retains rows observed on every required variable. It can lose much more data than any single column suggests and may replace a full-sample estimand with an estimand over selected recorded productions. [Iterative PCA imputation](pca-imputation.qmd) instead reconstructs missing matrix entries under a low-rank assumption; it changes the modeling assumptions rather than recovering the unobserved measurement.
+1. Which five measurements define $J$ here?
+2. What does the F2-by-F3 pattern show that the two column totals do not?
+3. Which observed measurements distinguish the complete and incomplete sets?
+4. Why can those differences expose selection without identifying the missing F2 or F3 values?
+
+Complete-case analysis retains rows observed on every required variable. In the Hillenbrand release, it removes `r sum(!hill$complete_steady)` tokens and changes the observed composition of the analysis set. [Iterative PCA imputation](pca-imputation.qmd) instead predicts missing matrix entries under a low-rank assumption; it changes the modeling assumptions rather than recovering an unobserved measurement.
+
+[Previous: Missingness mechanisms](missingness-mechanisms.qmd) · [Next: Iterative PCA imputation](pca-imputation.qmd)

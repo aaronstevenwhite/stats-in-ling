@@ -1,118 +1,116 @@
 ---
-title: "Exact intervals for a binomial probability"
+title: "Exact binomial intervals"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [confidence interval page](confidence-intervals.qmd) used a normal approximation for an estimator with an approximately normal sampling distribution. A binomial proportion near a boundary can require a different construction. Suppose an annotator marks 18 of 20 sampled tokens as instances of a construction. The population probability that a sampled token receives this label is $\pi$, and the observed estimate is
+Normal intervals for a proportion can cross the boundaries of the parameter space, especially when successes are rare. The Hillenbrand paired vowel measurements produce such a case without invented counts.
+
+## A within-speaker binary response
+
+For each adult woman, define a success when /I/ in *hid* lasts longer than /i/ in *heed*. The speaker, not the vowel row, is the observational unit.
+
+```{r}
+#| label: hillenbrand-binomial-data
+library(ggplot2)
+
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+pairs_long <- subset(
+  vowels,
+  speaker_type == "woman" & vowel %in% c("I", "i"),
+  select = c(speaker_id, vowel, duration_ms)
+)
+pairs <- reshape(pairs_long, idvar = "speaker_id", timevar = "vowel", direction = "wide")
+names(pairs)[names(pairs) == "duration_ms.I"] <- "hid_ms"
+names(pairs)[names(pairs) == "duration_ms.i"] <- "heed_ms"
+pairs$hid_longer <- pairs$hid_ms > pairs$heed_ms
+
+x <- sum(pairs$hid_longer)
+n <- nrow(pairs)
+p_hat <- x / n
+
+stopifnot(n == 48L, x == 3L, !anyNA(pairs$hid_longer))
+data.frame(speakers = n, successes = x, sample_proportion = p_hat)
+```
+
+The ordinary Wald interval is
 
 $$
-\widehat{\pi}=\frac{18}{20}=.90.
+\widehat p\pm z_{1-\alpha/2}
+\sqrt{\frac{\widehat p(1-\widehat p)}{n}}.
 $$
 
-An interval for $\pi$ must reflect the limited information in twenty binary observations. A large observed proportion does not by itself imply a narrow interval. The question is what to do when the normal shortcut gives endpoints that a probability cannot take.
-
-## Examining the problem with a normal interval
-
-The [**Wald interval**](https://online.stat.psu.edu/stat504/Lesson02) inserts the observed proportion into a normal approximation and estimated standard error formula:
-
-$$
-\widehat{\pi}
-\mathbin{\pm}
-1.96\sqrt{
-\frac{\widehat{\pi}(1-\widehat{\pi})}{n}
-}.
-$$
-
-For 18 successes in 20 trials, the estimated standard error is
-
-$$
-\sqrt{\frac{.90(.10)}{20}}
-\approx.0671.
-$$
-
-The resulting interval is
-
-$$
-.90\mathbin{\pm}1.96(.0671)
-\approx[.7685,1.0315].
-$$
-
-The upper endpoint exceeds one, even though a probability cannot. At 20 successes in 20 trials, the estimated standard error would be zero and the interval would collapse to a point. These failures arise because the normal approximation does not represent the finite and bounded binomial sampling distribution well near a boundary.
+Here its lower endpoint falls below zero, which is impossible for a probability.
 
 ## Inverting binomial tail tests
 
-Let
+Under $X\sim\operatorname{Binomial}(n,p)$, the Clopper--Pearson interval finds parameter values whose binomial tails are not too small. For an interior count $x$, the endpoints satisfy
 
 $$
-K\sim\operatorname{Binomial}(n,\pi).
+\mathbb{P}_{p_L}(X\geq x)=\frac{\alpha}{2}
 $$
 
-Write $\mathbb{P}_\pi$ for probability under this binomial model at a fixed value of $\pi$. The observed count is $k=18$. The [**Clopper-Pearson confidence interval**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/binom.test.html) finds parameter values that would not place this count in an extreme binomial tail.
-
-For a 95% interval, $\alpha=.05$. The lower endpoint $\pi_L$ solves
+and
 
 $$
-\mathbb{P}_{\pi_L}(K\geq18)=\frac{\alpha}{2}=.025.
+\mathbb{P}_{p_U}(X\leq x)=\frac{\alpha}{2}.
 $$
 
-If $\pi$ were smaller than $\pi_L$, observing at least 18 successes would be even less probable. Those smaller parameter values are excluded when the lower confidence bound is constructed from the upper tail of $K$.
-
-The upper endpoint $\pi_U$ solves
-
-$$
-\mathbb{P}_{\pi_U}(K\leq18)=\frac{\alpha}{2}=.025.
-$$
-
-If $\pi$ were larger than $\pi_U$, observing no more than 18 successes would be even less probable. Those larger parameter values are excluded when the upper confidence bound is constructed from the lower tail of $K$.
-
-R performs both inversions with `binom.test()`:
+Equivalently, the endpoints are beta quantiles. R performs this inversion with `binom.test()`.
 
 ```{r}
-#| label: exact-binomial-interval
-#| echo: true
+#| label: hillenbrand-binomial-intervals
+exact_result <- binom.test(x, n, conf.level = 0.95)
+wald_se <- sqrt(p_hat * (1 - p_hat) / n)
+wald_interval <- p_hat + c(-1, 1) * qnorm(0.975) * wald_se
+exact_interval <- unname(exact_result$conf.int)
 
-wald_se <- sqrt(.9 * .1 / 20)
-wald_interval <- .9 + c(-1, 1) * 1.96 * wald_se
-exact_interval <- binom.test(18, 20)$conf.int
-
-stopifnot(wald_interval[2] > 1)
-stopifnot(isTRUE(all.equal(
-  as.numeric(exact_interval),
-  c(0.6830172859809176, 0.9876514728297052),
-  tolerance = 1e-10
-)))
-
-rbind(wald = wald_interval, exact = exact_interval)
+intervals <- data.frame(
+  method = c("Clopper-Pearson", "Wald"),
+  estimate = p_hat,
+  lower = c(exact_interval[1], wald_interval[1]),
+  upper = c(exact_interval[2], wald_interval[2])
+)
+stopifnot(wald_interval[1] < 0)
+intervals
 ```
 
-The exact interval is approximately
+The exact conditional interval is [`r sprintf("%.4f", exact_interval[1])`, `r sprintf("%.4f", exact_interval[2])`], while the Wald interval is [`r sprintf("%.4f", wald_interval[1])`, `r sprintf("%.4f", wald_interval[2])`].
 
-$$
-[.6830,.9877].
-$$
+```{r}
+#| label: plot-hillenbrand-binomial-intervals
+#| fig-cap: "Intervals for the probability that /I/ lasts longer than /i/ within an adult woman."
+ggplot(intervals, aes(estimate, method, xmin = lower, xmax = upper)) +
+  geom_vline(xintercept = c(0, 1), color = "grey75", linewidth = 0.5) +
+  geom_errorbarh(height = 0.15, color = "grey35") +
+  geom_point(color = "#8B1A1A", size = 2.2) +
+  labs(x = "Speaker-level success probability", y = NULL) +
+  theme_classic(base_size = 12)
+```
 
-This interval is much wider than a casual reading of $.90$ might suggest. With only twenty independent observations, population probabilities from roughly $.68$ to $.99$ remain compatible with the procedure.
-
-## Qualifying the word exact
-
-Here, *exact* means that coverage is calculated from the finite-sample binomial distribution rather than from a large-sample normal approximation. It does not mean that coverage equals exactly $.95$ at every value of $\pi$.
-
-Because binomial counts are discrete, an equal-tail procedure cannot usually attain precisely $.95$ coverage for every parameter value. The Clopper-Pearson interval tends to cover at least $.95$ and may cover more. It is thus conservative under the binomial model.
-
-Exact also does not mean narrow, uniquely correct, or free of assumptions. Other binomial interval procedures make different coverage and width tradeoffs.
-
-## Separating exact calculation from model adequacy
-
-The procedure assumes a fixed number of trials, a common success probability, and independent Bernoulli outcomes. Twenty tokens from one document may share topic, author, register, or local discourse context. Their labels may thus be dependent or have different probabilities.
-
-An exact tail calculation does not guarantee that the sampling model is adequate. The probability calculation can be exact under the binomial model while the binomial model is inappropriate for the linguistic sampling process.
-
-The parameter also concerns the population sampling process, since the proportion in the observed file is already known to be $.90$. The interval does not express uncertainty about that observed proportion.
+“Exact” means that the calculation uses the finite binomial distribution rather than a large-sample normal approximation. It does not make the common-probability assumption, speaker independence, or connection from this screened cohort to a broader population exact.
 
 ## Check your understanding
 
-1. Why can the normal interval exceed one?
-2. What tail probability defines the lower endpoint of a 95% Clopper-Pearson interval?
-3. What is exact about the procedure, and what remains model dependent?
-4. Why can 20 annotations from one document supply less information than 20 independently sampled documents?
+1. Why is the speaker the independent unit?
+2. Which defect of the Wald interval is visible here?
+3. What distribution is inverted by the Clopper--Pearson procedure?
+4. Which assumptions remain even after using an exact calculation?
 
-The [bootstrap interval](bootstrap-confidence-intervals.qmd) replaces analytic tail inversion with a resampled estimate distribution.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Each success compares two vowels from the same woman, so the binary outcome belongs to the speaker rather than to either vowel row separately. <!-- dqr-allow: empirical-answer -->
+2. The Wald interval's lower endpoint falls below zero, outside the parameter space for a probability. <!-- dqr-allow: empirical-answer -->
+3. The procedure inverts finite binomial tail probabilities, equivalently using beta quantiles for its endpoints. <!-- dqr-allow: empirical-answer -->
+4. Even the exact Clopper--Pearson interval assumes independent speakers and a common success probability; generalization still depends on the screened cohort's recruitment. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [bootstrap page](bootstrap-confidence-intervals.qmd) constructs an interval for a statistic without a simple standard-error formula.

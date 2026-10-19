@@ -1,5 +1,5 @@
 ---
-title: "Factorization"
+title: "Factorizing linguistic data"
 subtitle: "Statistical Methods in Linguistics"
 author: "Aaron Steven White"
 institute: "University of Rochester"
@@ -13,608 +13,2844 @@ format:
     width: 1280
     height: 720
     margin: 0
+    center: false
     self-contained: true
     embed-resources: true
     transition: none
     slide-number: false
     controls: true
     progress: true
-    center: false
     incremental: false
+    html-math-method: katex
+execute:
+  enabled: false
 ---
 
-## Big Question {.role-slide}
+<!-- GENERATED FILE. Rebuild with scripts/rebuild_slides_and_transcripts.py. -->
+<!-- The generator does not read the previous deck body; stale slides cannot be retained. -->
 
-Can several linguistic measurements be represented by a smaller number of recurring numerical patterns?
+<!-- generated-slide-id: factorization/index/01-section; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: section -->
+## Factorization {.section-slide}
 
-## Data {.role-slide}
-
-A vowel token may have F1, F2, F3, duration, and voice quality measurements.
-
-A verb may have frequencies for more than one hundred syntactic frames.
-
-## Challenge {.role-slide}
-
-The columns may share structure, but a lower dimensional representation is meaningful only with respect to a declared matrix and reconstruction task.
-
-## This Module {.role-slide .compact}
-
-1. Define rows, columns, origins, and units.
-2. Build one rank one pattern.
-3. Order several patterns with the singular value decomposition.
-4. Interpret scores, loadings, and reconstructed cells.
-5. Select rank using held out reconstruction.
-6. Test whether VALEX components predict MegaAcceptability profiles.
-
-## Represent the measurements {.section-slide}
-
-Rows, columns, origins, and units
-
-## Question {.role-slide}
-
-What does one cell of a linguistic data matrix measure?
-
-## Answer {.role-slide}
-
-For $\mathbf X\in\mathbb R^{n\times p}$,
-
-$$x_{ij}=\text{the value of variable }j\text{ for object }i.$$
-
-## Data {.role-slide}
-
-| token | F1 | F2 | F3 |
-|:--|--:|--:|--:|
-| token 1 | 500 | 1500 | 2200 |
-| token 2 | 550 | 1450 | 2150 |
-| token 3 | 300 | 2300 | 3000 |
-| token 4 | 320 | 2250 | 2950 |
-
-## Question {.role-slide}
-
-What does $x_{31}=300$ mean?
-
-## Answer {.role-slide}
-
-Token 3 has an F1 measurement of 300 Hz.
-
-Both indices are required for that interpretation.
-
-## Important Point #1 {.role-slide}
-
-If rows are tokens, scores locate tokens. If rows are speakers, scores locate speakers.
-
-Aggregation changes the represented object.
-
-## Important Point #2 {.role-slide}
-
-Columns define the representation.
-
-Including duration and twice duration gives the same measurement two coordinates.
-
-## Method {.role-slide .compact}
-
-Before factorization, record what one row represents, how rows were selected, what each column measures, which columns repeat information, and which collection the objects come from.
-
-## Data {.role-slide}
-
-PHOIBLE may contain several inventories for one language from different sources.
-
-The row selection rule must be fixed before a language by segment matrix is interpreted.
-
-<span class="source">PHOIBLE 2.0 documentation</span>
+<div class="source">PHOIBLE 2.0</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Factorization. Moran and McCloy's PHOIBLE 2.0 release collects phonological inventory records contributed by many descriptive sources. The download and license page distributes the release as a CLDF StructureDataset under CC BY-SA 3.0. An inventory record generally describes a doculect, but multiple records may share a Glottocode and some source collections aggregate several varieties.
+
 [Sources]
 
-PHOIBLE 2.0 download and citation page: https://phoible.org/download
-
-PHOIBLE FAQ on multiple inventories and sources: https://phoible.org/faq
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
 :::
 
-## Question {.role-slide}
+<!-- generated-slide-id: factorization/index/02-dataset; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: dataset -->
+## PHOIBLE: the empirical object {.compact}
 
-What coordinate system should later components use?
+The running data are one selected phoneme inventory per Glottocode.
 
-## Answer {.role-slide}
-
-Centering changes a column's origin. Scaling changes its unit.
-
-These operations recall the [earlier treatment of centering](../../regression-models/centering-predictors.html).
-
-## Method {.role-slide}
-
-$$x^c_{ij}=x_{ij}-\bar x_j$$
-
-$$z_{ij}=\frac{x_{ij}-\bar x_j}{s_j}$$
-
-## Question {.role-slide}
-
-Durations are 100, 120, and 140 ms.
-
-What are their standardized values?
-
-## Answer {.role-slide}
-
-The mean is 120 ms and the sample standard deviation is 20 ms.
-
-The standardized values are $-1$, $0$, and $1$.
-
-## Important Point #3 {.role-slide}
-
-Giving every column variance one is a weighting decision.
-
-It is not a neutral software default.
-
-## Important Point #4 {.role-slide}
-
-New observations must use the training means and standard deviations.
-
-Recomputing them on evaluation observations creates [data leakage](../../model-criticism-and-prediction/training-and-test-data.html#leakage).
-
-## Upshot {.role-slide}
-
-Factorization reorganizes the information supplied in a matrix. It cannot recover omitted observations or repair a theoretically inappropriate representation.
-
-## Build component patterns {.section-slide}
-
-From one outer product to an ordered decomposition
-
-## Question {.role-slide}
-
-When can one pattern reproduce every cell of a matrix?
-
-## Answer {.role-slide}
-
-A nonzero matrix has [rank one](https://online.stat.psu.edu/stat508/Lesson07.html) when it can be written as an outer product:
-
-$$\mathbf X=\mathbf a\mathbf b^{\mathsf T}.$$
+<div class="source"><a href="https://phoible.org/">PHOIBLE 2.0</a></div>
 
 ::: {.notes}
+[Transcript]
+
+This is the first use of PHOIBLE in this module. The slide names the observation represented in the teaching table and links the original source. We will keep that unit fixed when we compute and interpret quantities from these data.
+
 [Sources]
 
-Penn State STAT 508, Lesson 7: https://online.stat.psu.edu/stat508/Lesson07.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
 :::
 
-## Data {.role-slide}
+<!-- generated-slide-id: factorization/index/03-concept; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: concept -->
+## Factorization
+
+Moran and McCloy's PHOIBLE 2.0 release collects phonological inventory records contributed by many descriptive sources. The download and license page distributes the release as a CLDF StructureDataset under CC BY-SA 3.0.
+
+::: {.notes}
+[Transcript]
+
+Moran and McCloy's PHOIBLE 2.0 release collects phonological inventory records contributed by many descriptive sources. The download and license page distributes the release as a CLDF StructureDataset under CC BY-SA 3.0. The prepared memberships exclude tone entries and rows explicitly marked as marginal. A matrix cell equal to one means that a retained PHOIBLE value row links an inventory record to a segment. A zero means that no such row is listed under this preparation; it is not direct evidence that a language lacks the segment. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/index/04-concept; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: concept -->
+## Constructing and decomposing the matrix {.compact}
+
+Linguistic data matrices define the row, column, and cell units, reproduce the Glottocode-level row selection, and retain segment columns using training records only. Centering and scaling then compare two transformations of the empirical binary columns. The primary analysis centers without variance standardization because standardization would give relatively greater weight to rare listings.
+
+::: {.notes}
+[Transcript]
+
+Linguistic data matrices define the row, column, and cell units, reproduce the Glottocode-level row selection, and retain segment columns using training records only. Centering and scaling then compare two transformations of the empirical binary columns. The primary analysis centers without variance standardization because standardization would give relatively greater weight to rare listings. Rank-one structure fits the first singular triplet and places the observed centered cells beside their rank-one reconstruction. Singular value decomposition extends that fit to ordered orthogonal terms. Principal component analysis derives the covariance identity from the same decomposition and adds macroarea only after fitting for descriptive interpretation. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/index/05-concept; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: concept -->
+## Interpreting and evaluating components
+
+Scores and loadings distinguish coordinates for inventory rows from directions over segment columns. A loading pattern may suggest a linguistic hypothesis, but the decomposition does not turn a component into a natural class, universal, or causal mechanism.
+
+::: {.notes}
+[Transcript]
+
+Scores and loadings distinguish coordinates for inventory rows from directions over segment columns. A loading pattern may suggest a linguistic hypothesis, but the decomposition does not turn a component into a natural class, universal, or causal mechanism. Reconstruction hides listed and not-listed cells in each held-out record, estimates scores from the remaining cells, and returns predictions to the original cell scale. Choosing components selects rank on validation inventories with balanced reconstruction loss and reserves test inventories for one final comparison. Because families are not the split unit, the result does not establish transfer to unseen language families. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/index/06-concept; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: concept -->
+## From decomposition to supervised prediction {.compact}
+
+The final application changes both the dataset and the target. VALEX contains GPL-licensed, automatically acquired English verb subcategorization counts described by Korhonen, Krymolowski, and Briscoe (2006). The official MegaAcceptability archive is CC BY-SA 4.0; its internal README identifies the release as v1.2.
+
+::: {.notes}
+[Transcript]
+
+The final application changes both the dataset and the target. VALEX contains GPL-licensed, automatically acquired English verb subcategorization counts described by Korhonen, Krymolowski, and Briscoe (2006). The official MegaAcceptability archive is CC BY-SA 4.0; its internal README identifies the release as v1.2. The VALEX--MegaAcceptability page defines the **distribution-to-selection mapping (DSM)** and compares direct VALEX proportions with a PCA-compressed representation for verbs absent during fitting. Participant normalization, response aggregation, predictor centering, PCA, and tuning all occur inside their training splits. The application asks whether this shallow compression helps the held-out-verb target. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/index/07-interpretation; notes-page: factorization/index.qmd; note-sha256: 162c3441d9ee92b964234a1c88cf1f295301694209cbdfb14e0c1fad17f524b4; role: interpretation -->
+## Interpretation {.statement-slide}
+
+The sequence thus moves from a declared empirical matrix, through its exact algebra, to two held-out targets on the original data scales. Begin with linguistic data matrices.
+
+::: {.notes}
+[Transcript]
+
+The sequence thus moves from a declared empirical matrix, through its exact algebra, to two held-out targets on the original data scales. Begin with linguistic data matrices. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.org/download
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/data-matrices/01-section; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: section -->
+## Linguistic data matrices {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Linguistic data matrices. PHOIBLE 2.0 is a curated collection of phonological inventory records assembled from descriptive sources. Its documentation stresses that an inventory usually describes a doculect, that multiple inventories may share a Glottocode, and that some inherited inventories combine sources. We will thus call one row an **inventory record**, not a language.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
+:::
+
+<!-- generated-slide-id: factorization/data-matrices/02-concept; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: concept -->
+## Linguistic data matrices {.compact}
+
+PHOIBLE 2.0 is a curated collection of phonological inventory records assembled from descriptive sources. Its documentation stresses that an inventory usually describes a doculect, that multiple inventories may share a Glottocode, and that some inherited inventories combine sources. We will thus call one row an **inventory record**, not a language.
+
+::: {.notes}
+[Transcript]
+
+PHOIBLE 2.0 is a curated collection of phonological inventory records assembled from descriptive sources. Its documentation stresses that an inventory usually describes a doculect, that multiple inventories may share a Glottocode, and that some inherited inventories combine sources. We will thus call one row an **inventory record**, not a language. The course copy is pinned to PHOIBLE 2.0 and follows the release's download and citation guidance. It excludes tone entries and rows explicitly marked as marginal, then samples one inventory within each Glottocode. A cell equal to one means that a retained PHOIBLE value row links the inventory to the segment. A zero means **not listed under this preparation rule**. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
+:::
+
+<!-- generated-slide-id: factorization/data-matrices/03-concept; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: concept -->
+## Defining the array and its indices
+
+Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is
+
+::: {.notes}
+[Transcript]
+
+Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is Its entries are Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
+:::
+
+<!-- generated-slide-id: factorization/data-matrices/04-math; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: math -->
+## Defining the array and its indices: equation 1 {.equation-slide}
 
 $$
-\begin{bmatrix}1\\2\\3\end{bmatrix}
-\begin{bmatrix}2&4\end{bmatrix}
+\mathbf X\in\mathbb R^{n\times p}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the array and its indices: equation 1. Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
+:::
+
+<!-- generated-slide-id: factorization/data-matrices/05-math; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: math -->
+## Defining the array and its indices: equation 2 {.equation-slide}
+
+$$
+x_{ij}=\text{the value of variable }j\text{ for object }i.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the array and its indices: equation 2. Its entries are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
+:::
+
+<!-- generated-slide-id: factorization/data-matrices/06-math; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: math -->
+## Defining the array and its indices: equation 3 {.equation-slide}
+
+$$
+\mathbf x_i^{\mathsf T}
 =
-\begin{bmatrix}2&4\\4&8\\6&12\end{bmatrix}.
+\begin{bmatrix}
+x_{i1}&x_{i2}&\cdots&x_{ip} \quad\text{(symbolic indices)} % dqr-allow: symbolic-derivation
+\end{bmatrix},
 $$
 
-## Interpretation {.role-slide}
-
-The first vector varies across rows. The second gives the column pattern.
-
-All rows and columns are proportional.
-
-## Important Point #1 {.role-slide}
-
-Rank is an algebraic property of the matrix.
-
-It is not a psychological construct or a linguistic category.
-
-## Challenge {.role-slide}
-
-Most linguistic matrices are not exactly rank one.
-
-We need an ordered set of approximate rank one patterns.
-
-## Answer {.role-slide}
-
-The [singular value decomposition](https://cs357.cs.illinois.edu/textbook/notes/svd.html), or SVD, writes
-
-$$\mathbf X=\mathbf U\boldsymbol\Sigma\mathbf V^{\mathsf T}.$$
-
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the array and its indices: equation 3. The complete row for object $i$ is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-University of Illinois CS 357, Singular Value Decomposition: https://cs357.cs.illinois.edu/textbook/notes/svd.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Answer {.role-slide}
+<!-- generated-slide-id: factorization/data-matrices/07-math; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: math -->
+## Defining the array and its indices: equation 4 {.equation-slide}
 
-The columns of $\mathbf U$ are [left singular vectors](https://cs357.cs.illinois.edu/textbook/notes/svd.html).
-
-The columns of $\mathbf V$ are [right singular vectors](https://cs357.cs.illinois.edu/textbook/notes/svd.html).
+$$
+\mathbf x_{\cdot j}
+=
+\begin{bmatrix}
+x_{1j}&x_{2j}&\cdots&x_{nj} \quad\text{(symbolic indices)} % dqr-allow: symbolic-derivation
+\end{bmatrix}^{\mathsf T}.
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the array and its indices: equation 4. and the complete column for variable $j$ is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-University of Illinois CS 357, Singular Value Decomposition: https://cs357.cs.illinois.edu/textbook/notes/svd.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Output {.role-slide}
+<!-- generated-slide-id: factorization/data-matrices/08-concept; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: concept -->
+## Constructing the PHOIBLE matrix
 
-$$\mathbf X=\sum_{k=1}^r\sigma_k\mathbf u_k\mathbf v_k^{\mathsf T},\qquad \sigma_1\geq\sigma_2\geq\cdots>0.$$
-
-Each term is rank one.
-
-## Interpretation {.role-slide}
-
-The singular value $\sigma_k$ measures the strength of term $k$ under squared reconstruction error.
-
-The first term is the closest rank one approximation.
-
-## Important Point #2 {.role-slide}
-
-Singular vectors have arbitrary sign.
-
-Replacing $\mathbf u_k$ and $\mathbf v_k$ by their negatives leaves the reconstructed matrix unchanged.
+The code below reproduces the row sample, the macroarea-stratified split, and the training-only column filter. The random seeds identify reproducible procedural choices; they are not linguistic measurements.
 
 ::: {.notes}
+[Transcript]
+
+The code below reproduces the row sample, the macroarea-stratified split, and the training-only column filter. The random seeds identify reproducible procedural choices; they are not linguistic measurements. The resulting matrix has observed inventory records and observed segment columns. Of its observed cells, observed are listed. This sparsity is a property of the prepared database matrix, not an estimate of how often phones occur in speech. Use the graph or equation to say the result in ordinary language.
+
 [Sources]
 
-Palarea Albaladejo, Principal Components Analysis, sign indeterminacy: https://imae.udg.edu/~jpalarea/StatsDS/principal-components-analysis.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Important Point #3 {.role-slide}
+<!-- generated-slide-id: factorization/data-matrices/09-concept; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: concept -->
+## Seeing rows and columns
 
-Repeated singular values weaken interpretation of individual directions.
-
-The associated subspace is identified more strongly than one orientation within it.
-
-## Upshot {.role-slide}
-
-The SVD orders rank one patterns by their contribution to squared reconstruction of the specified matrix.
-
-## Principal components {.section-slide}
-
-Directions of variation around column means
-
-## Question {.role-slide}
-
-Which direction through the measured variables has the greatest projected variation?
-
-## Answer {.role-slide}
-
-[Principal component analysis](https://online.stat.psu.edu/stat508/Lesson07.html), or PCA, finds orthogonal directions in a centered matrix, ordered by projected variance.
+The full matrix is too large to label. The following plot thus displays four training inventories from each classified macroarea and the twenty most common training segments. Every plotted cell is read directly from `X`.
 
 ::: {.notes}
+[Transcript]
+
+The full matrix is too large to label. The following plot thus displays four training inventories from each classified macroarea and the twenty most common training segments. Every plotted cell is read directly from `X`. The cell in a particular row and column can now be interpreted only by using both index maps. The first displayed row, for instance, can be recovered without copying its values into the notes. Now connect the notation back to the linguistic comparison.
+
 [Sources]
 
-Penn State STAT 508, Lesson 7: https://online.stat.psu.edu/stat508/Lesson07.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Method {.role-slide}
+<!-- generated-slide-id: factorization/data-matrices/10-concept; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: concept -->
+## The representation constraint
 
-Center the columns, then decompose
-
-$$\mathbf X_c=\mathbf U\boldsymbol\Sigma\mathbf V^{\mathsf T}.$$
-
-## Answer {.role-slide}
-
-The columns of $\mathbf V$ are the [principal component directions](https://online.stat.psu.edu/stat508/Lesson07.html).
-
-The [score matrix](https://online.stat.psu.edu/stat508/Lesson07.html) is
-
-$$\mathbf Z=\mathbf X_c\mathbf V=\mathbf U\boldsymbol\Sigma.$$
+Changing a row from an inventory record to a Glottocode-level average would change the observational unit. Changing the columns would change which segment contrasts are available. Repeating a column would give the corresponding listing pattern extra numerical weight.
 
 ::: {.notes}
+[Transcript]
+
+Changing a row from an inventory record to a Glottocode-level average would change the observational unit. Changing the columns would change which segment contrasts are available. Repeating a column would give the corresponding listing pattern extra numerical weight. Before factorization, record (i) the row unit, (ii) the row-selection rule, (iii) the column-retention rule, (iv) the cell coding, and (v) the collection to which those records belong. This **representation constraint** fixes the information available to every later operation. Now connect the notation back to the linguistic comparison.
+
 [Sources]
 
-Penn State STAT 508, Lesson 7: https://online.stat.psu.edu/stat508/Lesson07.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Goal {.role-slide}
+<!-- generated-slide-id: factorization/data-matrices/11-concept; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: concept -->
+## Checking the representation {.compact}
 
-The first direction $\mathbf v_1$ maximizes
-
-$$\operatorname{Var}(\mathbf X_c\mathbf v)$$
-
-subject to $\lVert\mathbf v\rVert_2=1$.
-
-## Important Point #1 {.role-slide}
-
-PCA uses numerical variation in the matrix.
-
-It does not use category labels or a theory of the response unless they were built into the representation.
-
-## Question {.role-slide}
-
-If F1 and F2 both increase together across tokens, should the first direction assign them the same sign or opposite signs?
-
-## Answer {.role-slide}
-
-The same sign represents their common increase.
-
-The complete direction may be multiplied by $-1$ without changing the component.
-
-## Upshot {.role-slide}
-
-PCA identifies directions that reconstruct centered numerical variation. A direction does not acquire a linguistic interpretation from its rank alone.
-
-## Read and reconstruct components {.section-slide}
-
-Row coordinates, variable directions, and residual cells
-
-## Question {.role-slide}
-
-Which quantity locates an observation, and which quantity describes a component direction through variables?
-
-## Answer {.role-slide}
-
-[Scores](https://online.stat.psu.edu/stat508/Lesson07.html) locate row observations.
-
-[Loadings](https://online.stat.psu.edu/stat508/Lesson07.html) are the entries of unit length component directions through the original variables.
+1. What does $x_{ij}=1$ mean in this matrix? 2. Why is “not listed” safer than “absent” for $x_{ij}=0$? 3. Why is one sampled inventory record not necessarily one language? 4. Which part of the code prevents validation and test inventories from selecting columns? 5.
 
 ::: {.notes}
+[Transcript]
+
+1. What does $x_{ij}=1$ mean in this matrix? 2. Why is “not listed” safer than “absent” for $x_{ij}=0$? 3. Why is one sampled inventory record not necessarily one language? 4. Which part of the code prevents validation and test inventories from selecting columns? 5. The next page changes the origin and possible unit of each segment column while keeping these row and column definitions fixed. Now connect the notation back to the linguistic comparison.
+
 [Sources]
 
-Penn State STAT 508, Lesson 7: https://online.stat.psu.edu/stat508/Lesson07.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Method {.role-slide}
+<!-- generated-slide-id: factorization/data-matrices/12-figure; notes-page: factorization/data-matrices.qmd; note-sha256: 776ac07d83202bed6f2668ce19472ccf14a54f06a2143656eac7e6f16302f701; role: figure -->
+## Linguistic data matrices {.plot-slide}
 
-For centered row $\mathbf x_i^c$ and component direction $\mathbf v_k$,
-
-$$z_{ik}=\mathbf x_i^{c\mathsf T}\mathbf v_k.$$
-
-## Important Point #1 {.role-slide}
-
-Join scores to linguistic metadata by stable row identifiers.
-
-Row order alone is fragile after filtering or reshaping.
-
-## Interpretation {.role-slide}
-
-Read a loading pattern across variables and a score pattern across observations.
-
-Do not interpret one isolated sign without its companion entries and metadata.
-
-## Question {.role-slide}
-
-What does retaining the first $K$ components reproduce?
-
-## Answer {.role-slide}
-
-A [rank-$K$ approximation](https://online.stat.psu.edu/stat508/Lesson07.html) is
-
-$$\widehat{\mathbf X}_K=\sum_{k=1}^K\sigma_k\mathbf u_k\mathbf v_k^{\mathsf T}.$$
+![](../../_freeze/factorization/data-matrices/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Linguistic data matrices."}
 
 ::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Linguistic data matrices. Read the pattern before attaching a model interpretation to it.
+
 [Sources]
 
-Penn State STAT 508, Lesson 7: https://online.stat.psu.edu/stat508/Lesson07.html
+https://doi.org/10.5281/zenodo.2593234
+https://phoible.github.io/faq/
+https://phoible.org/download
 :::
 
-## Output {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/01-section; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: section -->
+## Centering and scaling {.section-slide}
 
-The residual matrix is
-
-$$\mathbf E_K=\mathbf X-\widehat{\mathbf X}_K.$$
-
-Every cell records what the retained terms did not reconstruct.
-
-## Answer {.role-slide}
-
-For centered data, the [proportion of variance explained](https://online.stat.psu.edu/stat508/Lesson07.html) is
-
-$$\frac{\sum_{k=1}^K\sigma_k^2}{\sum_{k=1}^r\sigma_k^2}.$$
+<div class="source">PHOIBLE 2.0</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Centering and scaling. The PHOIBLE matrix represents inventory records in rows and retained segment listings in columns. Every column uses the same binary database-listing unit, but the columns differ in how often a segment is listed. Centering changes each column's origin. Standardization would additionally change its unit and, for binary data, its weight in the factorization.
+
 [Sources]
 
-Penn State STAT 508, Lesson 7: https://online.stat.psu.edu/stat508/Lesson07.html
+Course note: factorization/centering-and-scaling.qmd
 :::
 
-## Important Point #2 {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/02-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## Centering and scaling
 
-Observed variance explained is an in sample reconstruction summary.
-
-It is not held out prediction and not a measure of linguistic information.
-
-## Question {.role-slide}
-
-How are reconstructed standardized values returned to the original units?
-
-## Answer {.role-slide}
-
-Multiply each column by its training standard deviation, then add its training mean.
-
-The inverse transformation must use the fitted coordinate system.
-
-## Upshot {.role-slide}
-
-Scores and loadings interpret the low rank coordinates. Reconstruction returns those coordinates to the cells that defined the original linguistic representation.
-
-## Choose the retained rank {.section-slide}
-
-Separate fitting, selection, and final evaluation
-
-## Question {.role-slide}
-
-How many components should be retained for a declared reconstruction task?
-
-## Approach {.role-slide}
-
-Choose the rank that minimizes reconstruction loss on validation cells that did not determine the components.
-
-## Implementation {.role-slide .compact}
-
-1. Fit preprocessing and components on training data.
-2. Evaluate fixed candidate ranks on validation data.
-3. Select one rank using the declared loss.
-4. Refit on training plus validation data.
-5. Evaluate once on untouched test data.
-
-## Important Point #1 {.role-slide}
-
-Centering, scaling, imputation, and component directions are fitted operations.
-
-Each must remain inside the training split.
-
-## Challenge {.role-slide}
-
-Observed reconstruction error decreases whenever rank increases.
-
-It therefore cannot choose rank without an external criterion.
-
-## Important Point #2 {.role-slide}
-
-A bend in a scree plot describes the singular value sequence.
-
-It does not directly answer which rank predicts held out cells best.
-
-## Important Point #3 {.role-slide}
-
-Cell weighting defines the evaluation target.
-
-Equal cell, row, and variable weighting answer different reconstruction questions.
-
-## Upshot {.role-slide}
-
-A selected rank is conditional on the representation, split, candidate set, and loss. It is not the true number of linguistic dimensions.
-
-## Corpus distributions and clause selection {.section-slide}
-
-VALEX predictors and MegaAcceptability profiles
-
-## Question {.role-slide}
-
-Can a verb's corpus distribution predict its acceptability across clause embedding frames?
-
-## Answer {.role-slide}
-
-A verb's [selectional profile](https://doi.org/10.5334/gjgl.1001) records its acceptability across syntactic frames.
-
-<span class="source">White and Rawlins 2020</span>
+The PHOIBLE matrix represents inventory records in rows and retained segment listings in columns. Every column uses the same binary database-listing unit, but the columns differ in how often a segment is listed. Centering changes each column's origin.
 
 ::: {.notes}
+[Transcript]
+
+The PHOIBLE matrix represents inventory records in rows and retained segment listings in columns. Every column uses the same binary database-listing unit, but the columns differ in how often a segment is listed. Centering changes each column's origin. The PHOIBLE matrix represents inventory records in rows and retained segment listings in columns. Every column uses the same binary database-listing unit, but the columns differ in how often a segment is listed. Centering changes each column's origin. Standardization would additionally change its unit and, for binary data, its weight in the factorization. Notice what is observed and what is supplied by the model.
+
 [Sources]
 
-White and Rawlins, Frequency, acceptability, and selection: https://doi.org/10.5334/gjgl.1001
+Course note: factorization/centering-and-scaling.qmd
 :::
 
-## Data {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/03-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## Centering changes the origin
 
-MegaAcceptability supplies 50 frame judgments for each retained verb.
-
-VALEX supplies a 109 dimensional corpus frame distribution for the same verb.
-
-<span class="source">White and Rawlins 2020</span>
+For column $j$, the training mean is
 
 ::: {.notes}
+[Transcript]
+
+For column $j$, the training mean is Because $x_{ij}$ is binary here, $\widehat\mu_j$ is the training proportion of inventory records that list segment $j$. The centered entry is Keep the observational unit fixed while you interpret the result.
+
 [Sources]
 
-White and Rawlins, Frequency, acceptability, and selection: https://doi.org/10.5334/gjgl.1001
+Course note: factorization/centering-and-scaling.qmd
 :::
 
-## Important Point #1 {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/04-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Centering changes the origin: equation 1 {.equation-slide}
 
-VALEX counts are converted to within verb proportions.
-
-The predictor represents allocation across complement frames, not total verb frequency.
-
-## Goal {.role-slide}
-
-Compare two theoretically distinct predictors for verbs excluded from fitting.
-
-The direct predictor uses all VALEX frame proportions. The factor predictor uses retained PCA scores.
-
-## Method {.role-slide}
-
-Both analyses use ridge regression to predict the same 50 response columns.
-
-Only the predictor representation changes.
-
-## Implementation {.role-slide .compact}
-
-Outer grouped cross validation excludes complete verbs. Inner validation fits normalization, PCA, rank selection, and the ridge penalty using only the outer training verbs.
-
-## Question {.role-slide}
-
-May PCA be fitted once using all VALEX verbs because it does not use acceptability judgments?
-
-## Answer {.role-slide}
-
-No. The question concerns a new verb. Its VALEX row must not determine the component directions used to represent it.
-
-## Output {.role-slide}
-
-Out of sample $R^2$ compares each model with frame mean predictions fitted on the training verbs.
-
-Positive values remove some baseline squared error.
-
-## Result #1 {.role-slide}
-
-The direct VALEX profile obtains out of sample $R^2=.246$ with a verb bootstrap interval of $[.224,.266]$.
-
-<span class="source">Course analysis of White and Rawlins data</span>
+$$
+\widehat\mu_j
+=
+\frac{1}{n_{\mathcal T}}
+\sum_{i\in\mathcal T}x_{ij}.
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes centering changes the origin: equation 1. For column $j$, the training mean is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Course notes, VALEX and MegaAcceptability analysis: ../../factorization/valex-megaacceptability.html
-
-White and Rawlins 2020: https://doi.org/10.5334/gjgl.1001
+Course note: factorization/centering-and-scaling.qmd
 :::
 
-## Result #2 {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/05-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Centering changes the origin: equation 2 {.equation-slide}
 
-The selected factor model obtains $R^2=.239$.
-
-Factor minus direct is $-.0066$ with interval $[-.0100,-.0029]$.
-
-<span class="source">Course analysis of White and Rawlins data</span>
+$$
+z_{ij}=x_{ij}-\widehat\mu_j,
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes centering changes the origin: equation 2. Because $x_{ij}$ is binary here, $\widehat\mu_j$ is the training proportion of inventory records that list segment $j$. The centered entry is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Course notes, VALEX and MegaAcceptability analysis: ../../factorization/valex-megaacceptability.html
+Course note: factorization/centering-and-scaling.qmd
 :::
 
-## Interpretation {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/06-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Centering changes the origin: equation 3 {.equation-slide}
 
-PCA compression does not improve this mapping.
-
-Inner validation selects the largest candidate rank, 50, in every outer fold.
-
-## Result #3 {.role-slide}
-
-Prediction is weakest for object plus finite clause frames.
-
-Direct $R^2$ is .083 there, compared with .254 for matched finite clauses without an object.
-
-<span class="source">Course analysis of White and Rawlins data</span>
+$$
+\mathbf Z_{\mathcal T}
+=
+\mathbf X_{\mathcal T}
+-
+\mathbf 1_{n_{\mathcal T}}\widehat{\boldsymbol\mu}^{\mathsf T}.
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes centering changes the origin: equation 3. and the complete centered training matrix is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Course notes, VALEX and MegaAcceptability analysis: ../../factorization/valex-megaacceptability.html
-
-White and Rawlins 2020: https://doi.org/10.5334/gjgl.1001
+Course note: factorization/centering-and-scaling.qmd
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: factorization/centering-and-scaling/07-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## Scaling changes the unit
 
-Corpus distributions predict new verbs, but PCA directions of corpus variation discard a small amount of predictive information and do not repair the object frame failure.
+The sample standard deviation of column $j$ is
 
-## Important Point #2 {.role-slide}
+::: {.notes}
+[Transcript]
 
-The result rejects this predictive compression.
+The sample standard deviation of column $j$ is Collecting these values on the diagonal of $\mathbf S$, the standardized matrix is That distinction will matter again on the next slide.
 
-It does not show that clause selection lacks abstract syntactic or semantic structure.
+[Sources]
 
-## Conclusion {.section-slide}
+Course note: factorization/centering-and-scaling.qmd
+:::
 
-What a component can establish
+<!-- generated-slide-id: factorization/centering-and-scaling/08-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Scaling changes the unit: equation 1 {.equation-slide}
 
-## Big Question {.role-slide}
+$$
+s_j
+=
+\sqrt{
+\frac{1}{n_{\mathcal T}-1}
+\sum_{i\in\mathcal T}
+(x_{ij}-\widehat\mu_j)^2
+}.
+$$
 
-Can several linguistic measurements be represented by a smaller number of recurring numerical patterns?
+::: {.notes}
+[Transcript]
 
-## Answer {.role-slide .compact}
+The displayed expression formalizes scaling changes the unit: equation 1. The sample standard deviation of column $j$ is Keep track of what each term refers to in the linguistic dataset.
 
-1. The matrix fixes the represented objects and measurements.
-2. The coordinate system determines which variations count as large.
-3. SVD orders rank one reconstruction patterns.
-4. PCA applies that ordering to centered variation.
-5. Scores, loadings, and reconstructions answer different questions.
-6. Held out loss selects rank for a declared task.
+[Sources]
 
-## Question {.role-slide}
+Course note: factorization/centering-and-scaling.qmd
+:::
 
-Which rows, columns, preprocessing choices, and evaluation loss license the proposed linguistic interpretation of a component?
+<!-- generated-slide-id: factorization/centering-and-scaling/09-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Scaling changes the unit: equation 2 {.equation-slide}
+
+$$
+\widetilde{\mathbf Z}_{\mathcal T}
+=
+\mathbf Z_{\mathcal T}\mathbf S^{-1},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes scaling changes the unit: equation 2. Collecting these values on the diagonal of $\mathbf S$, the standardized matrix is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/10-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Scaling changes the unit: equation 3 {.equation-slide}
+
+$$
+\widetilde z_{ij}
+=
+\frac{x_{ij}-\widehat\mu_j}{s_j}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes scaling changes the unit: equation 3. or, cell by cell, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/11-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## Computing the PHOIBLE coordinate systems
+
+This page independently reconstructs the row selection, split, and training-only column set introduced on the previous page.
+
+::: {.notes}
+[Transcript]
+
+This page independently reconstructs the row selection, split, and training-only column set introduced on the previous page. The training set contains observed inventory records and observed retained segments. No retained column is constant because the training-frequency rule removes segments with too few listings. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/12-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## The empirical weighting decision {.compact}
+
+The least variable retained column would be multiplied by observed, whereas the most variable would be multiplied by observed. Standardization would thus assign relatively greater weight to rare segment listings. That weighting may be useful for some questions, but it is not neutral.
+
+::: {.notes}
+[Transcript]
+
+The least variable retained column would be multiplied by observed, whereas the most variable would be multiplied by observed. Standardization would thus assign relatively greater weight to rare segment listings. That weighting may be useful for some questions, but it is not neutral. The primary PHOIBLE analysis centers without variance standardization. Every column already shares the same listing unit, and the analysis lets common patterns contribute their observed variance. This choice does not claim that common segments are linguistically more important. It defines the numerical target of this factorization. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/13-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## Applying a fitted transformation
+
+Means and scales used for evaluation must come from training data. For a new matrix $\mathbf X_{\mathrm{new}}$, the fixed transformation is
+
+::: {.notes}
+[Transcript]
+
+Means and scales used for evaluation must come from training data. For a new matrix $\mathbf X_{\mathrm{new}}$, the fixed transformation is In R, that operation is: That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/14-math; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: math -->
+## Applying a fitted transformation {.equation-slide}
+
+$$
+\mathbf Z_{\mathrm{new}}
+=
+(\mathbf X_{\mathrm{new}}-
+\mathbf 1\widehat{\boldsymbol\mu}^{\mathsf T})
+\mathbf S^{-1}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes applying a fitted transformation. Means and scales used for evaluation must come from training data. For a new matrix $\mathbf X_{\mathrm{new}}$, the fixed transformation is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/15-concept; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: concept -->
+## Checking the coordinate system {.compact}
+
+1. What does zero mean in a centered PHOIBLE column? 2. Why does centering preserve differences between rows? 3. Why does standardization weight rare binary columns more heavily? 4. Which data determine `training_mean` and `training_sd`? 5. Why does the primary analysis retain `Z` rather than `Z_standardized`?
+
+::: {.notes}
+[Transcript]
+
+1. What does zero mean in a centered PHOIBLE column? 2. Why does centering preserve differences between rows? 3. Why does standardization weight rare binary columns more heavily? 4. Which data determine `training_mean` and `training_sd`? 5. Why does the primary analysis retain `Z` rather than `Z_standardized`? The next page asks how much of this centered empirical matrix can be represented by a single shared row-by-column pattern. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/centering-and-scaling/16-figure; notes-page: factorization/centering-and-scaling.qmd; note-sha256: 1b7626b262a8c30711660b23a2ace9a8faaa53901e1c992b484e958d65a25b81; role: figure -->
+## Centering and scaling {.plot-slide}
+
+![](../../_freeze/factorization/centering-and-scaling/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Centering and scaling."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Centering and scaling. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/centering-and-scaling.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/01-section; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: section -->
+## Rank-one structure {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Rank-one structure. The centered PHOIBLE inventory matrix contains many linked listing patterns. A rank-one approximation asks what can be represented by one row pattern and one column pattern before adding further components.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/02-concept; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: concept -->
+## Rank-one structure
+
+The centered PHOIBLE inventory matrix contains many linked listing patterns. A rank-one approximation asks what can be represented by one row pattern and one column pattern before adding further components.
+
+::: {.notes}
+[Transcript]
+
+The centered PHOIBLE inventory matrix contains many linked listing patterns. A rank-one approximation asks what can be represented by one row pattern and one column pattern before adding further components. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/03-concept; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: concept -->
+## Constructing one outer product
+
+For a matrix with $n$ rows and $p$ columns, let
+
+::: {.notes}
+[Transcript]
+
+For a matrix with $n$ rows and $p$ columns, let Their outer product is Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/04-math; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: math -->
+## Constructing one outer product: equation 1 {.equation-slide}
+
+$$
+\mathbf a
+=
+\begin{bmatrix}
+a_1&\cdots&a_n
+\end{bmatrix}^{\mathsf T}
+\quad\text{and}\quad
+\mathbf b
+=
+\begin{bmatrix}
+b_1&\cdots&b_p
+\end{bmatrix}^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes constructing one outer product: equation 1. For a matrix with $n$ rows and $p$ columns, let Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/05-math; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: math -->
+## Constructing one outer product: equation 2 {.equation-slide}
+
+$$
+\mathbf a\mathbf b^{\mathsf T}
+=
+\begin{bmatrix}
+a_1b_1&\cdots&a_1b_p\\
+\vdots&\ddots&\vdots\\
+a_nb_1&\cdots&a_nb_p
+\end{bmatrix}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes constructing one outer product: equation 2. Their outer product is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/06-math; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: math -->
+## Constructing one outer product: equation 3 {.equation-slide}
+
+$$
+x_{ij}=a_i b_j.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes constructing one outer product: equation 3. Every cell obeys the same rule, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/07-math; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: math -->
+## Constructing one outer product: equation 4 {.equation-slide}
+
+$$
+(c\mathbf a)
+\left(\frac{1}{c}\mathbf b\right)^{\mathsf T}
+=
+\mathbf a\mathbf b^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes constructing one outer product: equation 4. Thus all columns are scalar multiples of $\mathbf a$, and all rows are scalar multiples of $\mathbf b^{\mathsf T}$. Any nonzero matrix with this form has rank one. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/08-math; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: math -->
+## Constructing one outer product: equation 5 {.equation-slide}
+
+$$
+\widehat{\mathbf Z}^{(1)}
+=
+d_1\mathbf u_1\mathbf v_1^{\mathsf T},
+\qquad
+\mathbf u_1^{\mathsf T}\mathbf u_1
+=
+\mathbf v_1^{\mathsf T}\mathbf v_1
+=1.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes constructing one outer product: equation 5. The individual vector scales are not identified by the product. For any nonzero constant $c$, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/09-concept; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: concept -->
+## Fitting the empirical rank-one pattern
+
+The following code reconstructs the PHOIBLE training matrix from the release object. Segment retention and centering depend only on training inventory records.
+
+::: {.notes}
+[Transcript]
+
+The following code reconstructs the PHOIBLE training matrix from the release object. Segment retention and centering depend only on training inventory records. The first fitted pattern accounts for observed of the centered sum of squares. That empirical proportion is far from complete reconstruction, so the rank-one matrix is an approximation rather than an exact representation of the inventory data. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/10-concept; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: concept -->
+## Comparing observed and fitted cells
+
+To make the cell pattern legible, the plot uses the same training inventory rows and segment columns selected for the matrix display on the first page. Both panels use one diverging scale, centered at zero.
+
+::: {.notes}
+[Transcript]
+
+To make the cell pattern legible, the plot uses the same training inventory rows and segment columns selected for the matrix display on the first page. Both panels use one diverging scale, centered at zero. The fitted panel is smoother because all its cells share one outer-product rule. Positive and negative values indicate deviations above and below training prevalence. They are not probabilities. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/11-concept; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: concept -->
+## Compression and interpretation
+
+An unrestricted $n\times p$ matrix contains $np$ cells. A rank-one representation stores $n+p+1$ fitted quantities before accounting for the unit-length and sign conventions. The reduction can be substantial, but it is useful only when the residual matrix
+
+::: {.notes}
+[Transcript]
+
+An unrestricted $n\times p$ matrix contains $np$ cells. A rank-one representation stores $n+p+1$ fitted quantities before accounting for the unit-length and sign conventions. The reduction can be substantial, but it is useful only when the residual matrix is small enough for the target at hand. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/12-math; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: math -->
+## Compression and interpretation {.equation-slide}
+
+$$
+\mathbf E^{(1)}
+=
+\mathbf Z-\widehat{\mathbf Z}^{(1)}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes compression and interpretation. An unrestricted $n\times p$ matrix contains $np$ cells. A rank-one representation stores $n+p+1$ fitted quantities before accounting for the unit-length and sign conventions. The reduction can be substantial, but it is useful only when the residual matrix Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/13-concept; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: concept -->
+## Checking the common pattern {.compact}
+
+1. Why are all rows of an exact rank-one matrix proportional? 2. What roles do $d_1$, $\mathbf u_1$, and $\mathbf v_1$ play? 3. What does a positive centered cell mean in the PHOIBLE matrix? 4. Why is the fitted rank-one matrix not a probability matrix? 5.
+
+::: {.notes}
+[Transcript]
+
+1. Why are all rows of an exact rank-one matrix proportional? 2. What roles do $d_1$, $\mathbf u_1$, and $\mathbf v_1$ play? 3. What does a positive centered cell mean in the PHOIBLE matrix? 4. Why is the fitted rank-one matrix not a probability matrix? 5. The next page adds orthogonal rank-one terms in order of their empirical strength. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/rank-one-structure/14-figure; notes-page: factorization/rank-one-structure.qmd; note-sha256: 732437368a36c4ce4c0efb7f962a22a679c1f33e4a412fade9df041d308074c3; role: figure -->
+## Rank-one structure {.plot-slide}
+
+![](../../_freeze/factorization/rank-one-structure/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Rank-one structure."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Rank-one structure. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/rank-one-structure.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/01-section; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: section -->
+## Singular value decomposition {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Singular value decomposition. One rank-one pattern leaves substantial structure in the centered PHOIBLE matrix. The singular value decomposition (SVD) expresses that matrix as a sequence of mutually orthogonal rank-one terms, ordered by the centered sum of squares each term represents.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/02-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## Singular value decomposition
+
+One rank-one pattern leaves substantial structure in the centered PHOIBLE matrix. The singular value decomposition (SVD) expresses that matrix as a sequence of mutually orthogonal rank-one terms, ordered by the centered sum of squares each term represents.
+
+::: {.notes}
+[Transcript]
+
+One rank-one pattern leaves substantial structure in the centered PHOIBLE matrix. The singular value decomposition (SVD) expresses that matrix as a sequence of mutually orthogonal rank-one terms, ordered by the centered sum of squares each term represents. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/03-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## Stating the reduced decomposition
+
+For $\mathbf Z\in\mathbb R^{n\times p}$ with rank $r$, the reduced SVD is
+
+::: {.notes}
+[Transcript]
+
+For $\mathbf Z\in\mathbb R^{n\times p}$ with rank $r$, the reduced SVD is where Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/04-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## Stating the reduced decomposition: equation 1 {.equation-slide}
+
+$$
+\mathbf Z
+=
+\mathbf U\mathbf D\mathbf V^{\mathsf T},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating the reduced decomposition: equation 1. For $\mathbf Z\in\mathbb R^{n\times p}$ with rank $r$, the reduced SVD is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/05-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## Stating the reduced decomposition: equation 2 {.equation-slide}
+
+$$
+\mathbf U\in\mathbb R^{n\times r},
+\qquad
+\mathbf D\in\mathbb R^{r\times r},
+\qquad
+\mathbf V\in\mathbb R^{p\times r}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating the reduced decomposition: equation 2. where Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/06-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## Stating the reduced decomposition: equation 3 {.equation-slide}
+
+$$
+\mathbf U^{\mathsf T}\mathbf U=\mathbf I_r,
+\qquad
+\mathbf V^{\mathsf T}\mathbf V=\mathbf I_r,
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating the reduced decomposition: equation 3. The columns are orthonormal, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/07-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## Stating the reduced decomposition: equation 4 {.equation-slide}
+
+$$
+d_1\ge d_2\ge\cdots\ge d_r>0.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating the reduced decomposition: equation 4. and $\mathbf D$ is diagonal with ordered nonnegative entries, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/08-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## From a matrix product to rank-one terms
+
+Multiplying by the diagonal matrix scales matched columns of $\mathbf U$ and $\mathbf V$. Thus
+
+::: {.notes}
+[Transcript]
+
+Multiplying by the diagonal matrix scales matched columns of $\mathbf U$ and $\mathbf V$. Thus Every summand is rank one. The rank-$K$ approximation keeps the first $K$ terms: Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/09-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## From a matrix product to rank-one terms: equation 1 {.equation-slide}
+
+$$
+\mathbf Z
+=
+\sum_{k=1}^{r}
+d_k\mathbf u_k\mathbf v_k^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a matrix product to rank-one terms: equation 1. Multiplying by the diagonal matrix scales matched columns of $\mathbf U$ and $\mathbf V$. Thus Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/10-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## From a matrix product to rank-one terms: equation 2 {.equation-slide}
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\sum_{k=1}^{K}
+d_k\mathbf u_k\mathbf v_k^{\mathsf T}
+=
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a matrix product to rank-one terms: equation 2. Every summand is rank one. The rank-$K$ approximation keeps the first $K$ terms: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/11-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## From a matrix product to rank-one terms: equation 3 {.equation-slide}
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\arg\min_{\operatorname{rank}(\mathbf A)\le K}
+\|\mathbf Z-\mathbf A\|_F^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a matrix product to rank-one terms: equation 3. Among all rank-$K$ matrices, this approximation minimizes squared reconstruction error: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/12-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## From a matrix product to rank-one terms: equation 4 {.equation-slide}
+
+$$
+\|\mathbf A\|_F^2
+=
+\sum_i\sum_j a_{ij}^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a matrix product to rank-one terms: equation 4. The Frobenius norm is the sum of squared cells, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/13-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## From a matrix product to rank-one terms: equation 5 {.equation-slide}
+
+$$
+\|\mathbf Z\|_F^2
+=
+\sum_{k=1}^{r}d_k^2,
+\qquad
+\|\mathbf Z-\widehat{\mathbf Z}^{(K)}\|_F^2
+=
+\sum_{k=K+1}^{r}d_k^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a matrix product to rank-one terms: equation 5. Orthogonality yields Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/14-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## Computing the PHOIBLE decomposition
+
+The empirical training matrix is observed by observed. The largest absolute departures from the two orthogonality identities are observed under this numerical fit.
+
+::: {.notes}
+[Transcript]
+
+The empirical training matrix is observed by observed. The largest absolute departures from the two orthogonality identities are observed under this numerical fit. One rank-one pattern leaves substantial structure in the centered PHOIBLE matrix. The singular value decomposition (SVD) expresses that matrix as a sequence of mutually orthogonal rank-one terms, ordered by the centered sum of squares each term represents. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/15-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## Reading the empirical spectrum {.compact}
+
+The first component accounts for observed of centered sum of squares. The first forty account for observed. These are descriptive properties of the training matrix. They do not select a predictive rank and do not turn the components into linguistic categories.
+
+::: {.notes}
+[Transcript]
+
+The first component accounts for observed of centered sum of squares. The first forty account for observed. These are descriptive properties of the training matrix. They do not select a predictive rank and do not turn the components into linguistic categories. One rank-one pattern leaves substantial structure in the centered PHOIBLE matrix. The singular value decomposition (SVD) expresses that matrix as a sequence of mutually orthogonal rank-one terms, ordered by the centered sum of squares each term represents. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/16-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## Sign and directional limits
+
+For any component,
+
+::: {.notes}
+[Transcript]
+
+For any component, Software may thus reverse both signs without changing the fitted matrix. Interpretation should concern contrasts among loadings or scores, not a privileged positive orientation. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/17-math; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: math -->
+## Sign and directional limits {.equation-slide}
+
+$$
+d_k\mathbf u_k\mathbf v_k^{\mathsf T}
+=
+d_k(-\mathbf u_k)(-\mathbf v_k)^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes sign and directional limits. For any component, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/18-concept; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: concept -->
+## Checking the ordered patterns {.compact}
+
+1. What are the dimensions of $\mathbf U$, $\mathbf D$, and $\mathbf V$? 2. Why is each term $d_k\mathbf u_k\mathbf v_k^{\mathsf T}$ rank one? 3. Why do squared singular values add to centered sum of squares? 4. What does the scree plot summarize, and what does it not select? 5.
+
+::: {.notes}
+[Transcript]
+
+1. What are the dimensions of $\mathbf U$, $\mathbf D$, and $\mathbf V$? 2. Why is each term $d_k\mathbf u_k\mathbf v_k^{\mathsf T}$ rank one? 3. Why do squared singular values add to centered sum of squares? 4. What does the scree plot summarize, and what does it not select? 5. The next page shows why the same right singular vectors are the principal-component directions of the centered PHOIBLE matrix. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/singular-value-decomposition/19-figure; notes-page: factorization/singular-value-decomposition.qmd; note-sha256: 516c5e6b01cdeb279f944b9f82aa50c5312c0619eced93ed0984ebd4ead965f0; role: figure -->
+## Singular value decomposition {.plot-slide}
+
+![](../../_freeze/factorization/singular-value-decomposition/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Singular value decomposition."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Singular value decomposition. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/singular-value-decomposition.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/01-section; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: section -->
+## Principal component analysis {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Principal component analysis. Principal component analysis (PCA) finds directions along which centered rows vary. For the PHOIBLE matrix, a row is an inventory record and a column is a segment listing. PCA thus summarizes covariance among database-segment columns. It does not use phonological labels, family names, or macroareas to fit the directions.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/02-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Principal component analysis {.compact}
+
+Principal component analysis (PCA) finds directions along which centered rows vary. For the PHOIBLE matrix, a row is an inventory record and a column is a segment listing. PCA thus summarizes covariance among database-segment columns. It does not use phonological labels, family names, or macroareas to fit the directions.
+
+::: {.notes}
+[Transcript]
+
+Principal component analysis (PCA) finds directions along which centered rows vary. For the PHOIBLE matrix, a row is an inventory record and a column is a segment listing. PCA thus summarizes covariance among database-segment columns. It does not use phonological labels, family names, or macroareas to fit the directions. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/03-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Beginning with variation around column means
+
+Let
+
+::: {.notes}
+[Transcript]
+
+Let be the training-centered matrix. For a unit direction $\mathbf v$, the row scores are The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/04-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Beginning with variation around column means: equation 1 {.equation-slide}
+
+$$
+\mathbf Z
+=
+\mathbf X
+-
+\mathbf 1_n\widehat{\boldsymbol\mu}^{\mathsf T}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with variation around column means: equation 1. Let Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/05-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Beginning with variation around column means: equation 2 {.equation-slide}
+
+$$
+\mathbf t=\mathbf Z\mathbf v.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with variation around column means: equation 2. be the training-centered matrix. For a unit direction $\mathbf v$, the row scores are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/06-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Beginning with variation around column means: equation 3 {.equation-slide}
+
+$$
+\operatorname{Var}(\mathbf t)
+=
+\frac{1}{n-1}\mathbf t^{\mathsf T}\mathbf t
+=
+\mathbf v^{\mathsf T}
+\left(\frac{\mathbf Z^{\mathsf T}\mathbf Z}{n-1}\right)
+\mathbf v.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with variation around column means: equation 3. Their sample variance is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/07-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Beginning with variation around column means: equation 4 {.equation-slide}
+
+$$
+\mathbf S
+=
+\frac{\mathbf Z^{\mathsf T}\mathbf Z}{n-1}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with variation around column means: equation 4. Define the sample covariance matrix Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/08-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Beginning with variation around column means: equation 5 {.equation-slide}
+
+$$
+\mathbf v_1
+=
+\arg\max_{\mathbf v^{\mathsf T}\mathbf v=1}
+\mathbf v^{\mathsf T}\mathbf S\mathbf v.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with variation around column means: equation 5. The first principal-component direction solves Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/09-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Connecting PCA to the SVD
+
+If
+
+::: {.notes}
+[Transcript]
+
+If then That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/10-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Connecting PCA to the SVD: equation 1 {.equation-slide}
+
+$$
+\mathbf Z=\mathbf U\mathbf D\mathbf V^{\mathsf T},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes connecting pca to the svd: equation 1. If Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/11-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Connecting PCA to the SVD: equation 2 {.equation-slide}
+
+$$
+\begin{aligned}
+\mathbf S
+&=\frac{1}{n-1}\mathbf Z^{\mathsf T}\mathbf Z\\
+&=\frac{1}{n-1}
+\mathbf V\mathbf D\mathbf U^{\mathsf T}
+\mathbf U\mathbf D\mathbf V^{\mathsf T}\\
+&=\mathbf V
+\frac{\mathbf D^2}{n-1}
+\mathbf V^{\mathsf T}.
+\end{aligned}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes connecting pca to the svd: equation 2. then Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/12-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Connecting PCA to the SVD: equation 3 {.equation-slide}
+
+$$
+\lambda_k=\frac{d_k^2}{n-1}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes connecting pca to the svd: equation 3. Thus the PCA directions are the right singular vectors, and the covariance eigenvalues are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/13-math; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: math -->
+## Connecting PCA to the SVD: equation 4 {.equation-slide}
+
+$$
+\mathbf T
+=
+\mathbf Z\mathbf V
+=
+\mathbf U\mathbf D.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes connecting pca to the svd: equation 4. The component scores satisfy Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/14-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Verifying the identity on PHOIBLE
+
+The largest eigenvalue difference is observed. The largest difference between the two score calculations is observed. These discrepancies reflect floating-point arithmetic.
+
+::: {.notes}
+[Transcript]
+
+The largest eigenvalue difference is observed. The largest difference between the two score calculations is observed. These discrepancies reflect floating-point arithmetic. Principal component analysis (PCA) finds directions along which centered rows vary. For the PHOIBLE matrix, a row is an inventory record and a column is a segment listing. PCA thus summarizes covariance among database-segment columns. It does not use phonological labels, family names, or macroareas to fit the directions. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/15-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Plotting scores, then adding metadata
+
+Macroarea did not enter the matrix, centering, SVD, or covariance calculation. We add it only after fitting to ask whether the unsupervised coordinates display broad descriptive differences.
+
+::: {.notes}
+[Transcript]
+
+Macroarea did not enter the matrix, centering, SVD, or covariance calculation. We add it only after fitting to ask whether the unsupervised coordinates display broad descriptive differences. The score clouds overlap substantially. Any apparent macroarea pattern may combine inventory size, source practices, genealogy, geography, and typological organization. The figure cannot distinguish those explanations because macroarea is neither a modeled cause nor the unit of the split. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/16-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Interpreting the variance criterion narrowly {.compact}
+
+PCA maximizes variance in the supplied representation. Here that representation contains centered binary listings for training-retained segments. A direction with high variance is not necessarily the best direction for reconstruction of hidden cells, classification, or a linguistic theory. Those targets require an external criterion.
+
+::: {.notes}
+[Transcript]
+
+PCA maximizes variance in the supplied representation. Here that representation contains centered binary listings for training-retained segments. A direction with high variance is not necessarily the best direction for reconstruction of hidden cells, classification, or a linguistic theory. Those targets require an external criterion. PCA also does not discover a group contrast merely because groups can be colored after fitting. If a labeled contrast is the target, the evaluation must withhold appropriate units and assess it directly. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/17-concept; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: concept -->
+## Checking the variance direction {.compact}
+
+1. Why must the matrix be centered before this covariance interpretation? 2. What quantity does $\mathbf v^{\mathsf T}\mathbf S\mathbf v$ measure? 3. Why are $\mathbf V$ and $\mathbf D^2/(n-1)$ the covariance eigenvectors and eigenvalues? 4. Which metadata enter the fit on this page? 5. Why can the macroarea facets not isolate a causal explanation?
+
+::: {.notes}
+[Transcript]
+
+1. Why must the matrix be centered before this covariance interpretation? 2. What quantity does $\mathbf v^{\mathsf T}\mathbf S\mathbf v$ measure? 3. Why are $\mathbf V$ and $\mathbf D^2/(n-1)$ the covariance eigenvectors and eigenvalues? 4. Which metadata enter the fit on this page? 5. Why can the macroarea facets not isolate a causal explanation? The next page separates the row coordinates from the segment directions and inspects both quantities without changing the fitted decomposition. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/principal-component-analysis/18-figure; notes-page: factorization/principal-component-analysis.qmd; note-sha256: 89beb63e06347fd68498f267bea6115a75a13c39f4c248a871e20fed9e114c32; role: figure -->
+## Principal component analysis {.plot-slide}
+
+![](../../_freeze/factorization/principal-component-analysis/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Principal component analysis."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Principal component analysis. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/principal-component-analysis.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/01-section; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: section -->
+## Scores and loadings {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Scores and loadings. The PHOIBLE decomposition produces two related objects with different units. Scores locate inventory records in the fitted component coordinates. Loadings describe directions across segment columns. Keeping these index sets separate prevents a segment contrast from being described as if it were an inventory property.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/02-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Scores and loadings {.compact}
+
+The PHOIBLE decomposition produces two related objects with different units. Scores locate inventory records in the fitted component coordinates. Loadings describe directions across segment columns. Keeping these index sets separate prevents a segment contrast from being described as if it were an inventory property.
+
+::: {.notes}
+[Transcript]
+
+The PHOIBLE decomposition produces two related objects with different units. Scores locate inventory records in the fitted component coordinates. Loadings describe directions across segment columns. Keeping these index sets separate prevents a segment contrast from being described as if it were an inventory property. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/03-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Scores locate row objects
+
+Let $\mathbf Z$ be the centered training matrix and let $\mathbf V_K$ contain the first $K$ right singular vectors. The score matrix is
+
+::: {.notes}
+[Transcript]
+
+Let $\mathbf Z$ be the centered training matrix and let $\mathbf V_K$ contain the first $K$ right singular vectors. The score matrix is For inventory record $i$ and component $k$, The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/04-math; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: math -->
+## Scores locate row objects: equation 1 {.equation-slide}
+
+$$
+\mathbf T_K
+=
+\mathbf Z\mathbf V_K.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes scores locate row objects: equation 1. Let $\mathbf Z$ be the centered training matrix and let $\mathbf V_K$ contain the first $K$ right singular vectors. The score matrix is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/05-math; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: math -->
+## Scores locate row objects: equation 2 {.equation-slide}
+
+$$
+t_{ik}
+=
+\mathbf z_i^{\mathsf T}\mathbf v_k
+=
+\sum_{j=1}^{p}z_{ij}v_{jk}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes scores locate row objects: equation 2. For inventory record $i$ and component $k$, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/06-math; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: math -->
+## Scores locate row objects: equation 3 {.equation-slide}
+
+$$
+\mathbf Z
+=
+\mathbf U\mathbf D\mathbf V^{\mathsf T},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes scores locate row objects: equation 3. Thus a score is a weighted sum of one centered inventory row. It is not a property of the Glottocode independently of the sampled inventory and retained segment representation. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/07-math; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: math -->
+## Scores locate row objects: equation 4 {.equation-slide}
+
+$$
+\mathbf T
+=
+\mathbf Z\mathbf V
+=
+\mathbf U\mathbf D.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes scores locate row objects: equation 4. From the SVD, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/08-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Loadings describe column directions
+
+The entry $v_{jk}$ is the weight of segment column $j$ in component direction $k$. In these notes, **loading** refers to the unit vector $\mathbf v_k$. Some software instead reports $\sqrt{\lambda_k}\mathbf v_k$, so the convention should always be stated.
+
+::: {.notes}
+[Transcript]
+
+The entry $v_{jk}$ is the weight of segment column $j$ in component direction $k$. In these notes, **loading** refers to the unit vector $\mathbf v_k$. Some software instead reports $\sqrt{\lambda_k}\mathbf v_k$, so the convention should always be stated. The score and loading matrices reconstruct the centered data: Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/09-math; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: math -->
+## Loadings describe column directions: equation 1 {.equation-slide}
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\mathbf T_K\mathbf V_K^{\mathsf T}
+=
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes loadings describe column directions: equation 1. The entry $v_{jk}$ is the weight of segment column $j$ in component direction $k$. In these notes, **loading** refers to the unit vector $\mathbf v_k$. Some software instead reports $\sqrt{\lambda_k}\mathbf v_k$, so the convention should always be stated. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/10-math; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: math -->
+## Loadings describe column directions: equation 2 {.equation-slide}
+
+$$
+(-\mathbf t_k)(-\mathbf v_k)^{\mathsf T}
+=
+\mathbf t_k\mathbf v_k^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes loadings describe column directions: equation 2. The score and loading matrices reconstruct the centered data: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/11-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Extracting empirical scores and loadings
+
+The identifiers are joined only after the scores are computed. This keeps the row mapping explicit even if later filtering changes row order.
+
+::: {.notes}
+[Transcript]
+
+The identifiers are joined only after the scores are computed. This keeps the row mapping explicit even if later filtering changes row order. The PHOIBLE decomposition produces two related objects with different units. Scores locate inventory records in the fitted component coordinates. Loadings describe directions across segment columns. Keeping these index sets separate prevents a segment contrast from being described as if it were an inventory property. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/12-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Inspecting loading patterns {.compact}
+
+The plot shows the twelve largest absolute weights for each of the first two directions. Segments on the same side contribute with the same sign, while segments on opposite sides define a contrast. Because the component may reverse sign, the important object is the relative pattern around zero.
+
+::: {.notes}
+[Transcript]
+
+The plot shows the twelve largest absolute weights for each of the first two directions. Segments on the same side contribute with the same sign, while segments on opposite sides define a contrast. Because the component may reverse sign, the important object is the relative pattern around zero. An isolated high loading does not name a component. Interpretation should ask whether a set of large weights forms a coherent pattern, whether the pattern is stable under resampling or nearby ranks, and whether independent evidence supports the proposed linguistic analysis. The present plot answers only the first question descriptively. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/13-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Rows, columns, and metadata
+
+Family and macroarea labels are properties of inventory rows. Segment symbols and segment classes are properties of columns. Joining either kind of metadata requires its stable identifier:
+
+::: {.notes}
+[Transcript]
+
+Family and macroarea labels are properties of inventory rows. Segment symbols and segment classes are properties of columns. Joining either kind of metadata requires its stable identifier: Mixing these tables by row position would be a unit error: their rows index different objects. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/14-concept; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: concept -->
+## Checking rows and columns {.compact}
+
+1. What does $t_{ik}$ index? 2. What does $v_{jk}$ index? 3. Why are $\mathbf Z\mathbf V$ and $\mathbf U\mathbf D$ equal? 4. Which loading convention do these notes use? 5. Why should a component be interpreted from a pattern rather than one segment?
+
+::: {.notes}
+[Transcript]
+
+1. What does $t_{ik}$ index? 2. What does $v_{jk}$ index? 3. Why are $\mathbf Z\mathbf V$ and $\mathbf U\mathbf D$ equal? 4. Which loading convention do these notes use? 5. Why should a component be interpreted from a pattern rather than one segment? The next page combines scores and loadings to predict cells deliberately hidden from held-out inventory records. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/scores-and-loadings/15-figure; notes-page: factorization/scores-and-loadings.qmd; note-sha256: 5f5becbc9ae67bbd8bfbbb61cd9372b80a5480be5900c4c959d33ac0f7afbfcf; role: figure -->
+## Scores and loadings {.plot-slide}
+
+![](../../_freeze/factorization/scores-and-loadings/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Scores and loadings."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Scores and loadings. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/scores-and-loadings.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/01-section; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: section -->
+## Reconstruction {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Reconstruction. Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/02-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## Reconstruction {.compact}
+
+Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible.
+
+::: {.notes}
+[Transcript]
+
+Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/03-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## Reconstructing with the first $K$ terms
+
+For centered training data,
+
+::: {.notes}
+[Transcript]
+
+For centered training data, The reconstructed centered cell is Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/04-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing with the first $K$ terms: equation 1 {.equation-slide}
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}
+=
+\mathbf T_K\mathbf V_K^{\mathsf T}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing with the first $k$ terms: equation 1. For centered training data, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/05-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing with the first $K$ terms: equation 2 {.equation-slide}
+
+$$
+\widehat z_{ij}^{(K)}
+=
+\sum_{k=1}^{K}t_{ik}v_{jk}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing with the first $k$ terms: equation 2. The reconstructed centered cell is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/06-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing with the first $K$ terms: equation 3 {.equation-slide}
+
+$$
+\widehat x_{ij}^{(K)}
+=
+\widehat\mu_j
++
+\widehat z_{ij}^{(K)}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing with the first $k$ terms: equation 3. Returning to the original listing scale adds the training column mean: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/07-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing with the first $K$ terms: equation 4 {.equation-slide}
+
+$$
+\mathbf E^{(K)}
+=
+\mathbf Z-\widehat{\mathbf Z}^{(K)},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing with the first $k$ terms: equation 4. For an observed training matrix, the residual is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/08-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing with the first $K$ terms: equation 5 {.equation-slide}
+
+$$
+R_K
+=
+\frac{\sum_{k=1}^{K}d_k^2}
+     {\sum_{k=1}^{r}d_k^2}
+=
+1-
+\frac{\|\mathbf E^{(K)}\|_F^2}
+     {\|\mathbf Z\|_F^2}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing with the first $k$ terms: equation 5. and the fraction of centered sum of squares represented is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/09-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## Reconstructing partially observed inventories
+
+Let $\mathbf x_i^*$ be a held-out inventory row in which hidden cells have been replaced by their training-column means. Their centered values are thus zero. For rank $K$,
+
+::: {.notes}
+[Transcript]
+
+Let $\mathbf x_i^*$ be a held-out inventory row in which hidden cells have been replaced by their training-column means. Their centered values are thus zero. For rank $K$, and Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/10-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing partially observed inventories: equation 1 {.equation-slide}
+
+$$
+\widehat{\mathbf t}_i^{(K)}
+=
+(\mathbf x_i^*-\widehat{\boldsymbol\mu})^{\mathsf T}
+\mathbf V_K,
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing partially observed inventories: equation 1. Let $\mathbf x_i^*$ be a held-out inventory row in which hidden cells have been replaced by their training-column means. Their centered values are thus zero. For rank $K$, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/11-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Reconstructing partially observed inventories: equation 2 {.equation-slide}
+
+$$
+\widehat{\mathbf x}_i^{(K)}
+=
+\widehat{\boldsymbol\mu}
++
+\mathbf V_K\widehat{\mathbf t}_i^{(K)}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes reconstructing partially observed inventories: equation 2. and Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/12-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## Building the split and masks
+
+Validation selects rank observed. Only after that choice is fixed do we compute test loss. The segment-prevalence baseline has balanced Brier loss observed, whereas the low-rank reconstruction has loss observed.
+
+::: {.notes}
+[Transcript]
+
+Validation selects rank observed. Only after that choice is fixed do we compute test loss. The segment-prevalence baseline has balanced Brier loss observed, whereas the low-rank reconstruction has loss observed. Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/13-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## Showing raw hidden cells and predictions
+
+The raw points show all observed hidden test cells. The separated distributions indicate that the observed cells of a new inventory contain information about its hidden listings under this representation.
+
+::: {.notes}
+[Transcript]
+
+The raw points show all observed hidden test cells. The separated distributions indicate that the observed cells of a new inventory contain information about its hidden listings under this representation. Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/14-check; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: check -->
+## Estimating the test gain
+
+Balanced Brier loss gives listed and not-listed cells equal total weight:
+
+::: {.notes}
+[Transcript]
+
+Take a minute before we move on. Balanced Brier loss gives listed and not-listed cells equal total weight: State the answer in terms of the dataset and the unit of analysis.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/15-math; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: math -->
+## Estimating the test gain {.equation-slide}
+
+$$
+L_{\mathrm{bal}}
+=
+\frac{1}{2n_1}\sum_{x=1}(x-\widehat x)^2
++
+\frac{1}{2n_0}\sum_{x=0}(x-\widehat x)^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes estimating the test gain. Balanced Brier loss gives listed and not-listed cells equal total weight: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/16-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## What reconstruction establishes {.compact}
+
+The result supports a narrow conclusion: structure learned from training inventory records helps complete a few hidden database listings when most of a held-out record is observed. It does not reconstruct a wholly unseen inventory, establish phonological absence from a zero, or show that rank observed is a phonological universal.
+
+::: {.notes}
+[Transcript]
+
+The result supports a narrow conclusion: structure learned from training inventory records helps complete a few hidden database listings when most of a held-out record is observed. It does not reconstruct a wholly unseen inventory, establish phonological absence from a zero, or show that rank observed is a phonological universal. Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/17-concept; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: concept -->
+## Checking the rebuilt cells {.compact}
+
+1. Why are hidden cells filled with training-column means before projection? 2. Which cells estimate a held-out inventory's scores? 3. Why is observed reconstruction error not held-out prediction error? 4. Why does balanced Brier loss weight the two cell statuses equally? 5. What is the unit resampled by the bootstrap?
+
+::: {.notes}
+[Transcript]
+
+1. Why are hidden cells filled with training-column means before projection? 2. Which cells estimate a held-out inventory's scores? 3. Why is observed reconstruction error not held-out prediction error? 4. Why does balanced Brier loss weight the two cell statuses equally? 5. What is the unit resampled by the bootstrap? The next page isolates the validation step that selected the retained rank without inspecting test loss. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/reconstruction/18-figure; notes-page: factorization/reconstruction.qmd; note-sha256: 3c55339d03ba2e28e47596716b92b372ba203c250c057e56e61820cab008b274; role: figure -->
+## Reconstruction {.plot-slide}
+
+![](../../_freeze/factorization/reconstruction/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Reconstruction."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Reconstruction. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/reconstruction.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/01-section; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: section -->
+## Choosing the number of components {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Choosing the number of components. The singular values describe how well components reconstruct the training matrix. They do not determine how many components reconstruct genuinely hidden entries. The inventory-record completion target thus separates three operations: fit directions on training inventories, choose rank on validation inventories, and estimate performance once on test inventories.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/02-concept; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: concept -->
+## Choosing the number of components {.compact}
+
+The singular values describe how well components reconstruct the training matrix. They do not determine how many components reconstruct genuinely hidden entries. The inventory-record completion target thus separates three operations: fit directions on training inventories, choose rank on validation inventories, and estimate performance once on test inventories.
+
+::: {.notes}
+[Transcript]
+
+The singular values describe how well components reconstruct the training matrix. They do not determine how many components reconstruct genuinely hidden entries. The inventory-record completion target thus separates three operations: fit directions on training inventories, choose rank on validation inventories, and estimate performance once on test inventories. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/03-concept; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: concept -->
+## Separating fitting, selection, and evaluation
+
+Let $\mathcal T$, $\mathcal V$, and $\mathcal E$ denote training, validation, and test inventory records. Training data determine:
+
+::: {.notes}
+[Transcript]
+
+Let $\mathcal T$, $\mathcal V$, and $\mathcal E$ denote training, validation, and test inventory records. Training data determine: 1. which segment columns occur often enough to retain; 2. the segment means $\widehat{\boldsymbol\mu}_{\mathcal T}$; 3. the component directions $\mathbf V_{\mathcal T}$. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/04-math; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: math -->
+## Separating fitting, selection, and evaluation: equation 1 {.equation-slide}
+
+$$
+\widehat{\mathbf t}_{i,K}
+=
+(\mathbf x_i^*-\widehat{\boldsymbol\mu}_{\mathcal T})^{\mathsf T}
+\mathbf V_{\mathcal T,K},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes separating fitting, selection, and evaluation: equation 1. Let $\mathcal T$, $\mathcal V$, and $\mathcal E$ denote training, validation, and test inventory records. Training data determine: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/05-math; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: math -->
+## Separating fitting, selection, and evaluation: equation 2 {.equation-slide}
+
+$$
+\widehat{\mathbf x}_{i,K}
+=
+\widehat{\boldsymbol\mu}_{\mathcal T}
++
+\mathbf V_{\mathcal T,K}\widehat{\mathbf t}_{i,K}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes separating fitting, selection, and evaluation: equation 2. 1. which segment columns occur often enough to retain; 2. the segment means $\widehat{\boldsymbol\mu}_{\mathcal T}$; 3. the component directions $\mathbf V_{\mathcal T}$. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/06-math; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: math -->
+## Separating fitting, selection, and evaluation: equation 3 {.equation-slide}
+
+$$
+\widehat K
+=
+\arg\min_{K\in\mathcal K}
+L_{\mathrm{bal}}(\mathcal V,K),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes separating fitting, selection, and evaluation: equation 3. For a validation inventory with masked cells, scores at rank $K$ are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/07-math; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: math -->
+## Separating fitting, selection, and evaluation: equation 4 {.equation-slide}
+
+$$
+L_{\mathrm{bal}}
+=
+\frac{1}{2n_1}\sum_{x=1}(x-\widehat x)^2
++
+\frac{1}{2n_0}\sum_{x=0}(x-\widehat x)^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes separating fitting, selection, and evaluation: equation 4. and the reconstruction is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/08-concept; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: concept -->
+## Implementing rank selection
+
+The validation minimum occurs at rank observed. The line marks the result of the fixed selection rule; it is the only annotation needed to read the curve.
+
+::: {.notes}
+[Transcript]
+
+The validation minimum occurs at rank observed. The line marks the result of the fixed selection rule; it is the only annotation needed to read the curve. The singular values describe how well components reconstruct the training matrix. They do not determine how many components reconstruct genuinely hidden entries. The inventory-record completion target thus separates three operations: fit directions on training inventories, choose rank on validation inventories, and estimate performance once on test inventories. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/09-concept; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: concept -->
+## Preserving one final evaluation
+
+The code below computes the test comparison only after `selected_rank` exists.
+
+::: {.notes}
+[Transcript]
+
+The code below computes the test comparison only after `selected_rank` exists. The selected reconstruction reduces test balanced Brier loss from observed to observed. Balanced log loss moves in the same direction, from observed to observed. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/10-concept; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: concept -->
+## Why other criteria answer different questions {.compact}
+
+Choosing a rank from observed training reconstruction rewards additional components by construction. A scree bend or a cumulative-variance threshold may summarize the observed matrix, but neither directly evaluates hidden cells. Conversely, validation loss is tied to the masking rule, loss function, and new-inventory target.
+
+::: {.notes}
+[Transcript]
+
+Choosing a rank from observed training reconstruction rewards additional components by construction. A scree bend or a cumulative-variance threshold may summarize the observed matrix, but neither directly evaluates hidden cells. Conversely, validation loss is tied to the masking rule, loss function, and new-inventory target. Rank selection also includes preprocessing. Segment retention, centering, component fitting, and masking must remain inside their assigned partitions. Letting validation or test inventories determine retained columns would create leakage through preprocessing. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/11-concept; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: concept -->
+## Checking rank selection {.compact}
+
+1. Which quantities are fitted on training inventories? 2. Which data choose the rank? 3. Why is the test set evaluated only once? 4. Why can the training reconstruction curve not select a predictive rank? 5. What generalization claim is blocked because family is not the split unit?
+
+::: {.notes}
+[Transcript]
+
+1. Which quantities are fitted on training inventories? 2. Which data choose the rank? 3. Why is the test set evaluated only once? 4. Why can the training reconstruction curve not select a predictive rank? 5. What generalization claim is blocked because family is not the split unit? The selected rank supports the IRCT, not a universal dimensionality claim. The final page moves to a supervised problem in which PCA compression itself must compete with the uncompressed linguistic predictor. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/12-figure; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: figure -->
+## Choosing the number of components {.plot-slide}
+
+![](../../_freeze/factorization/choosing-components/figure-html/unnamed-chunk-2-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Choosing the number of components."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Choosing the number of components. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/choosing-components/13-interpretation; notes-page: factorization/choosing-components.qmd; note-sha256: 504ff777dea41da1ded0017d400ea3938640946767fdb68a6ecfe32f34ea6a77; role: interpretation -->
+## Interpretation {.statement-slide}
+
+The selected rank supports the IRCT, not a universal dimensionality claim. The final page moves to a supervised problem in which PCA compression itself must compete with the uncompressed linguistic predictor.
+
+::: {.notes}
+[Transcript]
+
+The selected rank supports the IRCT, not a universal dimensionality claim. The final page moves to a supervised problem in which PCA compression itself must compete with the uncompressed linguistic predictor. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: factorization/choosing-components.qmd
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/01-section; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: section -->
+## From VALEX distributions to MegaAcceptability profiles {.section-slide}
+
+<div class="source">PHOIBLE 2.0</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to From VALEX distributions to MegaAcceptability profiles. The PHOIBLE sequence used factorization to reconstruct hidden cells. We now ask whether factorization improves a supervised linguistic prediction. The **distribution-to-selection mapping** (DSM) maps a verb's corpus distribution across VALEX subcategorization frames to its acceptability profile across MegaAcceptability frames, holding out the complete verb.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/02-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## From VALEX distributions to MegaAcceptability profiles {.compact}
+
+The PHOIBLE sequence used factorization to reconstruct hidden cells. We now ask whether factorization improves a supervised linguistic prediction. The **distribution-to-selection mapping** (DSM) maps a verb's corpus distribution across VALEX subcategorization frames to its acceptability profile across MegaAcceptability frames, holding out the complete verb.
+
+::: {.notes}
+[Transcript]
+
+The PHOIBLE sequence used factorization to reconstruct hidden cells. We now ask whether factorization improves a supervised linguistic prediction. The **distribution-to-selection mapping** (DSM) maps a verb's corpus distribution across VALEX subcategorization frames to its acceptability profile across MegaAcceptability frames, holding out the complete verb. VALEX was acquired automatically from five corpora and the Web. Korhonen, Krymolowski, and Briscoe's dataset paper describes counts for English verb subcategorization frames and emphasizes automatic acquisition. The counts may contain parsing and frame-assignment error, and the release does not disambiguate verb senses. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/03-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Defining the linguistic objects
+
+The retained overlap contains one VALEX row per matched verb and one MegaAcceptability response profile per matched verb. If $c_{vj}$ is the automatically acquired count for verb $v$ in VALEX dimension $j$, define the within-verb proportion
+
+::: {.notes}
+[Transcript]
+
+The retained overlap contains one VALEX row per matched verb and one MegaAcceptability response profile per matched verb. If $c_{vj}$ is the automatically acquired count for verb $v$ in VALEX dimension $j$, define the within-verb proportion The row $\mathbf p_v$ represents the allocation of observed corpus evidence across frames, not total verb frequency. It is not a sense-specific grammatical description. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/04-math; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: math -->
+## Defining the linguistic objects: equation 1 {.equation-slide}
+
+$$
+p_{vj}
+=
+\frac{c_{vj}}{\sum_h c_{vh}}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the linguistic objects: equation 1. The retained overlap contains one VALEX row per matched verb and one MegaAcceptability response profile per matched verb. If $c_{vj}$ is the automatically acquired count for verb $v$ in VALEX dimension $j$, define the within-verb proportion Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/05-math; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: math -->
+## Defining the linguistic objects: equation 2 {.equation-slide}
+
+$$
+z_{qi}
+=
+\frac{y_{qi}-\bar y_{q,\mathcal T}}
+     {s_{q,\mathcal T}}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the linguistic objects: equation 2. The row $\mathbf p_v$ represents the allocation of observed corpus evidence across frames, not total verb frequency. It is not a sense-specific grammatical description. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/06-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Reading and checking the analysis inputs {.compact}
+
+The audited course bundle stores the raw inputs and validated predictions from the leakage-safe nested procedure. The R below reads every object used on this page and recomputes the reported summaries and figures. A complete R implementation of the fitting procedure follows in the next section.
+
+::: {.notes}
+[Transcript]
+
+The audited course bundle stores the raw inputs and validated predictions from the leakage-safe nested procedure. The R below reads every object used on this page and recomputes the reported summaries and figures. A complete R implementation of the fitting procedure follows in the next section. The empirical objects contain observed matched verbs, observed observed VALEX dimensions, observed experimental frames, and observed retained responses from observed participants. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/07-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Stating the competing procedures
+
+The direct multivariate ridge model uses the complete VALEX proportion matrix. With an unpenalized intercept implemented by training centering, it solves
+
+::: {.notes}
+[Transcript]
+
+The direct multivariate ridge model uses the complete VALEX proportion matrix. With an unpenalized intercept implemented by training centering, it solves The factor procedure fits PCA only to training predictor rows, The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/08-math; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: math -->
+## Stating the competing procedures: equation 1 {.equation-slide}
+
+$$
+(\widehat{\boldsymbol\beta}_{0,\lambda},
+ \widehat{\mathbf B}_{\lambda})
+=
+\arg\min_{\boldsymbol\beta_0,\mathbf B}
+\left\|\mathbf Y_{\mathcal T}
+-\mathbf 1\boldsymbol\beta_0^{\mathsf T}
+-\mathbf P_{\mathcal T}\mathbf B\right\|_F^2
++\lambda\|\mathbf B\|_F^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating the competing procedures: equation 1. The direct multivariate ridge model uses the complete VALEX proportion matrix. With an unpenalized intercept implemented by training centering, it solves Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/09-math; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: math -->
+## Stating the competing procedures: equation 2 {.equation-slide}
+
+$$
+\mathbf F_K
+=
+(\mathbf P-\mathbf 1\bar{\mathbf p}_{\mathcal T}^{\mathsf T})
+\mathbf V_{\mathcal T,K},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating the competing procedures: equation 2. The factor procedure fits PCA only to training predictor rows, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/10-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Keeping every fitted choice inside training data {.compact}
+
+Five repetitions of ten-fold outer cross-validation hold out complete verbs. Within every outer training set, independent five-fold validation selects the direct ridge penalty and jointly selects factor rank and ridge penalty. Participant normalization, response aggregation, predictor centering, PCA loadings, rank, and penalty are refitted in the relevant training split.
+
+::: {.notes}
+[Transcript]
+
+Five repetitions of ten-fold outer cross-validation hold out complete verbs. Within every outer training set, independent five-fold validation selects the direct ridge penalty and jointly selects factor rank and ridge penalty. Participant normalization, response aggregation, predictor centering, PCA loadings, rank, and penalty are refitted in the relevant training split. The fixed candidate sets are: That distinction will matter again on the next slide.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/11-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Defining held-out skill
+
+The baseline predicts the outer-training mean separately for each response frame. For model $m$, define
+
+::: {.notes}
+[Transcript]
+
+The baseline predicts the outer-training mean separately for each response frame. For model $m$, define Positive values improve on the frame-mean baseline. The paired compression contrast is Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/12-math; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: math -->
+## Defining held-out skill: equation 1 {.equation-slide}
+
+$$
+R_m^2
+=
+1-
+\frac{\sum_i(y_i-\widehat y_{m,i})^2}
+     {\sum_i(y_i-\widehat y_{\mathrm{base},i})^2}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining held-out skill: equation 1. The baseline predicts the outer-training mean separately for each response frame. For model $m$, define Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/13-math; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: math -->
+## Defining held-out skill: equation 2 {.equation-slide}
+
+$$
+\Delta R^2
+=
+R_{\mathrm{factor}}^2-R_{\mathrm{direct}}^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining held-out skill: equation 2. Positive values improve on the frame-mean baseline. The paired compression contrast is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/14-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Showing outcomes and held-out fits
+
+Each verb-frame cell receives one prediction in every outer repetition. We average those five held-out predictions only for plotting.
+
+::: {.notes}
+[Transcript]
+
+Each verb-frame cell receives one prediction in every outer repetition. We average those five held-out predictions only for plotting. Both fitted procedures recover substantial ordering across held-out cells, though dispersion around the identity line remains. The panels are similar because PCA preserves much, but not all, of the direct predictive signal. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/15-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Inspecting selected rank
+
+Inner validation selects rank observed, the largest candidate, in all observed outer fits. This result does not identify that rank as the number of grammatical dimensions. It suggests that directions beyond the tested compression remain predictively useful.
+
+::: {.notes}
+[Transcript]
+
+Inner validation selects rank observed, the largest candidate, in all observed outer fits. This result does not identify that rank as the number of grammatical dimensions. It suggests that directions beyond the tested compression remain predictively useful. The PHOIBLE sequence used factorization to reconstruct hidden cells. We now ask whether factorization improves a supervised linguistic prediction. The **distribution-to-selection mapping** (DSM) maps a verb's corpus distribution across VALEX subcategorization frames to its acceptability profile across MegaAcceptability frames, holding out the complete verb. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/16-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Locating the predictive limitation
+
+White and Rawlins report a marked weakness for finite clauses preceded by a direct object. The audit fixed the corresponding frame-family comparison before inspecting the new procedure.
+
+::: {.notes}
+[Transcript]
+
+White and Rawlins report a marked weakness for finite clauses preceded by a direct object. The audit fixed the corresponding frame-family comparison before inspecting the new procedure. Direct skill for finite clauses without an object is observed, but falls to observed for the matched object frames. PCA does not repair this difference. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/17-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## What the application establishes
+
+First, automatically acquired VALEX distributions contain information about MegaAcceptability profiles for verbs excluded from fitting. Second, PCA compression does not improve that mapping: the selected factor procedure performs slightly and stably worse than the direct profile.
+
+::: {.notes}
+[Transcript]
+
+First, automatically acquired VALEX distributions contain information about MegaAcceptability profiles for verbs excluded from fitting. Second, PCA compression does not improve that mapping: the selected factor procedure performs slightly and stably worse than the direct profile. The teaching analysis differs from the paper in three declared ways. It uses raw VALEX proportions rather than the paper's best Beta Negative Binomial representation, PCA rather than a logistic factor model, and a fold-fitted z transformation rather than the released ordinal mixed-effects normalization. Those changes isolate the matrix operations taught here while preserving the held-out-verb question. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/18-concept; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: concept -->
+## Checking the reasoning {.compact}
+
+1. What does one VALEX row represent, and which sense distinction does it omit? 2. Why are counts converted to within-verb proportions? 3. Why must participant normalization be refitted inside each split? 4. What is held constant between the direct and factor procedures? 5.
+
+::: {.notes}
+[Transcript]
+
+1. What does one VALEX row represent, and which sense distinction does it omit? 2. Why are counts converted to within-verb proportions? 3. Why must participant normalization be refitted inside each split? 4. What is held constant between the direct and factor procedures? 5. The live empirical question is which theory-guided representation of communicativity, argument structure, or event structure can improve held-out prediction without discarding the useful direct distributional signal. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/19-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../factorization/valex-megaacceptability_files/figure-html/unnamed-chunk-5-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/20-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../factorization/valex-megaacceptability_files/figure-html/unnamed-chunk-6-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/21-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../factorization/valex-megaacceptability_files/figure-html/unnamed-chunk-7-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/22-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../_freeze/factorization/valex-megaacceptability/figure-html/unnamed-chunk-4-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/23-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../_freeze/factorization/valex-megaacceptability/figure-html/unnamed-chunk-5-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/24-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../_freeze/factorization/valex-megaacceptability/figure-html/unnamed-chunk-6-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/25-figure; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: figure -->
+## From VALEX distributions to MegaAcceptability profiles {.plot-slide}
+
+![](../../_freeze/factorization/valex-megaacceptability/figure-html/unnamed-chunk-7-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for From VALEX distributions to MegaAcceptability profiles. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::
+
+<!-- generated-slide-id: factorization/valex-megaacceptability/26-interpretation; notes-page: factorization/valex-megaacceptability.qmd; note-sha256: 73937ba0bc0290bd10415d2139f94ba50f4e4b090b765c5a944e0c74ddedcae3; role: interpretation -->
+## Interpretation {.statement-slide}
+
+The live empirical question is which theory-guided representation of communicativity, argument structure, or event structure can improve held-out prediction without discarding the useful direct distributional signal.
+
+::: {.notes}
+[Transcript]
+
+The live empirical question is which theory-guided representation of communicativity, argument structure, or event structure can improve held-out prediction without discarding the useful direct distributional signal. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://ilexir.co.uk/valex/
+https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf
+https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip
+https://doi.org/10.5334/gjgl.1001
+:::

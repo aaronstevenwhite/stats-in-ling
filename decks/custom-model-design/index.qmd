@@ -1,5 +1,5 @@
 ---
-title: "Custom model design"
+title: "Custom generative models for annotations"
 subtitle: "Statistical Methods in Linguistics"
 author: "Aaron Steven White"
 institute: "University of Rochester"
@@ -13,561 +13,1870 @@ format:
     width: 1280
     height: 720
     margin: 0
+    center: false
     self-contained: true
     embed-resources: true
     transition: none
     slide-number: false
     controls: true
     progress: true
-    center: false
     incremental: false
+    html-math-method: katex
+execute:
+  enabled: false
 ---
 
-## Big Question {.role-slide}
+<!-- GENERATED FILE. Rebuild with scripts/rebuild_slides_and_transcripts.py. -->
+<!-- The generator does not read the previous deck body; stale slides cannot be retained. -->
 
-How should an annotation model connect recorded responses to the linguistic quantity they are intended to measure?
+<!-- generated-slide-id: custom-model-design/index/01-section; notes-page: custom-models/index.qmd; note-sha256: 27f99291861bd47fac8db814f10ba17f171af3c32e28ef7189a9dec1cc933992; role: section -->
+## Custom model design {.section-slide}
 
-## Data {.role-slide}
-
-An annotator sees a prompt, uses an interface, selects a response, and may receive a conditional follow up question.
-
-## Challenge {.role-slide}
-
-The recorded response is not the linguistic property itself.
-
-Aggregation can remove the evidence needed to distinguish item structure from response behavior.
-
-## This Module {.role-slide .compact}
-
-1. Separate annotations from their target construct.
-2. Write the data-generating process before the likelihood.
-3. Translate each random step into one probability factor.
-4. Add annotator effects and gated responses.
-5. Test the complete procedure through parameter recovery.
-6. Fit a narrow measurement model for UDS natural parts judgments.
-
-## Annotations as measurements {.section-slide}
-
-What is observed and what is inferred
-
-## Question {.role-slide}
-
-What does a seven point event likelihood judgment directly measure?
-
-## Answer {.role-slide}
-
-It directly measures a response produced by a prompt, scale, interface, and annotator.
-
-The intended semantic property is unobserved.
-
-## Method {.role-slide}
-
-Let $Y_{ij}$ be annotator $j$'s recorded response to item $i$.
-
-Let $\theta_i$ be the item property that the response is intended to inform.
-
-## Answer {.role-slide}
-
-A [measurement model](https://bruno.nicenboim.me/bayescogsci/ch-custom.html) describes
-
-$$p(Y_{ij}\mid\theta_i,\text{annotator }j,\text{instrument}).$$
-
-The response and the latent item property receive different symbols.
+<div class="source">White et al. (2020), UDS</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Custom model design. An annotation is an observed response produced by a measurement procedure. It is not the linguistic property that the procedure is meant to inform. The **annotation measurement chain (AMC)** connects a linguistic unit, a prompt, an annotator, a response scale, and the recorded answer. A custom likelihood should encode that chain without turning a response into direct access to the target property.
+
 [Sources]
 
-Nicenboim, Schad, and Vasishth, Custom Models: https://bruno.nicenboim.me/bayescogsci/ch-custom.html
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://pypi.org/project/decomp/0.3.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
 :::
 
-## Data {.role-slide}
+<!-- generated-slide-id: custom-model-design/index/02-dataset; notes-page: custom-models/index.qmd; note-sha256: 27f99291861bd47fac8db814f10ba17f171af3c32e28ef7189a9dec1cc933992; role: dataset -->
+## UDS: the empirical object {.compact}
 
-| item | j1 | j2 | j3 | j4 | mean |
-|:--|--:|--:|--:|--:|--:|
-| A | 4 | 4 | 4 | 4 | 4 |
-| B | 1 | 2 | 6 | 7 | 4 |
+The running data are predicate-node and annotator responses from Universal Decompositional Semantics.
 
-## Surprising Fact {.role-slide}
-
-The item means are identical, but the response patterns provide different evidence about agreement and scale use.
-
-## Important Point #1 {.role-slide}
-
-Aggregation removes annotator identities, response shape, and often the response count.
-
-The item mean cannot reconstruct those features.
-
-## Question {.role-slide}
-
-Does reliable agreement establish that an annotation measures the intended construct?
-
-## Answer {.role-slide}
-
-No. Reliability concerns consistency. Validity concerns whether the measurement supports the intended interpretation.
-
-## Method {.role-slide .compact}
-
-Before writing a likelihood, state the response support, the interpretation of endpoints, the display rules for follow up questions, the confidence format, and the repeated item and annotator units.
-
-## Upshot {.role-slide}
-
-Raw annotations preserve evidence that an aggregate may discard. The model must begin from the instrument that generated those annotations.
-
-## From process to probability {.section-slide}
-
-Order the random steps, then write the joint model
-
-## Question {.role-slide}
-
-How could a latent sentence value, response noise, and ordered thresholds produce one recorded category?
-
-## Answer {.role-slide}
-
-A [data-generating process](https://bruno.nicenboim.me/bayescogsci/ch-workflow.html) is an ordered account of random choices and deterministic mappings that could produce an observation.
+<div class="source"><a href="https://aclanthology.org/2020.lrec-1.699/">White et al. (2020), UDS</a></div>
 
 ::: {.notes}
+[Transcript]
+
+This is the first use of UDS in this module. The slide names the observation represented in the teaching table and links the original source. We will keep that unit fixed when we compute and interpret quantities from these data.
+
 [Sources]
 
-Nicenboim, Schad, and Vasishth, Bayesian Workflow: https://bruno.nicenboim.me/bayescogsci/ch-workflow.html
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://pypi.org/project/decomp/0.3.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
 :::
 
-## Implementation {.role-slide}
+<!-- generated-slide-id: custom-model-design/index/03-concept; notes-page: custom-models/index.qmd; note-sha256: 27f99291861bd47fac8db814f10ba17f171af3c32e28ef7189a9dec1cc933992; role: concept -->
+## Custom model design {.compact}
 
-1. Give sentence $i$ an unobserved value $\theta_i$.
-2. Generate a trial response $Z_{ij}$ around that value.
-3. Map $Z_{ij}$ to the recorded category $Y_{ij}$ using ordered thresholds.
-
-## Method {.role-slide}
-
-$$Z_{ij}=\theta_i+\varepsilon_{ij},\qquad \varepsilon_{ij}\sim\operatorname{Logistic}(0,1).$$
-
-Then $Y_{ij}=k$ when $c_{k-1}<Z_{ij}\leq c_k$.
-
-## Question {.role-slide}
-
-Let $\theta_i=.8$, $\varepsilon_{ij}=-.2$, and thresholds $-1$, $0$, and $1$.
-
-Which response category is recorded?
-
-## Answer {.role-slide}
-
-$Z_{ij}=.6$, which lies between 0 and 1.
-
-The recorded category is 3.
-
-## Important Point #1 {.role-slide}
-
-The numeral 3 is not treated as a direct observation of $\theta_i$.
-
-It records the threshold interval containing one latent trial response.
-
-## Important Point #2 {.role-slide}
-
-Every recorded variable must appear in the process or be explicitly excluded from the model's scope.
-
-Every latent variable must affect an observation in an identifiable way.
-
-## Question {.role-slide}
-
-How does the verbal process become a probability model that can be fitted?
-
-## Answer {.role-slide}
-
-A [joint probability model](https://bruno.nicenboim.me/bayescogsci/ch-custom.html) assigns one probability factor to every random step in the data-generating process.
+An annotation is an observed response produced by a measurement procedure. It is not the linguistic property that the procedure is meant to inform. The **annotation measurement chain (AMC)** connects a linguistic unit, a prompt, an annotator, a response scale, and the recorded answer.
 
 ::: {.notes}
+[Transcript]
+
+An annotation is an observed response produced by a measurement procedure. It is not the linguistic property that the procedure is meant to inform. The **annotation measurement chain (AMC)** connects a linguistic unit, a prompt, an annotator, a response scale, and the recorded answer. This module uses two annotation resources, one of them non-English. The natural-parts task in Universal Decompositional Semantics (UDS) records binary answers about predicate nodes in English dependency graphs; Gantt, Glass, and White (2022) describe the event-structure protocol. Keep the observational unit fixed while you interpret the result.
+
 [Sources]
 
-Nicenboim, Schad, and Vasishth, Custom Models: https://bruno.nicenboim.me/bayescogsci/ch-custom.html
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://pypi.org/project/decomp/0.3.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
 :::
 
-## Method {.role-slide}
+<!-- generated-slide-id: custom-model-design/index/04-concept; notes-page: custom-models/index.qmd; note-sha256: 27f99291861bd47fac8db814f10ba17f171af3c32e28ef7189a9dec1cc933992; role: concept -->
+## From the protocol to a probability model {.compact}
 
-For binary annotations with item log odds $\theta_i$,
+A data-generating process first specifies the random steps that could produce the UDS gate responses. Writing a joint model then translates those steps into a joint probability distribution over the observed item--annotator pairs. Parameter recovery asks whether the complete procedure can recover known values under the released incidence design.
 
-$$Y_{ij}\sim\operatorname{Bernoulli}(\operatorname{logit}^{-1}(\theta_i)).$$
+::: {.notes}
+[Transcript]
 
-## Output {.role-slide}
+A data-generating process first specifies the random steps that could produce the UDS gate responses. Writing a joint model then translates those steps into a joint probability distribution over the observed item--annotator pairs. Parameter recovery asks whether the complete procedure can recover known values under the released incidence design. The Turkish PropBank analysis next treats annotations as measurements, distinguishing agreement with adjudication from label validity or worker competence. Returning to UDS, annotator effects represent stable response-location differences among annotators. Now connect the notation back to the linguistic comparison.
 
-$$p(\mathbf y,\boldsymbol\theta\mid\mu_\theta,\tau_\theta)=
-\prod_i p(\theta_i\mid\mu_\theta,\tau_\theta)
-\prod_{(i,j)\in\mathcal O}p(y_{ij}\mid\theta_i).$$
+[Sources]
 
-## Interpretation {.role-slide}
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://pypi.org/project/decomp/0.3.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+:::
 
-Repeated appearances of $\theta_i$ make responses to item $i$ share one item quantity.
+<!-- generated-slide-id: custom-model-design/index/05-concept; notes-page: custom-models/index.qmd; note-sha256: 27f99291861bd47fac8db814f10ba17f171af3c32e28ef7189a9dec1cc933992; role: concept -->
+## What the sequence supports {.compact}
 
-The conditional arguments, not multiplication order, state dependencies.
+The UDS item is a predicate node anchored in sentence context, not a context-free verb lemma. The Turkish PropBank item is one predicate-specific argument candidate, not an abstract thematic-role type. Keeping those units distinct fixes the product terms in the likelihood and the populations represented by the random effects.
 
-## Challenge {.role-slide}
+::: {.notes}
+[Transcript]
 
-An item mean computed from the raw responses is not a second independent observation.
+The UDS item is a predicate node anchored in sentence context, not a context-free verb lemma. The Turkish PropBank item is one predicate-specific argument candidate, not an abstract thematic-role type. Keeping those units distinct fixes the product terms in the likelihood and the populations represented by the random effects. These joint models depend on previously introduced response distributions, grouped variation, posterior computation, and posterior predictive checks. The sequence contributes the protocol-specific joint distribution and the checks needed to interpret its latent quantities. That distinction will matter again on the next slide.
 
-Adding a likelihood for both would count the same responses twice.
+[Sources]
 
-## Upshot {.role-slide}
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://pypi.org/project/decomp/0.3.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+:::
 
-Trace every probability factor to one random step and one recorded event. This prevents hidden assumptions and duplicated evidence.
+<!-- generated-slide-id: custom-model-design/index/06-interpretation; notes-page: custom-models/index.qmd; note-sha256: 27f99291861bd47fac8db814f10ba17f171af3c32e28ef7189a9dec1cc933992; role: interpretation -->
+## Interpretation {.statement-slide}
 
-## Annotator variation {.section-slide}
+These joint models depend on previously introduced response distributions, grouped variation, posterior computation, and posterior predictive checks. The sequence contributes the protocol-specific joint distribution and the checks needed to interpret its latent quantities.
 
-Stable response location across items
+::: {.notes}
+[Transcript]
 
-## Question {.role-slide}
+These joint models depend on previously introduced response distributions, grouped variation, posterior computation, and posterior predictive checks. The sequence contributes the protocol-specific joint distribution and the checks needed to interpret its latent quantities. Use the graph or equation to say the result in ordinary language.
 
-How can a model represent an annotator who tends to affirm more often across all items?
+[Sources]
 
-## Answer {.role-slide}
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://pypi.org/project/decomp/0.3.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+:::
 
-Add the [annotator random intercept introduced earlier](../../regression-models/random-intercepts.html) without changing the item quantity.
+<!-- generated-slide-id: custom-model-design/generative-stories/01-section; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: section -->
+## Data-generating processes {.section-slide}
 
-## Method {.role-slide}
+<div class="source">White et al. (2020), UDS</div>
 
-$$\operatorname{logit}(\pi_{ij})=\theta_i+a_j$$
+::: {.notes}
+[Transcript]
 
-$$a_j\sim\operatorname{Normal}(0,\sigma_a^2).$$
+We now turn to Data-generating processes. The event-structure annotations in Universal Decompositional Semantics (UDS) attach properties to predicate nodes anchored in sentence context. In the natural-parts task, an annotator first reports whether the situation described by a predicate has natural subparts. The response is evidence about event structure under this instrument; it is not event structure itself.
 
-## Interpretation {.role-slide}
+[Sources]
 
-A positive $a_j$ raises affirmative log odds for every item seen by annotator $j$.
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
 
-It is stable response location, not trial noise.
+<!-- generated-slide-id: custom-model-design/generative-stories/02-concept; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: concept -->
+## Data-generating processes {.compact}
 
-## Question {.role-slide}
+The event-structure annotations in Universal Decompositional Semantics (UDS) attach properties to predicate nodes anchored in sentence context. In the natural-parts task, an annotator first reports whether the situation described by a predicate has natural subparts. The response is evidence about event structure under this instrument; it is not event structure itself.
 
-If $\theta_i=0$, what probabilities correspond to annotator effects $a_1=1$ and $a_2=-1$?
+::: {.notes}
+[Transcript]
 
-## Answer {.role-slide}
+The event-structure annotations in Universal Decompositional Semantics (UDS) attach properties to predicate nodes anchored in sentence context. In the natural-parts task, an annotator first reports whether the situation described by a predicate has natural subparts. The response is evidence about event structure under this instrument; it is not event structure itself. A **data-generating process (DGP)** is an ordered account of the random choices and deterministic mappings that could produce an observation. We begin with the observed binary gate because the local extract contains its raw responses. The conditional follow-up responses and raw confidence judgments are not present in an audited form, so this analysis does not invent them. Use the graph or equation to say the result in ordinary language.
 
-$$\operatorname{logit}^{-1}(1)=.73$$
+[Sources]
 
-$$\operatorname{logit}^{-1}(-1)=.27$$
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
 
-## Challenge {.role-slide}
+<!-- generated-slide-id: custom-model-design/generative-stories/03-concept; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: concept -->
+## Inspecting the observed response process {.compact}
 
-Adding a constant to every item value and subtracting it from every annotator value leaves all predicted probabilities unchanged.
+The extract contains observed responses to observed predicate nodes from observed anonymized annotators. Of these responses, observed are yes and observed are no. The item identifier joins a graph identifier to a predicate-node identifier; it is not a verb lemma.
 
-## Answer {.role-slide}
+::: {.notes}
+[Transcript]
 
-Fix the coordinate system by centering one effect population at zero.
+The extract contains observed responses to observed predicate nodes from observed anonymized annotators. Of these responses, observed are yes and observed are no. The item identifier joins a graph identifier to a predicate-node identifier; it is not a verb lemma. The annotation design is sparse and crossed. The raw rates below describe the responses each annotator happened to give to the items they saw. They do not yet separate annotator response location from item composition. Keep the observational unit fixed while you interpret the result.
 
-The resulting intercept and deviations then have a defined location.
+[Sources]
 
-## Important Point #1 {.role-slide}
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
 
-A random intercept represents stable location differences only.
+<!-- generated-slide-id: custom-model-design/generative-stories/04-figure; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: figure -->
+## Inspecting the observed response process {.plot-slide}
 
-Differences in discrimination, thresholds, or response consistency require separate model components.
+![](../../custom-models/generative-stories_files/figure-html/plot-uds-annotator-design-1.png){.empirical-plot fig-alt="Raw natural-parts response rates by anonymized annotator. Point size records the number of observed responses."}
 
-## Upshot {.role-slide}
+::: {.notes}
+[Transcript]
 
-Annotator and item effects can be separated only when their coordinate system is identified and the observation design connects annotators through shared items.
+Start with the axes and the observed values. Raw natural-parts response rates by anonymized annotator. Point size records the number of observed responses. Read the pattern before attaching a model interpretation to it.
 
-## Gated annotations {.section-slide}
+[Sources]
 
-Model the question that was actually displayed
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
 
-## Data {.role-slide}
+<!-- generated-slide-id: custom-model-design/generative-stories/05-concept; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: concept -->
+## Stating one step at a time
 
-An annotation protocol first asks whether an event has a property.
+Let $i$ index predicate nodes and $j$ index annotators. A first DGP has four steps.
 
-Only a yes response reveals the follow up scale for degree.
+::: {.notes}
+[Transcript]
 
-## Challenge {.role-slide}
+Let $i$ index predicate nodes and $j$ index annotators. A first DGP has four steps. 1. Draw an item deviation $u_i$ from an item population. 2. Draw an annotator deviation $a_j$ from an annotator population. 3. Map the population location and deviations to a yes probability $\pi_{ij}$. 4. Draw the recorded response $Y_{ij}$ from that probability. Notice what is observed and what is supplied by the model.
 
-A blank follow up after a no response is generated by the protocol.
+[Sources]
 
-It is not a zero and not a failed measurement of a displayed question.
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
 
-## Question {.role-slide}
-
-How should the gate and conditional follow up contribute to the joint model?
-
-## Answer {.role-slide}
+<!-- generated-slide-id: custom-model-design/generative-stories/06-math; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: math -->
+## Stating one step at a time: equation 1 {.equation-slide}
 
 $$
-p(g_{ij},y_{ij}^{\mathrm{obs}})=
+u_i\sim\mathcal N(0,\sigma_{\text{item}}^2),
+\qquad
+a_j\sim\mathcal N(0,\sigma_{\text{annotator}}^2),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating one step at a time: equation 1. Let $i$ index predicate nodes and $j$ index annotators. A first DGP has four steps. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/generative-stories/07-math; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: math -->
+## Stating one step at a time: equation 2 {.equation-slide}
+
+$$
+\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j,
+\qquad
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating one step at a time: equation 2. 1. Draw an item deviation $u_i$ from an item population. 2. Draw an annotator deviation $a_j$ from an annotator population. 3. Map the population location and deviations to a yes probability $\pi_{ij}$. 4. Draw the recorded response $Y_{ij}$ from that probability. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/generative-stories/08-math; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: math -->
+## Stating one step at a time: equation 3 {.equation-slide}
+
+$$
+(\alpha,u_i,a_j)\longrightarrow\pi_{ij}\longrightarrow Y_{ij}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes stating one step at a time: equation 3. The corresponding model is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/generative-stories/09-concept; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: concept -->
+## Grounding the indices in an observed item {.compact}
+
+The following code chooses the first predicate node in file order that received both response values and prints its recorded rows. Selection depends on response pattern here only to make disagreement visible; it is not part of the teaching extract's construction or any fitted model.
+
+::: {.notes}
+[Transcript]
+
+The following code chooses the first predicate node in file order that received both response values and prints its recorded rows. Selection depends on response pattern here only to make disagreement visible; it is not part of the teaching extract's construction or any fitted model. These rows share one $u_i$ but have different annotator indices $j$. A joint model may attribute their disagreement to Bernoulli variation, annotator location, or both. The rows do not license assigning the predicate a categorical event type. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/generative-stories/10-concept; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: concept -->
+## Declaring what is outside the process {.compact}
+
+The original protocol uses the natural-parts answer to determine which later questions appear. A yes reveals questions about part similarity and part duration; a no reveals questions about whole-event duration and dynamicity. This display logic matters, but the present extract does not contain audited raw responses to those branches.
+
+::: {.notes}
+[Transcript]
+
+The original protocol uses the natural-parts answer to determine which later questions appear. A yes reveals questions about part similarity and part duration; a no reveals questions about whole-event duration and dynamicity. This display logic matters, but the present extract does not contain audited raw responses to those branches. Thus this DGP is deliberately a model of the observed natural-parts gate. It is not a model of the complete event-structure instrument. The narrower claim keeps every recorded variable in the likelihood and every omitted variable outside it. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/generative-stories/11-figure; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: figure -->
+## Data-generating processes {.plot-slide}
+
+![](../../_freeze/custom-models/generative-stories/figure-html/plot-uds-annotator-design-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Data-generating processes."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Data-generating processes. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/generative-stories/12-interpretation; notes-page: custom-models/generative-stories.qmd; note-sha256: 18a9f4fcae1fbdf2ddf4ee7d1c319c3f029b4d722a326813245683cfc8b18e59; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Custom models · Next: Writing a joint model
+
+::: {.notes}
+[Transcript]
+
+Previous: Custom models · Next: Writing a joint model That distinction will matter again on the next slide.
+
+[Sources]
+
+https://aclanthology.org/2020.lrec-1.699/
+https://aclanthology.org/2022.tacl-1.2/
+https://decomp.readthedocs.io/en/latest/data/semantic-types.html
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/01-section; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: section -->
+## Writing a joint model {.section-slide}
+
+<div class="source">White et al. (2020), UDS</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Writing a joint model. The preceding page introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/02-concept; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: concept -->
+## Writing a joint model
+
+The preceding page introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later.
+
+::: {.notes}
+[Transcript]
+
+The preceding page introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later. A **joint probability model** assigns one factor to every random step in a data-generating process. This is the product rule applied to the annotation process. The product states which quantities are conditionally independent and which observations share an unobserved item value. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/03-concept; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: concept -->
+## Loading the observed-pair set
+
+Let $\mathcal O$ be the observed item--annotator pairs stored in `observed_pairs`. The likelihood has one response factor for each row in this set. It does not add factors for item--annotator combinations that were never observed.
+
+::: {.notes}
+[Transcript]
+
+Let $\mathcal O$ be the observed item--annotator pairs stored in `observed_pairs`. The likelihood has one response factor for each row in this set. It does not add factors for item--annotator combinations that were never observed. The preceding page introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/04-concept; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: concept -->
+## Translating steps into factors
+
+Let $\theta_i$ be the log odds of a yes response for predicate-node item $i$ in the item-only model. Then
+
+::: {.notes}
+[Transcript]
+
+Let $\theta_i$ be the log odds of a yes response for predicate-node item $i$ in the item-only model. Then and the item values follow That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/05-math; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: math -->
+## Translating steps into factors: equation 1 {.equation-slide}
+
+$$
+\pi_i=\operatorname{logit}^{-1}(\theta_i),
+\qquad
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_i),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes translating steps into factors: equation 1. Let $\theta_i$ be the log odds of a yes response for predicate-node item $i$ in the item-only model. Then Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/06-math; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: math -->
+## Translating steps into factors: equation 2 {.equation-slide}
+
+$$
+\theta_i\sim\mathcal N(\mu_\theta,\tau_\theta^2).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes translating steps into factors: equation 2. and the item values follow Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/07-math; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: math -->
+## Translating steps into factors: equation 3 {.equation-slide}
+
+$$
+p(\mathbf y,\boldsymbol\theta\mid\mu_\theta,\tau_\theta)
+=
+\prod_i p(\theta_i\mid\mu_\theta,\tau_\theta)
+\prod_{(i,j)\in\mathcal O}p(y_{ij}\mid\theta_i).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes translating steps into factors: equation 3. For observed responses $\mathbf y$ and item values $\boldsymbol\theta$, the joint distribution is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/08-concept; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: concept -->
+## Fitting the item-only model {.compact}
+
+The following fit evaluates the empirical item-only model. It uses every row in $\mathcal O$ and partially pools the observed item deviations. This is an intermediate analysis: omitting annotator effects is a declared simplification, not a claim that annotators have identical response locations.
+
+::: {.notes}
+[Transcript]
+
+The following fit evaluates the empirical item-only model. It uses every row in $\mathcal O$ and partially pools the observed item deviations. This is an intermediate analysis: omitting annotator effects is a declared simplification, not a claim that annotators have identical response locations. The integrated log likelihood combines the response factors with the item population rather than treating the fitted item deviations as independent observations. Its numerical value depends on the complete UDS response matrix and the stated item-only model. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/09-concept; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: concept -->
+## Comparing raw summaries with fitted item probabilities
+
+The vertical bands arise because observed items have two responses and observed have three. The fitted values move raw endpoints toward the item population. This is partial pooling, not recovery of a context-free lexical category.
+
+::: {.notes}
+[Transcript]
+
+The vertical bands arise because observed items have two responses and observed have three. The fitted values move raw endpoints toward the item population. This is partial pooling, not recovery of a context-free lexical category. The preceding page introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/10-figure; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: figure -->
+## Comparing raw summaries with fitted item probabilities {.plot-slide}
+
+![](../../custom-models/writing-a-joint-model_files/figure-html/plot-uds-item-only-1.png){.empirical-plot fig-alt="Raw item response proportions and fitted probabilities from the item-only model."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Raw item response proportions and fitted probabilities from the item-only model. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/11-concept; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: concept -->
+## Separating observations from summaries
+
+For item $i$ with $n_i$ responses, the raw mean
+
+::: {.notes}
+[Transcript]
+
+For item $i$ with $n_i$ responses, the raw mean is determined by response rows already in the likelihood. Multiplying the joint model by a second likelihood term for $\bar Y_i$ would count the same annotations twice. The mean may appear in a plot or predictive check, as it does above, but it is not another measurement. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/12-math; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: math -->
+## Separating observations from summaries {.equation-slide}
+
+$$
+\bar Y_i=\frac{1}{n_i}\sum_{j:(i,j)\in\mathcal O}Y_{ij}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes separating observations from summaries. For item $i$ with $n_i$ responses, the raw mean Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/13-figure; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: figure -->
+## Writing a joint model {.plot-slide}
+
+![](../../_freeze/custom-models/writing-a-joint-model/figure-html/plot-uds-item-only-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Writing a joint model."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Writing a joint model. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/writing-a-joint-model/14-interpretation; notes-page: custom-models/writing-a-joint-model.qmd; note-sha256: 68dc87f058a93351d2231182b031d5bebe655d3299bf79c0e5d7de8384bbdd3c; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Data-generating processes · Next: Parameter recovery
+
+::: {.notes}
+[Transcript]
+
+Previous: Data-generating processes · Next: Parameter recovery Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: custom-models/writing-a-joint-model.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/01-section; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: section -->
+## Parameter recovery {.section-slide}
+
+<div class="source">White et al. (2020), UDS</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Parameter recovery. A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. Here the simulation preserves the exact item--annotator incidence pattern of the UDS natural-parts extract introduced on the first page.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/02-concept; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: concept -->
+## Parameter recovery
+
+A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known.
+
+::: {.notes}
+[Transcript]
+
+A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. This is an audited model simulation, not a substitute for linguistic data. Its rows, item identities, annotator identities, and imbalance come from the released annotation design. The generating values and success thresholds were fixed before the released responses were fit. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/03-concept; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: concept -->
+## Loading the released design and audited cache
+
+The compact cache contains observed completed recovery fits and observed deterministic draws from the later released-data fit. Rendering uses the cache; it does not silently refit Stan.
+
+::: {.notes}
+[Transcript]
+
+The compact cache contains observed completed recovery fits and observed deterministic draws from the later released-data fit. Rendering uses the cache; it does not silently refit Stan. A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. Here the simulation preserves the exact item--annotator incidence pattern of the UDS natural-parts extract introduced on the first page. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/04-concept; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: concept -->
+## The complete Stan program
+
+The crossed response model constructs item and annotator deviations by centering non-centered standard-normal vectors. Centering the realized vectors fixes their finite-sample sums at zero.
+
+::: {.notes}
+[Transcript]
+
+The crossed response model constructs item and annotator deviations by centering non-centered standard-normal vectors. Centering the realized vectors fixes their finite-sample sums at zero. A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. Here the simulation preserves the exact item--annotator incidence pattern of the UDS natural-parts extract introduced on the first page. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/05-concept; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: concept -->
+## The exact recovery generator and fitting call {.compact}
+
+The code below is the executable core of one audited replicate. It uses the observed row indices without changing which annotator saw which item. The full audit ran replicates 1 through 12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains used seeds $740000+100s+c$ for chain $c$.
+
+::: {.notes}
+[Transcript]
+
+The code below is the executable core of one audited replicate. It uses the observed row indices without changing which annotator saw which item. The full audit ran replicates 1 through 12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains used seeds $740000+100s+c$ for chain $c$. The archived run combined the two chain files after each call. Every reported result below comes from that chain-specific run stored in the tracked compact cache. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/06-concept; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: concept -->
+## Declaring the recovery gate
+
+For replicate $s$, an error is $\widehat\theta_s-\theta_s$. Across $S$ replicates, estimated bias and root mean squared error are
+
+::: {.notes}
+[Transcript]
+
+For replicate $s$, an error is $\widehat\theta_s-\theta_s$. Across $S$ replicates, estimated bias and root mean squared error are The audit used medians and recovery correlations because the target includes population scales and high-dimensional latent orderings. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/07-math; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: math -->
+## Declaring the recovery gate: equation 1 {.equation-slide}
+
+$$
+\widehat{\operatorname{Bias}}
+=\frac{1}{S}\sum_{s=1}^S(\widehat\theta_s-\theta_s),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes declaring the recovery gate: equation 1. For replicate $s$, an error is $\widehat\theta_s-\theta_s$. Across $S$ replicates, estimated bias and root mean squared error are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/08-math; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: math -->
+## Declaring the recovery gate: equation 2 {.equation-slide}
+
+$$
+\operatorname{RMSE}
+=\sqrt{\frac{1}{S}\sum_{s=1}^S
+(\widehat\theta_s-\theta_s)^2}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes declaring the recovery gate: equation 2. The audit used medians and recovery correlations because the target includes population scales and high-dimensional latent orderings. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/09-concept; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: concept -->
+## Seeing variation across complete fits
+
+The gate passed. But item recovery remains the weakest part of the result: with two or three responses per item, recovery supports a regularized ordering in aggregate, not a precise lexical interpretation for every predicate node.
+
+::: {.notes}
+[Transcript]
+
+The gate passed. But item recovery remains the weakest part of the result: with two or three responses per item, recovery supports a regularized ordering in aggregate, not a precise lexical interpretation for every predicate node. Successful recovery shows that the fitter can retrieve the declared targets when data arise from this model under this incidence design. It does not establish that real annotators follow the generator. The released-data analysis still requires posterior predictive checks and measurement limitations. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/10-figure; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: figure -->
+## Seeing variation across complete fits {.plot-slide}
+
+![](../../custom-models/parameter-recovery_files/figure-html/plot-uds-recovery-1.png){.empirical-plot fig-alt="Posterior medians from twelve complete recovery fits. Horizontal lines mark the generating values."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Posterior medians from twelve complete recovery fits. Horizontal lines mark the generating values. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/11-figure; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: figure -->
+## Parameter recovery {.plot-slide}
+
+![](../../_freeze/custom-models/parameter-recovery/figure-html/plot-uds-recovery-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Parameter recovery."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Parameter recovery. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/parameter-recovery/12-interpretation; notes-page: custom-models/parameter-recovery.qmd; note-sha256: badc5c448acfc98629600543ab3eb09f74c4c20db931ea2ac2a9a2a45aa3f077; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Writing a joint model · Next: Annotations are measurements
+
+::: {.notes}
+[Transcript]
+
+Previous: Writing a joint model · Next: Annotations are measurements That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/parameter-recovery.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/01-section; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: section -->
+## Annotations are measurements {.section-slide}
+
+<div class="source">Kara et al. (2020), Turkish PropBank</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Annotations are measurements. Şahin and Adalı (2018) describe the ITU/IMST Turkish PropBank: predicate-specific frames were paired with argument candidates from the IMST dependency treebank, Turkish-speaking crowd workers selected plain-language role descriptions, and unresolved cases were adjudicated. The official project release provides the frames, crowd layers, and final annotations.
+
+[Sources]
+
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
+
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/02-dataset; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: dataset -->
+## Turkish PropBank: the empirical object {.compact}
+
+The running data are individual role judgments aligned with adjudicated Turkish roles.
+
+<div class="source"><a href="https://doi.org/10.1007/s10579-017-9390-y">Kara et al. (2020), Turkish PropBank</a></div>
+
+::: {.notes}
+[Transcript]
+
+This is the first use of Turkish PropBank in this module. The slide names the observation represented in the teaching table and links the original source. We will keep that unit fixed when we compute and interpret quantities from these data.
+
+[Sources]
+
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
+
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/03-concept; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: concept -->
+## Annotations are measurements {.compact}
+
+Şahin and Adalı (2018) describe the ITU/IMST Turkish PropBank: predicate-specific frames were paired with argument candidates from the IMST dependency treebank, Turkish-speaking crowd workers selected plain-language role descriptions, and unresolved cases were adjudicated. The official project release provides the frames, crowd layers, and final annotations.
+
+::: {.notes}
+[Transcript]
+
+Şahin and Adalı (2018) describe the ITU/IMST Turkish PropBank: predicate-specific frames were paired with argument candidates from the IMST dependency treebank, Turkish-speaking crowd workers selected plain-language role descriptions, and unresolved cases were adjudicated. The official project release provides the frames, crowd layers, and final annotations. The project site states that resources built in the project are distributed under CC BY-NC-SA 4.0, while the repository's short license header names the Turkish frame files specifically. We use the derived table for this noncommercial course under the project-wide statement and retain that scope qualification. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
+
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/04-concept; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: concept -->
+## Loading individual judgments
+
+The binary response is
+
+::: {.notes}
+[Transcript]
+
+The binary response is A zero is a recorded disagreement, not a missing response. It also does not establish that the worker is wrong in an independent linguistic sense, because the comparison target is the project's adjudication. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
+
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/05-math; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: math -->
+## Loading individual judgments {.equation-slide}
+
+$$
+Y_{ij}=
 \begin{cases}
-\pi_{ij}f_Y(y_{ij}\mid\phi_{ij}),&g_{ij}=1,\\
-1-\pi_{ij},&g_{ij}=0.
+1 & \text{worker }j\text{ selected item }i\text{'s adjudicated description},\\
+0 & \text{otherwise}.
 \end{cases}
 $$
 
-## Question {.role-slide}
-
-The affirmative gate probability is .70. Conditional on affirmation, category 6 has probability .25.
-
-What is their joint contribution?
-
-## Answer {.role-slide}
-
-$$.70\times.25=.175.$$
-
-A negative gate contributes only $1-.70=.30$.
-
-## Important Point #1 {.role-slide}
-
-The follow up model describes responses conditional on the gate being affirmative.
-
-It does not describe the complete item population without the gate model.
-
-## Important Point #2 {.role-slide}
-
-Shared item and annotator quantities may connect the gate and follow up.
-
-That dependence must appear in the joint model rather than in an after the fact correlation.
-
-## Upshot {.role-slide}
-
-A gated model follows the instrument. It assigns no follow up value to a trial on which the follow up question was never asked.
-
-## Parameter recovery {.section-slide}
-
-Can the planned procedure recover what generated the data?
-
-## Challenge {.role-slide}
-
-A model can fit without warnings even when several parameter combinations produce nearly identical response distributions.
-
-## Answer {.role-slide}
-
-[Parameter recovery](https://mc-stan.org/learn-stan/case-studies/rasch_and_2pl.html) tests the complete inference procedure on simulated data with known generating values.
-
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes loading individual judgments. The binary response is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Stan case study, Rasch and two parameter logistic models: https://mc-stan.org/learn-stan/case-studies/rasch_and_2pl.html
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Implementation {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/06-concept; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: concept -->
+## Keeping three agreement quantities distinct {.compact}
 
-1. Choose generating values and a sample design.
-2. Simulate latent quantities and recorded responses.
-3. Fit the planned model.
-4. Compare fitted summaries with generating values.
-
-## Important Point #1 {.role-slide}
-
-Fitting must occur in every replicate.
-
-Inspecting simulated responses tests the generator, not the estimator and fitting procedure.
-
-## Output {.role-slide}
-
-Across replicates, inspect bias, absolute error, interval coverage, rank correlation, convergence diagnostics, and computational failures.
-
-## Important Point #2 {.role-slide}
-
-Test difficult regions, including rare gates, sparse annotators, extreme probabilities, and weakly connected item by annotator designs.
-
-## Interpretation {.role-slide}
-
-Failed recovery blocks precise interpretation under the model's own assumptions.
-
-Successful recovery does not establish that real annotators follow the assumed process.
-
-## Upshot {.role-slide}
-
-Recovery supports a conditional claim: the procedure recovered a named quantity over a stated range under a stated design and generator.
-
-## UDS natural parts judgments {.section-slide}
-
-A narrow measurement model for binary annotations
-
-## Question {.role-slide}
-
-What can the released yes and no responses support about whether predicate instances describe situations with natural parts?
-
-## Data {.role-slide}
-
-*The broker called back shortly after I spoke to you.*
-
-All three annotators answered no.
-
-## Data {.role-slide}
-
-*Around what time they eat each of their meals.*
-
-All three annotators answered yes.
-
-<span class="source">Gantt, Glass, and White 2022</span>
+The paper reports Cohen's $\kappa=.936$ for an expert versus trust-weighted aggregate answers on 2,000 deliberately unambiguous test questions. It reports Fleiss' $\kappa=.65$ across varying workers on roughly 18,000 ordinary multi-category questions. The response above is a third quantity: an individual worker's binary match with the later adjudicated description.
 
 ::: {.notes}
+[Transcript]
+
+The paper reports Cohen's $\kappa=.936$ for an expert versus trust-weighted aggregate answers on 2,000 deliberately unambiguous test questions. It reports Fleiss' $\kappa=.65$ across varying workers on roughly 18,000 ordinary multi-category questions. The response above is a third quantity: an individual worker's binary match with the later adjudicated description. This lesson asks whether individual agreement differs between predicate-specific core descriptions and general adjunct-like descriptions. The **adjudication-agreement target (AAT)** is thus a property of this released task, not a worker-competence score and not a replication of either $\kappa$ statistic. Now connect the notation back to the linguistic comparison.
+
 [Sources]
 
-Gantt, Glass, and White, Decomposing and recomposing event structure: https://aclanthology.org/2022.tacl-1.2/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Important Point #1 {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/07-concept; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: concept -->
+## Raw agreement by adjudicated role class
 
-These are responses to predicate instances in context.
-
-They are not direct observations of event structure or context free lexical properties.
-
-## Goal {.role-slide}
-
-Estimate the conditional probability of yes for one predicate instance when the annotator random intercept is zero.
-
-The raw binary response is the only likelihood input.
-
-## Data {.role-slide}
-
-| quantity | count |
-|:--|--:|
-| predicate instances | 1,000 |
-| annotators | 12 |
-| raw responses | 2,955 |
-| yes responses | 659 |
-
-<span class="source">Pinned UDS teaching extract</span>
+The raw proportions retain every individual judgment but do not account for repeated items or workers. Items may differ in difficulty, and workers may differ in response behavior.
 
 ::: {.notes}
+[Transcript]
+
+The raw proportions retain every individual judgment but do not account for repeated items or workers. Items may differ in difficulty, and workers may differ in response behavior. Şahin and Adalı (2018) describe the ITU/IMST Turkish PropBank: predicate-specific frames were paired with argument candidates from the IMST dependency treebank, Turkish-speaking crowd workers selected plain-language role descriptions, and unresolved cases were adjudicated. The official project release provides the frames, crowd layers, and final annotations. The interpretation is conditional on the sampling and measurement design.
+
 [Sources]
 
-Course dataset audit and measurement model: ../../custom-models/uds-measurement-model.html
-
-Official decomp package: https://decomp.io/
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Challenge {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/08-concept; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: concept -->
+## Fitting a crossed measurement model
 
-Most items have three responses, and annotator yes rates vary from about .02 to .43.
-
-Raw item proportions ignore uncertainty and annotator composition.
-
-## Method {.role-slide}
-
-$$Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij})$$
-
-$$\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j.$$
-
-## Interpretation {.role-slide}
-
-$u_i$ is an item deviation. $a_j$ is an annotator location deviation.
-
-Both sets are centered at zero to identify $\alpha$.
-
-## Important Point #2 {.role-slide}
-
-$\operatorname{logit}^{-1}(\alpha+u_i)$ is conditional on an annotator effect of zero.
-
-It is not the marginal probability averaged over annotators.
-
-## Implementation {.role-slide}
-
-Before fitting UDS responses, use the exact item by annotator incidence pattern to test recovery of $\alpha$, both scale parameters, item effects, annotator effects, and item probabilities.
-
-## Result #1 {.role-slide}
-
-Across 12 recovery fits, median item effect correlation is .662 and median annotator effect correlation is .958.
-
-There are no divergent transitions.
-
-<span class="source">Course recovery study</span>
+Let $u_i$ be an item intercept and $v_j$ a worker intercept. The model is
 
 ::: {.notes}
+[Transcript]
+
+Let $u_i$ be an item intercept and $v_j$ a worker intercept. The model is The fixed contrast compares adjudicated role classes at zero-valued item and worker intercepts. The crossed terms retain the repeated-measurement structure. Use the graph or equation to say the result in ordinary language.
+
 [Sources]
 
-Course UDS measurement model and recovery results: ../../custom-models/uds-measurement-model.html
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Interpretation {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/09-math; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: math -->
+## Fitting a crossed measurement model: equation 1 {.equation-slide}
 
-The design supports a regularized item ordering for this teaching analysis.
-
-Three responses do not make each item propensity precise.
-
-## Result #2 {.role-slide}
-
-The fitted item scale has posterior median 2.077.
-
-The fitted annotator scale has posterior median 2.050.
-
-<span class="source">Course fit to released UDS responses</span>
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fitting a crossed measurement model: equation 1. Let $u_i$ be an item intercept and $v_j$ a worker intercept. The model is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Course UDS measurement model results: ../../custom-models/uds-measurement-model.html
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Interpretation {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/10-math; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: math -->
+## Fitting a crossed measurement model: equation 2 {.equation-slide}
 
-Predicate instances vary substantially in natural parts responses.
-
-Annotators also show substantial stable location differences after item variation is represented.
-
-## Result #3 {.role-slide}
-
-The posterior median conditional probability is .009 for *called* and .800 for *eat*.
-
-Their raw proportions are 0 and 1.
-
-<span class="source">Course fit to released UDS responses</span>
+$$
+\operatorname{logit}(\pi_{ij})
+=\beta_0+\beta_1\operatorname{Adjunct}_i+u_i+v_j,
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fitting a crossed measurement model: equation 2. The fixed contrast compares adjudicated role classes at zero-valued item and worker intercepts. The crossed terms retain the repeated-measurement structure. Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Course UDS measurement model results: ../../custom-models/uds-measurement-model.html
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Interpretation {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/11-math; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: math -->
+## Fitting a crossed measurement model: equation 3 {.equation-slide}
 
-Partial pooling moves the estimates away from the raw endpoints while accounting for the annotators who saw each item.
-
-## Result #4 {.role-slide}
-
-[Posterior predictive simulations](../../statistical-inference/posterior-predictive-checks.html) reproduce the overall yes rate and the proportion of items containing both yes and no responses.
-
-<span class="source">Course posterior predictive checks</span>
+$$
+u_i\sim\mathcal N(0,\sigma_{\text{item}}^2),
+\qquad
+v_j\sim\mathcal N(0,\sigma_{\text{worker}}^2).
+$$
 
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fitting a crossed measurement model: equation 3. The fixed contrast compares adjudicated role classes at zero-valued item and worker intercepts. The crossed terms retain the repeated-measurement structure. Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-Course UDS measurement model results: ../../custom-models/uds-measurement-model.html
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Result #5 {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/12-concept; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: concept -->
+## Showing raw and fitted agreement together {.compact}
 
-Posterior median item probabilities correlate .818 with the released normalized values by Spearman correlation.
-
-The released values were not used during fitting.
-
-<span class="source">Course comparison with UDS release</span>
+Individual judgments agree with adjudicated core descriptions more often than with adjunct-like descriptions in this extract. The teaching contrast collapses the paper's multi-category role inventory into two release-based groups. It does not reproduce the paper's agreement calculations, estimate worker competence, or validate the final label.
 
 ::: {.notes}
+[Transcript]
+
+Individual judgments agree with adjudicated core descriptions more often than with adjunct-like descriptions in this extract. The teaching contrast collapses the paper's multi-category role inventory into two release-based groups. It does not reproduce the paper's agreement calculations, estimate worker competence, or validate the final label. Previous: Parameter recovery · Next: Annotator effects Keep the observational unit fixed while you interpret the result.
+
 [Sources]
 
-Course UDS measurement model results: ../../custom-models/uds-measurement-model.html
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
 :::
 
-## Important Point #3 {.role-slide}
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/13-figure; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: figure -->
+## Showing raw and fitted agreement together {.plot-slide}
 
-The model does not estimate part similarity, duration, dynamicity, confidence, or the relation between annotation branches.
+![](../../custom-models/annotations-as-measurements_files/figure-html/plot-turkish-propbank-1.png){.empirical-plot fig-alt="Individual agreement with adjudication. Raw proportions use exact binomial intervals; fitted probabilities condition on zero item and worker intercepts."}
 
-Each addition requires its own response model and recovery study.
+::: {.notes}
+[Transcript]
 
-## Upshot {.role-slide}
+Start with the axes and the observed values. Individual agreement with adjudication. Raw proportions use exact binomial intervals; fitted probabilities condition on zero item and worker intercepts. Read the pattern before attaching a model interpretation to it.
 
-The binary item by annotator model supports one narrow measurement of natural parts responses while preserving the limits imposed by the released annotation design.
+[Sources]
 
-## Conclusion {.section-slide}
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
 
-What custom model design requires
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/14-figure; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: figure -->
+## Annotations are measurements {.plot-slide}
 
-## Big Question {.role-slide}
+![](../../_freeze/custom-models/annotations-as-measurements/figure-html/plot-turkish-propbank-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Annotations are measurements."}
 
-How should an annotation model connect recorded responses to the linguistic quantity they are intended to measure?
+::: {.notes}
+[Transcript]
 
-## Answer {.role-slide .compact}
+Start with the axes and the observed values. Observed data and fitted quantities for Annotations are measurements. Read the pattern before attaching a model interpretation to it.
 
-1. Separate recorded responses from the linguistic target.
-2. Begin with the instrument and its data-generating process.
-3. Assign one probability factor to every random step.
-4. Identify item and annotator coordinates before interpretation.
-5. Represent gates as part of the observation process.
-6. Require parameter recovery before fitting the intended data.
+[Sources]
 
-## Question {.role-slide}
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
 
-Which recorded event licenses every likelihood term, and which model assumption connects that event to the proposed linguistic quantity?
+<!-- generated-slide-id: custom-model-design/annotations-as-measurements/15-interpretation; notes-page: custom-models/annotations-as-measurements.qmd; note-sha256: b34d6f34c55a097a29e8480a312f91d2bedcb2d5634a2ccfe273df1c41752fd2; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Parameter recovery · Next: Annotator effects
+
+::: {.notes}
+[Transcript]
+
+Previous: Parameter recovery · Next: Annotator effects The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://doi.org/10.1007/s10579-017-9390-y
+https://turkishpropbank.github.io/
+https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/01-section; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: section -->
+## Annotator effects {.section-slide}
+
+<div class="source">White et al. (2020), UDS</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Annotator effects. The Turkish PropBank analysis separated agreement from adjudication. We now return to the UDS natural-parts responses, where each predicate node was judged by two or three annotators. A stable annotator term may separate an annotator's response location from the item propensities estimated from overlapping judgments.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/02-concept; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: concept -->
+## Annotator effects {.compact}
+
+The Turkish PropBank analysis separated agreement from adjudication. We now return to the UDS natural-parts responses, where each predicate node was judged by two or three annotators. A stable annotator term may separate an annotator's response location from the item propensities estimated from overlapping judgments.
+
+::: {.notes}
+[Transcript]
+
+The Turkish PropBank analysis separated agreement from adjudication. We now return to the UDS natural-parts responses, where each predicate node was judged by two or three annotators. A stable annotator term may separate an annotator's response location from the item propensities estimated from overlapping judgments. We use **annotator location effect** for this term. It describes a stable upward or downward shift in log odds under this instrument. It is not a measure of annotator quality or proof of a context-independent bias. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/03-concept; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: concept -->
+## Loading raw responses and fitted summaries
+
+The raw rate for annotator $j$ is
+
+::: {.notes}
+[Transcript]
+
+The raw rate for annotator $j$ is This rate mixes annotator behavior with the particular items assigned to that annotator. The crossed model instead represents item and annotator locations simultaneously. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/04-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Loading raw responses and fitted summaries {.equation-slide}
+
+$$
+\bar Y_{\cdot j}
+=\frac{1}{n_j}\sum_{i:(i,j)\in\mathcal O}Y_{ij}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes loading raw responses and fitted summaries. The raw rate for annotator $j$ is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/05-concept; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: concept -->
+## Adding one location term
+
+Let $u_i$ be item $i$'s deviation and $a_j$ annotator $j$'s location effect. The response model is
+
+::: {.notes}
+[Transcript]
+
+Let $u_i$ be item $i$'s deviation and $a_j$ annotator $j$'s location effect. The response model is The fitted model constructs its deviations from centered standard-normal vectors: Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/06-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Adding one location term: equation 1 {.equation-slide}
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes adding one location term: equation 1. Let $u_i$ be item $i$'s deviation and $a_j$ annotator $j$'s location effect. The response model is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/07-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Adding one location term: equation 2 {.equation-slide}
+
+$$
+\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes adding one location term: equation 2. The fitted model constructs its deviations from centered standard-normal vectors: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/08-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Adding one location term: equation 3 {.equation-slide}
+
+$$
+u_i=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right),
+\qquad
+z_i^{\text{item}}\sim\mathcal N(0,1),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes adding one location term: equation 3. A positive $a_j$ raises the log odds of a yes response for every item judged by annotator $j$; a negative value lowers them. The effect is shared across responses, so it is not trial noise. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/09-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Adding one location term: equation 4 {.equation-slide}
+
+$$
+a_j=\sigma_{\text{annotator}}
+\left(z_j^{\text{annotator}}-\bar z^{\text{annotator}}\right),
+\qquad
+z_j^{\text{annotator}}\sim\mathcal N(0,1).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes adding one location term: equation 4. A positive $a_j$ raises the log odds of a yes response for every item judged by annotator $j$; a negative value lowers them. The effect is shared across responses, so it is not trial noise. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/10-concept; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: concept -->
+## Fixing the coordinate system
+
+The decomposition is not identified without a reference. For any constant $c$,
+
+::: {.notes}
+[Transcript]
+
+The decomposition is not identified without a reference. For any constant $c$, The response probabilities do not change. Centering the realized effects imposes The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/11-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Fixing the coordinate system: equation 1 {.equation-slide}
+
+$$
+(\alpha+u_i+c)+(a_j-c)=\alpha+u_i+a_j.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fixing the coordinate system: equation 1. The decomposition is not identified without a reference. For any constant $c$, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/12-math; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: math -->
+## Fixing the coordinate system: equation 2 {.equation-slide}
+
+$$
+\sum_i u_i=0,
+\qquad
+\sum_j a_j=0.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fixing the coordinate system: equation 2. The response probabilities do not change. Centering the realized effects imposes Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/13-concept; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: concept -->
+## Raw rates and posterior effects
+
+The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Exact binomial intervals summarize each raw rate; posterior intervals summarize each annotator location effect.
+
+::: {.notes}
+[Transcript]
+
+The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Exact binomial intervals summarize each raw rate; posterior intervals summarize each annotator location effect. The plot shows why the location term matters: the raw rates span a broad range, and the fitted effects retain broad separation after item variation is represented. But the two panels are not interchangeable. Raw rates average over assigned items; fitted effects condition on the crossed model and its zero-sum coordinate convention. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/14-figure; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: figure -->
+## Raw rates and posterior effects {.plot-slide}
+
+![](../../custom-models/annotator-effects_files/figure-html/plot-uds-annotator-effects-1.png){.empirical-plot fig-alt="Raw natural-parts response rates and posterior annotator location effects. Panels have distinct horizontal scales."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Raw natural-parts response rates and posterior annotator location effects. Panels have distinct horizontal scales. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/15-concept; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: concept -->
+## Location is not every annotator difference
+
+Annotators may differ in response consistency, interpretation, or use of an ordered scale. A location effect cannot represent those patterns. It shifts every predicted log odds in the same direction.
+
+::: {.notes}
+[Transcript]
+
+Annotators may differ in response consistency, interpretation, or use of an ordered scale. A location effect cannot represent those patterns. It shifts every predicted log odds in the same direction. Item and annotator effects would be perfectly confounded if each item were judged by only one annotator. The UDS teaching extract instead forms one connected bipartite graph across observed items and observed annotators. Connectivity supplies paths of shared judgments, though sparse responses still limit the precision of individual item effects. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/16-figure; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: figure -->
+## Annotator effects {.plot-slide}
+
+![](../../_freeze/custom-models/annotator-effects/figure-html/plot-uds-annotator-effects-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Annotator effects."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Annotator effects. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/annotator-effects/17-interpretation; notes-page: custom-models/annotator-effects.qmd; note-sha256: b3568300e4e2529783d0dbd8bead859e0bef440808db437a114401c7b7188de3; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Annotations are measurements · Next: Measuring natural-parts judgments
+
+::: {.notes}
+[Transcript]
+
+Previous: Annotations are measurements · Next: Measuring natural-parts judgments That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/annotator-effects.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/01-section; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: section -->
+## Measuring natural-parts judgments {.section-slide}
+
+<div class="source">White et al. (2020), UDS</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Measuring natural-parts judgments. We can now combine the UDS response process, its joint factorization, the recovery gate, and annotator locations. The target is the **natural-parts response target (NPRT)**: separation of predicate-node variation from annotator variation in binary natural-parts responses.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/02-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Measuring natural-parts judgments
+
+We can now combine the UDS response process, its joint factorization, the recovery gate, and annotator locations. The target is the **natural-parts response target (NPRT)**: separation of predicate-node variation from annotator variation in binary natural-parts responses.
+
+::: {.notes}
+[Transcript]
+
+We can now combine the UDS response process, its joint factorization, the recovery gate, and annotator locations. The target is the **natural-parts response target (NPRT)**: separation of predicate-node variation from annotator variation in binary natural-parts responses. The model is narrower than the event-structure representation in Gantt, Glass, and White (2022). It does not model conditional follow-up questions or confidence. And it treats an item as one predicate node in sentence context, not as a verb lemma or context-free event type. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/03-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Loading measurements and posterior draws
+
+Only the raw binary responses enter the likelihood. The released normalized value is retained for an external comparison after fitting.
+
+::: {.notes}
+[Transcript]
+
+Only the raw binary responses enter the likelihood. The released normalized value is retained for an external comparison after fitting. We can now combine the UDS response process, its joint factorization, the recovery gate, and annotator locations. The target is the **natural-parts response target (NPRT)**: separation of predicate-node variation from annotator variation in binary natural-parts responses. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/04-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Writing the complete model
+
+For each observed pair $(i,j)\in\mathcal O$,
+
+::: {.notes}
+[Transcript]
+
+For each observed pair $(i,j)\in\mathcal O$, The fitted deviations are effects constructed by centering non-centered standard-normal vectors, Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/05-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 1 {.equation-slide}
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 1. For each observed pair $(i,j)\in\mathcal O$, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/06-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 2 {.equation-slide}
+
+$$
+\operatorname{logit}(\pi_{ij})
+=\alpha+u_i+a_j.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 2. The fitted deviations are effects constructed by centering non-centered standard-normal vectors, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/07-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 3 {.equation-slide}
+
+$$
+u_i=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right),
+\qquad
+z_i^{\text{item}}\sim\mathcal N(0,1),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 3. The priors are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/08-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 4 {.equation-slide}
+
+$$
+a_j=\sigma_{\text{annotator}}
+\left(z_j^{\text{annotator}}-\bar z^{\text{annotator}}\right),
+\qquad
+z_j^{\text{annotator}}\sim\mathcal N(0,1).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 4. Since the scale parameters are constrained positive in Stan, the normal statements for them induce half-normal priors. Centering fixes both realized effect sums at zero. Thus $\alpha$ is the log odds for an item and annotator at their respective origins, and Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/09-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 5 {.equation-slide}
+
+$$
+\alpha\sim\mathcal N(0,2.5^2),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 5. is item $i$'s yes probability with the annotator effect fixed at zero. It is not the probability obtained by integrating over an annotator population. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/10-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 6 {.equation-slide}
+
+$$
+\sigma_{\text{item}}\sim\operatorname{HalfNormal}(2),
+\qquad
+\sigma_{\text{annotator}}\sim\operatorname{HalfNormal}(2).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 6. is item $i$'s yes probability with the annotator effect fixed at zero. It is not the probability obtained by integrating over an annotator population. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/11-math; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: math -->
+## Writing the complete model: equation 7 {.equation-slide}
+
+$$
+\operatorname{logit}^{-1}(\alpha+u_i)
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes writing the complete model: equation 7. is item $i$'s yes probability with the annotator effect fixed at zero. It is not the probability obtained by integrating over an annotator population. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/12-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Fitting the released responses {.compact}
+
+The parameter-recovery page prints the complete Stan program and the exact simulation loop. After that gate passed, the audit fitted the released responses with four separately seeded chains. The fitting call was equivalent to the visible code below; `run_one_chain()` records one chain per seed before the results are combined.
+
+::: {.notes}
+[Transcript]
+
+The parameter-recovery page prints the complete Stan program and the exact simulation loop. After that gate passed, the audit fitted the released responses with four separately seeded chains. The fitting call was equivalent to the visible code below; `run_one_chain()` records one chain per seed before the results are combined. Rendering reads 400 evenly spaced draws from the audited 3,200-draw posterior. The compact cache is a teaching artifact from the full fit, not an independent refit. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/13-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Population summaries {.compact}
+
+Both scale intervals lie away from zero in this model and extract. Predicate nodes vary in their response propensities, and annotators vary in response location after item variation is represented. This is evidence about the annotation process, not a partition of predicates into event-structural categories.
+
+::: {.notes}
+[Transcript]
+
+Both scale intervals lie away from zero in this model and extract. Predicate nodes vary in their response propensities, and annotators vary in response location after item variation is represented. This is evidence about the annotation process, not a partition of predicates into event-structural categories. The intercept should not be read as the logit of the raw yes proportion. The raw average mixes different item and annotator effects through a nonlinear link, while $\alpha$ locates an item and annotator whose deviations are both zero. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/14-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Seeing partial pooling {.compact}
+
+Most raw item proportions occur at a few fractions because each item has two or three responses. Posterior probabilities occupy a continuous range and move raw endpoints toward the fitted population. This shrinkage reflects both sparse item measurement and the annotator composition of each item.
+
+::: {.notes}
+[Transcript]
+
+Most raw item proportions occur at a few fractions because each item has two or three responses. Posterior probabilities occupy a continuous range and move raw endpoints toward the fitted population. This shrinkage reflects both sparse item measurement and the annotator composition of each item. We can now combine the UDS response process, its joint factorization, the recovery gate, and annotator locations. The target is the **natural-parts response target (NPRT)**: separation of predicate-node variation from annotator variation in binary natural-parts responses. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/15-figure; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: figure -->
+## Seeing partial pooling {.plot-slide}
+
+![](../../custom-models/uds-measurement-model_files/figure-html/plot-uds-partial-pooling-1.png){.empirical-plot fig-alt="Raw item proportions and posterior median probabilities with the annotator effect fixed at zero."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Raw item proportions and posterior median probabilities with the annotator effect fixed at zero. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/16-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Checking replicated response matrices {.compact}
+
+A fitted ordering is not enough. We generate one replicated response for every observed item--annotator pair in each cached posterior draw. Two summaries target distinct features: the overall yes rate and the proportion of items containing both response values.
+
+::: {.notes}
+[Transcript]
+
+A fitted ordering is not enough. We generate one replicated response for every observed item--annotator pair in each cached posterior draw. Two summaries target distinct features: the overall yes rate and the proportion of items containing both response values. Both observed summaries fall inside their predictive intervals. The second check matters because a model might reproduce the overall rate while predicting too little or too much within-item disagreement. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/17-figure; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: figure -->
+## Checking replicated response matrices {.plot-slide}
+
+![](../../custom-models/uds-measurement-model_files/figure-html/plot-uds-ppc-1.png){.empirical-plot fig-alt="Posterior predictive distributions. Vertical lines mark the observed statistics."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Posterior predictive distributions. Vertical lines mark the observed statistics. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/18-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Comparing with the released normalized values
+
+The release also supplies one normalized natural-parts value per item. Those values were not likelihood inputs. The following association compares the fitted and released measurement procedures after fitting.
+
+::: {.notes}
+[Transcript]
+
+The release also supplies one normalized natural-parts value per item. Those values were not likelihood inputs. The following association compares the fitted and released measurement procedures after fitting. The Spearman correlation is observed. This association suggests that the compact binary model captures much of the released ordering. It is not a likelihood contribution or a test in which one measurement procedure must defeat the other. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/19-concept; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: concept -->
+## Limits of the measurement claim
+
+The recovery and predictive gates support one narrow analysis. Six limits remain.
+
+::: {.notes}
+[Transcript]
+
+The recovery and predictive gates support one narrow analysis. Six limits remain. 1. The deterministic teaching extract contains 1,000 multiply annotated development and test items; it is not a random sample of every UDS predicate. 2. Most items have three responses, so item probabilities remain strongly regularized. 3. The annotator term represents location only, not discrimination, consistency, or interpretation. 4. The raw confidence serialization conflicts with the documented scale, so confidence is excluded. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/20-figure; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: figure -->
+## Measuring natural-parts judgments {.plot-slide}
+
+![](../../_freeze/custom-models/uds-measurement-model/figure-html/plot-uds-partial-pooling-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Measuring natural-parts judgments."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Measuring natural-parts judgments. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/21-figure; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: figure -->
+## Measuring natural-parts judgments {.plot-slide}
+
+![](../../_freeze/custom-models/uds-measurement-model/figure-html/plot-uds-ppc-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Measuring natural-parts judgments."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Measuring natural-parts judgments. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/uds-measurement-model/22-interpretation; notes-page: custom-models/uds-measurement-model.qmd; note-sha256: 47306821c181e01b616bbb17350e8cb6c68d70c155fe2c2f9c6d75e8f480d7dd; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Annotator effects · Next: Gated annotations
+
+::: {.notes}
+[Transcript]
+
+Previous: Annotator effects · Next: Gated annotations Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://aclanthology.org/2022.tacl-1.2/
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/01-section; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: section -->
+## Gated annotations {.section-slide}
+
+<div class="source">White et al. (2020), UDS</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Gated annotations. The UDS event protocol uses the natural-parts response as a gate. A yes displays questions about part similarity and average part duration; a no displays questions about whole-situation duration and dynamicity. An undisplayed response is thus a **by-design absence**. It is not a low value on that branch and not a failed attempt to answer a displayed question.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/02-concept; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: concept -->
+## Gated annotations {.compact}
+
+The UDS event protocol uses the natural-parts response as a gate. A yes displays questions about part similarity and average part duration; a no displays questions about whole-situation duration and dynamicity. An undisplayed response is thus a **by-design absence**.
+
+::: {.notes}
+[Transcript]
+
+The UDS event protocol uses the natural-parts response as a gate. A yes displays questions about part similarity and average part duration; a no displays questions about whole-situation duration and dynamicity. An undisplayed response is thus a **by-design absence**. The local extract supports numerical analysis of the observed natural-parts gate only. It does not contain audited raw conditional-branch responses, and the available raw confidence serialization conflicts with the documented response scale. This page thus analyzes the gate empirically and keeps the branch model symbolic. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/03-concept; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: concept -->
+## Reproducing the observed gate
+
+These are recorded gate responses. The no count is not a count of zero-valued part-similarity judgments, because the part-similarity question was never displayed after those responses.
+
+::: {.notes}
+[Transcript]
+
+These are recorded gate responses. The no count is not a count of zero-valued part-similarity judgments, because the part-similarity question was never displayed after those responses. The UDS event protocol uses the natural-parts response as a gate. A yes displays questions about part similarity and average part duration; a no displays questions about whole-situation duration and dynamicity. An undisplayed response is thus a **by-design absence**. It is not a low value on that branch and not a failed attempt to answer a displayed question. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/04-concept; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: concept -->
+## Factoring the gate and follow-up response {.compact}
+
+Let $G_{ij}=1$ when annotator $j$ reports that predicate-node item $i$ has natural parts, and let $G_{ij}=0$ otherwise. Let $Y_{ij}$ denote a response on the yes branch, such as part similarity. Write $\pi_{ij}$ for the gate probability and $f_Y(y_{ij}\mid\phi_{ij})$ for the conditional follow-up probability or density.
+
+::: {.notes}
+[Transcript]
+
+Let $G_{ij}=1$ when annotator $j$ reports that predicate-node item $i$ has natural parts, and let $G_{ij}=0$ otherwise. Let $Y_{ij}$ denote a response on the yes branch, such as part similarity. Write $\pi_{ij}$ for the gate probability and $f_Y(y_{ij}\mid\phi_{ij})$ for the conditional follow-up probability or density. The observed response contribution is Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/05-math; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: math -->
+## Factoring the gate and follow-up response: equation 1 {.equation-slide}
+
+$$
+p(g_{ij},y_{ij}^{\mathrm{obs}})
+=
+\begin{cases}
+\pi_{ij}f_Y(y_{ij}\mid\phi_{ij}), & g_{ij}=1,\\
+1-\pi_{ij}, & g_{ij}=0.
+\end{cases}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes factoring the gate and follow-up response: equation 1. Let $G_{ij}=1$ when annotator $j$ reports that predicate-node item $i$ has natural parts, and let $G_{ij}=0$ otherwise. Let $Y_{ij}$ denote a response on the yes branch, such as part similarity. Write $\pi_{ij}$ for the gate probability and $f_Y(y_{ij}\mid\phi_{ij})$ for the conditional follow-up probability or density. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/06-math; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: math -->
+## Factoring the gate and follow-up response: equation 2 {.equation-slide}
+
+$$
+p(g_{ij},y_{ij}^{\mathrm{obs}})
+=
+\left[\pi_{ij}f_Y(y_{ij}\mid\phi_{ij})\right]^{g_{ij}}
+(1-\pi_{ij})^{1-g_{ij}},
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes factoring the gate and follow-up response: equation 2. The observed response contribution is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/07-concept; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: concept -->
+## Checking only the fitted gate
+
+The following posterior predictive calculation uses the audited binary gate model. It simulates no follow-up values.
+
+::: {.notes}
+[Transcript]
+
+The following posterior predictive calculation uses the audited binary gate model. It simulates no follow-up values. This check supports the gate component at the overall-rate level. It supplies no evidence about the conditional branches because no branch response was simulated or scored. That distinction will matter again on the next slide.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/08-figure; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: figure -->
+## Checking only the fitted gate {.plot-slide}
+
+![](../../custom-models/gated-annotations_files/figure-html/plot-uds-gate-ppc-1.png){.empirical-plot fig-alt="Posterior predictive distribution of the observed natural-parts gate rate. The vertical line marks the released rate."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Posterior predictive distribution of the observed natural-parts gate rate. The vertical line marks the released rate. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/09-concept; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: concept -->
+## The follow-up target is conditional
+
+An average of observed yes-branch responses would describe cases that passed the gate:
+
+::: {.notes}
+[Transcript]
+
+An average of observed yes-branch responses would describe cases that passed the gate: It would not estimate an unconditional property over all predicate nodes unless the model defined what the follow-up means when an annotator rejects the premise that natural parts exist. Replacing an undisplayed part-similarity response with zero would merge two events: rejecting the gate and passing the gate while selecting the scale's lowest response. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/10-math; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: math -->
+## The follow-up target is conditional {.equation-slide}
+
+$$
+E[Y_{ij}\mid G_{ij}=1].
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes the follow-up target is conditional. An average of observed yes-branch responses would describe cases that passed the gate: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/11-concept; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: concept -->
+## Separating protocol absence from stochastic missingness {.compact}
+
+A rectangular data table may store `NA` for an undisplayed follow-up. The joint model, not the storage symbol, determines what that `NA` means. Protocol absence differs from the missing intended measurements discussed in missingness mechanisms: here the instrument defines no follow-up response after the incompatible gate value.
+
+::: {.notes}
+[Transcript]
+
+A rectangular data table may store `NA` for an undisplayed follow-up. The joint model, not the storage symbol, determines what that `NA` means. Protocol absence differs from the missing intended measurements discussed in missingness mechanisms: here the instrument defines no follow-up response after the incompatible gate value. The blocked measurements are part similarity, part duration, whole-situation duration, dynamicity, and raw confidence. No numerical claim about their distributions, associations, or fitted values follows from this page. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/12-figure; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: figure -->
+## Gated annotations {.plot-slide}
+
+![](../../_freeze/custom-models/gated-annotations/figure-html/plot-uds-gate-ppc-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Gated annotations."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Gated annotations. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::
+
+<!-- generated-slide-id: custom-model-design/gated-annotations/13-interpretation; notes-page: custom-models/gated-annotations.qmd; note-sha256: 4728fa84a5be3d7dc1a2d0c3da398d9e0301bf81af7380fc3f3a241e9e1568f0; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Previous: Measuring natural-parts judgments
+
+::: {.notes}
+[Transcript]
+
+Previous: Measuring natural-parts judgments Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+Course note: custom-models/gated-annotations.qmd
+:::

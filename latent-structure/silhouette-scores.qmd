@@ -1,32 +1,68 @@
 ---
 title: "Silhouette widths"
+execute:
+  cache: false
 ---
 
-The [within-cluster sum of squares](within-cluster-loss.qmd) measures distance from each row to its assigned centroid. It does not ask whether that row lies equally close to another cluster. A represented speaker profile can be near one centroid and still lie near the fitted boundary between two groups.
+The [within-cluster loss](within-cluster-loss.qmd) measures distance from each token to its assigned centroid. It does not ask whether the token is nearly as close to another fitted group. A [**silhouette width**](https://doi.org/10.1016/0377-0427(87)90125-7) compares within-cluster cohesion with the nearest alternative.
 
-A [**silhouette width**](https://doi.org/10.1016/0377-0427(87)90125-7) compares the row's average distance within its assigned cluster with its average distance to the nearest alternative cluster. It is a row-level diagnostic of cohesion relative to separation.
+## Loading and fitting the observed partitions
 
-## Defining within-cluster cohesion
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
 
-Let $C(i)$ be the cluster containing row $i$. The average distance from row $i$ to the other rows in that cluster is
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    )
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+distance_matrix <- stats::dist(X)
+seed <- 1952L
+
+kmeans_fits <- vector("list", 15L)
+for (k in 1:15) {
+  set.seed(seed + k)
+  kmeans_fits[[k]] <- stats::kmeans(
+    X,
+    centers = k,
+    nstart = 100L,
+    iter.max = 200L,
+    algorithm = "Hartigan-Wong"
+  )
+}
+```
+
+## Cohesion and the nearest alternative
+
+Let $C(i)$ be the cluster containing token $i$. Its average distance to the other rows in that cluster is
 
 $$
 a(i)
 =
 \frac{1}{|C(i)|-1}
-\sum_{
-j\in C(i),\ j\neq i
-}
+\sum_{j\in C(i),\ j\neq i}
 d(\mathbf{x}_i,\mathbf{x}_j).
 $$
 
-A small $a(i)$ means that row $i$ lies near the other rows assigned to its cluster. The quantity is the row's mean intra-cluster distance.
-
-The definition uses distances between rows rather than distance to the centroid. Thus, it can be applied to a declared partition even when the grouping method did not use centroids.
-
-## Defining the nearest alternative
-
-For another cluster $C$, calculate row $i$'s average distance to all rows in that cluster:
+For another cluster $C$, define
 
 $$
 d(i,C)
@@ -44,162 +80,152 @@ b(i)
 \min_{C\neq C(i)}d(i,C).
 $$
 
-A large $b(i)$ means that even the closest competing cluster lies far from row $i$. The comparison uses the nearest alternative because a partition is only as separated as its most plausible competitor for that row.
-
-## Combining cohesion and separation
-
-The silhouette is
+The silhouette width is
 
 $$
 s(i)
 =
-\frac{b(i)-a(i)}
-{\max\{a(i),b(i)\}}.
+\frac{b(i)-a(i)}{\max\{a(i),b(i)\}}.
 $$
 
-Its value lies between $-1$ and 1. If $b(i)\geq a(i)$, then
+If $b(i)\geq a(i)$, then
 
 $$
-s(i)
-=
-1-\frac{a(i)}{b(i)},
+s(i)=1-\frac{a(i)}{b(i)},
 $$
 
-which lies between 0 and 1. If $a(i)>b(i)$, then
+which lies between zero and one. If $a(i)>b(i)$, then
 
 $$
-s(i)
-=
-\frac{b(i)}{a(i)}-1,
+s(i)=\frac{b(i)}{a(i)}-1,
 $$
 
-which lies between $-1$ and 0.
+which lies between minus one and zero. Negative values indicate that another fitted cluster is closer on average under the declared geometry.
 
-Positive values indicate that the row is closer on average to its assigned cluster. Negative values indicate that another cluster is closer on average. Values near zero indicate an ambiguous fitted boundary under the declared distance. These are properties of the partition, not judgments that the speaker has an ambiguous linguistic identity.
+## Reconstructing one observed silhouette
 
-## Calculating a positive silhouette
-
-Suppose a speaker's average distance to the assigned cluster is
-
-$$
-a(i)=0.8,
-$$
-
-and the average distance to the nearest alternative cluster is
-
-$$
-b(i)=2.0.
-$$
-
-Since $b(i)$ is larger, the denominator is 2.0:
-
-$$
-\begin{aligned}
-s(i)
-&=
-\frac{2.0-0.8}{2.0}\\
-&=
-\frac{1.2}{2.0}\\
-&=0.60.
-\end{aligned}
-$$
-
-The represented speaker profile is substantially closer to the assigned group than to the nearest alternative under this distance.
-
-## Calculating a negative silhouette
-
-Now suppose
-
-$$
-a(i)=1.5
-\qquad\text{and}\qquad
-b(i)=1.2.
-$$
-
-The denominator is 1.5, so
-
-$$
-\begin{aligned}
-s(i)
-&=
-\frac{1.2-1.5}{1.5}\\
-&=
-\frac{-0.3}{1.5}\\
-&=-0.20.
-\end{aligned}
-$$
-
-The negative score says that, on average, this row lies closer to another cluster than to its assigned cluster. It identifies a row for inspection. It does not automatically justify moving the row, since the fitted objective and the silhouette use different summaries.
-
-## Computing the scores in R
-
-The `cluster` package combines a declared partition with a distance matrix.
+The most negative token in the ten-centroid fit supplies a worked calculation from the production table.
 
 ```{r}
-#| eval: false
-
-distance_matrix <- dist(
-  X_scaled,
-  method = "euclidean"
-)
-
-sil <- cluster::silhouette(
-  fit_k2$cluster,
+silhouette_10 <- cluster::silhouette(
+  kmeans_fits[[10]]$cluster,
   distance_matrix
 )
+reference_row <- which.min(silhouette_10[, "sil_width"])
 
-head(sil)
+distances <- as.matrix(distance_matrix)
+assigned_cluster <- kmeans_fits[[10]]$cluster[reference_row]
+other_clusters <- setdiff(
+  sort(unique(kmeans_fits[[10]]$cluster)),
+  assigned_cluster
+)
+within_rows <- which(
+  kmeans_fits[[10]]$cluster == assigned_cluster &
+    seq_len(nrow(vowels)) != reference_row
+)
+
+a_i <- mean(distances[reference_row, within_rows])
+between_means <- vapply(other_clusters, function(cluster_id) {
+  mean(distances[
+    reference_row,
+    kmeans_fits[[10]]$cluster == cluster_id
+  ])
+}, numeric(1))
+b_i <- min(between_means)
+neighbor_cluster <- other_clusters[which.min(between_means)]
+s_i <- (b_i - a_i) / max(a_i, b_i)
+
+stopifnot(abs(s_i - silhouette_10[reference_row, "sil_width"]) < 1e-10)
+
+reference_silhouette <- data.frame(
+  row_id = reference_row,
+  token_id = vowels$token_id[reference_row],
+  assigned_cluster = assigned_cluster,
+  neighbor_cluster = neighbor_cluster,
+  within_cluster_distance_a = a_i,
+  nearest_other_distance_b = b_i,
+  silhouette = s_i
+)
+knitr::kable(reference_silhouette, digits = 3)
 ```
 
-The result stores each row's assigned cluster, nearest alternative cluster, and silhouette width. The sample mean is
+For row `r reference_row`, $a(i)$ is `r round(a_i, 3)` and $b(i)$ is `r round(b_i, 3)`. Substituting those observed distances gives
+
+$$
+s(i)
+=
+\frac{`r round(b_i, 3)`-`r round(a_i, 3)`}
+{\max\{`r round(a_i, 3)`,`r round(b_i, 3)`\}}
+=
+`r round(s_i, 3)`.
+$$
+
+The negative value says that this acoustic vector lies slightly closer on average to the nearest competing cluster than to its assigned cluster. It does not say that the speaker or token has an ambiguous linguistic identity.
+
+## Comparing candidate counts
 
 ```{r}
-#| eval: false
+silhouette_summary <- dplyr::bind_rows(lapply(2:15, function(k) {
+  current <- cluster::silhouette(kmeans_fits[[k]]$cluster, distance_matrix)
+  data.frame(
+    k = k,
+    mean_silhouette = mean(current[, "sil_width"]),
+    median_silhouette = stats::median(current[, "sil_width"]),
+    negative_fraction = mean(current[, "sil_width"] < 0),
+    adjusted_rand_index = mclust::adjustedRandIndex(
+      kmeans_fits[[k]]$cluster,
+      vowels$vowel
+    )
+  )
+}))
 
-mean(sil[, "sil_width"])
+best_silhouette <- silhouette_summary |>
+  dplyr::slice_max(mean_silhouette, n = 1, with_ties = FALSE)
+best_external <- silhouette_summary |>
+  dplyr::slice_max(adjusted_rand_index, n = 1, with_ties = FALSE)
+
+knitr::kable(
+  silhouette_summary |>
+    dplyr::filter(k %in% unique(c(best_silhouette$k, 10L))),
+  digits = 3
+)
 ```
-
-Plot the row-level values rather than reporting only this mean.
 
 ```{r}
-#| eval: false
+#| fig-width: 7
+#| fig-height: 4.2
+#| fig-alt: "Mean silhouette width for K-means partitions of the Peterson and Barney vowel tokens across two through fifteen centroids."
 
-plot(sil)
+ggplot2::ggplot(
+  silhouette_summary,
+  ggplot2::aes(x = k, y = mean_silhouette)
+) +
+  ggplot2::geom_line(color = "#2B6CB0", linewidth = 0.7) +
+  ggplot2::geom_point(color = "#2B6CB0", size = 1.7) +
+  ggplot2::scale_x_continuous(breaks = c(seq(2, 14, by = 2), 15)) + # dqr-allow: algorithm-setting
+  ggplot2::labs(
+    x = "Number of centroids",
+    y = "Mean silhouette width"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
 ```
 
-A moderate mean may hide one cluster containing many negative values. Those rows may mark overlap, an unsuitable distance, or a partition driven by a few dense regions.
+The mean silhouette is largest at $K=`r best_silhouette$k`$, where it equals `r round(best_silhouette$mean_silhouette, 3)`. The ten-centroid partition has mean silhouette `r round(silhouette_summary$mean_silhouette[silhouette_summary$k == 10], 3)`, while its post-fit ARI against intended vowels is `r round(silhouette_summary$adjusted_rand_index[silhouette_summary$k == 10], 3)`, the largest in this fitted grid at $K=`r best_external$k`$.
 
-## Handling singleton clusters carefully
+This disagreement is the empirical lesson. Silhouette rewards cohesion and separation under the fitted geometry; intended-vowel ARI evaluates agreement with external experimental metadata. The two criteria answer different questions.
 
-If row $i$ is the only member of its assigned cluster, $a(i)$ has no other row to average. A common convention assigns silhouette zero to a singleton.
+## Limits of the score
 
-This convention should not be interpreted as evidence that the singleton lies on an ordinary boundary. It says that within-cluster cohesion is undefined from pairwise neighbors. A candidate partition with many singleton clusters may require direct inspection rather than reliance on its mean silhouette.
+Silhouettes inherit the distance, scaling, and fitted partition. Compact groups separated by gaps tend to score well, while systematically overlapping categories may not. A singleton cluster conventionally receives silhouette zero because within-cluster cohesion cannot be estimated from a pair.
 
-For a singleton cluster, the numerical convention does not create within-cluster evidence where no within-cluster pair exists.
-
-## The score depends on distance and scaling
-
-Every $a(i)$ and $b(i)$ is calculated from the chosen distances. Changing column scaling changes the pairwise distances and may change the nearest alternative cluster.
-
-Suppose raw token counts dominate a language-use matrix. A high silhouette may then describe separation almost entirely along token count. Standardizing the columns may produce a different conclusion. Neither score is independent of the representation.
-
-A high silhouette width retains a precise interpretation: rows are cohesive and separated under this particular distance and scaling. The linguistic claim should retain that condition.
-
-## Compact separation is not the only category shape
-
-Silhouettes tend to reward compact groups separated by gaps. Acoustic realizations of linguistic categories may overlap systematically, vary in spread, or form a continuum along a measured dimension while still supporting a useful linguistic analysis.
-
-Thus, the candidate with the largest mean silhouette is best only among the tried partitions under this score. It does not establish that the world contains exactly that number of discrete groups.
-
-External variables can help interpret the partition, while held-out validation can ask whether the learned centers represent new rows. Neither question is answered by the fitted silhouette alone.
+Thus, the candidate with the largest mean silhouette is best only among the fitted partitions under this score. It does not establish the number of phonological categories.
 
 ## Checking cohesion and separation
 
-1. What does $a(i)$ average?
+1. Which observed averages produce the reference token's negative silhouette?
 2. Why does $b(i)$ use the nearest alternative cluster?
-3. What does a silhouette of $-0.20$ suggest about the row's average distances?
-4. Why can a mean silhouette hide a poorly represented cluster?
-5. How does a change in scaling alter the silhouette calculation?
-6. Why is a singleton silhouette of zero a convention rather than evidence of ordinary boundary membership?
+3. Which $K$ maximizes the intrinsic silhouette criterion?
+4. Which $K$ maximizes alignment with withheld intended-vowel metadata?
+5. Why can both answers be correct for their respective targets?
 
-A silhouette compares each row's cohesion with its nearest alternative under a declared distance. It diagnoses the fitted partition one row at a time but remains tied to the same observations and geometry used to form the groups. It does not compare the groups with independently motivated linguistic categories. The [next page](unsupervised-validation.qmd) asks whether centroids estimated from training rows reconstruct rows excluded from fitting.
+A silhouette diagnoses a fitted partition under the same geometry used to form it. The [speaker-blocked validation page](unsupervised-validation.qmd) instead asks how centroids estimated from other speakers reconstruct a complete unseen speaker panel.

@@ -1,84 +1,111 @@
 ---
-title: "Reading trace plots"
+title: "Reading trace and rank plots"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [MCMC page](markov-chain-monte-carlo.qmd) separated the posterior target from the dependent sequence used to approximate it. A [**trace plot**](https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html) places iteration on the horizontal axis and the sampled parameter value on the vertical axis, with independently initialized chains drawn as separate paths.
+The production PCT fit retains four independently initialized NUTS chains. A **trace plot** places iteration on the horizontal axis and a sampled quantity on the vertical axis. A **rank plot** divides the pooled ranks into bins and compares how often each chain occupies them.
 
-Suppose $\Theta$ is a parameter representing an association between lexical frequency and responses in a word-recognition model. That parameter does not by itself identify a recognition mechanism. A trace plot asks the narrower computational question of whether the chains repeatedly visit the same stable range of values.
+## Production traces
 
-## Reading a stable-looking trace
-
-A useful trace has three visible properties: first, each chain fluctuates around a stable location rather than drifting across iterations; second, chains initialized at different values overlap and cross; and third, each chain continues to move rather than remaining nearly constant for long stretches.
-
-Together, these patterns suggest that the chains are exploring the same region. They are not a proof that the chains represent the complete posterior.
-
-## Constructing contrasting displays
-
-The following code creates four stable-looking sequences and four separated sequences. They are diagnostic illustrations, not output from a posterior sampler.
+The following code reads the actual production draws, not simulated diagnostic cartoons. It keeps chain identity and post-warmup iteration explicit.
 
 ```{r}
-#| label: contrasting-trace-plots
-#| echo: true
+#| label: load-provo-production-traces
+library(ggplot2)
+library(posterior)
 
-set.seed(326)
-iteration_count <- 500
-chain_count <- 4
-
-stable <- replicate(
-  chain_count,
-  as.numeric(arima.sim(list(ar = .60), n = iteration_count,
-                       sd = .20))
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
+)
+draws <- as.data.frame(as_draws_df(subset_draws(
+  cache$production_draws, variable = c("mu", "sigma")
+)))
+trace_long <- rbind(
+  data.frame(chain = draws$.chain, iteration = draws$.iteration,
+             parameter = "mu", value = draws$mu),
+  data.frame(chain = draws$.chain, iteration = draws$.iteration,
+             parameter = "sigma", value = draws$sigma)
 )
 
-separated <- cbind(
-  stable[, 1] - 1.5,
-  stable[, 2] - 1.5,
-  stable[, 3] + 1.5,
-  stable[, 4] + 1.5
-)
-
-old_par <- par(mfrow = c(1, 2))
-matplot(stable, type = "l", lty = 1,
-        xlab = "iteration", ylab = "sampled beta",
-        main = "overlapping chains")
-matplot(separated, type = "l", lty = 1,
-        xlab = "iteration", ylab = "sampled beta",
-        main = "separated chains")
-par(old_par)
-
-stopifnot(diff(range(colMeans(stable))) < .2)
-stopifnot(diff(range(colMeans(separated))) > 2)
+stopifnot(nrow(provo) == 55L, nrow(draws) == 4000L,
+          length(unique(draws$.chain)) == 4L)
+aggregate(value ~ parameter + chain, trace_long, mean)
 ```
 
-In the second display, chain identity predicts the parameter value. Combining those chains into one posterior summary would conceal their disagreement.
+```{r}
+#| label: plot-provo-production-traces
+#| fig-cap: "Four post-warmup NUTS traces from the production PCT fit."
+trace_opacity <- .65
+ggplot(trace_long,
+       aes(iteration, value, group = factor(chain), color = factor(chain))) +
+  geom_line(alpha = trace_opacity, linewidth = .3) +
+  facet_wrap(~parameter, scales = "free_y", ncol = 1) +
+  scale_color_grey(start = .15, end = .7) +
+  labs(x = "Post-warmup NUTS iteration", y = "Draw", color = "Chain") +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-## Inspecting three visible patterns
+A useful trace fluctuates around a stable location, overlaps across chains, and continues to move. The PCT traces show these properties. They do not prove that the chains found every posterior region or that the model fits the passage summaries.
 
-Different chains may remain in different regions. This separation may reflect disconnected posterior regions, weak identification, or insufficient movement between regions.
+## Rank histograms
 
-A trace that drifts systematically upward or downward is evidence of [**nonstationarity**](https://mc-stan.org/docs/reference-manual/mcmc.html) over the saved iterations. In this context, nonstationarity means that the distribution represented by the chain appears to change with iteration. A visible drift is a warning, not a proof of its unique cause.
+Chain identity should not systematically predict pooled rank. The code computes 20 bins for each parameter.
 
-A chain may also remain nearly constant for a long run. It may be exploring a target region very slowly, so many saved iterations add little new information.
+```{r}
+#| label: compute-provo-rank-histograms
+rank_rows <- do.call(rbind, lapply(c("mu", "sigma"), function(parameter) {
+  values <- draws[[parameter]]
+  ranks <- rank(values, ties.method = "average")
+  bins <- cut(ranks, breaks = seq(0, length(values), length.out = 21L),
+              include.lowest = TRUE, labels = FALSE)
+  counts <- as.data.frame(table(chain = draws$.chain, bin = bins))
+  names(counts)[3] <- "count"
+  counts$parameter <- parameter
+  counts
+}))
 
-These visible patterns do not automatically diagnose their causes. A trace plot can indicate where to investigate, but it cannot select a repair by itself.
+stopifnot(sum(rank_rows$count) == 2L * nrow(draws))
+head(rank_rows)
+```
 
-## Understanding initialization and warmup
+```{r}
+#| label: plot-provo-rank-histograms
+#| fig-cap: "Pooled-rank histograms for the production PCT chains."
+ggplot(rank_rows,
+       aes(as.numeric(as.character(bin)), count, fill = factor(chain))) +
+  geom_col(position = "dodge", width = .85) +
+  facet_wrap(~parameter, ncol = 1) +
+  scale_fill_grey(start = .2, end = .8) +
+  labs(x = "Pooled-rank bin", y = "Draws", fill = "Chain") +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-Chains are commonly initialized from dispersed values. Early transitions may still reflect those initial states while the sampler adapts and moves toward a posterior region. Stan separates this warmup period from saved sampling iterations. During adaptive warmup, the step size and mass matrix change, so these states do not arise from the fixed transition used for retained sampling.
+Persistent chain separation would suggest that initialization still predicts the sampled value. Drift would suggest that the finite saved sequence changes with iteration. Long nearly constant stretches would show inefficient movement. These are computational warnings, not model checks.
 
-Discarding adaptive warmup is part of Stan's algorithmic procedure. It is not evidence that every retained chain has reached the target. Discarding arbitrary portions of a problematic saved trace until it looks stable is not a general repair. If saved chains drift or remain separated, the model should be refit after addressing the computational cause.
-
-## An overlapping trace is not proof of convergence
-
-An overlapping dense trace is sometimes described as a “hairy caterpillar” and treated as proof of convergence. All chains can overlap in one region while missing another, and dense lines can hide strong dependence between iterations.
-
-Trace plots assess computation. They do not test whether the response family, predictors, or dependence structure provide an adequate model of linguistic observations. A good trace from a poor model is still a good computation of the wrong target.
+Warmup is not an arbitrary deletion of inconvenient draws. Stan uses it to adapt the step size and mass matrix, then samples with a fixed transition. Removing part of a problematic saved trace until it looks stable is not a repair.
 
 ## Check your understanding
 
-1. What does persistent separation between chains show directly?
-2. Why does a flat segment indicate little new Monte Carlo information?
+1. What does persistent chain separation show directly?
+2. What additional information does a rank plot provide?
 3. Why can overlapping traces still miss a posterior region?
-4. Which question requires a posterior predictive check rather than a trace plot?
+4. Which diagnostic asks whether the PCT reproduces passage-level data features?
 
-The [$\widehat{R}$ page](rhat.qmd) turns cross-chain agreement into a numerical comparison.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Persistent chain separation shows that chain identity or initialization continues to predict sampled values, a direct sign of incomplete cross-chain mixing. <!-- dqr-allow: empirical-answer -->
+2. A rank plot shows whether each chain occupies the pooled distribution's ranks similarly, revealing location, scale, or tail differences that traces can obscure. <!-- dqr-allow: empirical-answer -->
+3. All chains can overlap within the same incomplete region if none reaches another posterior mode or tail. <!-- dqr-allow: empirical-answer -->
+4. A posterior predictive check asks whether the PCT reproduces selected passage-level data features. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [$\widehat R$ page](rhat.qmd) summarizes cross-chain agreement numerically.

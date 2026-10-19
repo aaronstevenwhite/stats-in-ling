@@ -2,171 +2,134 @@
 title: "Penalizing in-sample fit"
 ---
 
-The [likelihood-ratio page](likelihood-ratio-tests.qmd) compared models connected by a specific parameter restriction. Information criteria address a different comparison by combining fitted likelihood with a penalty for estimated flexibility.
+The [likelihood-ratio page](likelihood-ratio-tests.qmd) fixed a Provo position table and two nested Gaussian mean models. Information criteria use those same likelihoods but replace null-hypothesis calibration with a penalty for estimated flexibility. This lets the penalty, rather than a change in data or response, explain any disagreement.
 
-Suppose two models predict a particular log-transformed reading-time measure. One uses word length and lexical frequency. The other adds several interactions. The larger model will usually achieve at least as much maximized likelihood on the observations used to fit it, even when the added terms mostly follow sample-specific variation. The comparison concerns that measured response; it is not a direct comparison of theories of lexical access.
+The [**optimism of training error**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is the fact that performance on observations used for fitting tends to be better than expected performance on new observations. An [**information criterion**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) estimates a correction by combining fitted likelihood with a complexity penalty. Its score is relative to compatible candidates; the absolute value has no standalone linguistic unit.
 
-This difference is the [**optimism of training error**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf): performance on the observations used to fit a procedure tends to be better than its expected performance on new observations. An [**information criterion**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) estimates a correction by combining fitted likelihood with a complexity penalty. The resulting score estimates a model's relative predictive discrepancy under a particular approximation. It is not a significance test, and its absolute value is not a measure with a standalone linguistic interpretation.
+## AIC: fit plus a parameter-count penalty
 
-The [**Akaike information criterion (AIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) provides the principal case below; a later comparison distinguishes it from the [**Bayesian information criterion (BIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf).
-
-## Separating fit from penalty
-
-Let $\ell$ be a model's maximized log likelihood and let $k$ be its number of estimated parameters. AIC is
+Let $\ell$ be maximized log likelihood and $k$ the number of likelihood parameters. The [**Akaike information criterion (AIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
 
 $$
-\operatorname{AIC}=2k-2\ell.
-$$
-
-The expression has two parts:
-
-$$
+\operatorname{AIC}=2k-2\ell
+=
 \underbrace{-2\ell}_{\text{lack of fitted likelihood}}
 +
 \underbrace{2k}_{\text{complexity penalty}}.
 $$
 
-A larger maximized log likelihood makes $-2\ell$ smaller. Adding parameters makes $2k$ larger. Lower AIC is preferred because the criterion places good fitted likelihood and lower estimated optimism on the same direction of the scale.
+Greater maximized log likelihood lowers the first term; additional parameters increase the second. Lower AIC is preferred. The penalty is motivated as an approximation to relative expected predictive discrepancy, not as a significance threshold.
 
-The coefficient 2 in the penalty is not an arbitrary classroom convention. Under the assumptions motivating AIC, $2k$ approximates how optimistic the in-sample fit is as an estimate of performance on new observations from the represented process. The approximation concerns the complete candidate model and its maximum-likelihood fit.
+## BIC: a different penalty and motivation
 
-## Working through two candidate models
-
-Suppose model A has
-
-$$
-k_A=3
-\qquad\text{and}\qquad
-\ell_A=-210.
-$$
-
-Its AIC is
-
-$$
-\begin{aligned}
-\operatorname{AIC}_A
-&=2(3)-2(-210)\\
-&=6+420\\
-&=426.
-\end{aligned}
-$$
-
-Now suppose model B has five parameters and a maximized log likelihood of $-207$:
-
-$$
-\begin{aligned}
-\operatorname{AIC}_B
-&=2(5)-2(-207)\\
-&=10+414\\
-&=424.
-\end{aligned}
-$$
-
-The additional parameters improve log likelihood by 3. That improvement reduces the lack-of-fit term by 6, while the two additional parameters increase the penalty by 4. The improvement is thus larger than the added penalty, and model B has the lower AIC by 2.
-
-Only this difference matters for the comparison:
-
-$$
-\Delta_A
-=
-\operatorname{AIC}_A-\min_m\operatorname{AIC}_m
-=
-426-424
-=
-2.
-$$
-
-The absolute score 424 is not an error measured in log milliseconds, fixations, or words. It becomes informative only relative to AIC values computed from compatible candidate models.
-
-## Calculating the score in R
-
-If the maximized log likelihood and parameter count are already available, the formula is direct.
-
-```{r}
-#| eval: false
-
-candidate <- data.frame(
-  model = c("A", "B"),
-  parameters = c(3, 5),
-  log_likelihood = c(-210, -207)
-)
-
-candidate$aic <-
-  2 * candidate$parameters -
-  2 * candidate$log_likelihood
-
-candidate$delta_aic <- candidate$aic - min(candidate$aic)
-candidate
-```
-
-For fitted R models, `AIC()` extracts the same ingredients from the model objects.
-
-```{r}
-#| eval: false
-
-AIC(fit_length, fit_surprisal)
-```
-
-This convenient call does not check the scientific comparability of the models. It is the analyst's responsibility to verify that both objects represent the same response observations and compatible likelihoods.
-
-## Keeping the response and observations fixed
-
-Information criteria compare models only when their likelihoods refer to the same observed responses. Suppose an ordinary linear regression is fit to raw reading time and another is fit to log reading time. The two likelihoods assign density to different response variables. Their AIC values are not directly comparable without accounting for the transformation.
-
-The same problem arises when candidate models use different rows. If the richer model contains a predictor with missing values, its fitting function may silently drop more observations. Its log likelihood then summarizes a different dataset. An AIC difference would mix model specification with a change in observations.
-
-A useful check is to compare the row identifiers used in every fit, not merely their reported sample sizes. Equal counts do not guarantee that the same tokens were included.
-
-```{r}
-#| eval: false
-
-identical(
-  rownames(model.frame(fit_a)),
-  rownames(model.frame(fit_b))
-)
-```
-
-This is a mechanical check for one necessary condition. It does not establish that the likelihood families are compatible.
-
-## Comparing AIC with BIC
-
-The BIC uses
+The [**Bayesian information criterion (BIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
 
 $$
 \operatorname{BIC}=k\log n-2\ell,
 $$
 
-where $n$ is the sample size supplied to the approximation. Its parameter penalty grows with $\log n$. Thus, AIC and BIC may prefer different models, particularly in larger datasets.
+where $n$ is the sample size supplied to the approximation. Its penalty grows with $\log n$. BIC is not merely a universally stricter AIC: it arises from a different approximation connected to model evidence under additional assumptions.
 
-BIC is not merely AIC with a stricter penalty. The criteria arise from different motivations and approximations. AIC is motivated by relative expected predictive discrepancy. BIC is motivated by an approximation connected to model evidence under additional assumptions.
+Repeated linguistic data can make the meaning of $n$ delicate. The Provo teaching table contains position summaries rather than reader-level observations, so its criterion calculation uses the number of retained positions. It cannot convert those positions into independent readers or passages.
 
-Repeated linguistic data create a further difficulty for BIC because the meaning of $n$ may be delicate. Ten thousand trials from 50 speakers do not supply 10,000 independent speakers. Treating every trial count as an unproblematic sample size can make the penalty look more decisive than the design warrants.
+## The Provo criterion disagreement
 
-For current purposes, the main lesson is modest: report which criterion was used and why it matches the comparison. Do not describe BIC as a universally improved version of AIC.
+The code reloads the [Provo table introduced on the preceding page](likelihood-ratio-tests.qmd#provo-corpus), refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the residual scale parameter.
 
-## Understanding what AIC does not encode
+```{r}
+#| label: provo-information-criteria
+#| message: false
+#| warning: false
 
-AIC approximates relative expected performance for the observation-level likelihood under its regularity conditions. It does not create held-out predictions. It also does not know which unit a linguistic claim requires to be new or whether a prediction conditions on [group-specific estimates](../regression-models/random-effect-estimates.qmd).
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
 
-Suppose a reading-time model contains repeated observations from the same passages. AIC cannot distinguish another position in an observed passage from a position in a passage omitted during fitting. Grouped cross-validation can encode that distinction by changing the separation between training and test data.
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+stopifnot(identical(
+  rownames(model.frame(linear_fit)),
+  rownames(model.frame(quadratic_fit))
+))
 
-This difference does not make AIC useless. It makes the scope of the score narrower. AIC can compare a fixed collection of compatible candidate likelihood models without repeatedly refitting them. Direct validation is preferable when prediction for a group absent during fitting is central to the scientific claim.
+criteria <- data.frame(
+  model = c("Linear", "Quadratic"),
+  n_positions = nrow(provo),
+  mean_parameters = c(
+    length(coef(linear_fit)), length(coef(quadratic_fit))
+  ),
+  likelihood_parameters = c(
+    attr(logLik(linear_fit), "df"),
+    attr(logLik(quadratic_fit), "df")
+  ),
+  log_likelihood = c(
+    as.numeric(logLik(linear_fit)),
+    as.numeric(logLik(quadratic_fit))
+  ),
+  aic = c(AIC(linear_fit), AIC(quadratic_fit)),
+  bic = c(BIC(linear_fit), BIC(quadratic_fit))
+)
+criteria$delta_aic <- criteria$aic - min(criteria$aic)
+criteria$delta_bic <- criteria$bic - min(criteria$bic)
+criteria
 
-## Avoiding threshold interpretation
+criterion_plot <- rbind(
+  data.frame(
+    model = criteria$model,
+    criterion = "AIC",
+    difference_from_best = criteria$delta_aic
+  ),
+  data.frame(
+    model = criteria$model,
+    criterion = "BIC",
+    difference_from_best = criteria$delta_bic
+  )
+)
 
-An AIC difference of 2 is not a conventional significance threshold. The difference says that, among these candidates and under the AIC approximation, model B has a criterion value 2 units lower than model A. It does not supply a null tail probability.
+ggplot2::ggplot(
+  criterion_plot,
+  ggplot2::aes(model, difference_from_best)
+) +
+  ggplot2::geom_point(size = 2, color = "#2B6CB0") +
+  ggplot2::facet_wrap(~ criterion, scales = "free_y") +
+  ggplot2::labs(
+    x = NULL,
+    y = "Difference from preferred score"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
 
-The magnitude must also be interpreted alongside the candidate set and stability of the analysis. A small difference may change after a reasonable preprocessing decision. Reporting the component log likelihoods, parameter counts, and criterion differences makes the source of the comparison visible.
+Both criteria use the same `r format(nrow(provo), big.mark = ",")` position summaries. AIC prefers the `r criteria$model[which.min(criteria$aic)]` model; the other model is worse by `r sprintf("%.3f", max(criteria$delta_aic))` AIC points. BIC prefers the `r criteria$model[which.min(criteria$bic)]` model; the other model is worse by `r sprintf("%.3f", max(criteria$delta_bic))` BIC points. The empirical disagreement follows from applying different penalties to a modest fitted-likelihood gain.
 
-Thus, AIC ranks the specified candidates. It does not certify that the best-ranked candidate is an adequate account of the response process, still less an explanation of the linguistic mechanism that generated it.
+This is more informative than declaring either criterion decisive. The candidates are close enough that a defensible change in approximation can reverse the ordering. The plot shows only each model's distance from the preferred score; it does not add thresholds or labels that the criteria do not supply.
+
+## Keeping responses and observations fixed
+
+Information criteria compare models only when their likelihoods concern the same observed responses. A model of raw duration and a model of log duration assign density to different response variables. Their printed values are not directly comparable without accounting for the transformation.
+
+Candidate models can also silently use different rows when an added predictor has missing values. The code thus checks the row names in both model frames. Equal row counts alone would not establish that the same positions were used.
+
+## What the criteria do not encode
+
+AIC approximates observation-level expected performance under its regularity conditions. It does not create held-out predictions or know which linguistic group should be new. BIC likewise cannot distinguish another position in an observed passage from a position in a passage absent during fitting.
+
+The position count also does not license reader-level or passage-level inference. Direct grouped validation is preferable when prediction for a wholly new passage is the target. Here the criteria compare two compatible likelihood models for the fixed aggregated position table.
+
+An information-criterion difference is not a conventional significance threshold. It ranks specified candidates under its approximation. It does not certify that the preferred candidate is an adequate explanation of the response process.
 
 ## Checking the penalized comparison
 
-1. Why can maximized likelihood alone not select among models of different sizes?
-2. In the worked comparison, how much does model B improve log likelihood, and how much additional AIC penalty does it receive?
-3. What does an AIC difference of 2 describe, and what does it not describe?
-4. Why should models fit to raw and log reading time not be compared by their printed AIC values?
-5. Why can AIC not distinguish prediction for omitted items from prediction for omitted participants?
-6. What additional difficulty does repeated linguistic data create for the $n$ in BIC?
+1. Which term rewards fitted likelihood in AIC, and which term penalizes flexibility?
+2. Why can AIC and BIC prefer different Provo models while using identical fits?
+3. Why must both candidates use the same response rows and response scale?
+4. Which held-out unit is not represented by either criterion calculation?
 
-AIC addresses optimism of training error by adding a parameter-count penalty to maximized likelihood. The score is relative, requires compatible responses and observations, and does not encode which groups should be absent during fitting. The [next page](psis-loo.qmd) develops a Bayesian leave-one-out approximation that averages over posterior uncertainty and retains pointwise contributions for diagnostic inspection.
+Information criteria combine fitted likelihood with an approximation-specific complexity penalty. The [previous page](likelihood-ratio-tests.qmd) calibrated the nested restriction; the [next page](leave-one-out-cross-validation.qmd) obtains exact omitted-position predictions under a fixed Bayesian specification.

@@ -1,117 +1,124 @@
 ---
-title: "Random intercept models"
+title: "Random-intercept models"
+execute: {warning: false, message: false}
 ---
 
-The [partial-pooling page](random-effects.qmd) introduced group deviations from a shared population center. A [**random-intercept model**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) places one such deviation in a regression equation.
+The [partial-pooling page](random-effects.qmd) gave participants and words deviations from a shared population center. A **random-intercept model** places those deviations inside a regression equation.
 
-Suppose several vowel tokens are measured for every speaker. Speakers may differ in baseline duration even after vowel category has been included as a predictor. A random-intercept model gives each speaker a partially pooled baseline deviation while keeping one population association for vowel category.
+## Inserting a participant deviation
 
-## Inserting one speaker deviation
-
-For token $i$ from speaker $j$, write
+For trial $i$ from participant $p$, a participant-intercept model has
 
 $$
-Y_{ij}
-=\beta_0+b_{0j}+\beta_1x_{ij}+\varepsilon_{ij},
+Y_{pi}=\beta_0+b_p+\mathbf x_{pi}^{\mathsf T}\boldsymbol\beta+\varepsilon_{pi},
+$$
+
+with
+
+$$
+b_p\sim\mathcal N(0,\tau_p^2),
+\qquad
+\varepsilon_{pi}\sim\mathcal N(0,\sigma^2).
+$$
+
+Participant $p$ has fitted baseline $\beta_0+b_p$. The deviation changes the vertical location of the participant's regression relation; it does not change any predictor association.
+
+## Deriving the induced covariance
+
+Two trials from the same participant share $b_p$:
+
+$$
+Y_{pi}=\beta_0+b_p+\varepsilon_{pi},
+\qquad
+Y_{pi'}=\beta_0+b_p+\varepsilon_{pi'}.
+$$
+
+Under independent residuals and independence between residuals and the group deviation,
+
+$$
+\begin{aligned}
+\operatorname{Cov}(Y_{pi},Y_{pi'})
+&=\operatorname{Cov}(b_p+\varepsilon_{pi},
+                     b_p+\varepsilon_{pi'})\\
+&=\operatorname{Var}[b_p]\\
+&=\tau_p^2.
+\end{aligned}
+$$
+
+Conditional on $b_p$, the residuals may be independent. Marginally, before the deviation is known, the two responses are associated because they contain the same participant baseline.
+
+## Adding the crossed word intercept
+
+MALD trials also repeat spoken words. Give word $w$ a deviation $c_w$:
+
+$$
+Y_{pwi}=\beta_0+b_p+c_w+\varepsilon_{pwi},
 $$
 
 where
 
 $$
-b_{0j}\sim\mathcal{N}(0,\tau_0^2)
+b_p\sim\mathcal N(0,\tau_p^2),\qquad
+c_w\sim\mathcal N(0,\tau_w^2),\qquad
+\varepsilon_{pwi}\sim\mathcal N(0,\sigma^2).
 $$
 
-and
+Two rows that share only a participant have covariance $\tau_p^2$. Two rows that share only a word have covariance $\tau_w^2$. Rows sharing both units have covariance $\tau_p^2+\tau_w^2$ under the model's independence assumptions.
 
-$$
-\varepsilon_{ij}\sim\mathcal{N}(0,\sigma^2).
-$$
+## Fitting the crossed model
 
-The population intercept is $\beta_0$. Speaker $j$ has baseline $\beta_0+b_{0j}$. If $b_{0j}=15$ ms, that speaker's fitted baseline is 15 ms above the population baseline at the same predictor value.
-
-The subscript zero in $b_{0j}$ marks an intercept deviation. It changes the vertical position of the speaker's regression line. It does not change the association $\beta_1$.
-
-## Comparing two speakers
-
-Suppose $\beta_0=100$ ms and $\beta_1=20$ ms. Let speaker A have $b_{0A}=-10$ ms and speaker B have $b_{0B}=15$ ms. Their fitted means are
-
-$$
-\widehat\mu_A(x)=90+20x
-$$
-
-and
-
-$$
-\widehat\mu_B(x)=115+20x.
-$$
-
-The lines are parallel. Speaker B is predicted to have durations 25 ms longer than speaker A at every value of $x$. The model attributes that stable difference to their intercept deviations.
-
-This model assumes that the predictor association is the same for every speaker. That common slope assumption is appropriate only when the modeled association can reasonably be treated as constant across speakers.
-
-## Examining the induced dependence
-
-Two observations from speaker $j$ share the same $b_{0j}$. Conditional on that deviation, their residuals may be independent. Before the deviation is known, the responses are associated because both contain the same speaker baseline.
-
-For two trials $i$ and $i'$ from the same speaker,
-
-$$
-Y_{ij}=\beta_0+b_{0j}+\beta_1x_{ij}+\varepsilon_{ij}
-$$
-
-and
-
-$$
-Y_{i'j}=\beta_0+b_{0j}+\beta_1x_{i'j}+\varepsilon_{i'j}.
-$$
-
-Observing an unusually high response on the first trial provides information about $b_{0j}$ and thus about the second trial. This is how the model represents the repeated speaker unit identified from the data structure.
-
-## Adding a crossed item intercept
-
-In a reading experiment, trials may share both participants and sentence items. Give participant $j$ a deviation $b_{0j}$ and item $k$ a deviation $c_{0k}$:
-
-$$
-Y_{ijk}
-=\beta_0+b_{0j}+c_{0k}
-+\beta_1x_{ijk}+\varepsilon_{ijk}.
-$$
-
-Use separate population distributions:
-
-$$
-b_{0j}\sim\mathcal{N}(0,\tau_{p}^{2}),
-$$
-
-$$
-c_{0k}\sim\mathcal{N}(0,\tau_{s}^{2}).
-$$
-
-The two standard deviations describe different populations. $\tau_p$ measures participant baseline variation. $\tau_s$ measures sentence item baseline variation.
-
-## Translating the equation into R
-
-```r
+```{r}
+#| label: mald-random-intercepts
 library(lme4)
+library(ggplot2)
 
-fit_intercepts <- lmer(
-  log_rt ~ condition +
-    (1 | participant) +
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
+
+fit <- lmer(
+  log_rt ~ 1 +
+    (1 | participant_id) +
     (1 | item),
-  data = reading_experiment
+  data = mald,
+  control = lmerControl(optimizer = "bobyqa")
 )
+
+variance_components <- as.data.frame(VarCorr(fit))
+variance_components[c("grp", "var1", "vcov", "sdcor")]
 ```
 
-`condition` supplies a population coefficient. `(1 | participant)` adds a participant intercept distribution. `(1 | item)` adds an item intercept distribution. The two grouping terms are crossed because participant and item identifiers occur in many combinations.
+The two grouping terms are crossed because participant and word identifiers recur in many combinations. The formula does not create replication absent from the table; it represents the incidence structure that the table already contains.
 
-The formula does not create replication absent from the data. If each item is seen by only one participant, the design may not distinguish item and participant variation well. The grouping terms must be supported by the incidence structure.
+## Comparing raw and conditional participant baselines
 
-## Stating what remains common
+```{r}
+#| label: random-intercept-pooling
+raw_means <- aggregate(
+  log_rt ~ participant_id,
+  data = mald,
+  FUN = mean
+)
+names(raw_means)[names(raw_means) == "log_rt"] <- "raw_mean"
 
-The condition coefficient $\beta_1$ remains identical for every participant and item. The model represents different baselines, not different condition associations. This is a substantive restriction rather than a software default to accept without thought.
+participant_modes <- ranef(fit)$participant_id
+conditional_means <- data.frame(
+  participant_id = rownames(participant_modes),
+  conditional_mean =
+    fixef(fit)[["(Intercept)"]] + participant_modes[["(Intercept)"]],
+  row.names = NULL
+)
 
-::: {.callout-note title="Check the formula"}
-Two trials come from the same participant but different items. Which random effect do they share? Under the common slope assumption, how does their condition association compare?
-:::
+pooling <- merge(raw_means, conditional_means, by = "participant_id")
 
-The [next page](intraclass-correlation.qmd) measures the response similarity induced by a shared random intercept.
+ggplot(pooling, aes(x = raw_mean, y = conditional_mean)) +
+  geom_abline(slope = 1, intercept = 0, color = "grey65") +
+  geom_point(color = "#1F5A85", size = 1.3) +
+  coord_equal() +
+  labs(
+    x = "Raw participant mean log response time",
+    y = "Conditional participant mean"
+  ) +
+  theme_classic()
+```
+
+The participant intercept represents persistent response-speed differences. It cannot represent participant-specific lexical-frequency associations; that requires a random slope. The [next page](intraclass-correlation.qmd) converts the fitted covariance components into model-implied correlations.

@@ -2,18 +2,65 @@
 title: "Gated annotations"
 ---
 
-Suppose the UDS event-subevent protocol asks whether the situation described by a highlighted predicate has natural subparts. A yes response reveals questions about part similarity and average part duration; a no response reveals questions about dynamicity and whole-situation duration. Thus, an undisplayed branch is a **by-design absence**, not a low value on that branch and not a failed response to a displayed question. The distinction precedes the [stochastic missingness mechanisms](../missing-data/missingness-mechanisms.qmd), which concern intended values that are unavailable.
+The UDS event protocol uses the natural-parts response as a gate. A yes displays questions about part similarity and average part duration; a no displays questions about whole-situation duration and dynamicity. An undisplayed response is thus a **by-design absence**. It is not a low value on that branch and not a failed attempt to answer a displayed question.
 
-A joint model for gated annotations represents the gate response and the conditional follow up as two parts of one observation process. It does not assign a follow up value to a trial on which the annotator was never asked the follow up question.
+The local extract supports numerical analysis of the [observed natural-parts gate](uds-measurement-model.qmd) only. It does not contain audited raw conditional-branch responses, and the available raw confidence serialization conflicts with the documented response scale. This page thus analyzes the gate empirically and keeps the branch model symbolic.
 
-## Factoring the gate and follow up
+## Reproducing the observed gate
 
-Let item $i$ be a predicate node in sentence context. Let $G_{ij}=1$ when annotator $j$ gives a yes response to the natural-parts question, and let $G_{ij}=0$ otherwise. For the moment, let $Y_{ij}$ be one response from the yes branch, such as part similarity. Write $\pi_{ij}$ for the gate probability and $f_Y(y_{ij}\mid\phi_{ij})$ for the conditional follow up probability or density.
+```{r}
+#| label: load-uds-gate
+#| message: false
+#| warning: false
 
-The observed response contribution is defined by the two possible gate values:
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+uds_cache <- readRDS(
+  "data/uds/uds-natural-parts-teaching-cache.rds"
+)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  sum(uds$natural_parts) == 659L,
+  setequal(unique(uds$natural_parts), 0:1),
+  nrow(uds_cache$population_draws) == 400L,
+  identical(uds_cache$item_levels, unique(uds$item_id)),
+  identical(uds_cache$annotator_levels, unique(uds$annotator_id))
+)
+
+uds$item_index <- match(uds$item_id, uds_cache$item_levels)
+uds$annotator_index <- match(
+  uds$annotator_id,
+  uds_cache$annotator_levels
+)
+
+gate_summary <- data.frame(
+  response = c("No", "Yes"),
+  count = c(
+    sum(uds$natural_parts == 0L),
+    sum(uds$natural_parts == 1L)
+  ),
+  proportion = c(
+    mean(uds$natural_parts == 0L),
+    mean(uds$natural_parts == 1L)
+  )
+)
+
+knitr::kable(gate_summary, digits = 3)
+```
+
+These are recorded gate responses. The no count is not a count of zero-valued part-similarity judgments, because the part-similarity question was never displayed after those responses.
+
+## Factoring the gate and follow-up response
+
+Let $G_{ij}=1$ when annotator $j$ reports that predicate-node item $i$ has natural parts, and let $G_{ij}=0$ otherwise. Let $Y_{ij}$ denote a response on the yes branch, such as part similarity. Write $\pi_{ij}$ for the gate probability and $f_Y(y_{ij}\mid\phi_{ij})$ for the conditional follow-up probability or density.
+
+The observed response contribution is
 
 $$
-p(g_{ij},y_{ij}^{\mathrm{obs}})
+f_{G,Y}(g_{ij},y_{ij}^{\mathrm{obs}})
 =
 \begin{cases}
 \pi_{ij}f_Y(y_{ij}\mid\phi_{ij}), & g_{ij}=1,\\
@@ -21,87 +68,115 @@ p(g_{ij},y_{ij}^{\mathrm{obs}})
 \end{cases}
 $$
 
-When $g_{ij}=1$, the response contributes a gate probability and a follow up factor. When $g_{ij}=0$, it contributes only the probability of a negative gate. The second case never requires evaluating a density at an unrecorded follow up value.
+When $g_{ij}=1$, the record contributes a gate factor and a follow-up factor. When $g_{ij}=0$, it contributes only the negative-gate probability. The second case never evaluates a density at an unrecorded follow-up value.
 
-## Working through two annotation records
-
-Suppose the predicted affirmative gate probability is $.70$. For an affirmative gate with follow up category 6, suppose the conditional probability of category 6 is $.25. The joint contribution is
+The same factorization can be written as
 
 $$
-(.70)(.25)=.175.
+f_{G,Y}(g_{ij},y_{ij}^{\mathrm{obs}})
+=
+\left[\pi_{ij}f_Y(y_{ij}\mid\phi_{ij})\right]^{g_{ij}}
+(1-\pi_{ij})^{1-g_{ij}},
 $$
 
-For a negative gate, the contribution is
+where the follow-up term is meaningful only for records on which the branch is observed. This expression describes a future branch-bearing analysis; it is not evaluated on the present extract.
 
-$$
-1-.70=.30.
-$$
+## Checking only the fitted gate
 
-No follow up factor appears in the second calculation. Substituting a numerical zero for the blank would instead assert that the annotator gave the lowest follow up response. The protocol did not produce that event.
-
-The two cases can be calculated with a small function.
+The following posterior predictive calculation uses the audited binary gate model. It simulates no follow-up values.
 
 ```{r}
-gated_log_probability <- function(gate, gate_probability, follow_probability = NA) {
-  if (gate == 1) {
-    log(gate_probability) + log(follow_probability)
-  } else {
-    log1p(-gate_probability)
-  }
-}
+#| label: compute-uds-gate-ppc
 
-affirmative <- gated_log_probability(
-  gate = 1,
-  gate_probability = 0.70,
-  follow_probability = 0.25
+set.seed(20261103L)
+gate_ppc <- vapply(
+  seq_len(nrow(uds_cache$population_draws)),
+  function(draw) {
+    eta <-
+      uds_cache$population_draws[draw, "alpha"] +
+      uds_cache$item_effect_draws[draw, uds$item_index] +
+      uds_cache$annotator_effect_draws[draw, uds$annotator_index]
+    mean(stats::rbinom(
+      nrow(uds),
+      size = 1,
+      prob = stats::plogis(eta)
+    ))
+  },
+  numeric(1)
+)
+observed_gate_rate <- mean(uds$natural_parts)
+gate_interval <- stats::quantile(
+  gate_ppc,
+  c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
 )
 
-negative <- gated_log_probability(
-  gate = 0,
-  gate_probability = 0.70
+stopifnot(
+  observed_gate_rate >= gate_interval[[1]],
+  observed_gate_rate <= gate_interval[[3]]
 )
 
-exp(c(affirmative = affirmative, negative = negative))
+data.frame(
+  observed = observed_gate_rate,
+  predictive_lower = gate_interval[[1]],
+  predictive_median = gate_interval[[2]],
+  predictive_upper = gate_interval[[3]]
+)
 ```
 
-The function requires a follow up probability only after an affirmative gate. This mirrors the instrument rather than filling a rectangular response column before the model is defined.
+```{r}
+#| label: plot-uds-gate-ppc
+#| fig-width: 5.8
+#| fig-height: 3.6
+#| fig-cap: "Posterior predictive distribution of the observed natural-parts gate rate. The vertical line marks the released rate."
 
-## The follow up target is conditional
+ggplot2::ggplot(data.frame(gate_rate = gate_ppc), ggplot2::aes(gate_rate)) +
+  ggplot2::geom_histogram(
+    bins = 25,
+    fill = "grey75",
+    color = "white",
+    linewidth = 0.2
+  ) +
+  ggplot2::geom_vline(
+    xintercept = observed_gate_rate,
+    color = "#2B6F8A",
+    linewidth = 0.9
+  ) +
+  ggplot2::labs(
+    x = "Replicated natural-parts yes rate",
+    y = "Draws"
+  ) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
 
-An average of observed follow up responses describes cases that passed the gate. Formally, it estimates a quantity such as
+This check supports the gate component at the overall-rate level. It supplies no evidence about the conditional branches because no branch response was simulated or scored.
+
+## The follow-up target is conditional
+
+An average of observed yes-branch responses would describe cases that passed the gate:
 
 $$
-E[Y_{ij}\mid G_{ij}=1].
+\mathbb{E}[Y_{ij}\mid G_{ij}=1].
 $$
 
-It does not estimate an unconditional property across all predicate nodes unless the model defines what part similarity means when an annotator has rejected the premise that the situation has natural parts. The conditioning is part of the linguistic target.
+It would not estimate an unconditional property over all predicate nodes unless the model defined what the follow-up means when an annotator rejects the premise that natural parts exist. Replacing an undisplayed part-similarity response with zero would merge two events: rejecting the gate and passing the gate while selecting the scale's lowest response.
 
-For instance, replacing an undisplayed part-similarity response with zero would assert that the parts are maximally dissimilar even though that annotator answered that there were no natural parts to compare. The instrument does not license that assertion.
+The gate and a future follow-up model might share item or annotator quantities. For instance, an item that often passes the gate might also tend to receive a particular conditional response. But such dependence requires raw branch-bearing records, enough passed gates, a reconciled response scale, and a new recovery study. The present gate fit cannot identify it.
 
-## Dependence still belongs in the joint model
+## Separating protocol absence from stochastic missingness
 
-The gate and follow up can share item and annotator quantities introduced on the preceding pages. An item that often passes the gate may also tend to receive high conditional ratings. One annotator may affirm more gates and use higher follow up categories.
+A rectangular data table may store `NA` for an undisplayed follow-up. The joint model, not the storage symbol, determines what that `NA` means. Protocol absence differs from the missing intended measurements discussed in [missingness mechanisms](../missing-data/missingness-mechanisms.qmd): here the instrument defines no follow-up response after the incompatible gate value.
 
-Representing such dependence is a later modeling choice within the full joint model. It requires enough affirmative gates to inform the follow up component. If very few responses pass, a rich dependence structure may be weakly identified even when the gate itself is estimated precisely.
-
-## Checking the complete response process
-
-A predictive check should reproduce the gate rate and the distribution of follow up responses among affirmative gates. It should also retain item and annotator labels so that systematic failures are not hidden by an overall histogram.
-
-Matching only the observed follow up distribution leaves the selection step unchecked. A model could predict conditional ratings well for the small set of passed gates while badly predicting which items enter that set.
-
-## A skipped response is not a zero
-
-Protocol-generated blanks must not be replaced with numerical zeros. Doing so merges two events: the annotator rejected the gate, and the annotator passed the gate but selected the lowest follow up value.
-
-Retain the gate variable and write the observed response contribution conditionally. A rectangular table can still store `NA` in the follow up column. The joint model, rather than the storage format, determines what that `NA` means.
+The blocked measurements are part similarity, part duration, whole-situation duration, dynamicity, and raw confidence. No numerical claim about their distributions, associations, or fitted values follows from this page.
 
 ::: {.callout-note title="Check the gate"}
 1. Which factor contributes when $g_{ij}=0$?
-2. What population does $E[Y_{ij}\mid G_{ij}=1]$ describe?
-3. Why is a protocol generated blank different from a recorded zero?
-4. Which two distributions must a predictive check reproduce?
-5. Why can a low gate rate weaken the follow up model?
+2. What population does $\mathbb{E}[Y_{ij}\mid G_{ij}=1]$ describe?
+3. Why is a protocol-generated blank different from a recorded zero?
+4. What does the gate-rate predictive check leave untested?
+5. What evidence would a branch model require?
 :::
 
-A model for gated annotations gives negative gates a gate probability and affirmative gates both a gate probability and a conditional follow up factor. It preserves the conditional meaning of the follow up rather than treating absence as a low value. Before interpreting the full model, we must check whether its parameters can be [recovered from data generated under the model](parameter-recovery.qmd).
+A gated likelihood gives negative gates one gate factor and affirmative gates both a gate factor and a conditional follow-up factor. The observed UDS extract supports the first component only. Keeping the second component symbolic preserves the logic of the instrument without inventing data.
+
+Previous: [Measuring natural-parts judgments](uds-measurement-model.qmd)

@@ -1,218 +1,219 @@
 ---
 title: "Distance and scaling"
+execute:
+  cache: false
 ---
 
-The input matrix tells us which measurements describe each linguistic object. It does not yet say how a difference of 100 Hz in an F1 estimate should be combined with a difference of 20 ms in vowel duration. A distance calculation must turn those columnwise acoustic differences into one comparison. We have already used [centering](../regression-models/centering-predictors.qmd) to change a predictor's reference point. We now add scaling because distance depends on both origins and units.
+The [Peterson-Barney table introduced on the preceding page](representing-objects.qmd) gives F1 and F2 in hertz. A distance calculation must state how those two measurements become one comparison. Here we compare raw hertz, global standardization, and a speaker-relative representation before fixing the geometry used on later pages.
 
-[**Euclidean distance**](https://online.stat.psu.edu/stat505/Lesson14) and the scaling of the columns jointly determine the geometry of the feature space. Both are assumptions about which numerical differences should count as comparable. In a vowel analysis, this geometry compares acoustic measurements; it does not itself define a phonological contrast.
+## Loading the rows and constructing three geometries
 
-## Defining Euclidean distance
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
 
-For two rows $\mathbf{x}_i$ and $\mathbf{x}_j$ with $p$ features, Euclidean distance is
+expected_columns <- c(
+  "type", "sex", "speaker", "vowel", "repetition",
+  "f0", "f1", "f2", "f3"
+)
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  identical(names(pb52), expected_columns),
+  all(table(pb52$speaker) == 20L)
+)
+
+speaker_labels <- c(c = "Children", m = "Men", w = "Women")
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    ),
+    speaker_type = factor(
+      speaker_labels[as.character(type)],
+      levels = c("Men", "Women", "Children")
+    ),
+    global_z_f1 = as.numeric(scale(f1)),
+    global_z_f2 = as.numeric(scale(f2))
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+representations <- list(
+  raw_hz = as.matrix(vowels[, c("f1", "f2")]),
+  global_z = as.matrix(vowels[, c("global_z_f1", "global_z_f2")]),
+  within_speaker_z = as.matrix(vowels[, c("z_f1", "z_f2")])
+)
+
+speaker_check <- vowels |>
+  dplyr::group_by(speaker) |>
+  dplyr::summarise(
+    mean_z_f1 = mean(z_f1),
+    mean_z_f2 = mean(z_f2),
+    sd_z_f1 = stats::sd(z_f1),
+    sd_z_f2 = stats::sd(z_f2),
+    .groups = "drop"
+  )
+
+stopifnot(
+  max(abs(speaker_check$mean_z_f1)) < 1e-12,
+  max(abs(speaker_check$mean_z_f2)) < 1e-12,
+  max(abs(speaker_check$sd_z_f1 - 1)) < 1e-12,
+  max(abs(speaker_check$sd_z_f2 - 1)) < 1e-12
+)
+```
+
+## Euclidean distance
+
+For two rows $\mathbf{x}_i$ and $\mathbf{x}_{i'}$ with $p$ features, [**Euclidean distance**](https://online.stat.psu.edu/stat505/Lesson14) is
 
 $$
-d(\mathbf{x}_i,\mathbf{x}_j)
+d(\mathbf{x}_i,\mathbf{x}_{i'})
 =
 \sqrt{
 \sum_{m=1}^{p}
-(x_{im}-x_{jm})^2
+(x_{im}-x_{i'm})^2
 }.
 $$
 
-The calculation has three steps. Subtract the values within each column, square the differences, and take the square root of their sum.
+Subtracting within columns keeps the comparison feature-specific. Squaring makes positive and negative differences contribute in the same direction, and adding gives an axis-aligned geometry. The units of that geometry come from the feature transformation.
 
-Squaring makes positive and negative differences contribute in the same direction. The final square root returns the distance to the units of the coordinate system, though a system with several differently measured columns has no single physical unit.
-
-## Calculating one raw distance
-
-Suppose two speakers have feature vectors
+For the main representation, we standardize within speaker:
 
 $$
-\mathbf{x}_A=(1,4)
-$$
-
-and
-
-$$
-\mathbf{x}_B=(3,5).
-$$
-
-Their columnwise differences are $1-3=-2$ and $4-5=-1$. Thus,
-
-$$
-\begin{aligned}
-d(\mathbf{x}_A,\mathbf{x}_B)
-&=
-\sqrt{(1-3)^2+(4-5)^2}\\
-&=
-\sqrt{(-2)^2+(-1)^2}\\
-&=
-\sqrt{4+1}\\
-&=
-\sqrt{5}\\
-&\approx2.24.
-\end{aligned}
-$$
-
-The first feature contributes four squared units, while the second contributes one. The first difference thus has four times the influence on squared distance.
-
-## Examining the unit problem
-
-Suppose, only for a unit check, that one feature is a 1 to 5 self-reported speaking-frequency rating and another is an annual corpus token count. Two speakers differ by one rating point and 1,000 tokens. Their squared contributions are
-
-$$
-1^2=1
-$$
-
-and
-
-$$
-1000^2=1{,}000{,}000.
-$$
-
-The token-count column dominates the distance. If the same counts were recorded in thousands of tokens, the numerical difference would be 1 and its squared contribution would also be 1. The learned geometry would change even though the observations did not.
-
-Raw Euclidean distance treats one numerical unit on every column as directly comparable. A variable measured on a numerically larger scale can thus dominate the distance.
-
-## Standardizing the columns
-
-For feature $m$, let $\bar{x}_m$ and $s_m$ be its sample mean and sample standard deviation. The standardized value is
-
-$$
-z_{im}
+z_{isj}
 =
-\frac{x_{im}-\bar{x}_m}{s_m}.
+\frac{F_{isj}-\bar F_{sj}}{s_{sj}},
+\qquad j\in\{1,2\},
 $$
 
-After this transformation, the observed column has sample mean zero and sample standard deviation one. A one-unit difference now means one observed sample standard deviation on that feature.
-
-Consider three speaking ratings:
+where $\bar F_{sj}$ and $s_{sj}$ are the mean and sample standard deviation across speaker $s$'s `r unique(as.integer(table(vowels$speaker)))` tokens. Distance becomes
 
 $$
-1,\ 3,\ 5.
-$$
-
-Their mean is 3. Their sample standard deviation is 2, since
-
-$$
-s
+d(i,i')
 =
 \sqrt{
-\frac{(1-3)^2+(3-3)^2+(5-3)^2}{3-1}
-}
-=
-2.
-$$
-
-The standardized values are
-
-$$
-\frac{1-3}{2}=-1,
-\qquad
-\frac{3-3}{2}=0,
-\qquad
-\frac{5-3}{2}=1.
-$$
-
-The original four-point range has become a two-standard-deviation range. Relative position is retained, but the column unit has changed.
-
-## Recalculating a comparison after scaling
-
-Suppose two speakers differ by 1,000 tokens in a column whose sample standard deviation is 10,000. Their standardized difference is
-
-$$
-\frac{1000}{10000}=0.1,
-$$
-
-so its squared contribution is
-
-$$
-0.1^2=0.01.
-$$
-
-If the one-point rating difference is one full rating standard deviation, it contributes $1^2=1$. After standardization, the rating difference contributes more to Euclidean distance than the token difference.
-
-The underlying observations have not changed. The analysis has changed what counts as a comparable difference.
-
-## Implementing the transformation and distance
-
-In R, `scale()` centers and standardizes each column.
-
-```{r}
-#| eval: false
-
-X_scaled <- scale(
-  X,
-  center = TRUE,
-  scale = TRUE
-)
-
-colMeans(X_scaled)
-apply(X_scaled, 2, sd)
-```
-
-The function `dist()` computes Euclidean distances among rows by default.
-
-```{r}
-#| eval: false
-
-distance_matrix <- dist(
-  X_scaled,
-  method = "euclidean"
-)
-
-as.matrix(distance_matrix)
-```
-
-The matrix is symmetric because $d(\mathbf{x}_i,\mathbf{x}_j)=d(\mathbf{x}_j,\mathbf{x}_i)$. Its diagonal is zero because every row has zero distance from itself.
-
-## Estimating scaling within training data
-
-During held-out evaluation, column means and standard deviations are fitted quantities. Estimate them from the training rows:
-
-$$
-\bar{x}^{\mathrm{train}}_m
-\qquad\text{and}\qquad
-s^{\mathrm{train}}_m.
-$$
-
-Apply those values to a test row:
-
-$$
-z^{\mathrm{test}}_{im}
-=
-\frac{
-x^{\mathrm{test}}_{im}-\bar{x}^{\mathrm{train}}_m
-}{
-s^{\mathrm{train}}_m
+(z_{i1}-z_{i'1})^2+(z_{i2}-z_{i'2})^2
 }.
 $$
 
-Computing scaling from the complete dataset would allow test rows to influence the geometry used to evaluate them. Computing separate test means would put training and test rows in different coordinate systems.
+The transformation asks about relative position inside each observed speaker's vowel space. It is a teaching choice, not a preprocessing step used by Peterson and Barney.
 
-Estimating the scaling transformation from held-out rows is [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage). Out-of-sample evaluation requires one coordinate system estimated without those rows.
+## One observed token under three scales
 
-## Equal variance is not equal importance
+We select the observed token nearest the center of the speaker-relative representation, then find its nearest other token independently in each geometry. Intended vowel and speaker type enter only after the neighbors have been found.
 
-Standardization gives every column observed variance one. It does not make the columns equally reliable, theoretically important, or independent.
+```{r}
+pairwise_squared_distance <- function(x, centers) {
+  x2 <- rowSums(x^2)
+  c2 <- rowSums(centers^2)
+  pmax(outer(x2, c2, "+") - 2 * tcrossprod(x, centers), 0)
+}
 
-If two columns are near duplicates, their shared measurement effectively enters the distance twice. If one rating is noisy, standardization still gives it the same observed variance as a reliable acoustic measure. These are representation choices that scaling cannot diagnose.
+reference_row <- which.min(rowSums(
+  sweep(
+    representations$within_speaker_z,
+    2,
+    colMeans(representations$within_speaker_z),
+    "-"
+  )^2
+))
 
-Standardization is a defensible convention when differences of one sample standard deviation should be comparable across features. The analysis should state that convention and check whether its conclusions depend on it.
+nearest_neighbor <- lapply(representations, function(x) {
+  squared <- pairwise_squared_distance(x, x)
+  diag(squared) <- Inf
+  max.col(-squared, ties.method = "first")
+})
 
-## Euclidean distance makes a linguistic assumption
+distance_reference <- dplyr::bind_rows(lapply(
+  names(representations),
+  function(name) {
+    neighbor <- nearest_neighbor[[name]][reference_row]
+    data.frame(
+      representation = name,
+      reference_row = reference_row,
+      reference_token = vowels$token_id[reference_row],
+      neighbor_row = neighbor,
+      neighbor_token = vowels$token_id[neighbor],
+      distance = sqrt(sum(
+        (representations[[name]][reference_row, ] -
+           representations[[name]][neighbor, ])^2
+      )),
+      same_intended_vowel =
+        vowels$vowel[reference_row] == vowels$vowel[neighbor]
+    )
+  }
+))
 
-Euclidean distance treats feature differences as continuous, symmetric, and additive after scaling. A difference of one unit has the same cost in either direction. Separate squared contributions are added across columns.
+knitr::kable(distance_reference, digits = 4)
+```
 
-Ordinal ratings, binary-coded categories, or strongly dependent acoustic measurements may not satisfy that interpretation. A poor clustering under Euclidean distance does not show that the objects lack structure. It may show that the declared geometry does not represent the relevant linguistic comparison.
+The reference row is `r reference_row`. Its nearest observed neighbor changes from row `r distance_reference$neighbor_row[distance_reference$representation == "raw_hz"]` in raw hertz to row `r distance_reference$neighbor_row[distance_reference$representation == "within_speaker_z"]` after within-speaker standardization. Scaling has changed the neighborhood without changing a token's measurements.
+
+## Comparing the induced neighborhoods
+
+```{r}
+distance_summary <- dplyr::bind_rows(lapply(
+  names(representations),
+  function(name) {
+    nearest <- nearest_neighbor[[name]]
+    data.frame(
+      representation = name,
+      same_vowel_rate = mean(vowels$vowel == vowels$vowel[nearest]),
+      same_speaker_type_rate = mean(vowels$type == vowels$type[nearest])
+    )
+  }
+))
+
+knitr::kable(distance_summary, digits = 3)
+```
+
+Under raw hertz, `r scales::percent(distance_summary$same_vowel_rate[distance_summary$representation == "raw_hz"], accuracy = 0.1)` of nearest neighbors share intended-vowel metadata and `r scales::percent(distance_summary$same_speaker_type_rate[distance_summary$representation == "raw_hz"], accuracy = 0.1)` share speaker type. In the within-speaker geometry, those rates are `r scales::percent(distance_summary$same_vowel_rate[distance_summary$representation == "within_speaker_z"], accuracy = 0.1)` and `r scales::percent(distance_summary$same_speaker_type_rate[distance_summary$representation == "within_speaker_z"], accuracy = 0.1)`, respectively. This post hoc comparison suggests that the speaker-relative geometry reduces a salient speaker-type organization while increasing alignment with the elicitation labels.
+
+```{r}
+#| fig-width: 8.2
+#| fig-height: 3.3
+#| fig-alt: "Within-speaker standardized F2 by F1 measurements for Peterson and Barney tokens, separated into panels for men, women, and children."
+
+ggplot2::ggplot(vowels, ggplot2::aes(x = z_f2, y = z_f1)) +
+  ggplot2::geom_point(color = "grey25", alpha = 0.28, size = 0.7) + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~speaker_type, nrow = 1) +
+  ggplot2::scale_x_reverse() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::labs(
+    x = "Within-speaker standardized F2",
+    y = "Within-speaker standardized F1"
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    strip.background = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(face = "plain")
+  )
+```
+
+## The prediction information set
+
+Within-speaker standardization uses a speaker's complete unlabeled 20-token panel to determine that speaker's mean and standard deviation. The later speaker-blocked analyses thus target a new speaker whose complete calibration panel is available. No held-out token estimates a centroid or mixture component, but held-out measurements do determine their speaker's coordinate system.
+
+This distinction follows the [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd#the-prediction-information-set). The analysis does not predict one isolated token from a speaker with no calibration data. It also leaves dependence among the 20 transformed rows unmodeled.
+
+## Scaling does not establish relevance
+
+Standardization gives each chosen coordinate a comparable observed spread. It does not make F1 and F2 equally reliable, independent, or exhaustive. A duplicated feature would receive double influence, while an omitted dynamic or F3 measurement receives none.
+
+Thus, Euclidean distance remains conditional on the representation. A high-quality clustering under this geometry may summarize recurring F1-F2 regions, but it cannot establish that this geometry captures every linguistically relevant relation.
 
 ## Checking the geometry
 
-1. What is the Euclidean distance between $(0,0)$ and $(3,4)$?
-2. Why does a difference of 1,000 dominate a difference of 1 before scaling?
-3. What does a one-unit difference mean after standardization?
-4. Why must test rows use training means and standard deviations?
-5. How can two duplicate columns receive too much combined influence even after each is standardized?
-6. Which assumptions does Euclidean distance make about feature differences?
+1. Which observed token is nearest to row `r reference_row` under each representation?
+2. Why can the nearest neighbor change when the acoustic measurements do not?
+3. What does one unit mean after within-speaker standardization?
+4. Which information from a held-out speaker defines the validation coordinate system?
+5. Why do post-fit intended-vowel matches not violate the LSR?
 
-Euclidean distance combines columnwise differences under a declared coordinate system. Standardization replaces raw units with observed standard-deviation units, but it does not decide which acoustic or behavioral measurements are reliable or theoretically relevant. The [next page](k-means.qmd) uses this geometry to assign observations to learned centroids.
+Euclidean distance combines feature differences under a declared coordinate system. The [next page](k-means.qmd) uses the speaker-relative geometry to estimate centroids without using the intended-vowel labels.

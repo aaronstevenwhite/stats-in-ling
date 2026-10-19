@@ -1,12 +1,72 @@
 ---
 title: "Validation without outcome labels"
+execute:
+  cache: false
 ---
 
-The earlier chapters on [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd) and [cross-validation](../model-criticism-and-prediction/cross-validation.qmd) assumed an observed response. A clustering has no observed cluster label that the fitting procedure is meant to predict. So what, exactly, can be held out? We need a quantity that learned structure can predict for rows excluded from fitting.
+A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token.
 
-For K-means, the fitted centroids predict each held-out row by its nearest training centroid. The squared distance to that centroid is the held-out nearest-centroid loss. It asks whether centroids learned from training objects provide a compact representation of new objects under the same distance and scaling.
+## Reconstructing the rows and speaker folds
 
-## Predicting a held-out row
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+speaker_labels <- c(c = "Children", m = "Men", w = "Women")
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    ),
+    speaker_type = factor(
+      speaker_labels[as.character(type)],
+      levels = c("Men", "Women", "Children")
+    )
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+seed <- 1952L
+
+set.seed(seed)
+speaker_folds <- vowels |>
+  dplyr::distinct(speaker, type, sex, speaker_type) |>
+  dplyr::arrange(type, speaker) |>
+  dplyr::group_by(type) |>
+  dplyr::mutate(fold = sample(rep(1:5, length.out = dplyr::n()))) |>
+  dplyr::ungroup()
+
+vowels <- vowels |>
+  dplyr::left_join(
+    speaker_folds |> dplyr::select(speaker, fold),
+    by = "speaker"
+  )
+
+stopifnot(
+  dplyr::n_distinct(speaker_folds$speaker) == 76L,
+  all(table(speaker_folds$type, speaker_folds$fold) > 0),
+  all(tapply(vowels$fold, vowels$speaker, function(x) {
+    length(unique(x)) == 1L
+  }))
+)
+```
+
+The folds are balanced within the paper's men, women, and children speaker groups. All rows from one speaker stay in one fold.
+
+## Predicting a held-out token
 
 Let
 
@@ -16,10 +76,10 @@ $$
 \widehat{\boldsymbol{\mu}}^{\mathrm{train}}_K
 $$
 
-be centroids estimated from the training rows. A held-out row $\mathbf{x}_i$ is assigned to the nearest fixed centroid:
+be centroids estimated without the held-out speaker. Token $i$ receives the nearest fixed center:
 
 $$
-\widehat{z}_i
+\widehat z_i
 =
 \underset{k\in\{1,\ldots,K\}}{\operatorname{argmin}}
 \left\lVert
@@ -28,7 +88,7 @@ $$
 \right\rVert^2.
 $$
 
-Its loss is
+Its squared reconstruction loss is
 
 $$
 L_i
@@ -40,222 +100,132 @@ L_i
 \right\rVert^2.
 $$
 
-The row does not update the centroids before it is scored. It is represented by structure learned from other rows.
+The held-out row does not update a centroid before it is scored.
 
-## Working through one new speaker
+## Keeping the new unit new
 
-Suppose two training centroids are
-
-$$
-\widehat{\boldsymbol{\mu}}_1=(0,1)
-\qquad\text{and}\qquad
-\widehat{\boldsymbol{\mu}}_2=(5,5).
-$$
-
-A held-out speaker has scaled profile
-
-$$
-\mathbf{x}_{\mathrm{test}}=(1,2).
-$$
-
-Its squared distance to centroid 1 is
-
-$$
-(1-0)^2+(2-1)^2
-=
-1+1
-=
-2.
-$$
-
-Its squared distance to centroid 2 is
-
-$$
-(1-5)^2+(2-5)^2
-=
-16+9
-=
-25.
-$$
-
-The predicted assignment is cluster 1, and the held-out nearest-centroid loss is 2. The assignment is part of producing the prediction. The evaluation target is the numerical reconstruction loss, since no observed cluster label is available. Thus, the calculation asks whether a training centroid compactly represents this profile; it does not ask whether the speaker's true linguistic type is cluster 1.
-
-## Keeping preprocessing inside the training fold
-
-Suppose the raw features require standardization. For each validation split, estimate
-
-$$
-\bar{x}^{\mathrm{train}}_m
-\qquad\text{and}\qquad
-s^{\mathrm{train}}_m
-$$
-
-from the training rows only. Transform both sets using those training values:
-
-$$
-z^{\mathrm{train}}_{im}
-=
-\frac{x^{\mathrm{train}}_{im}-\bar{x}^{\mathrm{train}}_m}
-{s^{\mathrm{train}}_m}
-$$
-
-and
-
-$$
-z^{\mathrm{test}}_{im}
-=
-\frac{x^{\mathrm{test}}_{im}-\bar{x}^{\mathrm{train}}_m}
-{s^{\mathrm{train}}_m}.
-$$
-
-Then fit centroids to the transformed training rows and score transformed test rows against those fixed centroids.
-
-This sequence prevents [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage). Test rows cannot influence the origin, scale, or centers used to evaluate them.
-
-## Implementing one validation split
+The relevant separation rule comes from [grouped cross-validation](../model-criticism-and-prediction/grouped-cross-validation.qmd): a test speaker cannot contribute another token to training. The following helper computes each held-out token's nearest training centroid.
 
 ```{r}
-#| eval: false
+pairwise_squared_distance <- function(x, centers) {
+  x2 <- rowSums(x^2)
+  c2 <- rowSums(centers^2)
+  pmax(outer(x2, c2, "+") - 2 * tcrossprod(x, centers), 0)
+}
 
-train_center <- colMeans(X[train, , drop = FALSE])
-train_scale <- apply(
-  X[train, , drop = FALSE],
-  2,
-  sd
-)
+nearest_centroid <- function(x, centers) {
+  squared <- pairwise_squared_distance(x, centers)
+  assignment <- max.col(-squared, ties.method = "first")
+  data.frame(
+    assignment = assignment,
+    squared_distance = squared[cbind(seq_len(nrow(x)), assignment)]
+  )
+}
 
-X_train <- sweep(
-  X[train, , drop = FALSE],
-  2,
-  train_center,
-  "-"
-)
+token_loss <- list()
+for (fold in 1:5) {
+  train <- vowels$fold != fold
+  test <- !train
 
-X_train <- sweep(
-  X_train,
-  2,
-  train_scale,
-  "/"
-)
+  stopifnot(length(intersect(
+    unique(vowels$speaker[train]),
+    unique(vowels$speaker[test])
+  )) == 0L)
 
-X_test <- sweep(
-  X[test, , drop = FALSE],
-  2,
-  train_center,
-  "-"
-)
+  for (k in 2:15) {
+    set.seed(seed + 100L * fold + k)
+    fit <- stats::kmeans(
+      X[train, , drop = FALSE],
+      centers = k,
+      nstart = 100L,
+      iter.max = 200L,
+      algorithm = "Hartigan-Wong"
+    )
+    predicted <- nearest_centroid(X[test, , drop = FALSE], fit$centers)
 
-X_test <- sweep(
-  X_test,
-  2,
-  train_scale,
-  "/"
-)
-```
-
-Fit the K-means model on `X_train`.
-
-```{r}
-#| eval: false
-
-set.seed(214)
-
-fit_train <- kmeans(
-  X_train,
-  centers = K,
-  nstart = 50
-)
-```
-
-Compute squared distance from every test row to every training centroid.
-
-```{r}
-#| eval: false
-
-squared_distance <- sapply(
-  seq_len(K),
-  function(k) {
-    rowSums(
-      sweep(
-        X_test,
-        2,
-        fit_train$centers[k, ],
-        "-"
-      )^2
+    token_loss[[length(token_loss) + 1L]] <- data.frame(
+      speaker = vowels$speaker[test],
+      fold = fold,
+      k = k,
+      intended_vowel = vowels$vowel[test],
+      assigned_cluster = predicted$assignment,
+      squared_reconstruction_loss = predicted$squared_distance
     )
   }
-)
+}
 
-test_loss <- apply(
-  squared_distance,
-  1,
-  min
-)
+token_loss <- dplyr::bind_rows(token_loss)
+speaker_loss <- token_loss |>
+  dplyr::group_by(speaker, fold, k) |>
+  dplyr::summarise(
+    mean_squared_reconstruction_loss =
+      mean(squared_reconstruction_loss),
+    .groups = "drop"
+  )
+
+loss_summary <- speaker_loss |>
+  dplyr::group_by(k) |>
+  dplyr::summarise(
+    speakers = dplyr::n(),
+    mean_speaker_loss = mean(mean_squared_reconstruction_loss),
+    standard_error_across_speakers =
+      stats::sd(mean_squared_reconstruction_loss) / sqrt(dplyr::n()),
+    .groups = "drop"
+  )
+
+stopifnot(all(loss_summary$speakers == 76L))
+knitr::kable(loss_summary, digits = 3)
 ```
 
-The vector `test_loss` retains one held-out loss per row. Keeping these pointwise values allows paired model comparisons and group-level aggregation.
+Each speaker contributes one mean loss at each $K$, so speakers receive equal weight in the displayed uncertainty summary.
 
-## Comparing candidate values of $K$
+```{r}
+#| fig-width: 7
+#| fig-height: 4.2
+#| fig-alt: "Mean held-out speaker reconstruction loss across two through fifteen training centroids, with standard-error bars across speakers."
 
-The same held-out row can receive loss under $K=2$ and $K=3$. Define the paired difference
+ggplot2::ggplot(loss_summary, ggplot2::aes(
+  x = k, y = mean_speaker_loss
+)) +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(
+      ymin = mean_speaker_loss - standard_error_across_speakers,
+      ymax = mean_speaker_loss + standard_error_across_speakers
+    ),
+    width = 0,
+    color = "grey45",
+    linewidth = 0.45
+  ) +
+  ggplot2::geom_line(color = "#2B6CB0", linewidth = 0.7) +
+  ggplot2::geom_point(color = "#2B6CB0", size = 1.7) +
+  ggplot2::scale_x_continuous(breaks = c(seq(2, 14, by = 2), 15)) + # dqr-allow: algorithm-setting
+  ggplot2::labs(
+    x = "Number of training centroids",
+    y = "Held-out mean squared distance"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
 
-$$
-d_i
-=
-L_{i,K=3}-L_{i,K=2}.
-$$
+Held-out mean loss is `r round(loss_summary$mean_speaker_loss[loss_summary$k == 10], 3)` for ten centroids and `r round(loss_summary$mean_speaker_loss[loss_summary$k == 15], 3)` for fifteen. The decline shows that more centers represent the complete held-out panels more compactly under this loss.
 
-A negative value favors three centroids for row $i$. A positive value favors two.
+## Why reconstruction loss does not select a category count
 
-Suppose one row has loss 2.0 under $K=2$ and 1.5 under $K=3$. Its difference is
+A codebook with $K+1$ centers can reproduce a $K$-center codebook by duplicating one center. Its population reconstruction loss can thus decrease or remain constant as capacity increases. Finite training samples and local optimization may make a validation curve wiggle, but the target still rewards added representational capacity.
 
-$$
-d_i=1.5-2.0=-0.5.
-$$
+Held-out loss can compare how efficiently declared codebook sizes represent new panels, or it can be paired with a separately declared complexity budget. It does not estimate a phonological inventory by itself.
 
-The third centroid reduces nearest-centroid loss for this row by half a squared unit. The aggregate comparison should summarize such paired differences at the sampling unit required by the claim.
+## The calibration-panel target
 
-## Why held-out loss does not reveal a category count
+The within-speaker scores were computed from each speaker's complete unlabeled panel before the split. Thus, held-out speakers influence their own normalization but do not influence the fitted centroids. This [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd#the-prediction-information-set) may be appropriate when a complete acoustic calibration panel is available. It is unavailable for a first isolated token.
 
-Now, you might wonder whether we can simply choose the $K$ with the smallest held-out nearest-centroid loss. That rule retains the same flexibility problem we saw in the training loss, though held-out evaluation still tells us whether the estimated centers transfer to new rows.
-
-At the population level, a codebook with $K+1$ centroids can reproduce a $K$-centroid codebook by duplicating one center. Its best possible nearest-centroid reconstruction loss can thus only decrease or stay fixed as capacity grows. Finite training samples and local optimization may make an empirical validation curve wiggle, but the loss still rewards additional representational capacity.
-
-Held-out loss can compare how efficiently declared codebook sizes represent new rows, or it can be combined with a separately stated complexity budget. It does not, by itself, estimate the number of phonological categories or speaker types in the population.
-
-## Matching the split to the new unit
-
-If each row is one independent participant and the target is another participant from the represented population, row-level folds may be appropriate. If several rows come from one household, site, or speaker, those related rows should move together whenever that group must be new. This is the distinction among row, sampling, and prediction units developed in [units of assignment](../experimental-design/units-of-assignment.qmd) and [grouped cross-validation](../model-criticism-and-prediction/grouped-cross-validation.qmd).
-
-Otherwise, training data may contain another record from the supposedly held-out group. The score then evaluates another record from a represented group.
-
-The absence of response labels does not remove the need to define the **prediction unit** that must be new at evaluation time.
-
-## Repeated folds and sampling units
-
-Repeating cross-validation across seeds can reveal sensitivity to the split. It does not create new speakers. The folds reuse rows, and their training sets overlap.
-
-A t test over 100 seed-level mean losses would make uncertainty shrink because the analyst repeated the computation. It would not represent variation across newly sampled linguistic units.
-
-Use repeated splits for algorithmic sensitivity. Use pointwise losses, aggregation at the declared group, a group bootstrap, or an explicit sampling model for inferential uncertainty.
-
-## Lower nearest-centroid loss is not category recovery
-
-Lower held-out centroid loss means that training centroids represent new rows more compactly under the declared geometry. It does not show that the clusters correspond to natural speaker types or phonological categories.
-
-External variables withheld from fitting may help interpret the learned assignments. Stability across samples may show that the representation recurs. These checks add evidence, but neither converts a centroid into a linguistic category by definition.
-
-If no independently motivated reference labels are available, the clustering cannot be scored as a classification against an unknown category target. Even when annotations are available, agreement evaluates alignment with those annotations rather than converting them into ground truth by definition. The held-out nearest-centroid target instead evaluates a stated consequence of the centroids without assuming that linguistic categories are known.
+This use of test-panel measurements is deliberate rather than hidden [preprocessing leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage-through-preprocessing). The claim must name the adapted target.
 
 ## Checking the held-out target
 
-1. Which centroid predicts the held-out row $(1,2)$ in the worked example?
-2. Why is its loss 2 rather than 25?
-3. Which means and standard deviations transform the test rows?
-4. What does a negative paired difference $d_i=L_{i,3}-L_{i,2}$ mean?
-5. Why must all rows from one household move together when evaluating a household absent during fitting?
-6. Why do 100 repeated splits not provide 100 independent samples of speakers?
-7. Why does lower held-out nearest-centroid loss not by itself select the number of linguistic categories?
-8. What does lower held-out nearest-centroid loss establish, and what category claim does it not establish?
+1. Why do all rows from a speaker move together?
+2. Which fitted objects exclude the held-out speaker entirely?
+3. What information from the held-out speaker is used for normalization?
+4. Why does lower held-out reconstruction loss favor larger codebooks?
+5. What new-speaker claim does this design not support?
 
-Held-out nearest-centroid loss evaluates whether K-means centroids learned from training rows place excluded rows near a training centroid. The calculation retains K-means geometry, rewards representational capacity, and assigns each row to its nearest center. It evaluates transfer under that loss, not recovery of a linguistic category count. The [next page](gaussian-mixtures.qmd) replaces that geometry with a probability model in which components can have different spreads and every observation receives density from every component.
+Speaker-blocked reconstruction loss evaluates transfer of a centroid representation to complete unseen-speaker panels. The [next page](gaussian-mixtures.qmd) replaces hard nearest-centroid geometry with a probability model that retains component spread and overlap.

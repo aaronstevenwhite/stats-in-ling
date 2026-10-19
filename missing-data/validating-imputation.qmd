@@ -2,140 +2,460 @@
 title: "Validating an imputation procedure"
 ---
 
-The values of naturally missing acoustic estimates are unavailable. If a third-formant estimate was never recovered from the signal, no direct error can compare its imputation with an unseen gold-standard F3. We can still ask a related question: when an available estimate is hidden on purpose, how accurately does the complete procedure reconstruct it?
+The values of the naturally missing Hillenbrand formant cells are unavailable. No direct error can compare their PCA predictions with unseen measurements. We can ask a narrower question: when an available F2 or F3 estimate is hidden on purpose, how accurately does the complete procedure reconstruct it?
 
-**Holdout validation by artificial masking** turns some observed cells into artificial missing cells, fits the imputation without those values, and compares the held-out reconstructions with the values set aside. This applies the earlier [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) to matrix cells. The masking step creates known targets while preserving the rule that a target cannot guide its own prediction.
+**Holdout validation by artificial masking** turns observed cells into artificial missing cells, fits the imputation without those values, and compares their reconstructions with the values set aside. This applies [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) to matrix cells. The masking creates known targets while preserving the rule that a target cannot guide its own prediction.
 
 ## Defining the validation error
 
-Let $O$ be the set of naturally observed cells, and choose a masked subset $M\subset O$. Construct a training matrix in which the cells in $M$ are temporarily replaced by missing values. After fitting the imputation procedure to that matrix, let $\widehat y_{ij}^{(-M)}$ be the reconstructed value for cell $(i,j)$.
-
-Using the [mean squared error introduced earlier](../statistical-inference/mean-squared-error.qmd), mean squared reconstruction error is
+Let $O$ be the naturally observed cells and let $M_r\subset O$ be the cells hidden in mask replicate $r$. After fitting without $M_r$, the reconstruction of cell $(i,j)$ is $\widehat y_{ij}^{(-M_r)}$. Its mean squared reconstruction error is
 
 $$
-\operatorname{MSE}(M)
-=\frac{1}{|M|}
-\sum_{(i,j)\in M}
-\left(y_{ij}-\widehat y_{ij}^{(-M)}\right)^2.
+\operatorname{MSE}(M_r)
+=\frac{1}{|M_r|}
+\sum_{(i,j)\in M_r}
+\left(y_{ij}-\widehat y_{ij}^{(-M_r)}\right)^2.
 $$
 
-The superscript $(-M)$ records that the masked values were not available during fitting. Without this separation, the calculation would measure how well a procedure reproduces values it already saw.
-
-## Working through one masked cell
-
-Consider four tokens with two standardized acoustic measurements.
+The superscript $(-M_r)$ records that the targets did not enter fitting. Because the acoustic columns have different scales, rank selection uses training-standardized error,
 
 $$
-\mathbf{Y}=
-\begin{pmatrix}
-1.0&1.2\\
-2.0&2.1\\
-3.0&2.9\\
-4.0&4.2
-\end{pmatrix}.
+\operatorname{RMSE}_{z}
+=\sqrt{
+  \frac{1}{\sum_r|M_r|}
+  \sum_r\sum_{(i,j)\in M_r}
+  \left(
+    \frac{y_{ij}-\widehat y_{ij}^{(-M_r)}}
+         {\widehat s_j^{(-M_r)}}
+  \right)^2
+},
 $$
 
-Mask the second measurement in row 3. As a simple reference procedure, impute the observed mean of that column. The training column contains $1.2$, $2.1$, and $4.2$, so the imputation is
+where $\widehat s_j^{(-M_r)}$ is estimated after masking. Test results are then reported in hertz separately for F2 and F3.
 
-$$
-\widehat y_{32}^{(-M)}
-=\frac{1.2+2.1+4.2}{3}=2.5.
-$$
+## Loading the matrix and the imputation function
 
-The hidden value is $2.9$, giving squared error
-
-$$
-(2.9-2.5)^2=.16.
-$$
-
-This calculation does not establish that mean imputation is adequate. It shows how masking produces an error whose target was unavailable to the fitting procedure.
-
-## Implementing the mask in base R
+This page runs independently. It reloads the [raw Hillenbrand release introduced earlier](complete-case-analysis.qmd), rebuilds the full acoustic matrix, and defines the same standardized iterative PCA algorithm used on the [preceding page](pca-imputation.qmd).
 
 ```{r}
-acoustic <- matrix(
-  c(1.0, 2.0, 3.0, 4.0, 1.2, 2.1, 2.9, 4.2),
-  nrow = 4,
-  ncol = 2
+#| label: load-hillenbrand-validation
+#| message: false
+#| warning: false
+
+hill <- utils::read.csv(
+  "data/hillenbrand-raw/hillenbrand-raw-formants.csv",
+  check.names = FALSE
 )
 
-mask <- matrix(FALSE, nrow = nrow(acoustic), ncol = ncol(acoustic))
-mask[3, 2] <- TRUE
+acoustic_columns <- c(
+  "duration_ms",
+  "f0_hz",
+  grep(
+    "^f[123]_(steady|time[1-8])_hz$",
+    names(hill),
+    value = TRUE
+  )
+)
+acoustic_matrix <- as.matrix(hill[acoustic_columns])
+storage.mode(acoustic_matrix) <- "double"
 
-truth <- acoustic[mask]
-training <- acoustic
-training[mask] <- NA
+fallible_columns <- acoustic_columns[
+  colSums(is.na(acoustic_matrix)) > 0L
+]
 
-column_mean <- mean(training[, 2], na.rm = TRUE)
-prediction <- column_mean
-squared_error <- (truth - prediction)^2
-
-c(truth = truth, prediction = prediction, squared_error = squared_error)
+stopifnot(
+  nrow(acoustic_matrix) == 1668L,
+  ncol(acoustic_matrix) == 29L,
+  length(fallible_columns) == 14L,
+  sum(is.na(acoustic_matrix)) == 379L
+)
 ```
 
-The same structure can evaluate the iterative PCA imputation from the preceding page. Replace the column mean calculation with the full iterative procedure, fit it to `training`, and retrieve its prediction at `mask`. Centering values, component directions, and every tuning decision must be estimated from `training` rather than from `acoustic`.
+```{r}
+#| label: define-validation-imputation
 
-## Repeating the masking
+pca_impute <- function(
+  x,
+  rank,
+  tolerance = 1e-6,
+  max_iterations = 1000L
+) {
+  x <- as.matrix(x)
+  storage.mode(x) <- "double"
+  missing <- is.na(x)
 
-One masked cell may be unusually easy or difficult to reconstruct. Repeat the procedure across several masks and record an out-of-sample reconstruction error for every eligible observed cell. Retain the cell identities until after the errors have been examined and summarized.
+  center <- colMeans(x, na.rm = TRUE)
+  scale <- vapply(
+    seq_len(ncol(x)),
+    function(column) stats::sd(x[, column], na.rm = TRUE),
+    numeric(1)
+  )
+  stopifnot(
+    all(is.finite(center)),
+    all(is.finite(scale)),
+    all(scale > 0)
+  )
 
-For a small fully observed matrix, one cell can be masked at a time.
+  standardized <- sweep(
+    sweep(x, 2, center, FUN = "-"),
+    2, scale, FUN = "/"
+  )
+  filled <- standardized
+  filled[missing] <- 0
+
+  if (rank == 0L) {
+    reconstructed <- filled
+    iterations <- 0L
+    final_change <- 0
+  } else {
+    final_change <- Inf
+    for (iteration in seq_len(max_iterations)) {
+      decomposition <- base::svd(
+        filled,
+        nu = rank,
+        nv = rank
+      )
+      reconstructed <- decomposition$u %*%
+        diag(decomposition$d[seq_len(rank)], nrow = rank) %*%
+        t(decomposition$v)
+
+      updated <- filled
+      updated[missing] <- reconstructed[missing]
+      final_change <-
+        sum((updated[missing] - filled[missing])^2) /
+        max(sum(filled[missing]^2), .Machine$double.eps)
+      filled <- updated
+
+      if (final_change < tolerance) {
+        break
+      }
+    }
+    iterations <- iteration
+    reconstructed <- filled
+  }
+
+  completed <- sweep(
+    sweep(reconstructed, 2, scale, FUN = "*"),
+    2, center, FUN = "+"
+  )
+  completed[!missing] <- x[!missing]
+
+  list(
+    completed = completed,
+    center = center,
+    scale = scale,
+    iterations = iterations,
+    final_change = final_change,
+    converged = final_change < tolerance || rank == 0L
+  )
+}
+```
+
+## Recreating the disjoint masks
+
+Seeds `20261018` through `20261025` identify eight validation masks, each hiding 5% of observed cells within every fallible column. Seeds `20261026` through `20261029` identify four test masks, each hiding 1.25% per fallible column. Masks are created sequentially so that their targets are disjoint.
 
 ```{r}
-mean_impute_cell <- function(x, row, column) {
-  training <- x
-  truth <- training[row, column]
-  training[row, column] <- NA
-  prediction <- mean(training[, column], na.rm = TRUE)
+#| label: create-hillenbrand-masks
+
+make_mask <- function(
+  data_matrix,
+  eligible_columns,
+  fraction,
+  seed,
+  excluded = matrix(
+    FALSE,
+    nrow(data_matrix),
+    ncol(data_matrix)
+  )
+) {
+  set.seed(seed)
+  mask <- matrix(
+    FALSE,
+    nrow(data_matrix),
+    ncol(data_matrix),
+    dimnames = dimnames(data_matrix)
+  )
+
+  for (column_name in eligible_columns) {
+    column <- match(column_name, colnames(data_matrix))
+    observed_rows <- which(!is.na(data_matrix[, column]))
+    available_rows <- observed_rows[
+      !excluded[observed_rows, column]
+    ]
+    n_mask <- max(1L, floor(fraction * length(observed_rows)))
+    stopifnot(length(available_rows) >= n_mask)
+    selected_rows <- sample(
+      available_rows,
+      n_mask,
+      replace = FALSE
+    )
+    mask[selected_rows, column] <- TRUE
+  }
+
+  mask
+}
+
+validation_repeats <- 8L
+test_repeats <- 4L
+mask_seeds <- 20261018L +
+  seq_len(validation_repeats + test_repeats) - 1L
+
+masks <- vector("list", length(mask_seeds))
+used_cells <- matrix(
+  FALSE,
+  nrow(acoustic_matrix),
+  ncol(acoustic_matrix),
+  dimnames = dimnames(acoustic_matrix)
+)
+
+for (replicate in seq_along(masks)) {
+  fraction <- if (replicate <= validation_repeats) {
+    0.05
+  } else {
+    0.0125
+  }
+  masks[[replicate]] <- make_mask(
+    acoustic_matrix,
+    fallible_columns,
+    fraction,
+    mask_seeds[replicate],
+    excluded = used_cells
+  )
+  used_cells <- used_cells | masks[[replicate]]
+}
+
+validation_union <- Reduce(`|`, masks[seq_len(validation_repeats)])
+test_union <- Reduce(
+  `|`,
+  masks[validation_repeats + seq_len(test_repeats)]
+)
+mask_multiplicity <- Reduce(
+  `+`,
+  lapply(masks, function(mask) 1L * mask)
+)
+
+mask_inventory <- data.frame(
+  split = c("Validation", "Test"),
+  replicates = c(validation_repeats, test_repeats),
+  masked_cells = c(sum(validation_union), sum(test_union))
+)
+
+stopifnot(
+  max(mask_multiplicity) == 1L,
+  !any(validation_union & test_union),
+  all(!is.na(acoustic_matrix[used_cells]))
+)
+
+mask_inventory
+```
+
+Every artificial target is thus an observed value in the source table, and no target appears in two replicates. The split contains `r format(sum(validation_union), big.mark = ",")` validation cells and `r format(sum(test_union), big.mark = ",")` test cells.
+
+## Selecting rank without test leakage
+
+The validation fits remove both the current validation mask and the entire test union. Thus no test value contributes to a validation prediction, a column center or scale, a component direction, or the selected rank.
+
+```{r}
+#| label: fit-hillenbrand-validation-ranks
+
+score_imputation <- function(rank, replicate) {
+  artificial_mask <- masks[[replicate]]
+  training <- acoustic_matrix
+  training[artificial_mask] <- NA_real_
+
+  if (replicate <= validation_repeats) {
+    training[test_union] <- NA_real_
+  }
+
+  fit <- pca_impute(training, rank = rank)
+  location <- which(artificial_mask, arr.ind = TRUE)
+  truth <- acoustic_matrix[location]
+  prediction <- fit$completed[location]
+  training_scale <- fit$scale[location[, "col"]]
+  measurement <- colnames(acoustic_matrix)[location[, "col"]]
 
   data.frame(
-    row = row,
-    column = column,
-    truth = truth,
-    prediction = prediction,
-    squared_error = (truth - prediction)^2
+    replicate = replicate,
+    split = if (replicate <= validation_repeats) {
+      "validation"
+    } else {
+      "test"
+    },
+    rank = rank,
+    token_id = hill$token_id[location[, "row"]],
+    vowel = hill$vowel[location[, "row"]],
+    measurement = measurement,
+    formant = sub("_.*$", "", measurement),
+    truth_hz = truth,
+    prediction_hz = prediction,
+    error_hz = prediction - truth,
+    squared_standardized_error =
+      ((prediction - truth) / training_scale)^2,
+    converged = fit$converged
   )
 }
 
-errors <- do.call(
+candidate_ranks <- c(
+  0L, 1L, 2L, 3L, 4L, 5L, 8L, 10L, 12L, 15L, 20L
+)
+
+validation_predictions <- do.call(
   rbind,
-  lapply(seq_len(nrow(acoustic)), function(row) {
-    mean_impute_cell(acoustic, row = row, column = 2)
+  lapply(candidate_ranks, function(rank) {
+    do.call(
+      rbind,
+      lapply(seq_len(validation_repeats), function(replicate) {
+        score_imputation(rank, replicate)
+      })
+    )
   })
 )
 
-errors
-mean(errors$squared_error)
+validation_rank_curve <- stats::aggregate(
+  squared_standardized_error ~ rank,
+  validation_predictions,
+  function(x) sqrt(mean(x))
+)
+names(validation_rank_curve)[2] <- "standardized_rmse"
+validation_rank_curve$selected <- with(
+  validation_rank_curve,
+  standardized_rmse == min(standardized_rmse)
+)
+selected_rank <- validation_rank_curve$rank[
+  validation_rank_curve$selected
+][1]
+
+stopifnot(
+  all(validation_predictions$converged),
+  selected_rank == 10L
+)
+
+validation_rank_curve
 ```
 
-This leave one cell out scheme is useful only when fitting after masking one cell resembles the intended imputation problem. A larger matrix may permit several cells to be masked at once, provided the masking does not remove all information needed to fit a column or row.
+The validation criterion selects rank `r selected_rank`, with standardized RMSE `r sprintf("%.3f", min(validation_rank_curve$standardized_rmse))`. The test cells remain untouched until this choice is fixed.
 
-## Matching the natural missingness problem
+## Evaluating the selected rank on untouched cells
 
-Uniformly masking cells can create an easier task than natural missingness. Suppose F3 is usually absent for one vowel, one speaker group, or the highest values. A random mask dominated by common vowels and central values will mostly evaluate interpolation in well represented regions.
+Each test fit hides its registered test mask. We compare rank `r selected_rank` with rank zero, the training-column-mean reference.
 
-An imputation method may look artificially accurate when the masking scheme creates easier cases than the natural missingness process. To diagnose this problem, design several masking schemes that resemble plausible natural patterns. One scheme might mask F3 within the vowel category where tracking failures are common. Another might mask complete blocks that resemble session failures. The schemes should be stated before inspecting which one favors a preferred procedure.
+```{r}
+#| label: score-hillenbrand-test-masks
 
-Good performance under realistic artificial masks still does not prove that naturally missing entries are reconstructed without bias. The actual missing values may differ from all observed values available for masking. Holdout validation by artificial masking is thus a falsification tool. Poor reconstruction reveals a problem, while low error supports only the tested masking conditions.
+test_replicates <- validation_repeats + seq_len(test_repeats)
+test_predictions <- do.call(
+  rbind,
+  lapply(c(0L, selected_rank), function(rank) {
+    do.call(
+      rbind,
+      lapply(test_replicates, function(replicate) {
+        score_imputation(rank, replicate)
+      })
+    )
+  })
+)
 
-## Keeping preprocessing inside the mask
+test_summary <- do.call(
+  rbind,
+  lapply(
+    split(
+      test_predictions,
+      interaction(
+        test_predictions$rank,
+        test_predictions$formant,
+        drop = TRUE
+      )
+    ),
+    function(x) {
+      data.frame(
+        rank = unique(x$rank),
+        formant = unique(x$formant),
+        heldout_cells = nrow(x),
+        standardized_rmse = sqrt(mean(
+          x$squared_standardized_error
+        )),
+        rmse_hz = sqrt(mean(x$error_hz^2)),
+        mean_error_hz = mean(x$error_hz)
+      )
+    }
+  )
+)
+rownames(test_summary) <- NULL
+test_summary <- test_summary[order(
+  test_summary$rank,
+  test_summary$formant
+), ]
+rownames(test_summary) <- NULL
 
-Using the full matrix to calculate column means, scales, component directions, or the number of components gives the hidden values an indirect path into their predictions. This is [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage), and it usually makes reconstruction error too optimistic.
+stopifnot(
+  all(test_predictions$converged),
+  all(test_summary$heldout_cells == 560L),
+  abs(test_summary$rmse_hz[
+    test_summary$rank == 10L & test_summary$formant == "f2"
+  ] - 41.4313) < 0.01,
+  abs(test_summary$rmse_hz[
+    test_summary$rank == 10L & test_summary$formant == "f3"
+  ] - 38.7949) < 0.01
+)
 
-Every estimated preprocessing operation belongs inside the masked training data. If the completed matrix later enters a predictive analysis, the imputation must also be fitted inside each training split of that analysis. This requirement follows the [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) introduced earlier in the course.
+test_summary
+```
 
-## Inspecting errors at the level of the claim
+On `r test_summary$heldout_cells[test_summary$rank == selected_rank & test_summary$formant == "f2"]` untouched F2 cells, rank `r selected_rank` has RMSE `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == selected_rank & test_summary$formant == "f2"])` Hz, compared with `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == 0L & test_summary$formant == "f2"])` Hz for the column-mean reference. On the same number of F3 cells, the corresponding RMSEs are `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == selected_rank & test_summary$formant == "f3"])` and `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == 0L & test_summary$formant == "f3"])` Hz. Mean signed error under rank `r selected_rank` is `r sprintf("%.2f", test_summary$mean_error_hz[test_summary$rank == selected_rank & test_summary$formant == "f2"])` Hz for F2 and `r sprintf("%.2f", test_summary$mean_error_hz[test_summary$rank == selected_rank & test_summary$formant == "f3"])` Hz for F3.
 
-An overall mean can hide poor reconstruction for a less frequent vowel category, a speaker group, a recording session, or a measurement column. Retain the token, speaker, item, session, and column identities attached to each masked error, then summarize error over the groups relevant to the linguistic target.
+```{r}
+#| label: plot-hillenbrand-test-reconstruction
+#| fig-width: 7
+#| fig-height: 3.6
 
-A low overall error does not compensate for systematic failure in the group that carries the theoretical contrast. The validation summary must use the same units and measurements that the later interpretation concerns. Even then, reconstruction accuracy supports a claim about predicting an acoustic estimate; it does not by itself support a phonological analysis.
+selected_test_predictions <- subset(
+  test_predictions,
+  rank == selected_rank
+)
 
-::: {.callout-note title="Audit the validation"}
-1. Why can naturally missing values not provide a direct reconstruction error?
-2. Which quantities must be estimated after the target cell is masked?
-3. How can an unrealistically easy masking scheme make an imputation appear better than it is under natural missingness?
-4. Why should cell level errors be retained before averaging?
-5. What does low error under one masking scheme fail to establish?
-:::
+ggplot2::ggplot(
+  selected_test_predictions,
+  ggplot2::aes(truth_hz, prediction_hz)
+) +
+  ggplot2::geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = "grey65"
+  ) +
+  ggplot2::geom_point(
+    color = "#2B6F8A",
+    alpha = 0.35, # dqr-allow: algorithm-setting
+    size = 1
+  ) +
+  ggplot2::facet_wrap(~ formant, scales = "free") +
+  ggplot2::labs(
+    x = "Held-out observed value (Hz)",
+    y = "PCA reconstruction (Hz)"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
 
-Holdout validation by artificial masking evaluates an imputation on observed values made unavailable during fitting. Its conclusions depend on the masking pattern, leakage prevention, and the linguistic groups over which errors are summarized. The result cannot reveal the true naturally missing values, but it can identify reconstruction failures before imputed cells are treated as measurements.
+The raw held-out measurements and model predictions appear in the same figure. The diagonal is an identity reference, not a fitted regression line.
+
+## What this validation targets
+
+This is cell-level, transductive validation. The other measurements from the same token remain available because the intended use is to fill isolated F2 or F3 cells in an existing acoustic matrix. The results do not estimate prediction for a new speaker, a new vowel inventory, or a token with an entire contour absent.
+
+The masks are random within the `r length(fallible_columns)` naturally fallible columns. They preserve the measurement columns but do not reproduce the observed dependence of natural missingness on vowel or value. Low test error thus supports interpolation under these registered masks. It does not establish unbiased reconstruction of the `r sum(is.na(acoustic_matrix))` naturally missing cells.
+
+Using the full matrix to calculate centers, scales, components, or rank would give held-out values an indirect path into their predictions. This is [leakage through preprocessing](../model-criticism-and-prediction/training-and-test-data.qmd#leakage-through-preprocessing). The code above prevents it by estimating every preprocessing quantity after masking and by excluding the test union throughout rank selection.
+
+An overall error may still hide poor reconstruction for a vowel, speaker group, or measurement column. The prediction table retains token, vowel, formant, and measurement identifiers so those errors can be inspected at the level of a later linguistic claim.
+
+## Auditing the validation
+
+1. Why can the naturally missing cells not supply a direct reconstruction error?
+2. Which quantities are estimated after the target cells are masked?
+3. Why is the entire test union removed from every validation fit?
+4. Which prediction target is represented by leaving other measurements from the same token available?
+5. What does low error under these masks fail to establish about the natural omissions?
+
+Holdout validation by artificial masking evaluates an imputation procedure on observed values made unavailable during fitting. Under the registered masks, rank `r selected_rank` predicts held-out F2 and F3 cells more accurately than the column-mean reference. This result supports one cell-reconstruction target; it does not turn predictions for naturally missing cells into measurements.
+
+[Previous: Iterative PCA imputation](pca-imputation.qmd) · [Next: Custom models](../custom-models/index.qmd)

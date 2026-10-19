@@ -1,115 +1,118 @@
 ---
 title: "Intraclass correlation"
+execute: {warning: false, message: false}
 ---
 
-The [random-intercept page](random-intercepts.qmd) showed that responses from the same group share a deviation. The [**intraclass correlation coefficient (ICC)**](https://online.stat.psu.edu/stat502/Lesson06) measures the resulting model-implied correlation for a linear random-intercept model with normally distributed errors and random intercepts.
+The [random-intercept page](random-intercepts.qmd) showed that responses sharing a participant or word also share a modeled deviation. The **intraclass correlation coefficient (ICC)** summarizes the resulting correlation for a Gaussian random-intercept model.
 
-## Beginning with the intercept only model
+## Deriving the crossed-unit correlations
 
-Suppose
-
-$$
-Y_{ij}=\beta_0+b_j+\varepsilon_{ij},
-$$
-
-with
+For the MALD intercept-only model,
 
 $$
-b_j\sim\mathcal{N}(0,\tau^2)
+Y_{pwi}=\beta_0+b_p+c_w+\varepsilon_{pwi},
 $$
 
-and
+with independent components having variances $\tau_p^2$, $\tau_w^2$, and $\sigma^2$. The marginal response variance is
 
 $$
-\varepsilon_{ij}\sim\mathcal{N}(0,\sigma^2).
+\operatorname{Var}[Y_{pwi}]
+=\tau_p^2+\tau_w^2+\sigma^2.
 $$
 
-The response has two sources of variation. The group deviation $b_j$ is shared by every observation in group $j$. The residual $\varepsilon_{ij}$ belongs to one observation.
-
-## Deriving the shared covariance
-
-Consider two distinct observations $i$ and $i'$ from group $j$. Their covariance is
+Two distinct trials from the same participant but different words share only $b_p$, so their covariance is $\tau_p^2$. Their correlation is
 
 $$
-\operatorname{Cov}(Y_{ij},Y_{i'j})
-=\operatorname{Cov}(b_j+\varepsilon_{ij},
-b_j+\varepsilon_{i'j}).
+\rho_p
+=\frac{\tau_p^2}
+{\tau_p^2+\tau_w^2+\sigma^2}.
 $$
 
-The residuals are independent of each other and of the group deviation under the model. The only shared term is $b_j$. Thus
+Two trials on the same word from different participants instead have
 
 $$
-\operatorname{Cov}(Y_{ij},Y_{i'j})=\tau^2.
+\rho_w
+=\frac{\tau_w^2}
+{\tau_p^2+\tau_w^2+\sigma^2}.
 $$
 
-Each response has variance
+If two rows share both participant and word, the fitted correlation is
 
 $$
-\operatorname{Var}(Y_{ij})
-=\tau^2+\sigma^2.
+\rho_{pw}
+=\frac{\tau_p^2+\tau_w^2}
+{\tau_p^2+\tau_w^2+\sigma^2}
+=\rho_p+\rho_w.
 $$
 
-Correlation is covariance divided by the product of the standard deviations. Because the two responses have the same variance, their correlation is
+## Substituting the MALD variance estimates
 
-$$
-\operatorname{ICC}
-=\frac{\tau^2}{\tau^2+\sigma^2}.
-$$
+```{r}
+#| label: mald-icc
+library(lme4)
+library(ggplot2)
 
-The numerator is the between-group variance. The denominator is the response variance after averaging over the random intercept. Thus the ICC is the between-group variance divided by the marginal response variance in this intercept-only model.
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
 
-## Working through a numerical value
+fit <- lmer(
+  log_rt ~ 1 +
+    (1 | participant_id) +
+    (1 | item),
+  data = mald,
+  control = lmerControl(optimizer = "bobyqa")
+)
 
-Suppose participant variance is 100 and residual variance is 300. Then
-
-$$
-\operatorname{ICC}
-=\frac{100}{100+300}
-=.25.
-$$
-
-Two trials from the same participant have model-implied correlation $.25$. Equivalently, one quarter of the response variance, conditional on the fixed intercept but marginal over participant deviations, is attributed to stable participant baseline differences under this model.
-
-If participant variance were zero, the ICC would be zero. Sharing a participant would add no response similarity. If residual variance became very small relative to participant variance, the ICC would approach one.
-
-## Estimating it from a fitted model
-
-For a linear random-intercept model fit with `lme4`, the variance components can be extracted and combined:
-
-```r
-variance_table <- as.data.frame(VarCorr(fit_intercepts))
-
+variance_table <- as.data.frame(VarCorr(fit))
 participant_variance <- variance_table$vcov[
-  variance_table$grp == "participant"
+  variance_table$grp == "participant_id" & is.na(variance_table$var2)
 ]
+item_variance <- variance_table$vcov[
+  variance_table$grp == "item" & is.na(variance_table$var2)
+]
+residual_variance <- sigma(fit)^2
+total_variance <- participant_variance + item_variance + residual_variance
 
-residual_variance <- sigma(fit_intercepts)^2
-
-icc_participant <-
-  participant_variance /
-  (participant_variance + residual_variance)
-
-icc_participant
+icc <- data.frame(
+  shared_unit = c("Participant", "Word item", "Participant and word"),
+  covariance = c(
+    participant_variance,
+    item_variance,
+    participant_variance + item_variance
+  )
+)
+icc$correlation <- icc$covariance / total_variance
+icc
 ```
 
-In a crossed participant and item model, the denominator may include participant variance, item variance, and residual variance. The relevant numerator depends on which pair of observations is being compared. Two responses from the same participant but different items share the participant component. Two responses to the same item from different participants share the item component.
+The fitted participant ICC is `r sprintf("%.4f", icc$correlation[icc$shared_unit == "Participant"])`, the item ICC is `r sprintf("%.4f", icc$correlation[icc$shared_unit == "Word item"])`, and sharing both units gives correlation `r sprintf("%.4f", icc$correlation[icc$shared_unit == "Participant and word"])`. These values are computed from the correct-response MALD subset rather than supplied as schematic quantities.
 
-## Keeping the interpretation model specific
+## Relating the correlations to replication
 
-Adding predictors can change both $\tau^2$ and $\sigma^2$. The ICC is thus conditional on the fitted mean structure. An intercept only ICC and an ICC after condition and speaker age have been included need not match.
+```{r}
+#| label: plot-mald-icc-repetition
+repetition_data <- rbind(
+  data.frame(
+    unit = "Participant",
+    repetitions = as.numeric(table(mald$participant_id))
+  ),
+  data.frame(
+    unit = "Word item",
+    repetitions = as.numeric(table(mald$item))
+  )
+)
 
-A model with a varying predictor association also gives pairs different covariances at different predictor values. One constant ICC no longer describes every pair. Likewise, logistic and Poisson mixed models do not have a freely estimated normally distributed residual on the response scale. Their ICC definitions require additional scale choices.
+ggplot(repetition_data, aes(x = repetitions)) +
+  geom_histogram(bins = 30, fill = "grey55", color = "white") +
+  facet_wrap(~unit, scales = "free") +
+  labs(x = "Correct trials per unit", y = "Units") +
+  theme_classic()
+```
 
-This model dependence is not a defect. It means that the ICC summarizes the particular probability model being used. Report the model and the variance components alongside the ratio.
+Positive ICCs mean that repeated rows from one unit contain less independent information than the same number of rows from distinct units. Additional trials can estimate an observed participant's or word's baseline more precisely. Additional participants or words provide replication across the corresponding population.
 
-## Connecting the ICC to replication
+## Keeping the interpretation model-specific
 
-When the ICC is positive, repeated observations from one participant contain less independent information than the same number of observations from different participants. More trials can estimate one participant's baseline more precisely. More participants provide replication across the participant population.
+Adding predictors can change every variance component. An intercept-only ICC and an ICC conditional on frequency, duration, and trial order need not agree. Random slopes also make the covariance depend on predictor values, so one constant ICC no longer describes every trial pair. Logistic and Poisson mixed models require further scale choices because they do not estimate a Gaussian residual variance on the response scale.
 
-The ICC does not declare repeated trials useless. It identifies why row count and participant count answer different information questions.
-
-::: {.callout-note title="Check the shared variance"}
-Two responses share an item but not a participant in a crossed intercept model. Which variance component belongs in their covariance? Why is the full denominator larger than that component?
-:::
-
-The [next page](random-effect-estimates.qmd) examines the partially pooled group deviations returned by the fitted model.
+These ICCs are properties of this fitted Gaussian intercept-only model and its correct-response subset. Report the formula and variance components with the ratios. The [next page](random-effect-estimates.qmd) examines the partially pooled group deviations returned by the fitted model.

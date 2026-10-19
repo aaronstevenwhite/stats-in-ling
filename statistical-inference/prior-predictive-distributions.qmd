@@ -1,174 +1,144 @@
 ---
 title: "Prior predictive distributions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [conjugate prior page](conjugate-priors.qmd) updated a prior after observing data. A prior predictive distribution instead propagates the prior through the observation model before the present data are observed.
+The [conjugate-prior page](conjugate-priors.qmd) updated a beta prior after observing the Turkish UniMorph sample. We now ask what the finite-resource bridge (FRB) predicted before those rows were observed.
 
-Suppose a picture-matching task presents one participant with 10 expressions like *The spy saw the cop with binoculars*. The prepositional phrase *with binoculars* can modify the verb phrase, so that the spy uses the binoculars, or the noun phrase *the cop*, so that the cop has them. These are conventionally called [high or verb-phrase attachment and low or noun-phrase attachment](https://labs.psychology.illinois.edu/~jkbock/otherpubs/Branigan%20Pickering%20McLean%202005.pdf). Let $\widetilde{K}$ be the number of verb-phrase attachment pictures selected in a possible 10-item dataset generated before the present participant's responses are observed.
+## From a parameter prior to possible counts
 
-We propose a prior on the participant's probability of selecting the verb-phrase attachment picture across the declared item set:
-
-$$
-\Pi\sim\operatorname{Beta}(2,2).
-$$
-
-Conditional on $\Pi=\pi$, the model treats the ten binary choices as independent with a shared probability and thus defines a binomial count distribution. This assumption brackets item differences and trial-to-trial dependence. Before observing the participant, what values of $\widetilde{K}$ does the complete model expect?
-
-The [**prior predictive distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) answers this question. Basically, it asks what the complete model says we might record before the current responses are used. More specifically, it averages possible observations over parameter values under the prior, as also described in the [Stan User's Guide](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html#prior-predictive-model):
+Under the counterfactual exchangeable-superpopulation design,
 
 $$
-\mathbb{P}(\widetilde{K}=\widetilde{k})
-=\int
-\mathbb{P}(\widetilde{K}=\widetilde{k}\mid\Pi=\pi)
-f_\Pi(\pi)\,\mathrm{d}\pi.
+\Theta\sim\operatorname{Beta}(\alpha,\beta),
 $$
 
-The tilde marks $\widetilde{K}$ as a possible future count generated from the model rather than a count already observed. Because $\widetilde{K}$ is discrete, the first factor inside the integral is a probability mass. Because $\Pi$ is continuous, $f_\Pi(\pi)$ is a density.
-
-The expression combines two claims. The binomial observation model says how a
-fixed value of $\pi$ generates a count. The beta prior says which values of
-$\pi$ receive substantial probability before the present participant's data are
-observed. The integral propagates the second claim through the first.
-
-We can read the integral as a weighted average. For each possible $\pi$, compute
-the binomial probability of $\widetilde{y}$. Then weight that probability by the
-prior density at $\pi$ and add across the unit interval. Values of $\pi$ that are
-more plausible under the prior contribute more to the resulting predictive
-probability.
-
-## Simulating one possible dataset
-
-First draw a probability from the prior:
+and, conditional on $\Theta=\theta$, a block count satisfies
 
 $$
-\pi^{(s)}\sim\operatorname{Beta}(2,2).
+\widetilde K\mid\Theta=\theta
+\sim\operatorname{Binomial}(m,\theta).
 $$
 
-Then draw ten choices using that probability and count the successes:
+The **prior predictive distribution** averages the binomial mass over the prior density:
 
 $$
-\widetilde{k}^{(s)}\sim\operatorname{Binomial}(10,\pi^{(s)}).
+\begin{aligned}
+\mathbb{P}(\widetilde K=r)
+&=
+\int_0^1
+\mathbb{P}(\widetilde K=r\mid\Theta=\theta)
+f_\Theta(\theta)\,\mathrm d\theta\\
+&=
+\binom mr
+\frac{B(r+\alpha,m-r+\beta)}{B(\alpha,\beta)}.
+\end{aligned}
 $$
 
-Repeat the two steps to approximate the full prior predictive distribution.
-
-One simulation draw makes the averaging concrete. Suppose the prior draw is $\pi^{(1)}=.68$. We keep that value fixed while generating all ten responses in prior predictive dataset 1. If the simulated count is $\widetilde{k}^{(1)}=8$, the pair $(.68,8)$ is one draw from the joint prior model. A second prior predictive dataset receives a new draw from the prior because the integral averages predictions over our prior uncertainty about $\Pi$.
+This is the beta-binomial mass function. It makes parameter uncertainty visible in the units that the design records: the number of *t*-initial cells in a block of lexeme--paradigm rows.
 
 ```{r}
-#| label: prior-predictive-ambiguity
-#| echo: true
-set.seed(414)
+#| label: load-unimorph-prior-predictive
+library(ggplot2)
 
-pi_prior <- rbeta(10000, shape1 = 2, shape2 = 2)
-k_prior <- rbinom(10000, size = 10, prob = pi_prior)
-
-plot(prop.table(table(k_prior)),
-     xlab = "verb-phrase attachment choices out of 10",
-     ylab = "prior predictive probability")
-```
-
-## Inspecting predictions on the response scale
-
-The beta density describes an abstract probability parameter, while the simulated values are counts that the experiment could record. They are often easier to evaluate.
-
-If the prior and observation model predict that nearly every ten-trial dataset must contain either 0 or 10 verb-phrase attachment responses, we should ask whether such nearly categorical responding is plausible for this item set and task. The prior predictive distribution makes that commitment visible before the present responses are used.
-
-The opposite failure can occur as well. A prior concentrated tightly around
-$\pi=.50$ may imply that almost every ten-trial count lies near 5. Such a model
-would rule out a strong preference for either interpretation before the experiment begins. If the linguistic theory permits the modeled response probability to lie far from $.50$, that prior is too restrictive even if its center appears neutral.
-
-We can also inspect summaries:
-
-```{r}
-#| label: summarize-prior-predictive
-#| echo: true
-quantile(k_prior, c(.025, .25, .5, .75, .975))
-mean(k_prior == 0 | k_prior == 10)
-```
-
-The quantiles describe the central spread of possible recorded counts. The
-boundary proportion describes how often the model expects categorical response
-patterns. Neither quantity is a universal diagnostic. We choose summaries that
-express the parts of the measurement we care about.
-
-## Comparing priors through predictions
-
-Parameter-scale language can conceal how strongly two priors differ. Consider
-three beta priors:
-
-$$
-\operatorname{Beta}(2,2),
-\qquad
-\operatorname{Beta}(20,20),
-\qquad
-\operatorname{Beta}(.5,.5).
-$$
-
-All three are symmetric around $.50$. But symmetry does not make them
-equivalent. The $\operatorname{Beta}(2,2)$ density has its maximum at $.50$,
-the $\operatorname{Beta}(20,20)$ density is much more concentrated there, and
-the $\operatorname{Beta}(.5,.5)$ density increases toward both boundaries.
-
-```{r}
-#| label: compare-prior-predictive-counts
-#| echo: true
-set.seed(414)
-
-simulate_prior_counts <- function(alpha, beta, draws = 10000) {
-  pi_draw <- rbeta(draws, alpha, beta)
-  rbinom(draws, size = 10, prob = pi_draw)
-}
-
-k_moderate <- simulate_prior_counts(2, 2)
-k_concentrated <- simulate_prior_counts(20, 20)
-k_boundary <- simulate_prior_counts(.5, .5)
-
-rbind(
-  moderate = quantile(k_moderate, c(.05, .50, .95)),
-  concentrated = quantile(k_concentrated, c(.05, .50, .95)),
-  boundary = quantile(k_boundary, c(.05, .50, .95))
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
 )
+m <- nrow(sample_120)
+observed_k <- sum(sample_120$t_initial)
+unit_count <- 1L
+alpha <- unit_count
+beta <- unit_count
+support <- 0:m
+
+prior_mass <- exp(
+  lchoose(m, support) +
+    lbeta(support + alpha, m - support + beta) -
+    lbeta(alpha, beta)
+)
+prior_predictive <- data.frame(count = support, probability = prior_mass)
+
+prior_mean <- m * alpha / (alpha + beta)
+prior_variance <- m * alpha * beta * (alpha + beta + m) /
+  ((alpha + beta)^2 * (alpha + beta + 1))
+
+stopifnot(
+  m == 120L, observed_k == 42L,
+  abs(sum(prior_predictive$probability) - 1) < 1e-12
+)
+data.frame(m, observed_k, prior_mean, prior_variance)
 ```
 
-The predictive counts state the practical commitments of each prior in the units
-the experiment records. We can ask whether each commitment is compatible with
-the design, earlier studies, and the range of behavior the theory leaves open.
+With the $\operatorname{Beta}(1,1)$ prior and observed block size `r m`, the prior-predictive expectation and variance are
 
-## Matching the simulation to the sampling structure
+$$
+\mathbb{E}[\widetilde K]
+=m\frac{\alpha}{\alpha+\beta}
+$$
 
-The current simulation draws one $\pi$ per complete ten-trial dataset and then ten choices conditional on that value. This represents prior uncertainty about one participant-level probability in the simplified model, but it does not define a population distribution of participant preferences.
+and
 
-To represent several participants with different underlying probabilities, we would need an additional population distribution and one participant probability drawn from it for each participant. That hierarchical structure is not part of the current model. Drawing a new $\pi$ before every trial would instead put the beta variation at the trial level. These are different generative claims, even if every version uses the same beta and Bernoulli functions.
+$$
+\operatorname{Var}[\widetilde K]
+=
+m\frac{\alpha\beta}{(\alpha+\beta)^2}
+\frac{\alpha+\beta+m}{\alpha+\beta+1}.
+$$
 
-A prior predictive check is only as informative as this generative structure.
-Simulating the correct response range while ignoring the grouping in the study
-can make a poorly specified model appear plausible.
+They evaluate to `r sprintf("%.3f", prior_mean)` and `r sprintf("%.3f", prior_variance)`. The variance is large because one $\theta$ is drawn for the complete block, then all cells in that block share it.
 
-## Keeping prior checking prior to the update
+```{r}
+#| label: plot-unimorph-prior-predictive
+#| fig-cap: "FRB prior-predictive mass for a 120-cell independent block. The line marks the count in the committed sample; it is shown only as an observed reference."
+ggplot(prior_predictive, aes(count, probability)) +
+  geom_line(color = "grey35", linewidth = 0.8) +
+  geom_vline(xintercept = observed_k, color = "#8B1A1A", linewidth = 0.7) +
+  labs(x = "t-initial forms in 120 lexeme cells", y = "Prior-predictive probability") +
+  theme_classic(base_size = 12)
+```
 
-A [prior predictive check](https://doi.org/10.1111/rssa.12378) examines simulated observations from the prior and observation model. It does not use the posterior.
+## Generating the same distribution
 
-If we repeatedly tune the prior until it reproduces the present observed outcome, that outcome has already influenced the prior. Any such data-dependent choice should be acknowledged rather than described as information supplied before the data.
+The integral can also be simulated in the order specified by the model: draw one $\theta^{(s)}$ for a block, then draw its count.
 
-Prior predictive checking does not require a prior to predict the observed data
-closely. Before observing the current sample, a useful prior may allow many
-outcomes that did not happen. The narrower question is whether it places
-substantial probability on impossible or theoretically indefensible data, or
-rules out outcomes that the design and existing knowledge make plausible.
+```{r}
+#| label: simulate-unimorph-prior-predictive
+set.seed(2026101801)
+simulation_count <- 40000L
+theta_prior <- rbeta(simulation_count, alpha, beta)
+k_prior <- rbinom(simulation_count, size = m, prob = theta_prior)
 
-::: {.callout-note title="Problem Set 4 connection"}
-[Problem Set 4, Task 2](../problem-sets/ps4/ps4.qmd#task-2-check-the-priors-before-fitting-the-data) uses prior predictive category proportions for a seven category commitment response. Students must thus simulate the response scale before any observed commitment rating updates the model.
-:::
+stopifnot(abs(mean(k_prior) - prior_mean) < .5)
+c(simulated_mean = mean(k_prior), analytic_mean = prior_mean,
+  simulated_variance = var(k_prior), analytic_variance = prior_variance)
+```
 
-::: {.callout-note title="Check the simulation order"}
-1. Why must each predictive count use the same sampled $\pi^{(s)}$ for all ten
-   choices?
-2. What different model would result from drawing a new $\pi$ before every
-   choice?
-3. Two priors have the same mean. Explain why their prior predictive
-   distributions can still differ.
-4. Give one response scale summary that would detect a prior predicting too many
-   categorical response patterns.
-:::
+Drawing a fresh $\theta$ before every cell would define a different model. It would average the Bernoulli probability cell by cell and lose the block-level variation represented by the beta-binomial distribution.
 
-The prior predictive distribution describes possibilities before the present responses update the model. The [next page](predictive-distributions.qmd) conditions on those responses and predicts a future block.
+## The design boundary
+
+The prior-predictive distribution belongs to the counterfactual independent-draw FRB. It is not the randomization distribution of the actual sample file, whose rows were drawn without replacement from a known population. Nor does it describe Turkish usage, since UniMorph rows have no token-frequency interpretation.
+
+Prior prediction remains useful here because it makes that model's commitment explicit. The [posterior-predictive page](predictive-distributions.qmd) will put the independent prediction beside the corresponding finite-resource prediction.
+
+## Check your understanding
+
+1. Why is the predictive outcome a count rather than a value of $\Theta$?
+2. Why must one simulated block use one shared draw of $\theta$?
+3. Which part of the variance reflects uncertainty about $\Theta$?
+4. Why is this beta-binomial mass not the sample's actual randomization distribution?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The prediction concerns what the design records in a future block: the number of *t*-initial lexeme cells, after averaging over uncertainty in $\Theta$. <!-- dqr-allow: empirical-answer -->
+2. Draw one $\theta$ for the block, then draw all cells conditionally independently given that $\theta$. Averaging over the shared $\theta$ induces the positive dependence and extra beta-binomial variation. <!-- dqr-allow: empirical-answer -->
+3. The beta-binomial overdispersion factor, equivalently the variation in the conditional mean $m\Theta$, reflects uncertainty about $\Theta$. <!-- dqr-allow: empirical-answer -->
+4. The actual 120 rows were sampled without replacement from a known 588-row resource, so their randomization distribution is hypergeometric rather than beta-binomial. <!-- dqr-allow: empirical-answer -->
+
+</details>

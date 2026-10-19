@@ -1,96 +1,185 @@
 ---
 title: "Exclusion rules"
+execute:
+  cache: false
 ---
 
-Experiments sometimes produce records that should not enter a particular target analysis. A microphone may fail during a production trial. A participant may press the same key throughout an acceptability task. A button-press latency may be long because the participant was interrupted. These cases differ in their causes, and so a single label such as *bad data* hides the decision we need to make: which enrolled participants and recorded trials belong to the analysis set for a stated estimand?
-
-The inclusion and exclusion criteria map enrolled observations to the retained analysis set. These criteria are part of the design because they determine which population of observations the final comparison represents. They should be stated before inspecting the condition effect whenever that is possible.
-
-## Formalizing retention as a variable
-
-Let $r$ index recorded trials, and let $R_r=1$ when trial $r$ is retained and $R_r=0$ when it is excluded. An analysis of retained responses describes a quantity conditional on $R_r=1$. This indicator anticipates the [missingness indicators](../missing-data/missingness-patterns.qmd) used later in the course, though exclusion, censoring, and failure to measure are not the same event. For a row-weighted two-condition mean difference, the retained-trial quantity is
-
-$$
-\Delta_{R=1}
-=E[Y_r\mid Z_r=1,R_r=1]
--E[Y_r\mid Z_r=0,R_r=1].
-$$
-
-The expectation here is over retained rows. It is not automatically the same as an equally weighted participant contrast, an intention-to-treat effect over all assigned trials, or a contrast over the response that would have been observed without a timeout. If retention is related to condition or to the response, the retained rows may represent different subsets of the two conditions.
-
-The retention rule enters the estimand. Exclusion is not merely a cleaning operation applied before the analysis.
-
-## Separating measurement failure from behavior
-
-A microphone dropout is a measurement failure. It may leave no usable waveform from which to estimate a duration, formant, or another acoustic quantity. A long response latency is an observed behavior. It may reflect an interruption, but it may also arise from the task, item, or participant.
-
-This distinction should be stated in terms of the measurement process. If a waveform contains no signal because the device did not record, the intended response is unavailable. If a participant takes 4,000 milliseconds to respond, a response was measured. Removing that value changes which behavior is represented.
-
-A later response model may accommodate a long right tail without deleting valid observations; [Baayen and Milin's analysis of reaction times](https://doi.org/10.21500/20112084.807), for instance, argues for minimal a priori trimming coupled with model criticism. For current purposes, the design task is narrower: define which events count as technical failures, which values count as measured behavior, and which claim follows after either kind of removal. A latency contrast alone does not identify a particular parsing or decision mechanism.
-
-## Working through condition dependent retention
-
-Suppose five active trials and five passive trials are planned in a small speeded acceptability experiment. The participant must rate each sentence before a deadline. All active trials produce a rating, while two passive trials time out.
-
-| condition | retained response times | timeouts |
-|:--|:--|--:|
-| active | 500, 510, 520, 530, 540 | 0 |
-| passive | 520, 530, 540 | 2 |
-
-Among trials with a response before the deadline, the mean active latency is 520 milliseconds and the mean passive latency is 530 milliseconds. The retained difference is only 10 milliseconds. But 40 percent of the passive trials timed out, compared with none of the active trials.
-
-The complete-case mean thus answers a narrow question: among trials that produced a rating before the deadline, how did mean button-press latency differ? It cannot support the broader claim that voice had little effect on behavior, since the response probability also changed. Nor can the latency and timeout contrasts, without further assumptions, tell us whether syntactic formulation, interpretation, decision, or motor execution produced the difference.
-
-We can retain the response and retention summaries separately.
+The [ManyBabies 1 release](units-of-assignment.qmd) is the output of a sequential exclusion pipeline. The paper describes participant rules, session-level errors, trial-level errors, a minimum included looking time, and a laboratory inclusion rule. The official script then completes every retained infant to sixteen possible test-trial rows. Consequently, a row without an included looking time need not represent one single event.
 
 ```{r}
-trials <- data.frame(
-  condition = rep(c("active", "passive"), each = 5),
-  response_time = c(500, 510, 520, 530, 540, 520, 530, 540, NA, NA)
-)
+manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
 
-trials$retained <- !is.na(trials$response_time)
-
-with(trials, table(condition, retained))
-aggregate(
-  response_time ~ condition,
-  data = trials,
-  FUN = mean,
-  na.action = na.omit
+stopifnot(
+  nrow(manybabies) == 37264L,
+  length(unique(manybabies$infant_id)) == 2329L,
+  sum(manybabies$trial_missing) == 10369L,
+  sum(!manybabies$trial_metadata_observed) == 4383L,
+  all(is.na(manybabies$looking_time_seconds) == manybabies$trial_missing)
 )
 ```
 
-The table of `retained` values should be interpreted before the retained means. It shows whether the analysis set is similarly constituted across conditions.
+## Retention enters the estimand
 
-## Defining rules without using the desired effect
+Let $R_r=1$ when possible trial row $r$ contains a looking time retained by the released pipeline and let $R_r=0$ otherwise. A row-weighted register contrast among retained outcomes is
 
-Suppose response times above 2,000 milliseconds are removed only after the analyst notices that they weaken the expected condition difference. The observed outcome has then been used to select observations that support that outcome. A confidence interval or posterior interval from the final retained set does not include uncertainty introduced by trying multiple cutoffs.
+$$
+\Delta_{R=1}
+=\mathbb{E}[Y_r\mid Z_r=\mathrm{IDS},R_r=1]
+-\mathbb{E}[Y_r\mid Z_r=\mathrm{ADS},R_r=1].
+$$
 
-Choosing an exclusion rule after inspecting its effect on the condition contrast biases the analysis toward a preferred result. Prespecification helps because the rule is chosen without knowledge of the realized contrast. When prior information is insufficient to justify one cutoff, the analysis can report a primary rule and a limited set of substantively defensible sensitivity analyses. The alternatives should be chosen because they represent different measurement assumptions, not because one produces the preferred result.
+This quantity conditions on retention. It differs from the equally weighted [within-infant contrast](within-participant-designs.qmd), from a contrast over every planned trial, and from a contrast over responses that would have been observed without the events leading to missing outcomes.
 
-## Checking every relevant margin
+Exclusion is thus not merely table cleaning. It helps define the population of responses represented by an analysis.
 
-Exclusions should be tabulated by condition, participant, item, and relevant demographic or linguistic group. A participant rule may remove all observations from one speaker. A trial rule may remove particular words. Either can change the represented sample even if overall retention is high.
+## Three row states in the teaching table
 
-The retention rate can also be an outcome. Failure to produce a response before a prespecified deadline is observed censoring under the task, not the same event as a microphone that never recorded. Describing only the retained latency distribution would hide that part of the behavioral contrast.
+The two released indicators separate rows with included looking time, rows with trial metadata but no included looking time, and completed rows without trial metadata.
 
-## Reporting the observation flow
+```{r}
+row_state <- ifelse(
+  !manybabies$trial_missing,
+  "included looking time",
+  ifelse(
+    manybabies$trial_metadata_observed,
+    "trial metadata but no included looking time",
+    "completed row without trial metadata"
+  )
+)
 
-A reconstructible report gives counts at each stage.
+row_state_counts <- as.data.frame(
+  table(state = row_state),
+  responseName = "rows"
+)
+row_state_counts$proportion <- row_state_counts$rows / nrow(manybabies)
 
-1. State how many participants and trials were planned or recruited.
-2. State how many completed the relevant procedure.
-3. Give the count removed by each participant rule.
-4. Give the count removed by each trial rule.
-5. Give the final count by condition and repeated unit.
+knitr::kable(
+  row_state_counts,
+  digits = 4,
+  format.args = list(big.mark = ",")
+)
+```
 
-Each observation should have one recorded reason for its status, including retention. This record permits alternative rules to be evaluated without reconstructing decisions from an already filtered file.
+Across all `r format(nrow(manybabies), big.mark = ",")` possible rows, `r sprintf("%.2f%%", 100 * mean(!manybabies$trial_missing))` retain an included looking time. Restricting the denominator to the `r format(sum(manybabies$trial_metadata_observed), big.mark = ",")` rows with recorded trial metadata raises the retained share to `r sprintf("%.2f%%", 100 * mean(!manybabies$trial_missing[manybabies$trial_metadata_observed]))`.
 
-::: {.callout-note title="Audit the analysis set"}
-1. What population of observations is described by $\Delta_{R=1}$?
-2. Why is a microphone dropout different from a long but measured response time?
-3. What does a higher timeout rate in one condition imply about a comparison of retained response times?
-4. Why does trying several cutoffs create uncertainty that the final interval does not contain?
+These states should not be collapsed into a causal explanation. A missing included outcome may follow an error-marked trial, the minimum-looking-time rule, or termination before a later trial. A completed row without metadata records a possible opportunity added by the official completion step. The final RDS does not retain a unique original reason for every missing row.
+
+## Register and analysis-set margins
+
+For rows whose trial metadata were recorded, the missing proportion can be computed by register.
+
+```{r}
+missing_by_register <- aggregate(
+  trial_missing ~ register,
+  data = manybabies[manybabies$trial_metadata_observed, ],
+  FUN = mean
+)
+names(missing_by_register)[2L] <- "missing_proportion"
+
+knitr::kable(missing_by_register, digits = 4)
+```
+
+The observed-metadata missing proportions are `r sprintf("%.2f%%", 100 * missing_by_register$missing_proportion[missing_by_register$register == "ADS"])` for ADS and `r sprintf("%.2f%%", 100 * missing_by_register$missing_proportion[missing_by_register$register == "IDS"])` for IDS. This difference is descriptive. It does not identify why an outcome is missing.
+
+An exclusion rule can also operate at the infant level by requiring a minimum number of included trials. We can examine the thresholds considered in the paper's sensitivity analysis without reversing the official pipeline.
+
+```{r}
+usable_by_infant <- aggregate(
+  as.integer(!trial_missing) ~ infant_id,
+  data = manybabies,
+  FUN = sum
+)
+names(usable_by_infant)[2L] <- "usable_trials"
+
+usable_thresholds <- 2^(1:3)
+threshold_retention <- data.frame(
+  minimum_usable_trials = usable_thresholds,
+  retained_infants = vapply(
+    usable_thresholds,
+    function(threshold) sum(usable_by_infant$usable_trials >= threshold),
+    integer(1)
+  ),
+  total_infant_identifiers = nrow(usable_by_infant)
+)
+threshold_retention$retained_proportion <- with(
+  threshold_retention,
+  retained_infants / total_infant_identifiers
+)
+
+knitr::kable(
+  threshold_retention,
+  digits = 4,
+  format.args = list(big.mark = ",")
+)
+```
+
+Requiring at least `r paste(usable_thresholds, collapse = ", ")` included trials retains `r paste(format(threshold_retention$retained_infants, big.mark = ","), collapse = ", ")` infant identifiers, respectively. Changing the threshold changes the analysis set and may change the population of infants represented by the estimate.
+
+## Missing outcomes over the session
+
+The released missing indicator can be summarized over trial position and observed testing method. The three lines are descriptive because method is tied to laboratory practices, populations, age coverage, and implementation.
+
+```{r}
+missing_by_method_trial <- aggregate(
+  trial_missing ~ method + trial_number,
+  data = manybabies,
+  FUN = mean
+)
+names(missing_by_method_trial)[3L] <- "missing_proportion"
+
+stopifnot(
+  all(missing_by_method_trial$missing_proportion >= 0),
+  all(missing_by_method_trial$missing_proportion <= 1)
+)
+```
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+#| fig-alt: "Proportion of rows without included looking time over trial number, separately for each observed testing method."
+
+ggplot2::ggplot(
+  missing_by_method_trial,
+  ggplot2::aes(
+    x = trial_number,
+    y = missing_proportion,
+    linetype = method
+  )
+) +
+  ggplot2::geom_line(color = "grey25", linewidth = 0.7) +
+  ggplot2::geom_point(color = "grey25", size = 1.2) +
+  ggplot2::scale_y_continuous(
+    labels = function(x) paste0(round(100 * x), "%"),
+    limits = c(0, 0.72)
+  ) +
+  ggplot2::scale_x_continuous(
+    breaks = c(
+      min(missing_by_method_trial$trial_number),
+      4L * seq_len(max(missing_by_method_trial$trial_number) / 4L)
+    )
+  ) +
+  ggplot2::labs(
+    x = "Trial number",
+    y = "Rows without included looking time",
+    linetype = "Method"
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "top")
+```
+
+The rise over position may reflect termination, attention, procedure, or their combination. The plot alone cannot separate these mechanisms. It also cannot estimate an effect of assigning a testing method because method was not assigned.
+
+## Reporting the flow without overreconstruction
+
+A reconstructible design report should distinguish (i) original participant exclusions, (ii) session- or trial-level error decisions, (iii) the minimum-looking-time rule, and (iv) rows created to represent later possible trials. The primary paper and official scripts document the first three stages. The teaching RDS records their final consequences through `trial_missing` and preserves the completion distinction through `trial_metadata_observed`.
+
+The release cannot be run backward to recover the original cause of every absent outcome. Sensitivity analyses may vary a defensible minimum-trial rule, but they should not relabel the resulting selection as if it were the original recruitment flow.
+
+::: {.callout-note title="Audit the released analysis set"}
+1. What population of rows is described by $\Delta_{R=1}$?
+2. Why are a recorded trial without an included outcome and a completed row without metadata distinct?
+3. What changes when the minimum usable-trial threshold increases?
+4. Why can the method-specific curves not be interpreted causally?
 :::
 
-The inclusion and exclusion criteria map enrolled observations to the responses used in the comparison. Because retention can depend on condition and behavior, exclusion helps define the estimand rather than merely tidying the table. Once assignment, condition structure, counterbalancing, and retention have been specified, [power by simulation](power-by-simulation.qmd) can evaluate how the complete planned procedure behaves under explicit assumptions.
+The inclusion and exclusion pipeline defines which infant-trial outcomes enter the comparison. The final page carries this design forward by fitting an empirical model and using its effect and variance estimates to calibrate [power by simulation](power-by-simulation.qmd).

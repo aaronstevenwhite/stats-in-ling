@@ -2,198 +2,201 @@
 title: "Linguistic data matrices"
 ---
 
-Suppose we have acoustic measurements for four vowel tokens, each with estimates of the first three formant frequencies. Before looking for shared structure, decide what the rows represent and which acoustic measurements belong in the columns. The rows index recorded productions, not vowel phonemes, and the columns contain acoustic estimates, not category labels. Studies such as [Hillenbrand et al. (1995)](https://doi.org/10.1121/1.411872) relate these token measurements to intended and perceived vowel categories; the numerical matrix alone does not make that link.
+[PHOIBLE 2.0](https://doi.org/10.5281/zenodo.2593234) is a curated collection of phonological inventory records assembled from descriptive sources. Its [documentation](https://phoible.github.io/faq/) stresses that an inventory usually describes a doculect, that multiple inventories may share a Glottocode, and that some inherited inventories combine sources. We will thus call one row an **inventory record**, not a language.
 
-A matrix representation places one kind of linguistic object in the rows and one kind of measured property in the columns. This is the earlier [unit-of-analysis decision](../foundations/linguistic-data.qmd) written in matrix form. We used the same matrix construction when [representing objects for clustering](../latent-structure/representing-objects.qmd). Here we retain it so that the row and column choices remain explicit before introducing factorization.
+The course copy is pinned to PHOIBLE 2.0 and follows the release's [download and citation guidance](https://phoible.org/download). It excludes tone entries and rows explicitly marked as marginal, then samples one inventory within each Glottocode. A cell equal to one means that a retained PHOIBLE value row links the inventory to the segment. A zero means **not listed under this preparation rule**. It does not establish that speakers never produce the corresponding phone.
 
 ## Defining the array and its indices
 
 Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is
 
 $$
-\mathbf{X}\in\mathbb{R}^{n\times p}.
+\mathbf X\in\mathbb R^{n\times p}.
 $$
 
 Its entries are
 
 $$
-x_{ij}
-=
-\text{the value of variable }j\text{ for object }i.
+x_{ij}=\text{the value of variable }j\text{ for object }i.
 $$
 
 The complete row for object $i$ is
 
 $$
-\mathbf{x}_i^{\mathsf T}
+\mathbf x_i^{\mathsf T}
 =
 \begin{bmatrix}
-x_{i1} & x_{i2} & \cdots & x_{ip}
-\end{bmatrix}.
-$$
-
-The complete column for variable $j$ is
-
-$$
-\mathbf{x}_{\cdot j}
-=
-\begin{bmatrix}
-x_{1j} & x_{2j} & \cdots & x_{nj}
-\end{bmatrix}^{\mathsf T}.
-$$
-
-These two views answer different questions. A row asks how one object is represented across variables. A column asks how one variable changes across objects.
-
-## Constructing a vowel matrix by hand
-
-Suppose the measurements are
-
-| token | F1 | F2 | F3 |
-|:--|--:|--:|--:|
-| token 1 | 500 | 1500 | 2200 |
-| token 2 | 550 | 1450 | 2150 |
-| token 3 | 300 | 2300 | 3000 |
-| token 4 | 320 | 2250 | 2950 |
-
-Placing tokens in rows and formants in columns gives
-
-$$
-\mathbf{X}=
-\begin{bmatrix}
-500 & 1500 & 2200\\
-550 & 1450 & 2150\\
-300 & 2300 & 3000\\
-320 & 2250 & 2950
-\end{bmatrix}.
-$$
-
-This is a $4\times 3$ matrix because it represents four tokens using three measurements. The entry in row 3 and column 1 is
-
-$$
-x_{31}=300.
-$$
-
-Its interpretation comes from both index maps: token 3 has an F1 measurement of 300 Hz. The number 300 does not carry that interpretation on its own.
-
-The third row is
-
-$$
-\mathbf{x}_3^{\mathsf T}
-=
-\begin{bmatrix}
-300 & 2300 & 3000
+x_{i1}&x_{i2}&\cdots&x_{ip} \quad\text{(symbolic indices)} % dqr-allow: symbolic-derivation
 \end{bmatrix},
 $$
 
-which is the acoustic representation of token 3 under this design. It is not a representation of a phoneme unless the sampling and labeling design separately licenses that aggregation. The first column is
+and the complete column for variable $j$ is
 
 $$
-\mathbf{x}_{\cdot 1}
+\mathbf x_{\cdot j}
 =
 \begin{bmatrix}
-500 & 550 & 300 & 320
-\end{bmatrix}^{\mathsf T},
+x_{1j}&x_{2j}&\cdots&x_{nj} \quad\text{(symbolic indices)} % dqr-allow: symbolic-derivation
+\end{bmatrix}^{\mathsf T}.
 $$
 
-which records how F1 varies across the four tokens.
+A row asks how one inventory record is represented across segments. A column asks how one segment listing varies across inventory records. This is the earlier [unit-of-analysis decision](../foundations/linguistic-data.qmd) written in matrix form.
 
-## The rows define the objects
+## Constructing the PHOIBLE matrix
 
-A row might instead represent a speaker. We could average all of a speaker's token measurements and place those averages in one row. The resulting matrix would still have formant columns, but it would describe variation among speakers rather than variation among tokens.
-
-This change is not a harmless rearrangement. Suppose one speaker produces two F1 values, 400 and 600. Their speaker mean is
-
-$$
-\frac{400+600}{2}=500.
-$$
-
-A speaker-level row retains the mean 500 but discards the fact that the two tokens differed by 200 Hz. A token-level analysis can represent that within-speaker difference. A speaker-level analysis cannot recover it from the average.
-
-The row definition thus determines the observational unit. It also determines what kinds of variation the matrix still contains.
-
-## The columns define the representation
-
-Two tokens may appear similar when represented by formants and dissimilar when represented by duration and voice quality. Neither result is the similarity between the tokens in the abstract. Each is similarity with respect to a particular collection of measurements.
-
-Repeated columns effectively give one measurement more weight. Suppose we include duration in milliseconds and a second column equal to twice duration. For two tokens with durations 100 and 120, the rows would contain
-
-$$
-\begin{bmatrix}100&200\end{bmatrix}
-\qquad\text{and}\qquad
-\begin{bmatrix}120&240\end{bmatrix}.
-$$
-
-Both columns encode the same underlying measurement. A later matrix method will faithfully give that duplicated information two coordinates. It cannot infer that the analyst did not intend to count duration twice.
-
-Thus, column selection is part of the linguistic representation rather than a neutral software step.
-
-## Constructing the matrix in R
-
-The matrix can be entered row by row.
+The code below reproduces the row sample, the macroarea-stratified split, and the training-only column filter. The random seeds identify reproducible procedural choices; they are not linguistic measurements.
 
 ```{r}
-#| eval: false
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+
+select_one_inventory <- function(inventories, seed = 20260827L) {
+  inventories <- inventories[
+    order(inventories$glottocode, as.integer(inventories$inventory_id)),
+  ]
+  groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+  RNGkind(sample.kind = "Rejection")
+  set.seed(seed)
+  keep <- vapply(
+    groups,
+    function(index) index[[sample.int(length(index), size = 1L)]],
+    integer(1)
+  )
+  inventories[unname(keep), ]
+}
+
+make_split <- function(selected, seed = 20261018L) {
+  area <- selected$macroarea
+  area[is.na(area) | area == ""] <- "Unclassified"
+  split <- rep(NA_character_, nrow(selected))
+  set.seed(seed)
+  for (name in sort(unique(area))) {
+    index <- sample(which(area == name))
+    n_validation <- floor(0.15 * length(index))
+    n_test <- floor(0.15 * length(index))
+    split[index[seq_len(n_validation)]] <- "validation"
+    split[index[n_validation + seq_len(n_test)]] <- "test"
+    split[index[is.na(split[index])]] <- "training"
+  }
+  factor(split, levels = c("training", "validation", "test"))
+}
+
+selected <- select_one_inventory(phoible$inventories)
+selected$split <- make_split(selected)
+training_ids <- selected$glottocode[selected$split == "training"]
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+training_frequency <- table(
+  memberships$segment_id[memberships$glottocode %in% training_ids]
+)
+retained_segments <- sort(names(training_frequency)[training_frequency >= 20L])
 
 X <- matrix(
-  c(
-    500, 1500, 2200,
-    550, 1450, 2150,
-    300, 2300, 3000,
-    320, 2250, 2950
-  ),
-  nrow = 4,
-  byrow = TRUE
+  0,
+  nrow = nrow(selected),
+  ncol = length(retained_segments),
+  dimnames = list(selected$glottocode, retained_segments)
 )
+listed <- memberships[memberships$segment_id %in% retained_segments, ]
+X[cbind(
+  match(listed$glottocode, rownames(X)),
+  match(listed$segment_id, colnames(X))
+)] <- 1
 
-rownames(X) <- paste0("token_", 1:4)
-colnames(X) <- c("F1", "F2", "F3")
-
-dim(X)
-X["token_3", "F1"]
-X["token_3", ]
-X[, "F1"]
+c(
+  source_value_rows = phoible$provenance$original_value_rows,
+  selected_inventory_records = nrow(X),
+  retained_segment_columns = ncol(X),
+  listed_cell_fraction = mean(X)
+)
 ```
 
-The `matrix()` call creates the numerical array. The row and column labels record the index maps that give its entries a linguistic interpretation. Stable identifiers are safer than relying on row positions after filtering or joining.
+The resulting matrix has `r nrow(X)` inventory records and `r ncol(X)` segment columns. Of its `r format(length(X), big.mark = ",")` cells, `r scales::percent(mean(X), accuracy = 0.1)` are listed. This sparsity is a property of the prepared database matrix, not an estimate of how often phones occur in speech.
 
-## Writing a representation record
+## Seeing rows and columns
 
-Before applying a matrix operation, write down the following information.
+The full matrix is too large to label. The following plot thus displays four training inventories from each classified macroarea and the twenty most common training segments. Every plotted cell is read directly from `X`.
 
-1. State what one row represents.
-2. State how the represented objects were selected.
-3. State what each column measures.
-4. Identify columns derived from the same underlying measurement.
-5. State the population or collection to which the represented objects belong.
+```{r}
+#| fig-width: 8
+#| fig-height: 6
 
-This record prevents a later component plot from quietly changing its unit of interpretation. If rows are tokens, a component score locates tokens. If rows are languages, it locates languages. The algebra does not change that unit.
+training_index <- which(selected$split == "training")
+training_mean <- colMeans(X[training_index, , drop = FALSE])
+areas <- setdiff(sort(unique(selected$macroarea)), c("", NA, "Unclassified"))
 
-## Information omitted from the matrix cannot be recovered
+display_rows <- unlist(lapply(areas, function(area) {
+  candidates <- training_index[selected$macroarea[training_index] == area]
+  candidates <- candidates[order(rowSums(X[candidates, , drop = FALSE]))]
+  candidates[unique(round(seq(1, length(candidates), length.out = 4)))]
+}), use.names = FALSE)
+display_columns <- order(training_mean, decreasing = TRUE)[seq_len(20)]
 
-A flexible factorization cannot determine which duplicated or poorly chosen columns are theoretically intended. It only represents the numerical relations supplied in $\mathbf{X}$.
+segments <- phoible$segments[
+  match(colnames(X), phoible$segments$segment_id),
+]
+slice <- X[display_rows, display_columns, drop = FALSE]
+plot_data <- as.data.frame(as.table(slice))
+names(plot_data) <- c("glottocode", "segment_id", "listed")
+plot_data$inventory <- selected$language_name[
+  match(plot_data$glottocode, selected$glottocode)
+]
+plot_data$area <- selected$macroarea[
+  match(plot_data$glottocode, selected$glottocode)
+]
+plot_data$inventory <- paste0(plot_data$inventory, " (", plot_data$area, ")")
+plot_data$segment <- segments$segment[
+  match(plot_data$segment_id, segments$segment_id)
+]
+plot_data$inventory <- factor(
+  plot_data$inventory,
+  levels = rev(unique(plot_data$inventory))
+)
+plot_data$segment <- factor(
+  plot_data$segment,
+  levels = segments$segment[display_columns]
+)
 
-The same limitation applies to premature aggregation. Once token measurements have been replaced by speaker means, no matrix decomposition can reconstruct the discarded token variation. The repair must occur when the matrix is designed.
+ggplot(plot_data, aes(x = segment, y = inventory, fill = factor(listed))) +
+  geom_tile(color = "grey85", linewidth = 0.15) + # dqr-allow: algorithm-setting
+  scale_fill_manual(
+    values = c("0" = "white", "1" = "black"),
+    labels = c("Not listed", "Listed"),
+    name = NULL
+  ) +
+  labs(x = "Segment", y = "Inventory record") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
 
-Matrix operations can reorganize the information present in the array, but they cannot recover information removed before the array was built.
+The cell in a particular row and column can now be interpreted only by using both index maps. The first displayed row, for instance, can be recovered without copying its values into the notes.
 
-::: {.callout-note title="Data documentation: PHOIBLE 2.0"}
-Read the PHOIBLE 2.0 [download and citation page](https://phoible.org/download), its [inventory and doculect documentation](https://phoible.org/faq#inventories-language-codes-doculects-and-sources), and its [segment conventions](https://phoible.github.io/conventions/).
+```{r}
+first_displayed <- display_rows[[1]]
+data.frame(
+  glottocode = rownames(X)[first_displayed],
+  inventory = selected$language_name[first_displayed],
+  listed_retained_segments = sum(X[first_displayed, ])
+)
+```
 
-The download page identifies the release that should be cited. The FAQ explains that a PHOIBLE `InventoryID` usually represents an inventory extracted from a description of a particular [**doculect**](https://phoible.org/faq)---i.e. a documented lect at a particular place and time---though some inherited inventories combine sources. Several inventories may thus share a Glottocode or ISO 639-3 code, and one inventory should not silently be treated as one language.
+## The representation constraint
 
-The column distinction is just as important. PHOIBLE contributors extract contrastive phonemes and reported allophones from source descriptions and normalize their symbols under database conventions. A value of 1 in an inventory by segment matrix means that the selected database record lists that contrastive unit. A value of 0 means that the record does not list it under the declared filtering rules. It does not show that speakers never produce a corresponding phone, and it does not make undocumented absence into direct evidence about an entire language.
-:::
+Changing a row from an inventory record to a Glottocode-level average would change the observational unit. Changing the columns would change which segment contrasts are available. Repeating a column would give the corresponding listing pattern extra numerical weight. Matrix methods cannot infer that an omitted distinction was theoretically intended, nor can they recover within-source detail removed before construction.
 
-::: {.callout-note title="Problem Set 5 connection"}
-[Problem Set 5, Task 3](../problem-sets/ps5/ps5.qmd#task-3-construct-the-language-by-segment-matrix-10-points) constructs a binary matrix from PHOIBLE inventories. For that task, read "language by segment" as shorthand for the explicitly sampled inventory records, and keep the `InventoryID` mapping. A cell value can be interpreted only after the row selection, retained segment set, marginal-phoneme policy, and meaning of documented absence have been fixed.
-:::
+Before factorization, record (i) the row unit, (ii) the row-selection rule, (iii) the column-retention rule, (iv) the cell coding, and (v) the collection to which those records belong. This **representation constraint** fixes the information available to every later operation.
 
 ## Checking the representation
 
-1. In the vowel matrix, what does $x_{42}$ measure?
-2. How does the target of description change if rows are speakers rather than tokens?
-3. Which information is lost when two token values are replaced by their speaker mean?
-4. Why does including duration and twice duration give one measurement two coordinates?
-5. What should be recorded before interpreting a row score from any later factorization?
+1. What does $x_{ij}=1$ mean in this matrix?
+2. Why is “not listed” safer than “absent” for $x_{ij}=0$?
+3. Why is one sampled inventory record not necessarily one language?
+4. Which part of the code prevents validation and test inventories from selecting columns?
+5. What would change if the rows were individual PHOIBLE value records?
 
-A linguistic data matrix maps objects to rows, measurements to columns, and individual measurements to cells. This representation fixes the unit and information available to every later operation. That is the representation constraint: later algebra cannot repair a token--phoneme, inventory--language, or observation--category conflation introduced here. The [next page](centering-and-scaling.qmd) changes the origin and unit of each column while keeping this row and column design fixed.
+The [next page](centering-and-scaling.qmd) changes the origin and possible unit of each segment column while keeping these row and column definitions fixed.

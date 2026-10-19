@@ -1,136 +1,220 @@
 ---
-title: "Implementing a model in Stan"
+title: "Implementing the PCT in Stan"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The preceding pages developed [Hamiltonian Monte Carlo](hamiltonian-monte-carlo.qmd) and the [No-U-Turn Sampler](no-u-turn-sampler.qmd). [**Stan**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) is a probabilistic programming language that uses these methods after the analyst declares observed data, unknown parameters, and density contributions. The [current reference manual](https://mc-stan.org/docs/reference-manual/blocks.html) describes how those declarations enter the target. We will read the program by asking, in turn, what is observed, what is unknown, and which terms define the target density.
+[Stan](https://mc-stan.org/) samples a posterior after the analyst declares data, parameters, and density contributions. The PCT program below corresponds exactly to the robust model introduced on the [nonconjugate-posterior page](beyond-conjugacy.qmd).
 
-Consider a constructed study of overt subject pronouns. Code $y_i=1$ when a sampled clause contains an overt subject pronoun and $y_i=0$ otherwise. An overt subject pronoun is a pronounced pronominal expression in subject position, as opposed to an unpronounced subject licensed in a language that permits such omission. This binary code does not distinguish pronoun forms or discourse functions. The statistical model is
-
-$$
-Y_i\mid\Pi=\pi
-\sim
-\operatorname{Bernoulli}(\pi)
-$$
-
-with prior
-
-$$
-\Pi\sim\operatorname{Beta}(2,2).
-$$
-
-The Stan program is
+## The complete program
 
 ```stan
 data {
-  int<lower=0> n;
-  array[n] int<lower=0, upper=1> y;
+  int<lower=1> N;
+  vector[N] y;
+  real<lower=0> prior_mu_sd;
+  real<lower=0> prior_sigma_sd;
+  real<lower=2> nu;
 }
 
 parameters {
-  real<lower=0, upper=1> pi;
+  real mu;
+  real<lower=0> sigma;
 }
 
 model {
-  pi ~ beta(2, 2);
-  y ~ bernoulli(pi);
+  mu ~ normal(0, prior_mu_sd);
+  sigma ~ normal(0, prior_sigma_sd);
+  y ~ student_t(nu, mu, sigma);
+}
+
+generated quantities {
+  real geometric_duration_ratio = exp(mu);
+  array[N] real y_rep;
+  vector[N] log_lik;
+
+  for (n in 1:N) {
+    y_rep[n] = student_t_rng(nu, mu, sigma);
+    log_lik[n] = student_t_lpdf(y[n] | nu, mu, sigma);
+  }
 }
 ```
 
-## Declaring the observed data
+The data block contains the 55 observed passage contrasts and the empirically calibrated prior scales. The parameters block declares the unknown location and positive scale. In the model block, each tilde statement adds a log-density contribution to Stan's `target`; it does not simulate a value.
 
-```stan
-data {
-  int<lower=0> n;
-  array[n] int<lower=0, upper=1> y;
-}
-```
+The half-normal prior is represented by the lower bound on `sigma` together with a zero-centered normal density. Stan transforms this constrained parameter internally and applies the required Jacobian on its unconstrained sampling scale.
 
-The integer `n` is the number of clauses. The array `y` contains `n` observed integers constrained to zero or one. Values in the `data` block are supplied before sampling and remain fixed during posterior computation.
-
-The constraints check allowable data values. If `y` contains a two, Stan rejects the input rather than silently treating it as a Bernoulli outcome.
-
-## Declaring the unknown parameter
-
-```stan
-parameters {
-  real<lower=0, upper=1> pi;
-}
-```
-
-The parameter `pi` is unknown and must lie between zero and one. Stan internally transforms constrained parameters to an unconstrained scale for sampling and adjusts the density for that transformation.
-
-The support constraint is not the prior, but instead says which values are allowable. The beta statement in the model block says how prior density varies across those values.
-
-## Adding density contributions
-
-```stan
-model {
-  pi ~ beta(2, 2);
-  y ~ bernoulli(pi);
-}
-```
-
-The first statement adds the beta prior log density for `pi`. The second adds one Bernoulli log likelihood contribution for every element of `y`.
-
-Stan's tilde notation is log probability notation in the `model` block. It does not simulate `pi` and then simulate `y`. The program is equivalent, up to constants not involving `pi`, to
-
-```stan
-model {
-  target += beta_lpdf(pi | 2, 2);
-  target += bernoulli_lpmf(y | pi);
-}
-```
-
-The variable `target` accumulates the model's log probability contributions. Stan samples an unconstrained internal version of `pi`. Mapping that value back to the interval $(0,1)$ stretches some regions more than others, so Stan adds a [**Jacobian adjustment**](https://mc-stan.org/docs/reference-manual/transforms.html), a change-of-variables correction that preserves the intended density. The model contributions and this correction together define the unnormalized target density on the internal scale.
-
-## Preparing a matching data object
-
-Suppose the constructed sample has 12 overt pronouns among 20 clauses.
+## Preparing the observed data
 
 ```{r}
-#| label: stan-data-pronouns
-#| echo: true
+#| label: prepare-provo-stan-data
+library(posterior)
 
-y <- c(rep(1L, 12), rep(0L, 8))
-stan_data <- list(n = length(y), y = y)
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+y <- provo$noun_minus_verb_log_ffd
+stan_data <- list(
+  N = length(y),
+  y = y,
+  prior_mu_sd = 2 * sd(y),
+  prior_sigma_sd = 2 * sd(y),
+  nu = 4
+)
 
-stopifnot(stan_data$n == 20L)
-stopifnot(sum(stan_data$y) == 12L)
-stopifnot(all(stan_data$y %in% 0:1))
-
-analytic_posterior <- c(alpha = 2 + sum(y),
-                        beta = 2 + length(y) - sum(y))
-analytic_posterior
+stopifnot(stan_data$N == 55L, all(is.finite(stan_data$y)))
+str(stan_data)
 ```
 
-The [conjugate update derived earlier](conjugate-priors.qmd) gives a $\operatorname{Beta}(14,10)$ benchmark. A successful Stan fit should approximate this posterior within Monte Carlo error. The benchmark checks the implementation for this simple model; most Stan models will not have an analytic comparison.
+## Fitting the exact model
 
-## Matching code to factorization
+The reference run uses four data-scaled initial values constructed from the PCT grid covariance shown on the [mass-matrix page](mass-matrix-geometry.qmd). The code below reconstructs those values from the observed Provo contrasts rather than relying on an undeclared helper.
 
-Stan vectorizes `y ~ bernoulli(pi)`, but the statement still represents
+```{r}
+#| label: construct-provo-stan-initial-values
+log_posterior_eta <- function(eta) {
+  mu <- eta[[1L]]
+  sigma <- exp(eta[[2L]])
+  sum(dt((y - mu) / sigma, df = stan_data$nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, stan_data$prior_mu_sd, log = TRUE) +
+    log(2) + dnorm(sigma, 0, stan_data$prior_sigma_sd, log = TRUE) +
+    eta[[2L]]
+}
+
+gradient_log_posterior_eta <- function(eta) {
+  mu <- eta[[1L]]
+  sigma <- exp(eta[[2L]])
+  residual <- y - mu
+  scaled_squared <- residual^2 / sigma^2
+  c(
+    sum((stan_data$nu + 1) * residual /
+          (stan_data$nu * sigma^2 + residual^2)) -
+      mu / stan_data$prior_mu_sd^2,
+    sum(-1 + (stan_data$nu + 1) * scaled_squared /
+          (stan_data$nu + scaled_squared)) -
+      sigma^2 / stan_data$prior_sigma_sd^2 + 1
+  )
+}
+
+mode_fit <- optim(
+  c(median(y), log(mad(y))),
+  function(eta) -log_posterior_eta(eta),
+  gr = function(eta) -gradient_log_posterior_eta(eta),
+  method = "BFGS", hessian = TRUE,
+  control = list(reltol = 1e-12, maxit = 1000L)
+)
+mode_eta <- unname(mode_fit$par)
+mode_covariance <- solve(mode_fit$hessian)
+grid_sd <- sqrt(diag(mode_covariance))
+posterior_grid <- expand.grid(
+  mu = seq(mode_eta[[1L]] - 7 * grid_sd[[1L]],
+           mode_eta[[1L]] + 7 * grid_sd[[1L]], length.out = 321L),
+  log_sigma = seq(mode_eta[[2L]] - 7 * grid_sd[[2L]],
+                  mode_eta[[2L]] + 7 * grid_sd[[2L]], length.out = 321L)
+)
+posterior_grid$log_kernel <- apply(posterior_grid, 1L, log_posterior_eta)
+posterior_grid$weight <- exp(
+  posterior_grid$log_kernel - max(posterior_grid$log_kernel)
+)
+posterior_grid$weight <- posterior_grid$weight / sum(posterior_grid$weight)
+grid_mean_eta <- colSums(posterior_grid * posterior_grid$weight)
+grid_centered <- sweep(as.matrix(posterior_grid[, c("mu", "log_sigma")]),
+                       2L, grid_mean_eta, "-")
+grid_covariance <- crossprod(grid_centered * sqrt(posterior_grid$weight))
+
+initial_values <- function(offsets) {
+  lapply(offsets, function(offset) list(
+    mu = mode_eta[[1L]] + offset * sqrt(grid_covariance[1L, 1L]),
+    sigma = exp(mode_eta[[2L]] +
+                  offset * sqrt(grid_covariance[2L, 2L]))
+  ))
+}
+
+stopifnot(mode_fit$convergence == 0L)
+stan_offsets <- seq(-.75, .75, length.out = 4L)
+do.call(rbind, initial_values(stan_offsets))
+```
+
+The sampling call is then fully specified by the observed data, the program, and these initial values.
+
+```{r}
+#| label: show-provo-stan-fit
+#| eval: false
+library(cmdstanr)
+
+model <- cmdstan_model(
+  "scripts/data-grounding/reference_inference_bayesian.stan",
+  quiet = TRUE
+)
+
+fit <- model$sample(
+  data = stan_data,
+  seed = 2026101806,
+  chains = 4,
+  parallel_chains = 4,
+  iter_warmup = 750,
+  iter_sampling = 1000,
+  adapt_delta = .90,
+  max_treedepth = 10,
+  init = initial_values(stan_offsets),
+  refresh = 0,
+  output_dir = tempdir()
+)
+```
+
+The evaluated page reads the frozen draw object from that exact run. The cache key includes the Provo checksum, Stan-program checksum, CmdStan version, algorithm settings, and initialization specification, so changed inputs cannot silently reuse these draws.
+
+```{r}
+#| label: summarize-provo-stan-fit
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
+)
+production <- subset_draws(
+  cache$production_draws,
+  variable = c("mu", "sigma", "geometric_duration_ratio")
+)
+fit_summary <- as.data.frame(summarise_draws(
+  production,
+  "mean", "median", "sd", "rhat", "ess_bulk", "ess_tail",
+  ~quantile2(.x, probs = c(.025, .975))
+))
+production_diagnostics <- as.data.frame(
+  as_draws_df(cache$production_diagnostics)
+)
+
+stopifnot(max(fit_summary$rhat) < 1.01,
+          sum(production_diagnostics$divergent__) == 0L)
+fit_summary
+```
+
+The fitted mean of $\mu$ is `r sprintf("%.6f", fit_summary$mean[fit_summary$variable == "mu"])`, and the geometric-scale ratio has mean `r sprintf("%.6f", fit_summary$mean[fit_summary$variable == "geometric_duration_ratio"])`. These are PCT summaries, not participant-level duration effects.
+
+## Factorization and adequacy
+
+The vectorized likelihood represents
 
 $$
-\sum_{i=1}^n
-\log p(y_i\mid\pi).
+\sum_{j=1}^{55}\log t_4(y_j\mid\mu,\sigma).
 $$
 
-If several clauses come from one speaker, concise vectorization does not remove that dependence. The program has asserted conditional independence by adding separate Bernoulli terms with one common probability.
-
-Translate each density statement back into the product or sum it represents, then ask whether that factorization matches the linguistic sampling process.
-
-## Separating program validity from model adequacy
-
-Stan can parse a program, calculate gradients, and return draws from the declared posterior. None of those outcomes establishes that independent Bernoulli observations are a suitable model for the clauses.
-
-A completed sampling run is not a validated analysis. The analyst still must check computational behavior, prior implications, posterior predictions, and the linguistic correspondence between data rows and modeled units.
-
-Stan supplies the sampling machinery. The analyst supplies the model and the inferential target. The [generated quantities page](generated-quantities.qmd) next separates calculations that define this target from calculations performed after each retained draw.
-
-The program should be stored with the exact data transformation and interface call used to fit it. Identical Stan code can target a different posterior when variables are recoded or rows are filtered.
+Concise code does not make passages a probability sample or recover reader-level measurements. Stan can correctly sample the declared posterior even when the declared model is scientifically inadequate. Computation, prior implications, posterior prediction, and the correspondence between rows and modeled units require separate checks.
 
 ## Check your understanding
 
-1. Why does `y` belong in the `data` block rather than the `parameters` block?
-2. What is the difference between `<lower=0, upper=1>` and `pi ~ beta(2, 2)`?
-3. What does a tilde statement add in the `model` block?
-4. Why can a program run without representing speaker or document dependence?
+1. Which objects belong in the data block?
+2. How do the positivity constraint and half-normal prior differ?
+3. What do tilde statements add to `target`?
+4. Why does successful sampling not validate the aggregation scheme?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Observed quantities and fixed constants belong in `data`: here $N$, `y`, the two prior scales, and $\nu$. <!-- dqr-allow: empirical-answer -->
+2. The lower bound defines the parameter's support and transformation; the zero-centered normal density supplies the half-normal prior shape on that support. <!-- dqr-allow: empirical-answer -->
+3. Each tilde statement adds the corresponding log-density or log-mass contribution, up to constants, to `target`. <!-- dqr-allow: empirical-answer -->
+4. Stan can sample the declared passage-level posterior correctly even if aggregation discarded readers or the likelihood poorly represents the scientific design. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [trace-plot page](checking-markov-chains.qmd) begins the diagnostic sequence using these production draws.

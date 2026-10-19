@@ -1,93 +1,102 @@
 ---
 title: "Repeated units in linguistic data"
+execute: {warning: false, message: false}
 ---
 
-The chapter on [independent sampling](../statistical-inference/independent-sampling.qmd) separated the number of recorded observations from the assumptions that make those observations independent. Linguistic experiments often contain repeated participants and items, so the rows inherit dependence from the design.
+The chapter on [independent sampling](../statistical-inference/independent-sampling.qmd) separated the number of recorded observations from the assumptions that make those observations independent. Linguistic experiments commonly contain repeated participants and items, so rows inherit dependence from the design.
 
-Consider an acceptability experiment with 60 participants and 40 sentence items. Every participant judges several items, and every item is judged by several participants. The trial table may have 2,400 rows, but those rows are not 2,400 unrelated pieces of information.
+We examine that structure in the **MALD connected-trial extract**. MALD is an auditory lexical-decision database described by Tucker et al. ([2019](https://doi.org/10.3758/s13428-018-1056-1)); the later [MALD 1.1 release](https://doi.org/10.7939/r3-kh0r-r116) expanded the participant inventory. The paper reports 231 listeners, whereas release 1.1 contains 440. These totals describe different versions and should not be combined.
 
-A row records one response. It does not necessarily identify the unit that was independently sampled or the unit across which a claim should generalize.
+## Examining repetition in the MALD table
 
-::: {.callout-note title="Reading: Winter (2020), Sections 14.2 and 14.3"}
-[Winter, *The independence assumption* and *Dealing with non independence via experimental design and averaging*, in *Statistics for Linguists*](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf).
+The prepared extract is response-blind: participants and words were selected without using correctness or response time. It is not the full release. One row records one real-word trial from one participant, including the spoken word, response time, correctness, SUBTLEX frequency, acoustic duration, and within-run trial order.
 
-**Why this reading?** These sections begin with repeated linguistic observations and show how design and aggregation affect dependence. They are included here because students need to identify the repeated units before a mixed model formula is introduced.
-:::
+```{r}
+#| label: mald-structure
+mald_all <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald_all, correct == 1L)
 
-## Examining repetition in the table
+participant_counts <- aggregate(
+  log_rt ~ participant_id,
+  data = mald,
+  FUN = length
+)
+item_counts <- aggregate(
+  log_rt ~ item,
+  data = mald,
+  FUN = length
+)
 
-| participant | item | condition | rating |
-|---|---|---|---:|
-| p01 | s01 | control | 6 |
-| p01 | s02 | target | 5 |
-| p02 | s01 | control | 7 |
-| p02 | s02 | target | 4 |
+structure_summary <- c(
+  connected_rows = nrow(mald_all),
+  correct_latency_rows = nrow(mald),
+  participants = length(unique(mald$participant_id)),
+  word_items = length(unique(mald$item)),
+  participant_word_pairs = nrow(unique(mald[c("participant_id", "item")]))
+)
+structure_summary
+```
 
-Rows 1 and 2 share participant p01. Rows 1 and 3 share item s01. These links come from the design rather than from the numerical values of the ratings.
+The latency analysis retains correct responses, as in Tucker et al.'s source analysis. This restriction leaves `r format(nrow(mald), big.mark = ",")` trials from `r length(unique(mald$participant_id))` participants and `r format(length(unique(mald$item)), big.mark = ",")` spoken words. It does not make the retained rows independent.
 
-Responses from p01 may resemble one another because that participant uses the scale in a persistent way. Responses to s01 may resemble one another because that sentence has a persistent level of acceptability. Both sources can remain after the condition predictor has been included.
+```{r}
+#| label: plot-mald-repetition
+library(ggplot2)
 
-Thus the table contains at least three kinds of units:
+repetition_data <- rbind(
+  data.frame(
+    unit = "Participant",
+    repetitions = participant_counts$log_rt
+  ),
+  data.frame(
+    unit = "Word item",
+    repetitions = item_counts$log_rt
+  )
+)
 
-1. 2,400 response rows;
-2. 60 sampled participants;
-3. 40 sampled sentence items.
+ggplot(repetition_data, aes(x = repetitions)) +
+  geom_histogram(bins = 30, fill = "grey55", color = "white") +
+  facet_wrap(~unit, scales = "free") +
+  labs(x = "Correct trials per unit", y = "Units") +
+  theme_classic()
+```
 
-The counts answer different questions. The first tells us how many judgments were recorded. The second and third tell us how broadly the condition comparison was replicated across people and linguistic materials.
+The two panels show different replication structures. A participant contributes many lexical decisions, while a word is heard by more than one participant. Thus the trial count, participant count, and item count answer different questions.
 
 ## Writing the independence claim
 
-A regression model without grouping terms often represents conditional independence with
+A regression model without grouping terms often represents conditional independence as
 
 $$
-p(\mathbf{y}\mid\mathbf{x},\boldsymbol\beta)
-=\prod_i p(y_i\mid\mathbf{x}_i,\boldsymbol\beta).
+f(\mathbf y\mid\mathbf X,\boldsymbol\beta)
+=\prod_i f(y_i\mid\mathbf x_i,\boldsymbol\beta).
 $$
 
-After the predictors are known, the joint probability is written as a product over rows. Under this model, learning the residual for one row gives no information about the residual for another.
+After the predictors are known, the joint density is written as a product over trials. Under this model, learning the residual for one row gives no information about the residual for another.
 
-Dependence arises when two rows share an unrepresented cause. If p01 tends to use higher ratings, observing one high response from p01 changes what we should expect for another response from p01. If s01 is persistently difficult, observing one low rating for s01 changes what we should expect from another participant on s01.
-
-Treating these rows as unrelated can make uncertainty too small. It can also allow a few unusual participants or items to exert more influence than their number of independent units warrants.
+That claim is implausible here for two distinct reasons. Responses from one participant may resemble each other because that listener has a persistent response-speed baseline. Responses to one word may resemble each other because its acoustic and lexical properties are not completely represented by the measured predictors. Observing one trial can thus change what we expect for another trial that shares its participant or word.
 
 ## Distinguishing crossed and nested units
 
-Participant and item are [**crossed**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) when participants encounter many items and items are encountered by many participants. The four row table above has this structure.
+Participant and word are **crossed** because participants respond to many words and words receive responses from multiple participants. A nested structure would instead require each lower-level unit to belong to only one higher-level unit. For instance, runs belong to participant sessions in the MALD release; a run identifier does not migrate between participants.
 
-A **nested** structure has a different arrangement. Suppose a corpus contains utterances from interviews, and each interview records exactly one speaker. Utterances are nested within interviews, and interviews are nested within speakers. An interview cannot belong to two speakers under that design.
+The distinction can be checked from the incidence table rather than inferred from column order:
 
-Nested grouping describes containment among observational units. It differs from one statistical model being [nested within another](../model-criticism-and-prediction/likelihood-ratio-tests.qmd), which means that a parameter restriction turns the larger model into the smaller model.
-
-The distinction can be checked by asking two questions:
-
-1. Can one level of unit A occur with several levels of unit B?
-2. Can one level of unit B occur with several levels of unit A?
-
-Two yes answers indicate crossing. If each level of B belongs to only one level of A, B is nested within A. Column order and identifier spelling do not determine this relation.
+```{r}
+#| label: mald-crossing-check
+crossing_check <- c(
+  smallest_participant_item_inventory = min(participant_counts$log_rt),
+  largest_participant_item_inventory = max(participant_counts$log_rt),
+  smallest_item_listener_inventory = min(item_counts$log_rt),
+  largest_item_listener_inventory = max(item_counts$log_rt)
+)
+crossing_check
+```
 
 ## Matching dependence to the claim
 
-A participant population claim requires replication across participants. An item population claim requires replication across items. A claim about both requires a design and analysis that preserve both sources.
+A participant-population claim requires replication across participants. An item-population claim requires replication across words. A claim about both requires a design and analysis that preserve both sources. Adding more trials from the same participants or the same words can improve estimates for those observed units, but it does not create new participant or word replication.
 
-For instance, a condition difference observed across 60 participants but built from only two target sentences has extensive participant replication and weak item replication. Adding more judgments of the same two sentences does not create new sentence evidence. The distinction among response, sampling, and generalization units thus concerns interpretation as well as standard errors.
+Averaging trials within participants would preserve participant replication while discarding word variation and within-participant trial predictors. Averaging within words would do the reverse. Mixed-effects models retain trial-level responses while representing both shared sources.
 
-## Examining why averaging is partial
-
-Averaging all trials within each participant produces 60 rows. This representation preserves participant replication, but it removes item variation and any trial predictor that changes within the average. Averaging within each item produces 40 rows and loses participant variation.
-
-Aggregation may answer a deliberately chosen question, but it cannot preserve both crossed sources in one ordinary row level analysis. Mixed effects models retain the trial responses while representing the shared participant and item variation.
-
-Before writing such a model, record the possible sources of dependence:
-
-1. State what one response row represents.
-2. List every sampled unit that appears on more than one row.
-3. State whether the units are crossed or nested.
-4. State the populations across which the linguistic comparison should generalize.
-
-This list describes the design. It should be possible to write it before deciding on software or a response distribution.
-
-::: {.callout-note title="Check the row count"}
-In a study with 50 participants, 30 items, and one judgment per participant and item pair, how many trial rows are possible? How many sampled units exist at each grouping level? Which count measures item replication?
-:::
-
-The [next page](fixed-and-random-effects.qmd) uses the recorded sources of dependence to separate population comparisons from sampled variation.
+Before fitting one, record four facts: (i) what one response row represents, (ii) which sampled units recur, (iii) whether those units are crossed or nested, and (iv) the populations across which the linguistic association should generalize. The [next page](fixed-and-random-effects.qmd) translates those design facts into population coefficients and group distributions.

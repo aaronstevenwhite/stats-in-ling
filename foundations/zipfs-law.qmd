@@ -2,203 +2,203 @@
 title: "A first pattern: Zipf's law"
 ---
 
-Suppose we want to know how word frequency changes as we move from common word types to rare ones. What must we count, and what would an inverse rank pattern tell us? To answer those questions, we will use George Washington's 1793 inaugural address. This address is one of the texts in quanteda's [corpus of US presidential inaugural addresses](https://quanteda.io/reference/data_corpus_inaugural.html). It is short enough to inspect: after we lowercase the text and remove punctuation, it contains 135 word tokens assigned to 90 word types.
+Word types in corpora tend to show a broad inverse relation between frequency and frequency rank. But estimating both quantities from the same counts builds a downward relation into the display. We call this dependence the **same-sample rank problem**.
 
-We first count the tokens assigned to each type. We then sort the types from highest frequency to lowest frequency under an explicit tie rule. The most frequent type receives rank 1, the next receives rank 2, and so on.
+Piantadosi's (2014) [critical review](https://doi.org/10.3758/s13423-014-0585-6) demonstrates the problem with the written American National Corpus, separates rank and frequency estimation by splitting tokens, and shows systematic residual structure beyond a Zipf–Mandelbrot curve. The authorized ANC count snapshot is not available in this repository. We thus carry out an explicitly labeled, paper-aligned replication on [UD Turkish BOUN release 2.18](https://universaldependencies.org/treebanks/tr_boun/), pinned at commit `0def94a229dcbc28d32192b0138b560c075c6d87` under CC BY-SA 4.0.
 
-Define the observed frequency at rank $r$ by
+Türk et al. (2022) [describe the BOUN Treebank and its annotation](https://doi.org/10.1007/s10579-021-09558-0); Marşan et al. (2022) [describe later agglutination-sensitive revisions](https://arxiv.org/abs/2207.11782). The treebank contains written sentences from five Turkish National Corpus registers. Native-speaker linguists manually annotated and cross-checked automatically preprocessed sentences. The prepared table lowercases source surface forms with Turkish dotted and dotless I preserved, and it excludes punctuation, multiword-token range lines, and empty nodes while retaining component syntactic words. One row is one word-form type; `frequency` is its count among non-punctuation syntactic-word tokens. The immediate UD release permits redistribution under CC BY-SA 4.0, though the public documents do not independently expose the upstream Turkish National Corpus permission reported by the paper. The [data record](../data/ud-turkish-boun/README.md) gives the checksums and full terms caveat.
+
+```{r}
+#| label: load-turkish-frequencies
+library(ggplot2)
+
+forms <- read.csv("data/ud-turkish-boun/word-form-frequencies.csv",
+                  fileEncoding = "UTF-8")
+
+stopifnot(
+  nrow(forms) == 33876L,
+  sum(forms$frequency) == 104426L,
+  !anyDuplicated(forms$word_form),
+  all(forms$frequency > 0)
+)
+
+c(types = nrow(forms), tokens = sum(forms$frequency))
+```
+
+## Rank and the descriptive model
+
+Let $f(r)$ be the observed token count of the type assigned rank $r$. Zipf's law supplies the basic inverse form
 
 $$
-f(r)\equiv\text{token count of the type assigned rank }r.
-$$
-
-Now we need a function to compare with the observed counts. This inverse relation is the basic form of [**Zipf's law**](https://doi.org/10.3758/s13423-014-0585-6):
-
-$$
-\widehat f(r)\equiv Cr^{-\alpha},
+\widehat f(r)
+\equiv
+Cr^{-\alpha},
 \qquad C>0,\ \alpha>0.
 $$
 
-Here $f(r)$ is the observed token count, whereas $\widehat f(r)$ is the count predicted by the model. The parameter $\alpha$ controls how quickly predicted frequency falls as rank rises. Keeping those two functions distinct prevents us from treating a model prediction as another observed count.
+The Zipf–Mandelbrot generalization shifts rank by $\beta$:
 
-::: {.callout-note title="Reading: Piantadosi (2014)"}
-[Piantadosi, *Zipf's word frequency law in natural language: A critical review and future directions*](https://doi.org/10.3758/s13423-014-0585-6).
+$$
+\widehat f(r)
+\equiv
+C(r+\beta)^{-\alpha},
+\qquad C>0,\ \alpha>0,\ \beta\geq 0.
+$$
 
-Read the introduction, Sections 2 and 3, and the conclusion.
+Here $f(r)$ is an observed count and $\widehat f(r)$ is a fitted count. The model is a descriptive approximation; matching it does not identify a mechanism of lexical choice, memory, or communication.
 
-**Why this reading?** The paper starts from a familiar linguistic regularity and asks what would count as an explanation of it. It shows why reproducing the broad rank frequency curve is weak evidence for a proposed mechanism when many different mechanisms produce similar curves.
-:::
+## Separate rank and frequency estimation
 
-## Count the tokens in R
-
-The corpus is included with the `quanteda` package. Install the package once with `install.packages("quanteda")`. We can then load the address and count its words with base R functions.
+Following Piantadosi (2014), we use a fixed binomial token split. One count part assigns ranks and the other estimates relative frequency. The random split is a computational device applied to the observed Turkish counts, not a new linguistic dataset. It also does not repair sentence or register dependence because the aggregate table lacks document identifiers.
 
 ```{r}
-#| eval: false
-library(quanteda)
-data("data_corpus_inaugural", package = "quanteda")
+#| label: split-rank-frequency
+set.seed(20261018)
 
-speech <- as.character(
-  data_corpus_inaugural["1793-Washington"]
+forms$rank_count <- rbinom(nrow(forms), size = forms$frequency, prob = 0.5) # dqr-allow: algorithm-setting
+forms$frequency_count <- forms$frequency - forms$rank_count
+
+forms$tie_breaker <- runif(nrow(forms)) # dqr-allow: algorithm-setting
+rank_order <- order(-forms$rank_count, forms$tie_breaker)
+forms$rank_split <- integer(nrow(forms))
+forms$rank_split[rank_order] <- seq_len(nrow(forms))
+
+split_tokens <- sum(forms$frequency_count)
+forms$relative_frequency <- forms$frequency_count / split_tokens
+
+stopifnot(
+  all(forms$rank_count + forms$frequency_count == forms$frequency),
+  length(unique(forms$rank_split)) == nrow(forms),
+  abs(sum(forms$relative_frequency) - 1) < 1e-10
 )
-
-normalized <- tolower(
-  gsub("[^[:alpha:]']+", " ", speech)
-)
-word <- strsplit(
-  trimws(normalized),
-  "[[:space:]]+"
-)[[1]]
-
-frequency_table <- sort(
-  table(word),
-  decreasing = TRUE
-)
-
-counts <- data.frame(
-  word = names(frequency_table),
-  frequency = as.integer(frequency_table)
-)
-counts <- counts[
-  order(-counts$frequency, counts$word),
-]
-counts$rank <- seq_len(nrow(counts))
-
-head(counts, 10)
 ```
 
-The first ten rows are:
-
-| word type | frequency | rank |
-|---|---:|---:|
-| *the* | 13 | 1 |
-| *of* | 11 | 2 |
-| *i* | 6 | 3 |
-| *to* | 5 | 4 |
-| *in* | 3 | 5 |
-| *shall* | 3 | 6 |
-| *am* | 2 | 7 |
-| *and* | 2 | 8 |
-| *any* | 2 | 9 |
-| *be* | 2 | 10 |
-
-Frequency is the token count for a type. Once the tie rule is fixed, rank is a deterministic function of the observed frequencies; it is not an independently measured covariate.
-
-Ties are common in this address. We order tied types alphabetically so that the result is reproducible. Thus *in* and *shall* receive different ranks even though both occur three times. Reversing their ranks would not change either observed frequency.
-
-## The counting representation
-
-Even this small table depends on several representational choices.
-
-1. What counts as a token? Punctuation marks might be included or removed.
-2. What counts as the same type? *run* and *runs* might be separate forms or members of one lemma.
-3. What counts as the corpus? One novel, a collection of conversations, and a balanced genre sample represent different populations of tokens.
-4. How are ties in frequency ranked?
-
-Different choices produce different frequencies and ranks. Zipf's law describes the resulting token and type representation, not a collection of words that existed independently of those decisions.
-
-Consider lemmatization. If *run*, *runs*, *ran*, and *running* are grouped under one lemma, their counts are added. The lemma may move to a higher rank than any individual form occupied. Other types may then move to lower ranks even though their own token counts did not change.
-
-The analysis should say how tokens were counted, how types were defined, and how ties were ranked.
-
-## Compare the counts with the inverse pattern
-
-For an illustrative inverse-rank curve, set $\alpha=1$. This choice turns $Cr^{-\alpha}$ into $C/r$. We then anchor the curve at the observed rank 1 count, giving the prediction
+We fit the curve as a multinomial model over the finite ranked inventory, following Piantadosi's analysis. For $V$ observed word-form types, the model assigns rank $r$ probability
 
 $$
-\widehat f(r)=\frac{C}{r},
+p(r\mid\alpha,\beta)
+\equiv
+\frac{(r+\beta)^{-\alpha}}
+{\sum_{j=1}^{V}(j+\beta)^{-\alpha}}.
 $$
 
-where $C$ is a constant. Now ask what value $C$ must take. In the Washington address, *the* has rank 1 and occurs 13 times. At rank 1, $C/r=C/1=C$, so
+If $n_r$ is the frequency-half count at rank $r$, maximizing the multinomial likelihood is equivalent to maximizing
 
 $$
-C=f(1)=13.
+\ell(\alpha,\beta)
+\equiv
+\sum_{r=1}^{V}n_r\log p(r\mid\alpha,\beta).
 $$
 
-The curve predicts
-
-$$
-\begin{aligned}
-\widehat f(2)&=13/2=6.5,\\
-\widehat f(3)&=13/3\approx4.33,\\
-\widehat f(4)&=13/4=3.25.
-\end{aligned}
-$$
-
-Compare those predictions with the observed counts.
-
-| rank | observed | simple prediction | observed minus prediction |
-|---:|---:|---:|---:|
-| 1 | 13 | 13.00 | 0.00 |
-| 2 | 11 | 6.50 | 4.50 |
-| 3 | 6 | 4.33 | 1.67 |
-| 4 | 5 | 3.25 | 1.75 |
-| 5 | 3 | 2.60 | 0.40 |
-| 6 | 3 | 2.17 | 0.83 |
-
-The mismatch at rank 2 is large: *of* occurs 11 times, while the curve predicts 6.5 occurrences. A corpus with 135 tokens will also have many types that occur only once. The observed rank-frequency curve is thus much rougher than one computed from a corpus containing millions of tokens.
-
-The same calculation can be added to the `counts` table.
+The ranks come from one half and the counts from the other, which removes the same-count error that Piantadosi identifies. Types with zero frequency-half counts remain in the model support even though they cannot appear on a logarithmic plot.
 
 ```{r}
-#| eval: false
-counts$prediction <- counts$frequency[1] / counts$rank
-counts$residual <- counts$frequency - counts$prediction
+#| label: fit-zipf-mandelbrot
+log_sum_exp <- function(x) {
+  x_max <- max(x)
+  x_max + log(sum(exp(x - x_max)))
+}
 
-head(counts, 10)
+negative_log_likelihood <- function(theta) {
+  alpha <- exp(theta[[1]])
+  beta <- exp(theta[[2]])
+  log_weight <- -alpha * log(forms$rank_split + beta)
+  log_probability <- log_weight - log_sum_exp(log_weight)
+  -sum(forms$frequency_count * log_probability)
+}
+
+zipf_fit <- optim(
+  par = log(c(alpha = 1, beta = 2.7)), # dqr-allow: algorithm-setting
+  fn = negative_log_likelihood,
+  method = "L-BFGS-B",
+  lower = log(c(alpha = 0.05, beta = 0.001)), # dqr-allow: algorithm-setting
+  upper = log(c(alpha = 5, beta = 10000)), # dqr-allow: algorithm-setting
+  control = list(maxit = 1000) # dqr-allow: algorithm-setting
+)
+
+zipf_coef <- exp(zipf_fit$par)
+names(zipf_coef) <- c("alpha", "beta")
+log_weight <- -zipf_coef[["alpha"]] *
+  log(forms$rank_split + zipf_coef[["beta"]])
+forms$fitted_frequency <- exp(log_weight - log_sum_exp(log_weight))
+
+rank_frequency <- subset(forms, frequency_count > 0)
+rank_frequency$log_residual <-
+  log(rank_frequency$relative_frequency) -
+  log(rank_frequency$fitted_frequency)
+
+stopifnot(
+  zipf_fit$convergence == 0,
+  zipf_coef[["alpha"]] > 0,
+  zipf_coef[["beta"]] >= 0,
+  all(forms$fitted_frequency > 0),
+  abs(sum(forms$fitted_frequency) - 1) < 1e-10
+)
+
+zipf_coef
 ```
 
-In this calculation, the rank 1 count fixes $C$, and we compare the remaining counts with $C/r$. Define the residual by
+The fitted exponent is `r round(zipf_coef[["alpha"]], 3)` and the fitted rank shift is `r round(zipf_coef[["beta"]], 3)`. These parameters describe this tokenization of this treebank release; they are not estimates for Turkish as a whole.
+
+```{r}
+#| label: plot-zipf-fit
+#| fig-cap: "Turkish BOUN word-form frequencies. Ranks and relative frequencies are estimated from separate fixed token splits; the blue line is the fitted Zipf–Mandelbrot curve."
+ggplot(rank_frequency,
+       aes(rank_split, relative_frequency)) +
+  geom_point(color = "grey") +
+  geom_line(aes(y = fitted_frequency),
+            color = "#2C7FB8", linewidth = 0.8) +
+  scale_x_log10() +
+  scale_y_log10() +
+  labs(x = "Frequency rank (rank split)",
+       y = "Relative frequency (frequency split)") +
+  theme_classic(base_size = 12)
+```
+
+## Inspect the residual structure
+
+Define the log residual by
 
 $$
-e(r)\equiv f(r)-\widehat f(r).
+e(r)
+\equiv
+\log f(r)-\log\widehat f(r).
 $$
 
-We do not estimate $\alpha$ or compare alternative explanations of the rank-frequency relation.
+If the curve captured all systematic structure, residuals would fluctuate without an ordered pattern around zero. The restrained residual plot lets the data, rather than a callout, show where the approximation misses.
 
-![](figures/washington-1793-zipf.svg){width="78%" fig-alt="Word frequency by frequency rank for Washington's 1793 inaugural address, with the inverse-rank prediction shown as a line."}
+```{r}
+#| label: plot-zipf-residuals
+#| fig-cap: "Ordered residuals from the fitted Zipf–Mandelbrot curve. The horizontal line marks zero residual."
+ggplot(rank_frequency, aes(rank_split, log_residual)) +
+  geom_point(color = "grey") +
+  geom_smooth(color = "#2C7FB8", method = "loess", formula = y ~ x,
+              se = FALSE, linewidth = 0.8) +
+  geom_hline(yintercept = 0, color = "grey25", linewidth = 0.4) +
+  scale_x_log10() +
+  labs(x = "Frequency rank (rank split)", y = "Log residual") +
+  theme_classic(base_size = 12)
+```
 
-The individual points are the observed type counts. The line is $13/r$. The axes are logarithmic so that the many low-frequency types remain visible.
+The broad decline and the residual structure coexist. This is Piantadosi's description–explanation gap: a simple curve may summarize much of the distribution while providing weak evidence for any particular mechanism that can generate it.
 
-## Inspect the broad pattern
+This replication has two limits. First, BOUN is a five-register treebank, not a balanced probability sample of Turkish usage. Second, the aggregate frequency table permits a token split but not a document-level split, so discourse clustering remains. The result licenses a claim about represented word-form counts, not about a universal law of Turkish.
 
-Piantadosi plots frequency against rank for a large corpus.
-
-![](../slides/data-and-probability/figures/piantadosi-figure-1a.svg){width="80%" fig-alt="Word frequency plotted against frequency rank."}
-
-The first plot shows the broad inverse relation. The second shows that the observed frequencies do not lie exactly on one ideal curve. The departures are systematic, especially among very frequent and very infrequent types.
-
-![](../slides/data-and-probability/figures/piantadosi-figure-1b.svg){width="80%" fig-alt="Deviation of observed word frequencies from a simple Zipfian curve."}
-
-Piantadosi uses these plots to distinguish two questions.
-
-1. Does an inverse rank frequency curve describe the broad pattern?
-2. What process produced the particular frequencies and deviations in this corpus?
-
-The first question is descriptive, whereas the second asks for an explanation. The distance between those two questions is the **description-explanation gap**.
-
-## Why curve matching does not identify a mechanism
-
-Many proposed mechanisms can produce an approximately Zipfian pattern. They make different claims about memory, lexical organization, communication, and textual growth. If incompatible mechanisms produce the same broad curve, then matching that curve cannot distinguish among them.
-
-Piantadosi argues that an explanatory account must make predictions on which the proposed mechanisms differ. For instance, the mechanisms might predict different relations between meaning and frequency, different changes across genres, or different trajectories for local frequencies within a text.
-
-An inverse rank frequency curve is compatible with several incompatible mechanisms. Observing that curve thus does not tell us which of those mechanisms generated the corpus.
-
-## The descriptive target
-
-For this rank frequency analysis, we can write:
-
-> One observation represents one word type in the chosen corpus. Its response is the number of represented tokens assigned to that type. Rank is assigned after sorting those counts. The target is the relation between rank and frequency under this tokenization, type definition, and corpus sample.
-
-Fitting the curve does not explain lexical choice, memory, or communication. Those claims require observations on which the competing accounts make different predictions.
-
-The exact upshot is that a curve can summarize the represented data without identifying the process that generated them. We next make the representation itself explicit by defining the [possible outcomes of a probability model](possibilities-and-events.qmd).
+The [next page](possibilities-and-events.qmd) moves from the whole word-form inventory to an audited token extract and defines a finite probability experiment.
 
 ## Check your understanding
 
-1. Use the R code to identify every type that occurs three times. Explain how the code assigns ranks within this tie.
-2. Suppose two forms are combined under one lemma. Explain why the ranks of types outside that lemma may change even if their counts do not.
-3. Calculate the inverse-rank prediction for rank 10 and compare it with the observed frequency of *be*.
-4. What does a small observed minus predicted value establish? What does it not establish about the source of the pattern?
-5. Give one additional prediction that could distinguish two mechanisms that both produce an inverse rank frequency curve.
+1. Use the visible code to identify the ten most frequent word forms and report their observed counts.
+2. Recompute ordinary same-sample ranks from `frequency`. Why are those ranks mathematically dependent on the plotted frequencies?
+3. Use `rank_frequency` to find the type with the largest absolute log residual. What does that residual establish, and what does it not establish about a generating mechanism?
+4. Explain why lowercasing and excluding punctuation change both the type inventory and the rank assignment.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The ten most frequent forms are *bir* 2,746, *ve* 2,045, *bu* 1,258, *de* 836, *ki* 787, *da* 786, *için* 591, *çok* 485, *o* 450, and *gibi* 411. <!-- dqr-allow: empirical-answer -->
+2. Ordinary ranks are deterministic order statistics of `frequency`, so the plotted rank and frequency reuse the same counts and are mathematically dependent. <!-- dqr-allow: empirical-answer -->
+3. The largest absolute log residual belongs to *olanak* at split rank 32,474, with residual 3.119; this establishes that the fitted curve underpredicts that split count, not that any particular mechanism generated it. <!-- dqr-allow: empirical-answer -->
+4. Lowercasing merges case-distinguished strings, while punctuation removal deletes types and tokens; both operations change counts and thus the ordering that defines frequency rank. <!-- dqr-allow: empirical-answer -->
+
+</details>

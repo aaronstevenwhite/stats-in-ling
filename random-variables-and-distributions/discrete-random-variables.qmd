@@ -1,108 +1,135 @@
 ---
 title: "Discrete random variables"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
 The [formal definition of a random variable](defining-random-variables.qmd) requires a measurable mapping from outcomes to values. We now ask a different question: can the possible values be listed one at a time? The answer separates discrete variables from the continuous variables introduced later.
 
-Suppose $L$ maps each utterance outcome to its number of word tokens. We declare the
-codomain $\operatorname{cod}(L)=\mathbb Z_{\geq0}$, whose values begin
+We continue with the [CMUdict pronunciation outcomes](why-random-variables.qmd#the-pronunciation-entry-outcomes). Let $X$ map an entry to its total number of phones.
+
+```{r}
+#| label: load-cmudict-discrete
+library(ggplot2)
+
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+cmu$first_phone <- sub(" .*", "", cmu$phones)
+
+stopifnot(
+  nrow(cmu) == 133854L,
+  all(cmu$phone_count >= 1L),
+  !anyNA(cmu[c("phone_count", "first_phone")])
+)
+```
+
+We declare
+
+$$
+\operatorname{cod}(X)=\mathbb Z_{\geq0},
+$$
+
+whose values begin
 
 $$
 0,1,2,3,\ldots
 $$
 
-There may be no fixed largest utterance length in the model, but the codomain values
-can be placed in a list. This property makes $L$ a [**discrete random variable**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html).
+There is no fixed largest pronunciation length in this declared model, but the codomain values can be placed in a list. This property makes $X$ a [**discrete random variable**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html).
 
-Here *word token* means a unit produced by a declared tokenization scheme. Word segmentation is not identical across languages or annotation projects, so a real analysis must document the rule used to obtain the count (see the [Universal Dependencies tokenization guidelines](https://universaldependencies.org/u/overview/tokenization.html)).
-
-The codomain declares which values the function may return. The
-[**support**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is the subset that
-receives positive probability:
+The [**support**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is the subset that receives positive probability:
 
 $$
 \operatorname{supp}(X)
 \equiv\{x\in\operatorname{cod}(X):\mathbb{P}(X=x)>0\}.
 $$
 
-Here $\operatorname{cod}(X)$ is the declared value space, following the [notation
-introduced on the preceding page](defining-random-variables.qmd#distinguishing-the-two-spaces).
-For the utterance-length model, the support might equal the full codomain, but it need
-not. A model could assign zero probability to some declared codomain values.
+In the finite empirical distribution over this pinned lexicon, the observed support contains `r length(unique(cmu$phone_count))` values, from `r min(cmu$phone_count)` through `r max(cmu$phone_count)` phones, with gaps allowed. The declared codomain is larger. This distinction prevents an observed maximum from becoming a claim about every possible English pronunciation.
 
-More specifically, a random variable $X$ is discrete when some finite or countably infinite set $\mathcal S$ satisfies $\mathbb{P}(X\in\mathcal S)=1$. In this module, we declare a countable codomain for a discrete variable and sum over $x\in\operatorname{cod}(X)$. *Countably infinite* means that every value can be assigned a position in a sequence, even though the sequence has no final value.
+```{r}
+#| label: cmudict-discrete-support
+phone_counts <- as.data.frame(table(cmu$phone_count))
+names(phone_counts) <- c("phone_count", "entries")
+phone_counts$phone_count <- as.integer(as.character(phone_counts$phone_count))
+observed_support <- phone_counts$phone_count[phone_counts$entries > 0L]
 
-## Comparing finite and countably infinite support
+stopifnot(
+  sum(phone_counts$entries) == nrow(cmu),
+  identical(observed_support, sort(unique(cmu$phone_count)))
+)
 
-An annotation variable $P$ might record grammatical person:
+observed_support
+```
 
-$$
-\operatorname{supp}(P)
-=\{\mathrm{first},\mathrm{second},\mathrm{third}\}.
-$$
+```{r}
+#| label: plot-cmudict-discrete
+#| fig-cap: "The empirical support of total phone count consists of separate integer values."
+ggplot(phone_counts, aes(phone_count, entries)) +
+  geom_col(fill = "grey65", width = 0.8) +
+  labs(x = "Phones in pronunciation", y = "Pronunciation entries") +
+  theme_classic(base_size = 12)
+```
 
-This support is finite. The utterance length support is countably infinite. Both variables are discrete because their values occur as separate, listable possibilities.
+## Finite and countably infinite sets
 
-The support values need not be numerical. Grammatical person is discrete even when represented with linguistic labels. Numerical coding may be convenient in software, but it does not create discreteness.
+More specifically, a random variable is discrete when some finite or countably infinite set $\mathcal S$ satisfies $\mathbb{P}(X\in\mathcal S)=1$. <!-- dqr-allow: symbolic-derivation --> *Countably infinite* means that every value can be assigned a position in a sequence even though the sequence has no final value.
+
+The observed phone-count support is finite. The declared nonnegative-integer codomain is countably infinite. Both are discrete because their values occur as separate, listable possibilities.
+
+Support values need not be numerical. The derived `first_phone` variable is a finite, unordered discrete variable: its values are ARPAbet labels. Numerical coding may be convenient in software, but it does not create discreteness.
+
+```{r}
+#| label: compare-discrete-types
+c(
+  distinct_phone_counts = length(unique(cmu$phone_count)),
+  distinct_initial_phones = length(unique(cmu$first_phone))
+)
+```
 
 ## Values define separate events
 
-The statement $L=5$ corresponds to the event
+For any observed count $x$, the statement $X=x$ corresponds to the event
 
 $$
-\{\omega\in\Omega\mid L(\omega)=5\},
+\{\omega\in\Omega\mid X(\omega)=x\},
 $$
 
-which contains every five word utterance outcome. The statement $L\geq5$ corresponds to
+which contains every pronunciation entry with exactly $x$ phones. An upper-tail statement corresponds to
 
 $$
-\{\omega\in\Omega\mid L(\omega)\in\{5,6,7,\ldots\}\}.
+\{\omega\in\Omega\mid X(\omega)\in\{x,x+1,x+2,\ldots\}\}.
 $$
 
-For a discrete variable, each support value can be considered separately. A single value such as $L=5$ may receive positive probability.
-
-## Working through a finite sample
-
-Suppose a conversation excerpt contains utterance lengths
-
-$$
-2,5,1,5,3.
-$$
-
-The observed values are $\{1,2,3,5\}$, but the modeled support may still include $0$, $4$, $6$, and larger integers. An observed sample does not determine the full support.
-
-The event $L\geq3$ contains the third, fifth, and larger support values, but in this sample it selects the observed lengths 5, 5, and 3.
-
-```{r}
-#| eval: false
-utterance_length <- c(2, 5, 1, 5, 3)
-
-sort(unique(utterance_length))
-utterance_length[utterance_length >= 3]
-```
-
-The first line reports observed distinct values. It should not be interpreted as a complete statement of modeled support.
+For a discrete variable, each support value can be considered separately. A single value may receive positive probability.
 
 ## Discrete is not the same as unordered
 
-Grammatical person is often treated as a set of categories without a numerical distance between them. Utterance length is ordered, and differences such as $5-3=2$ have an interpretation in words. Both variables are discrete.
+`first_phone` is usually treated as a set of categories without a numerical distance between them. Total phone count is ordered, and a difference in counts has an interpretation in phones. Both variables are discrete.
 
-Thus discreteness concerns whether the probability-carrying values are separate and
-listable. It does not determine whether the codomain is ordered or whether arithmetic
-on its labels is meaningful.
-
-## Observed values do not determine the complete support
-
-The distinct values in one sample need not exhaust the modeled support. If the longest utterance in a small sample contains five words, that fact does not imply that $\operatorname{supp}(L)=\{0,1,2,3,4,5\}$.
-
-The support is a modeling statement about possible values. The sample reports which of those values happened to occur in the observed records.
+Thus discreteness concerns whether the probability-carrying values are separate and listable. It does not determine whether the codomain is ordered or whether arithmetic on its labels is meaningful.
 
 ## Check your understanding
 
-1. Is the number of relative clauses in a sentence finite or countably infinite under a model with no fixed sentence length limit?
-2. Why is a part of speech variable discrete even when its values are not numbers?
-3. Give one discrete ordered variable and one discrete unordered variable from linguistics.
-4. Explain why the largest observed value does not automatically determine the upper end of the support.
+1. Which integer values between the observed minimum and maximum are absent from `observed_support`?
+2. Why is `first_phone` discrete even though its values are not numbers?
+3. Use `cmu` to define an event containing pronunciations at or above the empirical third quartile of `phone_count`.
+4. Explain why the largest observed count does not determine the upper end of the declared codomain.
 
-The codomain declares the values to which a PMF assigns mass, including zero mass. The
-[next page](probability-mass-functions.qmd) defines that assignment.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Between the observed minimum 1 and maximum 32, the absent phone counts are 21–27 and 29–31. <!-- dqr-allow: empirical-answer -->
+2. `first_phone` is discrete because its possible ARPABET labels form a countable set, even though those labels are not numbers. <!-- dqr-allow: empirical-answer -->
+3. The empirical third quartile is 8 phones, so the event $\{\omega:X(\omega)\geq8\}$ contains 35,473 pronunciation entries. <!-- dqr-allow: empirical-answer -->
+4. The largest observed CMUdict phone count only describes this finite resource; the declared codomain can include unobserved larger counts for other pronunciation entries. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The codomain declares the values to which a PMF assigns mass, including zero mass. The [next page](probability-mass-functions.qmd) defines that assignment.

@@ -2,118 +2,184 @@
 title: "Annotator effects"
 ---
 
-Suppose two annotators answer the same property question for overlapping predicate nodes. One tends to answer yes more often than the other. If the model attributes every difference to the predicates, the first annotator's responses may make the predicates assigned to that annotator appear more likely to elicit an affirmative response.
+The Turkish PropBank analysis separated agreement from adjudication. We now return to the [UDS natural-parts responses](generative-stories.qmd), where each predicate node was judged by two or three annotators. A stable annotator term may separate an annotator's response location from the item propensities estimated from overlapping judgments.
 
-The [random-intercept model introduced earlier](../regression-models/random-intercepts.qmd) can also represent stable annotator variation. Here an annotator random intercept represents a stable upward or downward response tendency shared across one annotator's judgments. It extends the item response model from the preceding page without changing the meaning of the item values.
+We use **annotator location effect** for this term. It describes a stable upward or downward shift in log odds under this instrument. It is not a measure of annotator quality or proof of a context-independent bias.
+
+## Loading raw responses and fitted summaries
+
+```{r}
+#| label: load-uds-annotators
+#| message: false
+#| warning: false
+
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+uds_cache <- readRDS(
+  "data/uds/uds-natural-parts-teaching-cache.rds"
+)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$annotator_id)) == 12L,
+  setequal(unique(uds$natural_parts), 0:1),
+  nrow(uds_cache$annotator_summary) == 12L,
+  setequal(
+    uds_cache$annotator_summary$annotator_id,
+    unique(uds$annotator_id)
+  )
+)
+
+annotator_summary <- uds_cache$annotator_summary
+```
+
+The raw rate for annotator $j$ is
+
+$$
+\bar Y_{\cdot j}
+=\frac{1}{n_j}\sum_{i:(i,j)\in\mathcal O}Y_{ij}.
+$$
+
+This rate mixes annotator behavior with the particular items assigned to that annotator. The crossed model instead represents item and annotator locations simultaneously.
 
 ## Adding one location term
 
-Let $\theta_i$ be the unobserved log odds for item $i$, and let $a_j$ be annotator $j$'s random intercept. Define
+Let $u_i$ be item $i$'s deviation and $a_j$ annotator $j$'s location effect. The response model is
 
 $$
-\operatorname{logit}(\pi_{ij})=\theta_i+a_j,
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
 $$
 
-with
-
 $$
-Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}).
+\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j.
 $$
 
-To make $a_j$ a random intercept, give the annotator deviations a population distribution centered at zero:
+The fitted model constructs its deviations from centered standard-normal vectors:
 
 $$
-a_j\sim\operatorname{Normal}(0,\sigma_a^2).
+u_i=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right),
+\qquad
+z_i^{\text{item}}\sim\mathcal N(0,1),
 $$
 
-A positive $a_j$ raises the log odds of an affirmative response for every item judged by annotator $j$. A negative value lowers them. The effect is shared across responses, so it is not trial noise. We use **annotator location effect** for this model term; it is not a measure of annotator quality or proof that the person has a context-independent bias.
-
-This equation is an extension of the earlier joint model. The item value still locates the item, and the annotator value shifts the response mapping for one person.
-
-## Working through two annotators
-
-Suppose item 1 has $\theta_1=-1$ and item 2 has $\theta_2=1$. Annotator A has $a_A=.5$, while annotator B has $a_B=-.5$.
-
-For item 1, the two linear predictors are
-
 $$
-\eta_{1A}=-1+.5=-.5
+a_j=\sigma_{\text{annotator}}
+\left(z_j^{\text{annotator}}-\bar z^{\text{annotator}}\right),
+\qquad
+z_j^{\text{annotator}}\sim\mathcal N(0,1).
 $$
 
-and
-
-$$
-\eta_{1B}=-1-.5=-1.5.
-$$
-
-The corresponding probabilities are approximately $.38$ and $.18$. For item 2, the predictors are $1.5$ and $.5$, giving probabilities of approximately $.82$ and $.62$.
-
-| item | $\theta_i$ | annotator | $a_j$ | $\theta_i+a_j$ | affirmative probability |
-|:--|--:|:--|--:|--:|--:|
-| 1 | -1 | A | .5 | -.5 | .38 |
-| 1 | -1 | B | -.5 | -1.5 | .18 |
-| 2 | 1 | A | .5 | 1.5 | .82 |
-| 2 | 1 | B | -.5 | .5 | .62 |
-
-Annotator A receives a higher probability for both items. The item ordering remains the same because the location effect adds the same shift to every item judged by that annotator.
-
-## Computing the response surface in base R
-
-```{r}
-item_values <- c(item_1 = -1, item_2 = 1)
-annotator_values <- c(A = 0.5, B = -0.5)
-
-response_surface <- expand.grid(
-  item = names(item_values),
-  annotator = names(annotator_values)
-)
-
-response_surface$theta <- item_values[response_surface$item]
-response_surface$a <- annotator_values[response_surface$annotator]
-response_surface$linear_predictor <- with(response_surface, theta + a)
-response_surface$probability <- plogis(response_surface$linear_predictor)
-
-response_surface
-```
-
-The call to `expand.grid()` creates every item and annotator combination. This crossing is not merely convenient for the calculation. Overlap in the annotation design helps separate stable item values from stable annotator tendencies.
+A positive $a_j$ raises the log odds of a yes response for every item judged by annotator $j$; a negative value lowers them. The effect is shared across responses, so it is not trial noise.
 
 ## Fixing the coordinate system
 
-The decomposition into item and annotator locations is not identified without a reference. If every item value increases by a constant $c$ and every annotator value decreases by the same $c$, then
+The decomposition is not identified without a reference. For any constant $c$,
 
 $$
-(\theta_i+c)+(a_j-c)=\theta_i+a_j.
+(\alpha+u_i+c)+(a_j-c)=\alpha+u_i+a_j.
 $$
 
-The response probabilities do not change. One possible identifying convention is
+The response probabilities do not change. Centering the realized effects imposes
 
 $$
-\sum_{j=1}^{J}a_j=0.
+\sum_i u_i=0,
+\qquad
+\sum_j a_j=0.
 $$
 
-We instead fix the population mean of the annotator random intercepts at zero. Either convention fixes the origin. Under the population-distribution convention, $\theta_i$ is the item log odds for an annotator whose random intercept is zero. This conditional quantity is not the marginal probability obtained by averaging over the annotator distribution.
+This convention fixes the latent origin. It does not assert that an annotator with effect zero has no response behavior. Under the convention, $\operatorname{logit}^{-1}(\alpha+u_i)$ is the item probability with the annotator effect fixed at zero.
 
-The constraint does not claim that an annotator with random intercept zero has no response behavior. It defines where zero lies on the latent log-odds scale.
+## Raw rates and posterior effects
+
+The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Exact binomial intervals summarize each raw rate; posterior intervals summarize each annotator location effect.
+
+```{r}
+#| label: prepare-uds-annotator-plot
+
+raw_intervals <- t(vapply(
+  seq_len(nrow(annotator_summary)),
+  function(row) {
+    responses <- annotator_summary$responses[[row]]
+    successes <- round(
+      annotator_summary$observed_proportion[[row]] * responses
+    )
+    c(stats::binom.test(successes, responses)$conf.int)
+  },
+  numeric(2)
+))
+
+annotator_order <- annotator_summary$annotator_id[
+  order(annotator_summary$annotator_effect_median)
+]
+
+annotator_plot_data <- rbind(
+  data.frame(
+    annotator_id = annotator_summary$annotator_id,
+    estimate = annotator_summary$observed_proportion,
+    lower = raw_intervals[, 1],
+    upper = raw_intervals[, 2],
+    measure = "Raw yes probability"
+  ),
+  data.frame(
+    annotator_id = annotator_summary$annotator_id,
+    estimate = annotator_summary$annotator_effect_median,
+    lower = annotator_summary$annotator_effect_lower,
+    upper = annotator_summary$annotator_effect_upper,
+    measure = "Posterior location effect (log odds)"
+  )
+)
+annotator_plot_data$annotator_id <- factor(
+  annotator_plot_data$annotator_id,
+  levels = annotator_order
+)
+```
+
+```{r}
+#| label: plot-uds-annotator-effects
+#| fig-width: 8.0
+#| fig-height: 4.5
+#| fig-cap: "Raw natural-parts response rates and posterior annotator location effects. Panels have distinct horizontal scales."
+
+ggplot2::ggplot(
+  annotator_plot_data,
+  ggplot2::aes(estimate, annotator_id)
+) +
+  ggplot2::geom_vline(
+    data = data.frame(
+      measure = "Posterior location effect (log odds)",
+      reference = 0
+    ),
+    ggplot2::aes(xintercept = reference),
+    color = "grey70"
+  ) +
+  ggplot2::geom_errorbarh(
+    ggplot2::aes(xmin = lower, xmax = upper),
+    height = 0,
+    color = "grey40"
+  ) +
+  ggplot2::geom_point(color = "#2B6F8A", size = 2) +
+  ggplot2::facet_wrap(~ measure, scales = "free_x") +
+  ggplot2::labs(x = NULL, y = "Anonymized annotator") +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
+
+The plot shows why the location term matters: the raw rates span a broad range, and the fitted effects retain broad separation after item variation is represented. But the two panels are not interchangeable. Raw rates average over assigned items; fitted effects condition on the crossed model and its zero-sum coordinate convention.
 
 ## Location is not every annotator difference
 
-Annotators may also differ in response variability or in how they use ordered category boundaries. A location effect cannot represent those patterns. It shifts all predictions in the same direction.
+Annotators may differ in response consistency, interpretation, or use of an ordered scale. A location effect cannot represent those patterns. It shifts every predicted log odds in the same direction. The current binary data and recovery study support this smaller term; they do not support adding discrimination or threshold parameters without a new design check.
 
-A more variable annotator is not automatically a lower-quality annotator. The prompt may admit more than one construal, or the response scale may interact with the annotator's interpretation. Scale or threshold variation should be added only when the response pattern and scientific target require it. We do not introduce those extensions here.
-
-## Item and annotator effects must be identifiable
-
-Item and annotator effects are perfectly confounded when each item is judged by only one annotator. If annotator A judges only item 1 and annotator B judges only item 2, a response difference can be assigned to $\theta_1-\theta_2$, to $a_A-a_B$, or to both. The two effects are thus not separately identifiable.
-
-Crossing annotators with several items supplies overlap. A connected annotation design may still be sparse, but there must be a path of shared items or annotators tying the latent locations to one coordinate system. A fitted model cannot manufacture that overlap after collection.
+Item and annotator effects would be perfectly confounded if each item were judged by only one annotator. The UDS teaching extract instead forms one connected bipartite graph across `r length(unique(uds$item_id))` items and `r length(unique(uds$annotator_id))` annotators. Connectivity supplies paths of shared judgments, though sparse responses still limit the precision of individual item effects.
 
 ::: {.callout-note title="Check the annotator location"}
 1. What response pattern does a positive $a_j$ represent?
-2. Why does adding $c$ to every $\theta_i$ and subtracting it from every $a_j$ leave predictions unchanged?
-3. What does the zero sum convention identify?
-4. Why can a location effect not represent endpoint avoidance?
-5. Which annotation design makes item and annotator effects perfectly confounded?
+2. Why do raw annotator rates mix response behavior with item composition?
+3. What do the zero-sum constraints identify?
+4. Which annotator differences remain outside this model?
 :::
 
-An annotator random intercept separates a stable response shift from an item value, subject to a coordinate constraint and sufficient overlap in the annotation design.
+[Previous: Annotations are measurements](annotations-as-measurements.qmd) · [Next: Measuring natural-parts judgments](uds-measurement-model.qmd)

@@ -1,316 +1,544 @@
 ---
-title: "Can corpus distributions predict clause selection?"
+title: "From VALEX distributions to MegaAcceptability profiles"
 ---
 
-English clause-embedding verbs show different acceptability profiles across complement frames. *Think* tends to receive high ratings with a declarative clause, as in *Someone thought that something happened*. *Wonder* tends to receive high ratings with an interrogative clause, as in *Someone wondered whether something happened*. *Persuade* tends to receive high ratings with an object followed by an infinitive, as in *Someone persuaded someone to do something*. These examples motivate hypotheses about selection, but a rating is evidence about acceptability for a constructed item, not a direct observation of grammaticality.
+The PHOIBLE sequence used factorization to reconstruct hidden cells. We now ask whether factorization improves a supervised linguistic prediction. The **distribution-to-selection mapping** (DSM) maps a verb's corpus distribution across VALEX subcategorization frames to its acceptability profile across MegaAcceptability frames, holding out the complete verb.
 
-These differences define a verb's [**selectional profile**](https://doi.org/10.5334/gjgl.1001). We ask whether a verb's distribution in a large corpus predicts that profile.
+[VALEX](https://ilexir.co.uk/valex/) was acquired automatically from five corpora and the Web. Korhonen, Krymolowski, and Briscoe's [dataset paper](https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf) describes counts for English verb subcategorization frames and emphasizes automatic acquisition. The counts may contain parsing and frame-assignment error, and the release does not disambiguate verb senses.
 
-::: {.callout-note title="Reading: White and Rawlins (2020)"}
-Read Sections 1, 2.4, 5, and 6 and Appendix C of [White and Rawlins, *Frequency, acceptability, and selection: A case study of clause-embedding*](https://doi.org/10.5334/gjgl.1001).
+The official [MegaAcceptability archive](https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip) is CC BY-SA 4.0, and its internal README identifies the release as v1.2. It contains judgments for English clause-embedding verbs in semantically bleached frames. [White and Rawlins (2020)](https://doi.org/10.5334/gjgl.1001) constructed lists in which each verb and frame appeared at most once, collected ordinal responses from participants reporting native American English, and modeled the relation between corpus frequencies and acceptability. The teaching analysis uses their empirical target but simplifies the model so that PCA is the only representational change.
 
-Section 1 motivates the relation between corpus frequency and selection. Section 2.4 states the frequency and abstraction hypotheses. Section 5 tests direct distributional predictors, while Section 6 tests compressed abstractions of the corpus distributions. Appendix C compares response normalization procedures. The reading is included because these parts separate the linguistic claim from the particular statistical implementation used to test it.
-:::
+## Defining the linguistic objects
 
-## Starting with the linguistic observations
-
-[MegaAcceptability v1](https://megaattitude.io/projects/mega-acceptability/) contains ordinal judgments for 1,000 English clause-embedding verb labels in 50 surface-syntactic frames. Each original verb by frame cell received five judgments on a response scale from 1 to 7. The frames vary properties of the complement, including clause type, tense, the presence of an object, and whether an infinitival predicate is eventive or stative.
-
-The intersection with the usable VALEX inventory contains 958 verbs. Restricting the raw judgments to those verbs, omitting ten missing responses, and retaining participants who reported being native speakers of American English leaves 238,917 responses from 727 participants. Every analysis below uses that fixed intersection.
-
-Consider five cells from the dataset.
-
-| verb | frame | sentence |
-|---|---|---|
-| *think* | `NP Ved that S` | Someone thought that something happened. |
-| *persuade* | `NP Ved NP to VP[+eventive]` | Someone persuaded someone to do something. |
-| *wonder* | `NP Ved whether S` | Someone wondered whether something happened. |
-| *try* | `NP Ved to VP[+eventive]` | Someone tried to do something. |
-| *promise* | `NP Ved to VP[+eventive]` | Someone promised to do something. |
-
-The frame notation abstracts away from the particular nouns and embedded predicates in the stimuli. `NP Ved whether S`, for instance, records a past-tense matrix verb followed by an interrogative clause. But the response in one cell still comes from one constructed sentence and its raters. Interpreting the resulting row as a selectional profile depends on the controlled item construction and replication across the 50 frames; the notation does not make lexical content disappear.
-
-The row label also needs care. The released data use a verb string to connect the experimental item with a VALEX lexical entry. They do not disambiguate every sense or use of a polysemous verb. Thus, a row is a verb-level profile under that matching rule, not a sense-specific lexeme, and a column is a surface-syntactic frame rather than an annotation supplied by a corpus annotator.
-
-Let $y_{vk}$ denote the normalized acceptability of verb $v$ in MegaAcceptability frame $k$. One row of the response matrix is then
+The retained overlap contains one VALEX row per matched verb and one MegaAcceptability response profile per matched verb. If $c_{vj}$ is the automatically acquired count for verb $v$ in VALEX dimension $j$, define the within-verb proportion
 
 $$
-\mathbf{y}_v
+p_{vj}
 =
-\begin{bmatrix}
-y_{v1} & y_{v2} & \cdots & y_{v,50}
-\end{bmatrix}.
+\frac{c_{vj}}{\sum_h c_{vh}}.
 $$
 
-The complete response matrix $\mathbf{Y}$ has one row for each retained verb and 50 columns. It is the target of prediction.
+The row $\mathbf p_v$ represents the allocation of observed corpus evidence across frames, not total verb frequency. It is not a sense-specific grammatical description.
 
-::: {.callout-tip title="Reasoning check"}
-If we instead placed individual ratings in the rows, would a row still represent a selectional profile?
-
-No. A row would represent one participant's response to one sentence. Constructing a verb profile requires us to say how those responses are combined and how participant use of the response scale is handled.
-:::
-
-## Interpreting the normalized response scale
-
-Participants may use the seven response categories differently. One participant may use almost the complete scale, while another may concentrate responses between 3 and 6. Treating their raw numbers as if they shared an origin and unit may preserve variation in response habits that is not part of verb selection. We will use the training based transformation developed in [centering and scaling](centering-and-scaling.qmd).
-
-For a particular training set of verbs, let $\bar r_{p,\mathcal T}$ be participant $p$'s mean rating and let $s_{p,\mathcal T}$ be the corresponding standard deviation. We transform each rating using
+The raw MegaAcceptability unit is one participant's ordinal response to one verb-frame item. Within a training set $\mathcal T$, participant $q$'s response is transformed as
 
 $$
-z_{pi}
+z_{qi}
 =
-\frac{r_{pi}-\bar r_{p,\mathcal T}}
-     {s_{p,\mathcal T}}.
+\frac{y_{qi}-\bar y_{q,\mathcal T}}
+     {s_{q,\mathcal T}}.
 $$
 
-We then average the transformed ratings within each verb by frame cell. A normalized value of 1 means that the responses to that cell were, on average, one participant specific standard deviation above the participants' training means. A value of 0 marks the relevant participant baselines. It does not mark a boundary between grammatical and ungrammatical sentences.
+These values are averaged within verb-frame cells to form a response matrix $\mathbf Y$ with one verb per row and one experimental frame per column. Zero is the training-fitted participant origin, not a boundary between grammatical and ungrammatical sentences. This transformation is a fold-fitted approximation to the paper's ordinal normalization.
 
-This interpretation also explains why a difference of one normalized unit is not a difference of one point on the original response scale. The normalized scale is relative. Its origin and unit come from the training responses.
+## Reading and checking the analysis inputs
 
-The training qualification matters. If a test verb helped determine a participant's mean or standard deviation, its response would affect its own normalization before prediction. To avoid [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage), fit the participant transformation on training verbs and apply those fixed values to test responses.
+The audited course bundle stores the raw inputs and validated predictions from the leakage-safe nested procedure. The R below reads every object used on this page and recomputes the reported summaries and figures. A complete R implementation of the fitting procedure follows in the next section.
 
-One participant had a zero training standard deviation in one of the 300 normalization fits used below. The prespecified fallback used the overall training mean and standard deviation for that participant. No participant lacked training responses. Thus the fallback repaired an undefined division without consulting a validation or test response.
+```{r}
+library(ggplot2)
 
-::: {.callout-warning title="What this normalization does not establish"}
-The responses are ordinal. Subtracting a mean and dividing by a standard deviation treats adjacent response categories as equally spaced for this preprocessing step. That is an approximation, not a trial level model of ordinal judgments.
+analysis_root <- "data/valex-megaacceptability/audited"
+valex <- read.csv(
+  gzfile(file.path(analysis_root, "valex-counts.csv.gz")),
+  check.names = FALSE
+)
+mega <- read.csv(
+  gzfile(file.path(analysis_root, "megaacceptability-responses.csv.gz")),
+  check.names = FALSE
+)
+outer <- read.csv(
+  gzfile(file.path(analysis_root, "outer-predictions.csv.gz")),
+  check.names = FALSE
+)
+inner <- read.csv(
+  gzfile(file.path(analysis_root, "inner-validation-curves.csv.gz")),
+  check.names = FALSE
+)
+family_metrics <- read.csv(
+  file.path(analysis_root, "family-metrics.csv"),
+  check.names = FALSE
+)
+pilot_summary <- jsonlite::read_json(
+  file.path(analysis_root, "pilot-summary.json"),
+  simplifyVector = TRUE
+)
 
-White and Rawlins use a more elaborate ordinal normalization. Across the 47,900 verb by frame cells used here, the training style transformation fitted to the complete retained sample correlates 0.946 with their released normalized values. The simpler transformation tracks the released profiles closely enough for this factorization application, while allowing every fitted quantity to remain inside its training fold.
-:::
+count_matrix <- as.matrix(valex[-1])
+P <- count_matrix / rowSums(count_matrix)
+rownames(P) <- valex$verb
 
-## Constructing the corpus predictor
+stopifnot(
+  all(abs(rowSums(P) - 1) < 1e-12),
+  setequal(unique(mega$verb), valex$verb),
+  length(unique(mega$frame)) == length(unique(outer$frame)),
+  all(c("outcome", "baseline", "direct", "factor") %in% names(outer))
+)
 
-[VALEX](https://ilexir.co.uk/valex/) is an automatically acquired, corpus-derived lexicon of verb subcategorization-frame frequencies. For each verb entry, it records detected token counts for syntactic patterns such as a sentential complement, an infinitival complement, an object, or no detected complement. VALEX documents 163 frame types in the full resource and warns that automatic acquisition introduces incorrect entries and inaccurate frequencies. The released course analysis retains 109 frame and class combinations among the verbs shared with MegaAcceptability.
+c(
+  matched_verbs = nrow(P),
+  VALEX_dimensions = ncol(P),
+  experimental_frames = length(unique(mega$frame)),
+  raw_responses = nrow(mega),
+  participants = length(unique(mega$participant))
+)
+```
 
-Let $c_{vj}$ be the VALEX count for verb $v$ in corpus frame $j$. Raw counts mix two kinds of information: the total number of corpus occurrences for the verb and the allocation of those occurrences across frames. The analysis concerns the allocation, so we convert each count to a within verb proportion:
+The empirical objects contain `r nrow(P)` matched verbs, `r ncol(P)` observed VALEX dimensions, `r length(unique(mega$frame))` experimental frames, and `r format(nrow(mega), big.mark = ",")` retained responses from `r length(unique(mega$participant))` participants.
+
+## Stating the competing procedures
+
+The direct multivariate ridge model uses the complete VALEX proportion matrix. With an unpenalized intercept implemented by training centering, it solves
 
 $$
-x_{vj}
+(\widehat{\boldsymbol\beta}_{0,\lambda},
+ \widehat{\mathbf B}_{\lambda})
 =
-\frac{c_{vj}}
-     {\sum_{h=1}^{109} c_{vh}}.
+\arg\min_{\boldsymbol\beta_0,\mathbf B}
+\left\|\mathbf Y_{\mathcal T}
+-\mathbf 1\boldsymbol\beta_0^{\mathsf T}
+-\mathbf P_{\mathcal T}\mathbf B\right\|_F^2
++\lambda\|\mathbf B\|_F^2.
 $$
 
-The row
+The factor procedure fits PCA only to training predictor rows,
 
 $$
-\mathbf{x}_v
+\mathbf F_K
 =
-\begin{bmatrix}
-x_{v1} & x_{v2} & \cdots & x_{v,109}
-\end{bmatrix}
+(\mathbf P-\mathbf 1\bar{\mathbf p}_{\mathcal T}^{\mathsf T})
+\mathbf V_{\mathcal T,K},
 $$
 
-is the verb's normalized VALEX frame distribution. Its entries are nonnegative and sum to one.
+then substitutes $\mathbf F_K$ for $\mathbf P$ in the same ridge objective. The outcomes, held-out units, and loss remain fixed. Thus the comparison asks whether shallow PCA compression improves prediction; it does not ask whether abstraction in general is useful.
 
-The following table collapses the VALEX class distinctions only to make three profiles readable. The fitted model retains all 109 original columns.
+The direct hypothesis predicts that the complete VALEX distribution improves on a training-frame-mean baseline for held-out verbs. The compression hypothesis predicts that the factor procedure improves on the direct procedure.
 
-| verb | largest corpus frame | proportion | next largest corpus frame | proportion |
-|---|---|---:|---|---:|
-| *think* | sentential complement | 0.501 | no detected complement | 0.322 |
-| *persuade* | infinitival complement with subject | 0.533 | noun phrase | 0.237 |
-| *try* | verbal infinitive | 0.646 | no detected complement | 0.157 |
+## Keeping every fitted choice inside training data
 
-These are theoretically relevant predictors. The high detected sentential-complement proportion for *think* and the high detected infinitival proportion for *try* encode corpus distributional facts that a theory of selection should connect to their acceptability profiles. They are outputs of an automatic subcategorization analysis, not direct annotations of a verb's grammar. The predictor is not merely verb frequency, word length, or an arbitrary vector supplied to the model.
+Five repetitions of ten-fold outer cross-validation hold out complete verbs. Within every outer training set, independent five-fold validation selects the direct ridge penalty and jointly selects factor rank and ridge penalty. Participant normalization, response aggregation, predictor centering, PCA loadings, rank, and penalty are refitted in the relevant training split.
 
-::: {.callout-tip title="Reasoning check"}
-Why not use the total VALEX count as the only predictor?
+The fixed candidate sets are:
 
-Total count measures how often a verb was observed. It does not say which complements the verb occurred with. Two verbs can have the same total count and very different distributions across sentential, infinitival, and nominal frames.
-:::
+```{r}
+ridge_candidates <- c(0.01, 0.1, 0.2, 0.5, 1, 2, 5, 10) # dqr-allow: algorithm-setting
+rank_candidates <- c(2L, 5L, 10L, 20L, 30L, 40L, 50L) # dqr-allow: algorithm-setting
+```
 
-## Stating the two hypotheses
+The validated predictions keep the default page render short. The complete R teaching implementation is below. It uses base R's seeded shuffling, so it implements the registered split logic without reproducing NumPy's exact fold membership. The displayed audit results remain those of the registered procedure and the checked files above. Setting `eval: true` reruns fold construction, participant normalization, nested selection, and outer prediction from the two raw course inputs; it does not read the frozen prediction files.
 
-The first hypothesis concerns the complete direct profile.
+```{r}
+#| eval: false
 
-First, the complete 109 dimensional VALEX distribution for a verb may predict its 50 dimensional MegaAcceptability profile.
+make_folds <- function(indices, n_folds, seed) {
+  set.seed(seed)
+  shuffled <- sample(indices)
+  labels <- rep(seq_len(n_folds), length.out = length(shuffled))
+  lapply(seq_len(n_folds), function(fold) {
+    test <- shuffled[labels == fold]
+    list(training = setdiff(indices, test), test = test)
+  })
+}
 
-This hypothesis concerns generalization to matched verb entries, not filling a randomly hidden frame cell for a verb already seen during fitting. A successful test must thus exclude complete verb rows. It does not test generalization to unseen senses of a known polysemous verb, because the rows are not sense-disambiguated.
+population_sd <- function(x) {
+  sqrt(mean((x - mean(x))^2))
+}
 
-The second hypothesis concerns abstraction.
+build_outcome <- function(training_rows, responses, verbs, frames) {
+  fitting <- responses$verb %in% verbs[training_rows]
+  global_mean <- mean(responses$response[fitting])
+  global_sd <- population_sd(responses$response[fitting])
 
-Second, a lower dimensional representation of the VALEX distribution may predict the MegaAcceptability profile better than the complete distribution.
+  by_participant <- split(responses$response[fitting], responses$participant[fitting])
+  participant_mean <- vapply(by_participant, mean, numeric(1))
+  participant_sd <- vapply(by_participant, population_sd, numeric(1))
 
-The motivation for the second hypothesis is that raw corpus frames may divide evidence too finely. Several observed frames might express a shared syntactic or semantic distinction. If PCA recovers that shared structure, a small number of scores might preserve the predictive regularity while discarding frame specific noise.
+  row_mean <- participant_mean[as.character(responses$participant)]
+  row_sd <- participant_sd[as.character(responses$participant)]
+  fallback <- is.na(row_sd) | row_sd <= 1e-12
+  row_mean[fallback] <- global_mean
+  row_sd[fallback] <- global_sd
+  responses$z <- (responses$response - row_mean) / row_sd
 
-Compression alone does not constitute linguistic abstraction. PCA orders directions by variation in the VALEX matrix, not by their relation to a theory of clause selection. We use **distributional components (DCs)** for these directions so that they are not silently promoted to syntactic or semantic categories. The comparison tests whether this particular shallow compression improves prediction. It cannot show that the selected components are grammatical primitives.
+  cells <- aggregate(z ~ verb + frame, data = responses, FUN = mean)
+  Y <- matrix(
+    NA_real_, nrow = length(verbs), ncol = length(frames),
+    dimnames = list(verbs, frames)
+  )
+  Y[cbind(match(cells$verb, verbs), match(cells$frame, frames))] <- cells$z
+  stopifnot(!anyNA(Y))
+  attr(Y, "normalization_audit") <- c(
+    participants_without_training = sum(is.na(participant_sd)),
+    participants_with_zero_training_sd = sum(participant_sd <= 1e-12)
+  )
+  Y
+}
 
-## Changing only the predictor representation
+prepare_predictors <- function(P_training, P_test) {
+  center <- colMeans(P_training)
+  Z_training <- sweep(P_training, 2, center, "-")
+  fit <- svd(Z_training)
+  list(
+    u = fit$u,
+    d = fit$d,
+    test_scores = sweep(P_test, 2, center, "-") %*% fit$v
+  )
+}
 
-The direct model uses the complete row $\mathbf{x}_v$. For each of the 50 response columns, [ridge regression](../regression-models/ridge-regression.qmd) predicts normalized acceptability from the same 109 predictors. Writing all response columns together gives
+ridge_prediction <- function(prepared, Y_training, lambda, rank = NULL) {
+  outcome_mean <- colMeans(Y_training)
+  centered_outcome <- sweep(Y_training, 2, outcome_mean, "-")
+  component_outcome <- crossprod(prepared$u, centered_outcome)
+  if (is.null(rank)) rank <- length(prepared$d)
+  rank <- min(rank, length(prepared$d))
+  index <- seq_len(rank)
+  shrinkage <- prepared$d[index] /
+    (prepared$d[index]^2 + lambda)
+  fitted_centered <- sweep(
+    prepared$test_scores[, index, drop = FALSE],
+    2, shrinkage, "*"
+  ) %*% component_outcome[index, , drop = FALSE]
+  sweep(fitted_centered, 2, outcome_mean, "+")
+}
+
+select_hyperparameters <- function(
+  P, responses, verbs, frames, outer_training, seed,
+  lambdas = ridge_candidates, ranks = rank_candidates,
+  n_inner_folds = 5L
+) {
+  direct_sse <- setNames(rep(0, length(lambdas)), lambdas)
+  factor_grid <- expand.grid(rank = ranks, lambda = lambdas)
+  factor_grid$sse <- 0
+  observations <- 0
+
+  inner_partitions <- make_folds(
+    outer_training, n_folds = n_inner_folds, seed = seed
+  )
+  for (inner in inner_partitions) {
+    Y <- build_outcome(inner$training, responses, verbs, frames)
+    prepared <- prepare_predictors(
+      P[inner$training, , drop = FALSE],
+      P[inner$test, , drop = FALSE]
+    )
+    Y_training <- Y[inner$training, , drop = FALSE]
+    Y_validation <- Y[inner$test, , drop = FALSE]
+
+    for (lambda in lambdas) {
+      prediction <- ridge_prediction(prepared, Y_training, lambda)
+      direct_sse[as.character(lambda)] <-
+        direct_sse[as.character(lambda)] + sum((Y_validation - prediction)^2)
+    }
+    for (row in seq_len(nrow(factor_grid))) {
+      prediction <- ridge_prediction(
+        prepared, Y_training,
+        factor_grid$lambda[[row]], factor_grid$rank[[row]]
+      )
+      factor_grid$sse[[row]] <- factor_grid$sse[[row]] +
+        sum((Y_validation - prediction)^2)
+    }
+    observations <- observations + length(Y_validation)
+  }
+
+  direct_table <- data.frame(
+    model = "direct", rank = ncol(P), lambda = lambdas,
+    validation_mse = as.numeric(direct_sse) / observations
+  )
+  factor_table <- transform(
+    factor_grid,
+    model = "factor",
+    validation_mse = sse / observations
+  )[c("model", "rank", "lambda", "validation_mse")]
+
+  direct_choice <- direct_table[
+    order(direct_table$validation_mse, -direct_table$lambda)[[1]],
+  ]
+  factor_choice <- factor_table[
+    order(
+      factor_table$validation_mse,
+      -factor_table$lambda,
+      factor_table$rank
+    )[[1]],
+  ]
+  list(
+    direct_lambda = direct_choice$lambda,
+    factor_rank = factor_choice$rank,
+    factor_lambda = factor_choice$lambda,
+    curves = rbind(direct_table, factor_table)
+  )
+}
+
+run_nested_dsm <- function(
+  P, responses, outer_seeds,
+  n_outer_folds = 10L, n_inner_folds = 5L
+) {
+  verbs <- rownames(P)
+  frames <- sort(unique(responses$frame))
+  all_rows <- seq_len(nrow(P))
+  prediction_list <- list()
+  curve_list <- list()
+  output_index <- 0L
+
+  for (repeat_index in seq_along(outer_seeds)) {
+    outer_folds <- make_folds(
+      all_rows, n_folds = n_outer_folds, seed = outer_seeds[[repeat_index]]
+    )
+    for (fold_index in seq_along(outer_folds)) {
+      fold <- outer_folds[[fold_index]]
+      inner_seed <- outer_seeds[[repeat_index]] + 1000L * fold_index + 37L
+      choice <- select_hyperparameters(
+        P, responses, verbs, frames, fold$training, inner_seed,
+        n_inner_folds = n_inner_folds
+      )
+
+      Y <- build_outcome(fold$training, responses, verbs, frames)
+      prepared <- prepare_predictors(
+        P[fold$training, , drop = FALSE],
+        P[fold$test, , drop = FALSE]
+      )
+      Y_training <- Y[fold$training, , drop = FALSE]
+      Y_test <- Y[fold$test, , drop = FALSE]
+      baseline <- matrix(
+        rep(colMeans(Y_training), each = length(fold$test)),
+        nrow = length(fold$test)
+      )
+      direct <- ridge_prediction(
+        prepared, Y_training, choice$direct_lambda
+      )
+      factor <- ridge_prediction(
+        prepared, Y_training, choice$factor_lambda, choice$factor_rank
+      )
+
+      cells <- expand.grid(
+        test_row = seq_along(fold$test),
+        frame_column = seq_along(frames)
+      )
+      output_index <- output_index + 1L
+      prediction_list[[output_index]] <- data.frame(
+        `repeat` = repeat_index,
+        fold = fold_index,
+        verb = verbs[fold$test[cells$test_row]],
+        frame = frames[cells$frame_column],
+        outcome = Y_test[cbind(cells$test_row, cells$frame_column)],
+        baseline = baseline[cbind(cells$test_row, cells$frame_column)],
+        direct = direct[cbind(cells$test_row, cells$frame_column)],
+        factor = factor[cbind(cells$test_row, cells$frame_column)]
+      )
+      choice$curves[["repeat"]] <- repeat_index
+      choice$curves$outer_fold <- fold_index
+      curve_list[[output_index]] <- choice$curves
+    }
+  }
+  list(
+    outer_predictions = do.call(rbind, prediction_list),
+    inner_curves = do.call(rbind, curve_list)
+  )
+}
+
+bootstrap_skill_by_verb <- function(predictions, seed, samples) {
+  squared_error <- data.frame(
+    verb = predictions$verb,
+    baseline = (predictions$outcome - predictions$baseline)^2,
+    direct = (predictions$outcome - predictions$direct)^2,
+    factor = (predictions$outcome - predictions$factor)^2
+  )
+  by_verb <- aggregate(. ~ verb, data = squared_error, FUN = sum)
+  set.seed(seed)
+  draws <- replicate(samples, {
+    rows <- sample(seq_len(nrow(by_verb)), nrow(by_verb), replace = TRUE)
+    denominator <- sum(by_verb$baseline[rows])
+    direct <- 1 - sum(by_verb$direct[rows]) / denominator
+    factor <- 1 - sum(by_verb$factor[rows]) / denominator
+    c(direct = direct, factor = factor, difference = factor - direct)
+  })
+  t(apply(draws, 1, quantile, probs = c(0.025, 0.975)))
+}
+
+outer_seeds <- c(4101L, 9777L, 203948L, 511903L, 884219L) # dqr-allow: random-seed
+full_fit <- run_nested_dsm(P, mega, outer_seeds)
+bootstrap_intervals <- bootstrap_skill_by_verb(
+  full_fit$outer_predictions,
+  seed = 731921L,
+  samples = 5000L
+)
+```
+
+Fitting one PCA to all verbs would create [leakage through preprocessing](../model-criticism-and-prediction/training-and-test-data.qmd#leakage-through-preprocessing), even though PCA does not use acceptability. The test verb's VALEX row is unavailable under the new-verb target and cannot determine its own component directions.
+
+## Defining held-out skill
+
+The baseline predicts the outer-training mean separately for each response frame. For model $m$, define
 
 $$
-\widehat{\mathbf{Y}}_{\mathrm{direct}}
+R_m^2
 =
-\mathbf{1}\boldsymbol{\beta}_0^{\mathsf T}
-+
-\mathbf{X}\mathbf{B}.
+1-
+\frac{\sum_i(y_i-\widehat y_{m,i})^2}
+     {\sum_i(y_i-\widehat y_{\mathrm{base},i})^2}.
 $$
 
-The matrix expression writes 50 ridge regressions at once. Each response column has its own coefficients, but all 50 regressions use the same predictor matrix and the same penalty.
-
-The factor model changes one part of the procedure. We center the VALEX columns using the training verbs, fit [PCA](principal-component-analysis.qmd) to those training rows, and retain the first $K$ scores:
-
-$$
-\mathbf{Z}_K
-=
-\left(
-\mathbf{X}
--
-\mathbf{1}\boldsymbol{\mu}_{\mathcal T}^{\mathsf T}
-\right)
-\mathbf{V}_{\mathcal T,K}.
-$$
-
-Ridge regression then predicts the same response matrix from $\mathbf{Z}_K$:
-
-$$
-\widehat{\mathbf{Y}}_{\mathrm{factor}}
-=
-\mathbf{1}\boldsymbol{\gamma}_0^{\mathsf T}
-+
-\mathbf{Z}_K\mathbf{G}.
-$$
-
-The models have the same verbs, the same responses, the same loss, and the same type of ridge regression. Their difference is whether the ridge regression receives 109 direct proportions or $K$ PCA scores. This isolates the comparison between the complete distribution and its lower dimensional representation.
-
-## Keeping every fitted choice inside the training data
-
-The outer evaluation uses five repetitions of [ten fold grouped cross validation](../model-criticism-and-prediction/grouped-cross-validation.qmd). Each outer fold excludes complete verbs. Within its training verbs, five fold validation applies the [component selection procedure](choosing-components.qmd) to the factor model. It selects the ridge penalty for the direct model and jointly selects the retained rank and ridge penalty for the factor model.
-
-The fitting sequence for one outer fold is:
-
-1. Set aside the outer test verbs.
-2. Split the remaining verbs into inner training and validation sets.
-3. Fit participant normalization on the inner training responses.
-4. Fit PCA centering and component directions on the inner training VALEX rows.
-5. Evaluate each fixed rank and ridge candidate on the inner validation verbs.
-6. Select the candidates with the lowest inner validation squared loss.
-7. Refit normalization, PCA, and ridge regression on all outer training verbs.
-8. Evaluate the selected procedures once on the outer test verbs.
-
-The ridge candidates are $0.01$, $0.1$, $0.2$, $0.5$, $1$, $2$, $5$, and $10$. The rank candidates are $2$, $5$, $10$, $20$, $30$, $40$, and $50$. These sets were fixed before the outer results were inspected.
-
-Why must PCA be fitted again inside every inner split? Suppose an inner validation verb has an unusual concentration in one VALEX frame. If that row helps determine the component direction, its distribution has already influenced its own representation. The later ridge fit does not remove this [data leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage).
-
-::: {.callout-tip title="Reasoning check"}
-May we compute one PCA from all 958 verbs because the PCA does not use acceptability?
-
-No. The target is prediction for a new verb. Its VALEX row is part of the information withheld under that target. Using the row to fit the component directions gives the factor model access to the test verb before evaluation.
-:::
-
-## Defining the predictive score
-
-The baseline predicts the training mean separately for each of the 50 MegaAcceptability frames. It knows that some frames tend to receive higher judgments than others, but it does not use the identity or VALEX profile of the test verb.
-
-For a fitted model $m$, define out-of-sample $R^2$ relative to the frame-mean baseline as
-
-$$
-R^2_m
-=
-1
--
-\frac{
-\sum_i (y_i-\widehat y_{m,i})^2
-}{
-\sum_i (y_i-\widehat y_{\mathrm{base},i})^2
-}.
-$$
-
-A value of 0 means that the model matches the frame mean baseline. A positive value means that the verb specific prediction removes some of the baseline squared error. A negative value means that it does worse than the baseline.
-
-The difference
+Positive values improve on the frame-mean baseline. The paired compression contrast is
 
 $$
 \Delta R^2
 =
-R^2_{\mathrm{factor}}
--
-R^2_{\mathrm{direct}}
+R_{\mathrm{factor}}^2-R_{\mathrm{direct}}^2.
 $$
 
-tests the second hypothesis. Positive values favor compression. Negative values favor the complete distribution.
+The frozen audit uses a verb bootstrap, so a sampled verb contributes every response frame and all repeated outer predictions.
 
-Uncertainty is computed with the [bootstrap](../statistical-inference/bootstrap-confidence-intervals.qmd) by resampling verbs. Each sampled verb contributes all of its frames and all five outer predictions. This preserves the paired comparison between representations and respects the verb as the held-out unit.
+```{r}
+skill <- function(outcome, prediction, baseline) {
+  1 - sum((outcome - prediction)^2) / sum((outcome - baseline)^2)
+}
 
-## Evaluating the hypotheses
+direct_skill <- skill(outer$outcome, outer$direct, outer$baseline)
+factor_skill <- skill(outer$outcome, outer$factor, outer$baseline)
 
-Before this analysis, we decided that the first hypothesis would count as supported only if direct out-of-sample $R^2$ reached at least 0.20, its verb bootstrap interval lay above zero, and $R^2$ was positive in every repetition. We treated the difference between representations as stable if its interval excluded zero or lay completely between $-0.01$ and $0.01$.
+performance <- data.frame(
+  representation = c("Direct VALEX profile", "PCA VALEX profile", "PCA minus direct"),
+  skill = c(direct_skill, factor_skill, factor_skill - direct_skill),
+  interval_low = c(
+    pilot_summary$performance$bootstrap$direct$ci_low,
+    pilot_summary$performance$bootstrap$factor$ci_low,
+    pilot_summary$performance$bootstrap$delta$ci_low
+  ),
+  interval_high = c(
+    pilot_summary$performance$bootstrap$direct$ci_high,
+    pilot_summary$performance$bootstrap$factor$ci_high,
+    pilot_summary$performance$bootstrap$delta$ci_high
+  )
+)
+knitr::kable(performance, digits = 4)
+```
 
-| representation | out-of-sample $R^2$ | 95 percent verb interval |
-|---|---:|---:|
-| direct VALEX profile | 0.246 | [0.224, 0.266] |
-| 50 component VALEX profile | 0.239 | [0.218, 0.259] |
-| factor minus direct | -0.0066 | [-0.0100, -0.0029] |
+The direct distribution achieves held-out skill `r round(direct_skill, 4)`, with a verb-bootstrap interval from `r round(performance$interval_low[[1]], 4)` to `r round(performance$interval_high[[1]], 4)`. The PCA procedure achieves `r round(factor_skill, 4)`. Its difference from the direct procedure is `r round(factor_skill - direct_skill, 4)`, and the paired interval lies below zero.
 
-The direct model meets all three criteria. Its repetition-specific $R^2$ ranges from 0.238 to 0.250, so the result does not depend on one favorable division of the verbs.
+## Showing outcomes and held-out fits
 
-The factor model does not support the second hypothesis. Inner validation selected 50 distributional components in all 50 outer folds, which is the largest permitted factor rank. Even that representation has an out-of-sample $R^2$ that is 0.0066 lower than the direct profile, and the difference is negative in all five repetitions. The result is small but stable under these repeated splits.
+Each verb-frame cell receives one prediction in every outer repetition. We average those five held-out predictions only for plotting.
 
-This is an informative failure of compression. The direct corpus distribution predicts new selectional profiles, but the PCA directions with the most corpus variation do not preserve all of the information useful for that prediction.
+```{r}
+#| fig-width: 7.4
+#| fig-height: 4
 
-::: {.callout-tip title="Reasoning check"}
-Does selecting 50 components show that English clause selection has 50 latent dimensions?
+cell_key <- paste(outer$verb, outer$frame, sep = "\r")
+group <- match(cell_key, unique(cell_key))
+cell_count <- tabulate(group)
+cell_sums <- rowsum(
+  as.matrix(outer[c("outcome", "direct", "factor")]),
+  group = group,
+  reorder = FALSE
+)
+cell_average <- sweep(cell_sums, 1, cell_count, "/")
 
-No. It shows that 50 was the best candidate rank for this predictor, response, loss, and candidate set. Since it was also the largest candidate, the validation results suggest that additional VALEX directions may remain useful. They do not identify a true number of grammatical dimensions.
-:::
+plot_data <- rbind(
+  data.frame(outcome = cell_average[, "outcome"],
+             prediction = cell_average[, "direct"],
+             model = "Direct VALEX profile"),
+  data.frame(outcome = cell_average[, "outcome"],
+             prediction = cell_average[, "factor"],
+             model = "PCA VALEX profile")
+)
 
-## Locating the model's success and failure
+ggplot(plot_data, aes(x = outcome, y = prediction)) +
+  geom_bin_2d(bins = 35) + # dqr-allow: algorithm-setting
+  geom_abline(slope = 1, intercept = 0, color = "white", linewidth = 0.45) +
+  facet_wrap(~model) +
+  coord_equal() +
+  scale_fill_gradient(low = "grey90", high = "#0072B2", name = "Cells") +
+  labs(x = "Held-out normalized acceptability",
+       y = "Held-out prediction") +
+  theme_classic() +
+  theme(strip.background = element_blank())
+```
 
-An overall score can hide a theoretically organized error. White and Rawlins observe that direct corpus prediction is especially weak when an object precedes a finite clause. We fixed that comparison before inspecting the new pilot.
+Both fitted procedures recover substantial ordering across held-out cells, though dispersion around the identity line remains. The panels are similar because PCA preserves much, but not all, of the direct predictive signal.
 
-| frame family | number of frames | direct $R^2$ | factor $R^2$ | factor minus direct |
-|---|---:|---:|---:|---:|
-| finite clause without object | 5 | 0.254 | 0.238 | -0.0156 |
-| finite clause with direct object | 5 | 0.083 | 0.084 | 0.0010 |
-| finite declarative | 4 | 0.212 | 0.202 | -0.0105 |
-| finite interrogative | 6 | 0.203 | 0.192 | -0.0116 |
-| eventive infinitive | 3 | 0.268 | 0.264 | -0.0035 |
-| stative infinitive | 3 | 0.285 | 0.278 | -0.0065 |
+## Inspecting selected rank
 
-The object contrast is much larger than the declarative, interrogative, or infinitival contrasts. Direct out-of-sample $R^2$ falls from 0.254 for finite clauses without an object to 0.083 for their matched object frames. At the individual frame level, direct $R^2$ is 0.037 for `NP Ved NP whether S`, 0.061 for `NP Ved NP whichNP S`, and 0.109 for `NP Ved NP that S`. Their counterparts without an object have values of 0.249, 0.290, and 0.270.
+```{r}
+#| fig-width: 6.4
+#| fig-height: 3.8
 
-PCA does not repair this family level failure. Its $R^2$ is only 0.0010 higher for the five object frames and 0.0156 lower for the matched frames without an object. Thus the stable overall loss and the small local gain are compatible: compression discards useful information in the frames that already work, and restores very little where the direct mapping fails.
+factor_inner <- inner[inner$model == "factor", ]
+best_penalty_within_rank <- aggregate(
+  validation_mse ~ `repeat` + outer_fold + rank,
+  data = factor_inner,
+  FUN = min
+)
+rank_curve <- aggregate(
+  validation_mse ~ rank,
+  data = best_penalty_within_rank,
+  FUN = mean
+)
+selected_ranks <- read.csv(
+  file.path(analysis_root, "factor-selection-frequency.csv")
+)
+outer_fit_keys <- unique(inner[c("repeat", "outer_fold")])
+selected_rank <- unique(selected_ranks$factor_rank)
+stopifnot(
+  length(selected_rank) == 1L,
+  selected_rank == max(rank_candidates),
+  sum(selected_ranks$outer_folds) == nrow(outer_fit_keys)
+)
 
-White and Rawlins connect the object pattern to [**communicativity**](https://doi.org/10.5334/gjgl.1001): with a verb such as *persuade*, the object may denote a recipient of communicated content. Corpus cooccurrence can register an object-plus-clause sequence without directly representing that semantic relation. The error pattern is consistent with this proposal, though it does not isolate communicativity from properties such as animacy, discourse context, verb polysemy, item construction, or errors in automatic corpus analysis.
+ggplot(rank_curve, aes(x = rank, y = validation_mse)) +
+  geom_line(color = "grey30", linewidth = 0.7) +
+  geom_point(color = "grey20", size = 1.8) +
+  geom_vline(xintercept = selected_rank,
+             color = "#0072B2", linewidth = 0.65) +
+  labs(x = "Candidate PCA rank",
+       y = "Mean inner-validation squared loss") +
+  theme_classic()
+```
 
-## Reading a few held-out predictions
+Inner validation selects rank `r selected_rank`, the largest candidate, in all `r nrow(outer_fit_keys)` outer fits. This result does not identify that rank as the number of grammatical dimensions. It suggests that directions beyond the tested compression remain predictively useful.
 
-The following values average the five held-out predictions for the fixed example verbs. Positive observed values indicate responses above the relevant participant training baselines.
+## Locating the predictive limitation
 
-| verb and frame | observed | direct | factor |
-|---|---:|---:|---:|
-| *think* with `that S` | 1.21 | 1.55 | 1.58 |
-| *persuade* with `NP to VP[+eventive]` | 1.65 | 1.59 | 1.58 |
-| *wonder* with `whether S` | 2.77 | 3.95 | 4.01 |
-| *try* with `to VP[+eventive]` | 1.44 | 2.54 | 2.57 |
-| *promise* with `to VP[+eventive]` | 1.83 | 1.13 | 1.10 |
-| *persuade* with `NP that S` | 1.02 | -0.07 | -0.07 |
+White and Rawlins report a marked weakness for finite clauses preceded by a direct object. The audit fixed the corresponding frame-family comparison before inspecting the new procedure.
 
-The *persuade* infinitive is predicted closely, while its object plus finite clause is missed by more than one normalized unit. The contrast shows why a profile level score and a frame family diagnostic are both needed. The model has learned something about *persuade*, but it has not learned every route by which the verb licenses a content clause.
+```{r}
+#| fig-width: 7
+#| fig-height: 4.2
 
-The overprediction for *wonder* and *try* raises a second issue. Ridge predictions are not constrained to the range of observed cell means. More importantly, a large error for a high acceptability cell can coexist with correct ordering elsewhere in the 50 dimensional profile. The squared error score evaluates both ordering and calibration. A different loss would define a different predictive target.
+family_long <- rbind(
+  data.frame(family = family_metrics$family,
+             representation = "Direct", skill = family_metrics$direct_skill),
+  data.frame(family = family_metrics$family,
+             representation = "PCA", skill = family_metrics$factor_skill)
+)
+family_long$family <- factor(
+  family_long$family,
+  levels = family_metrics$family[order(family_metrics$direct_skill)]
+)
+
+ggplot(family_long,
+       aes(x = skill, y = family, shape = representation)) +
+  geom_line(aes(group = family), color = "grey75", linewidth = 0.5) +
+  geom_point(color = "grey20", size = 2) +
+  scale_shape_manual(values = c("Direct" = 16, "PCA" = 1)) +
+  labs(x = "Held-out skill", y = "Frame family", shape = NULL) +
+  theme_classic()
+```
+
+Direct skill for finite clauses without an object is `r round(family_metrics$direct_skill[family_metrics$family == "finite without object"], 3)`, but falls to `r round(family_metrics$direct_skill[family_metrics$family == "finite with direct object"], 3)` for the matched object frames. PCA does not repair this difference.
+
+White and Rawlins connect the object pattern to communicativity: with a verb such as *persuade*, the object may denote a recipient of communicated content. The present residual is consistent with that proposal, though it cannot separate communicativity from animacy, discourse, polysemy, item construction, or corpus-analysis error.
 
 ## What the application establishes
 
-The analysis supports three conclusions.
+First, automatically acquired VALEX distributions contain information about MegaAcceptability profiles for verbs excluded from fitting. Second, PCA compression does not improve that mapping: the selected factor procedure performs slightly and stably worse than the direct profile. The result counts against this shallow compression for this target, not against abstract syntactic or semantic representations in general.
 
-1. VALEX's automatically acquired subcategorization distributions contain information about the acceptability profiles of matched verb entries excluded from fitting.
-2. PCA compression does not improve this mapping. Nested validation consistently retains the largest candidate rank, and the selected factor model performs slightly worse than the direct profile.
-3. Prediction remains especially weak for an object followed by a finite clause. The error is organized by a theoretically relevant construction rather than spread uniformly across the response matrix.
-
-These conclusions are narrower than a claim that selection reduces to frequency. VALEX is a noisy corpus measurement over detected verb tokens, MegaAcceptability aggregates ordinal judgments over constructed verb--frame items, and ridge regression estimates a predictive association between the resulting verb-level profiles. The remaining object-frame error may point to semantic information absent from the corpus frame inventory, but the present comparison does not identify that information.
-
-The live question is thus more specific than whether abstraction matters. Which representation of communicativity, argument structure, or event structure predicts the object plus finite clause contrast without sacrificing the direct distributional signal in the other frames? Answering that question would require a new theoretically specified predictor and a new held-out comparison. It cannot be answered by renaming the present principal components.
+The teaching analysis differs from the paper in three declared ways. It uses raw VALEX proportions rather than the paper's best Beta Negative Binomial representation, PCA rather than a logistic factor model, and a fold-fitted z transformation rather than the released ordinal mixed-effects normalization. Those changes isolate the matrix operations taught here while preserving the held-out-verb question.
 
 ## Checking the reasoning
 
-1. What does one row of the VALEX matrix represent, and which sense distinction does it not represent?
-2. Why are VALEX counts converted to within verb proportions?
-3. What is the held-out unit, and which linguistic claim makes that unit appropriate?
-4. Which quantities must be refitted inside an inner training split?
-5. What is held constant between the direct and factor models?
-6. Why does a selected rank of 50 not identify 50 grammatical categories?
-7. Which frame family produces the most pronounced direct prediction failure?
-8. Does a small stable loss for PCA imply that no abstract representation could improve the mapping?
+1. What does one VALEX row represent, and which sense distinction does it omit?
+2. Why are counts converted to within-verb proportions?
+3. Why must participant normalization be refitted inside each split?
+4. What is held constant between the direct and factor procedures?
+5. Why does selecting the largest candidate rank not identify a grammatical dimensionality?
+6. What does the negative compression contrast rule out, and what remains a live possibility?
 
-The final question is the main scope check. This analysis rejects one shallow predictive compression, not abstraction in general. A future abstraction must earn its interpretation through theoretically defined inputs, fold safe fitting, and improved prediction on verbs that did not determine it.
+The live empirical question is which theory-guided representation of communicativity, argument structure, or event structure can improve held-out prediction without discarding the useful direct distributional signal.

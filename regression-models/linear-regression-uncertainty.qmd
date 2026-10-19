@@ -1,234 +1,176 @@
 ---
 title: "Uncertainty in a fitted slope"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-[Fitting the straight line](frequentist-linear-regression.qmd) produced one estimated slope. As introduced in the chapters on [estimators](../statistical-inference/properties-of-estimators.qmd) and [standard errors](../statistical-inference/standard-errors.qmd), an estimate is one sample result, while its standard error describes variation across repeated samples.
+The fitted PRS slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a repeated-sampling model.
 
-The fitted slope $\widehat{\beta}_1$ is an estimator. A different sample of words and reading times would generally produce a different value.
+## Conventional OLS uncertainty
 
-Its sampling distribution describes this repeated-sample variation. The standard deviation of that distribution is the slope's standard error.
+Write the linear model in matrix form:
 
-The observed estimate must be distinguished from its repeated-sample distribution. The estimate is one
-number computed from one sample. The sampling distribution is a distribution of
-numbers we would obtain by repeating the entire sampling and fitting procedure.
-The standard error summarizes the spread of that second object.
+$$
+\mathbf Y=\mathbf X\boldsymbol\beta+\boldsymbol\varepsilon,
+\qquad
+\boldsymbol\varepsilon\sim\mathcal N(\mathbf 0,\sigma^2\mathbf I).
+$$
 
-We use the six constructed observations from the fitting example, but define them
-again so that every calculation can be run on its own.
+The OLS estimator is
+
+$$
+\widehat{\boldsymbol\beta}
+=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf Y.
+$$
+
+Because a linear transformation of a normal vector is normal,
+
+$$
+\operatorname{Var}[\widehat{\boldsymbol\beta}\mid\mathbf X]
+=
+\sigma^2(\mathbf X^\top\mathbf X)^{-1}.
+$$
+
+Replacing $\sigma^2$ with
+
+$$
+s^2=\frac{\sum_i e_i^2}{n-p}
+$$
+
+gives the conventional covariance estimate. Here $p$ is the number of fitted coefficients, including the intercept.
 
 ```{r}
-#| label: fit-line-for-uncertainty
-#| echo: true
-reading_times <- data.frame(
-  surprisal = 2:7,
-  log_rt = c(5.78, 5.82, 5.93, 5.99, 6.05, 6.13)
+#| label: compute-provo-regression-uncertainty
+library(ggplot2)
+library(sandwich)
+library(lmtest)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
 )
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
 
-fit <- lm(log_rt ~ surprisal, data = reading_times)
-```
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+X <- model.matrix(fit)
+s_squared <- sum(residuals(fit)^2) / df.residual(fit)
+covariance_by_hand <- s_squared * solve(crossprod(X))
+conventional_se <- sqrt(diag(covariance_by_hand))
 
-## Reading the simple-regression formula
-
-For ordinary simple linear regression with constant error variance,
-
-$$
-\operatorname{SE}(\widehat{\beta}_1)
-=\frac{\sigma}
-{\sqrt{\sum_{i=1}^{n}(x_i-\bar{x})^2}}.
-$$
-
-The numerator is response variation around the true conditional mean. More residual variation makes the slope harder to estimate.
-
-The denominator measures how widely the predictor values are spread around their mean. A wider range of surprisal values supplies more information about the line's change.
-
-Sample size enters because adding observations usually adds terms to the denominator. But ten repetitions at nearly the same predictor value do not supply the same slope information as ten observations spread across the predictor range.
-
-In practice, $\sigma$ is unknown and replaced by an estimate.
-
-The formula separates three sources of precision. First, smaller response
-variation produces a smaller numerator. Second, predictor values farther from
-their mean produce a larger denominator. Third, additional observations help
-only insofar as they add predictor spread and information about the response
-variation. This is why sample size alone does not determine slope precision.
-
-## Comparing two predictor designs
-
-Suppose two studies each collect four observations and have the same residual
-standard deviation. Their predictor values are
-
-$$
-\mathbf{x}_A=(4.9,5.0,5.0,5.1)
-$$
-
-and
-
-$$
-\mathbf{x}_B=(2,4,6,8).
-$$
-
-Both means equal 5. The squared predictor deviations are
-
-$$
-\sum_i(x_{Ai}-\bar x_A)^2
-=(-.1)^2+0^2+0^2+.1^2
-=.02
-$$
-
-and
-
-$$
-\sum_i(x_{Bi}-\bar x_B)^2
-=(-3)^2+(-1)^2+1^2+3^2
-=20.
-$$
-
-If $\sigma=.20$, the idealized standard errors are
-
-$$
-\operatorname{SE}_A
-=\frac{.20}{\sqrt{.02}}
-\approx1.414
-$$
-
-and
-
-$$
-\operatorname{SE}_B
-=\frac{.20}{\sqrt{20}}
-\approx.0447.
-$$
-
-The second design is much more informative about change because it observes the
-response across a wider predictor range. This calculation does not license
-choosing implausible words merely to widen that range. It shows which feature of
-the design supplies information about the slope.
-
-## Estimating residual variation
-
-For a fitted simple linear regression, the usual residual variance estimate is
-
-$$
-\widehat\sigma^2
-=\frac{\sum_{i=1}^n e_i^2}{n-2}.
-$$
-
-The denominator is $n-2$ because two coefficients, the intercept and slope, were
-estimated from the sample. Taking the square root gives $\widehat\sigma$, which
-is substituted into the standard-error formula. Thus the reported standard
-error depends both on the predictor design and on how far the observed responses
-fall from the fitted line.
-
-The fitted-model summary performs these calculations:
-
-```{r}
-#| label: inspect-fitted-slope-uncertainty
-#| echo: true
-summary(fit)$coefficients
-```
-
-The slope row contains the estimate, its standard error, a test statistic, and a
-tail probability. Here, the first two columns are the objects of
-interest. The estimate describes fitted change. The standard error describes
-the estimator's precision under the model and sampling assumptions.
-
-## Forming a coefficient interval
-
-For the constructed observations, the fitted slope is approximately
-
-$$
-\widehat{\beta}_1=.07143
-$$
-
-with standard error
-
-$$
-\widehat{\operatorname{SE}}(\widehat{\beta}_1)=.00361.
-$$
-
-The finite-sample critical value for four residual degrees of freedom is about
-$2.776$. This gives
-
-$$
-.07143\mathbin{\pm}2.776(.00361)
-\approx[.0614,.0815].
-$$
-
-The interval is in log-reading-time units per bit of surprisal.
-
-The endpoints preserve those units. They describe a set of slope values produced
-by a procedure whose long-run coverage is the declared confidence level, under
-the assumptions used to derive the procedure.
-
-In R, the fitted model supplies the finite-sample t calculation:
-
-```{r}
-#| label: slope-confidence-interval
-#| echo: true
-confint(fit, "surprisal", level = .95)
-```
-
-The interval has the repeated-sampling coverage interpretation developed earlier. It is not a posterior probability statement about this particular coefficient interval.
-
-More specifically, imagine repeating the study and interval construction many
-times while holding the data-generating parameter fixed. About 95 percent of the
-constructed intervals would contain that fixed slope if the procedure's
-assumptions held. After we observe one interval, frequentist probability does not
-assign a 95 percent probability to the fixed coefficient being inside it.
-
-That reading reverses the roles of procedure and parameter. The procedure is
-random before data are collected; the parameter is not. Bayesian
-credible intervals support a different probability statement because the model
-represents uncertainty about the parameter directly.
-
-## Distinguishing coefficient and mean-response uncertainty
-
-The slope interval concerns one coefficient. We may instead ask for uncertainty
-about the conditional mean at a particular predictor value. For
-
-$$
-m(x_0)=\beta_0+\beta_1x_0,
-$$
-
-uncertainty in the intercept and slope both contribute. The two coefficient
-estimates are also associated, so their uncertainties cannot be added as if they
-were unrelated.
-
-R can construct an interval for the fitted conditional mean:
-
-```{r}
-#| label: fitted-mean-confidence-interval
-#| echo: true
-predict(
+cluster_covariance <- vcovCL(
   fit,
-  newdata = data.frame(surprisal = c(3, 5, 7)),
-  interval = "confidence",
-  level = .95
+  cluster = provo$Text_ID,
+  type = "HC1"
+)
+cluster_se <- sqrt(diag(cluster_covariance))
+
+stopifnot(
+  max(abs(covariance_by_hand - vcov(fit))) < 1e-12,
+  length(unique(provo$Text_ID)) == 55L
+)
+
+data.frame(
+  term = names(coef(fit)),
+  estimate = coef(fit),
+  conventional_se = conventional_se,
+  passage_clustered_se = cluster_se
 )
 ```
 
-These intervals are usually narrowest near the center of the observed predictor
-values and wider toward the edges. The data constrain the line most strongly
-where predictor observations are concentrated.
+The conventional slope standard error is `r sprintf("%.6f", conventional_se[["cloze_surprisal_c"]])`; the passage-clustered HC1 sensitivity estimate is `r sprintf("%.6f", cluster_se[["cloze_surprisal_c"]])`. The latter allows arbitrary residual dependence within the observed passages while treating passages as independent clusters.
 
-This mean-response interval is not an interval for a new individual's reading
-time. A new response contains both uncertainty about the conditional mean and
-observation-level variation around that mean. The latter requires a prediction
-interval, which is wider. An interval for a new observation must thus remain
-distinct from an interval for the conditional mean.
+This sensitivity calculation does not recover reader variation. The raw readers were removed by aggregation, so neither uncertainty estimate substitutes for a participant-by-item model.
 
-## Distinguishing precision from adequacy
+## Mean and response uncertainty
 
-A narrow interval says that the slope estimator is precise under the fitted model and sampling assumptions. It does not establish that a straight line, constant variance, independent observations, or the chosen predictor set adequately represents the data.
+At predictor row $\mathbf x_0$, uncertainty in the fitted conditional mean is
 
-Those assumptions need separate checks. We first define [residuals](residuals.qmd), then organize them into diagnostic plots.
+$$
+\widehat{\operatorname{Var}}(\widehat\mu_0)
+=
+s^2\mathbf x_0^\top(\mathbf X^\top\mathbf X)^{-1}\mathbf x_0.
+$$
 
-::: {.callout-note title="Check the denominator"}
-1. Holding residual variation and sample size fixed, which design estimates a
-   slope more precisely: predictor values concentrated between 4.9 and 5.1, or
-   values spread between 2 and 8? Use the standard-error formula.
-2. Distinguish one observed slope estimate from its sampling distribution.
-3. Why is a 95 percent confidence interval not a 95 percent posterior
-   probability statement?
-4. Distinguish an interval for a conditional mean from an interval for a new
-   response.
-:::
+A new response includes additional observation variance:
+
+$$
+\widehat{\operatorname{Var}}(Y_0-\widehat\mu_0)
+=
+s^2\left\{1+\mathbf x_0^\top(\mathbf X^\top\mathbf X)^{-1}\mathbf x_0\right\}.
+$$
+
+Thus a prediction interval is wider than a confidence interval for the mean.
+
+```{r}
+#| label: plot-provo-regression-uncertainty
+#| fig-cap: "Provo positions, the OLS mean, its confidence band, and the wider response prediction limits."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+mean_interval <- predict(fit, newdata = grid, interval = "confidence")
+response_interval <- predict(fit, newdata = grid, interval = "prediction")
+grid$fit <- mean_interval[, "fit"]
+grid$mean_low <- mean_interval[, "lwr"]
+grid$mean_high <- mean_interval[, "upr"]
+grid$response_low <- response_interval[, "lwr"]
+grid$response_high <- response_interval[, "upr"]
+
+point_opacity <- 0.2
+interval_opacity <- 0.22
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_ribbon(
+    data = grid,
+    aes(x = cloze_surprisal_bits, ymin = response_low, ymax = response_high),
+    inherit.aes = FALSE,
+    fill = "grey85"
+  ) +
+  geom_ribbon(
+    data = grid,
+    aes(x = cloze_surprisal_bits, ymin = mean_low, ymax = mean_high),
+    inherit.aes = FALSE,
+    fill = "#2C6E9B",
+    alpha = interval_opacity
+  ) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(
+    data = grid,
+    aes(y = fit),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+## Check your understanding
+
+1. Which assumption yields the factor $\sigma^2\mathbf I$?
+2. Why does the response prediction variance contain an extra $1$?
+3. Which grouping unit does the clustered sensitivity analysis retain?
+4. Why can it not represent reader-level uncertainty?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Independent, homoscedastic errors with common variance $\sigma^2$ yield $\operatorname{Var}[\boldsymbol\varepsilon\mid\mathbf X]=\sigma^2\mathbf I$. <!-- dqr-allow: empirical-answer -->
+2. A new response contains both uncertainty in the fitted mean and a new observation error with variance $\sigma^2$, represented by the extra $1$. <!-- dqr-allow: empirical-answer -->
+3. The passage-clustered HC1 sensitivity analysis retains the Provo passage as the clustering unit through `Text_ID`. <!-- dqr-allow: empirical-answer -->
+4. The item-position table has already aggregated away reader identities and trial-level responses, so reader covariance cannot be estimated. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](coefficient-of-determination.qmd) measures the reduction in squared error relative to a mean-only baseline.

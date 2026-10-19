@@ -1,117 +1,139 @@
 ---
-title: "Mutually exclusive events"
+title: "Relations among events"
 ---
 
-Under the four-form pronoun representation, one observed token is either nominative or accusative. Can we obtain the probability of either case by adding the two event probabilities? Yes, but only because a single form cannot have both surface cases. We first make that fact precise.
+Whether event probabilities can be added directly depends on how the events overlap. The distinction is structural: two events may be **mutually exclusive**, **exhaustive**, both, or neither.
 
-Let
+```{r}
+#| label: load-event-relations-data
+library(ggplot2)
 
-$$
-N_4\equiv\{\textit{he},\textit{they}\}
-$$
+wh <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8"
+)
 
-be the nominative event and let
+stopifnot(nrow(wh) == 167L)
 
-$$
-A_4\equiv\{\textit{him},\textit{them}\}
-$$
+N_total <- nrow(wh)
+p <- function(condition) mean(condition)
+```
 
-be the accusative event. The two sets share no outcomes:
+## Mutually exclusive and exhaustive events
 
-$$
-N_4\cap A_4=\varnothing.
-$$
-
-Basically, two events are mutually exclusive when one outcome cannot make both happen. More specifically, events whose intersection is empty are [**mutually exclusive**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html). They cannot both occur on one realization of the outcome represented by $\Omega$.
-
-The definition concerns set membership:
+Events $B$ and $C$ are mutually exclusive exactly when
 
 $$
-B\text{ and }C\text{ are mutually exclusive}
-\quad\Longleftrightarrow\quad
 B\cap C=\varnothing.
 $$
 
-The definition does not mention probability. We can determine whether two events are mutually exclusive before assigning probabilities to them.
-
-## Additivity for mutually exclusive events
-
-Under the toy probability measure,
+They are exhaustive exactly when
 
 $$
-\mathbb{P}(N_4)=.20+.10=.30
+B\cup C=\Omega.
 $$
 
-and
+Within this extract, the `nsubj` event $S$ and the `obj` event $O$ are mutually exclusive and exhaustive because every retained token has exactly one of those two source relations. Countable additivity thus gives
 
 $$
-\mathbb{P}(A_4)=.30+.40=.70.
+\mathbb{P}(S\cup O)
+=
+\mathbb{P}(S)+\mathbb{P}(O)
+=1.
 $$
-
-Since $N_4$ and $A_4$ are mutually exclusive, their union contains two disjoint parts. The probability measure thus gives
-
-$$
-\begin{aligned}
-\mathbb{P}(N_4\cup A_4)
-&=\mathbb{P}(N_4)+\mathbb{P}(A_4)\\
-&=.30+.70\\
-&=1.
-\end{aligned}
-$$
-
-In this representation, $N_4\cup A_4=\Omega_4$. The sum equals one because the two events are both disjoint and exhaustive.
-
-Mutual exclusivity and exhaustivity are distinct properties: the singleton events $\{\textit{he}\}$ and $\{\textit{them}\}$ are mutually exclusive because they share no outcome, but they are not exhaustive because their union is not $\Omega_4$. Their probabilities thus sum to $.20+.40=.60$, not to one.
-
-## A nonexclusive pair
-
-Now we can see why the empty-intersection check matters. If two events overlap, adding their probabilities creates a **double-counting problem**.
-
-Let
-
-$$
-P_4\equiv\{\textit{they},\textit{them}\}
-$$
-
-be the plural event. Compare $P_4$ with the accusative event $A_4$. Their intersection is
-
-$$
-P_4\cap A_4=\{\textit{them}\}.
-$$
-
-The pair is not mutually exclusive because *them* belongs to both events. Directly adding $\mathbb{P}(P_4)=.50$ and $\mathbb{P}(A_4)=.70$ would count the probability assigned to *them* twice, producing the invalid value $1.20$.
-
-Check whether the sets overlap before adding their probabilities. This set-level check tells us whether the simple addition rule is licensed.
 
 ```{r}
-#| eval: false
-nominative <- c("he", "they")
-accusative <- c("him", "them")
-plural <- c("they", "them")
+#| label: compute-exclusive-events
+p_subject <- p(wh$dependency_relation == "nsubj")
+p_object <- p(wh$dependency_relation == "obj")
+p_both_relations <- p(
+  wh$dependency_relation == "nsubj" &
+    wh$dependency_relation == "obj"
+)
 
-length(intersect(nominative, accusative)) == 0
-length(intersect(plural, accusative)) == 0
+stopifnot(
+  p_both_relations == 0,
+  isTRUE(all.equal(p_subject + p_object, 1))
+)
+
+c(subject = p_subject, object = p_object,
+  intersection = p_both_relations)
 ```
 
-The first expression returns `TRUE`; the second returns `FALSE`.
+Mutual exclusivity does not imply exhaustivity. The *hangi* and *kim* lemma events share no token, but their union excludes the *ne* tokens observed in the same extract.
 
-## Dependence on the represented outcome
+## Overlapping events
 
-Mutual exclusivity is relative to the outcome represented by one realization of the model. If one outcome is one pronoun token, nominative and accusative forms are mutually exclusive in the toy representation. If one outcome is a sentence containing two pronouns, the events “the sentence contains a nominative pronoun” and “the sentence contains an accusative pronoun” may occur together.
+The *ne* event $N$ and object event $O$ overlap. For arbitrary events,
 
-The labels *nominative* and *accusative* are the same in both examples. The intersections differ because an outcome represents one token in the first example and one sentence in the second.
+$$
+\mathbb{P}(B\cup C)
+=
+\mathbb{P}(B)+\mathbb{P}(C)-\mathbb{P}(B\cap C).
+$$
 
-## Labels do not guarantee mutual exclusivity
+The subtracted term repairs the double count of outcomes in the intersection.
 
-Contrasting linguistic labels do not by themselves imply an empty intersection. Terms such as *singular* and *plural* often denote mutually exclusive values of one annotation. But terms such as *plural* and *accusative* denote values on different dimensions and may overlap.
+```{r}
+#| label: compute-overlapping-events
+is_ne <- wh$lemma == "ne"
+is_object <- wh$dependency_relation == "obj"
 
-Write the events as sets and compute their intersection. If the intersection is empty, the events are mutually exclusive under the declared sample space. The linguistic labels alone cannot establish this relation.
+p_ne <- p(is_ne)
+p_object <- p(is_object)
+p_intersection <- p(is_ne & is_object)
+p_union_direct <- p(is_ne | is_object)
+p_union_formula <- p_ne + p_object - p_intersection
 
-The exact upshot is that mutual exclusivity is an empty-intersection claim, not a claim about labels or probability size. The [next page](joint-probability-of-events.qmd) assigns probability to intersections directly, including intersections that are not empty.
+stopifnot(isTRUE(all.equal(p_union_direct, p_union_formula)))
+
+c(ne = p_ne, object = p_object,
+  intersection = p_intersection,
+  union = p_union_direct)
+```
+
+The intersection has empirical probability `r round(p_intersection, 3)`. Thus adding the two marginal probabilities without subtracting the intersection would exceed the probability of their union by exactly that amount.
+
+```{r}
+#| label: plot-event-relations
+#| fig-cap: "Empirical masses in the four disjoint cells formed by the *ne* and object events."
+cells <- as.data.frame(xtabs(~ ne_lemma + object, data = wh))
+names(cells)[3] <- "tokens"
+cells$probability <- cells$tokens / N_total
+cells$lemma_event <- ifelse(cells$ne_lemma == 1, "ne", "other lemma")
+cells$relation_event <- ifelse(cells$object == 1, "obj", "nsubj")
+
+ggplot(cells,
+       aes(lemma_event, probability, fill = relation_event)) +
+  geom_col(position = "dodge", color = "white") +
+  scale_fill_manual(values = c(nsubj = "grey", obj = "steelblue")) +
+  labs(x = "Lemma event", y = "Empirical probability",
+       fill = "UD relation") +
+  theme_classic(base_size = 12)
+```
+
+## Dependence on the outcome representation
+
+Mutual exclusivity is relative to what one outcome represents. If one outcome is one retained token, the two relation labels are mutually exclusive. If one outcome were a sentence, the events “the sentence contains an `nsubj` interrogative token” and “the sentence contains an `obj` interrogative token” could co-occur. Changing the unit changes the event relation.
+
+Labels alone do not guarantee mutual exclusivity. The *ne* event is a lemma property, whereas the object event is a syntactic-relation property, so one token may belong to both. The source's annotation schema tells us whether the coded values can co-occur.
+
+Additivity without an overlap correction is licensed by disjointness, not by the familiarity of the labels. The [next page](joint-probability-of-events.qmd) records every intersection in one table.
 
 ## Check your understanding
 
-1. Are $\{\textit{he},\textit{him}\}$ and $\{\textit{they},\textit{them}\}$ mutually exclusive? Are they exhaustive?
-2. Let $F_{12}$ be the first-person event and $P_{12}$ the plural event in the twelve-form pronoun sample space. Write $F_{12}\cap P_{12}$ and decide whether the events are mutually exclusive.
-3. Give two mutually exclusive events that are not exhaustive in $\Omega_4$.
-4. Explain why changing the outcome from one token to one sentence can change whether two linguistic events are mutually exclusive.
+1. Compute the probability of the union of the *hangi* and *kim* events. Why is no intersection subtraction needed?
+2. Verify the union formula for the *kim* and `obj` events.
+3. Are the three lemma events exhaustive in the extract? Use code rather than the README count.
+4. Describe a sentence-level outcome representation under which `nsubj` and `obj` interrogative events could co-occur.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $\mathbb{P}(H\cup K)=20/167=0.119760$; no intersection term is needed because a token cannot have both the *hangi* and *kim* lemmas. <!-- dqr-allow: empirical-answer -->
+2. $\mathbb{P}(K\cup O)=17/167+116/167-3/167=130/167=0.778443$. <!-- dqr-allow: empirical-answer -->
+3. Yes; the counts for *hangi*, *kim*, and *ne* are $3+17+147=167$, exactly the number of retained rows. <!-- dqr-allow: empirical-answer -->
+4. With one sentence as an outcome, the `nsubj` event and `obj` event could co-occur when that sentence contains one interrogative subject token and another interrogative object token. <!-- dqr-allow: empirical-answer -->
+
+</details>

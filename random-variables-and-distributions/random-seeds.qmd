@@ -1,97 +1,102 @@
 ---
-title: "Reproducing a simulation"
+title: "Random seeds"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](inverse-transform-sampling.qmd) introduced simulation from a target distribution. Suppose we simulate ten choices between two word orders, with probability $.60$ for order A. Two runs will usually produce different sequences because the pseudorandom number generator advances after every draw. How can another analyst reproduce our exact computation without changing the target distribution?
+A pseudorandom generator produces a deterministic sequence from an initial state. A **random seed** records that state, allowing a stochastic computation to be reproduced exactly. Reproducing a sequence is not the same as collecting a new linguistic sample.
 
-A [**random seed**](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Random.html) answers this computational question by returning the generator to a known initial state. Starting from the same state reproduces the same sequence.
+## Repeating the Turkish lemma sampler
 
-```{r}
-#| eval: false
-set.seed(214)
-sample(c("A", "B"), size = 10, replace = TRUE,
-       prob = c(.60, .40))
-
-set.seed(214)
-sample(c("A", "B"), size = 10, replace = TRUE,
-       prob = c(.60, .40))
-```
-
-The two simulated vectors are identical because both runs start the generator from the same state. The seed does not change the target probabilities.
-
-## Separating the procedure from one realization
-
-The sampling procedure is the instruction to draw ten independent labels with probabilities $.60$ and $.40$, whereas a seed determines which particular ten labels appear in one computational run.
-
-Another seed gives another valid realization from the same procedure, and a sample of ten choices need not contain exactly six A outcomes. The probability $.60$ describes the sampling procedure, not a constraint on every realized sample.
-
-When a simulated summary enters an analysis, check whether the result changes materially across seeds. With enough draws, the accidental choice of seed should no longer determine the substantive conclusion.
-
-## Setting the seed once before related draws
-
-Consider this incorrect loop:
+This page reloads the BOUN interrogative table and reconstructs the [inverse-transform sampler](inverse-transform-sampling.qmd). The sample size and seeds below are computational settings; the target probabilities still come from the corpus.
 
 ```{r}
-#| eval: false
-simulated_count <- numeric(100)
+#| label: seed-ud-questions
+library(ggplot2)
 
-for (b in 1:100) {
-  set.seed(214)
-  simulated_count[b] <- sum(runif(10) <= .60)
-}
-```
+questions <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE
+)
+counts <- as.data.frame(table(questions$lemma), responseName = "count")
+names(counts)[1] <- "lemma"
+counts$probability <- counts$count / sum(counts$count)
+cutpoints <- cumsum(counts$probability)
 
-Because every iteration resets the generator, the loop repeats the same simulated count 100 times.
-
-Set the seed once instead:
-
-```{r}
-#| eval: false
-set.seed(214)
-simulated_count <- numeric(100)
-
-for (b in 1:100) {
-  simulated_count[b] <- sum(runif(10) <= .60)
-}
-```
-
-Now the complete sequence is reproducible while individual iterations differ.
-
-## Checking simulation stability during development
-
-Suppose we estimate the expected A count by averaging many simulated counts. We can compare several seeds:
-
-```{r}
-#| eval: false
-estimate_mean_count <- function(seed, draws) {
+inverse_sample <- function(n, seed) {
   set.seed(seed)
-  mean(replicate(draws, sum(runif(10) <= .60)))
+  u <- runif(n)
+  index <- findInterval(u, c(0, cutpoints), rightmost.closed = TRUE)
+  index[index > nrow(counts)] <- nrow(counts)
+  counts$lemma[index]
 }
 
-sapply(c(11, 29, 47), estimate_mean_count, draws = 10000)
+n_draws <- 250L
+seed_a <- 20261018L
+seed_b <- 20261019L
+draw_a1 <- inverse_sample(n_draws, seed_a)
+draw_a2 <- inverse_sample(n_draws, seed_a)
+draw_b <- inverse_sample(n_draws, seed_b)
+
+same_seed_identical <- identical(draw_a1, draw_a2)
+different_seed_identical <- identical(draw_a1, draw_b)
+target_ne <- counts$probability[counts$lemma == "ne"]
+
+paths <- rbind(
+  data.frame(draw = seq_len(n_draws),
+             cumulative_ne = cumsum(draw_a1 == "ne") / seq_len(n_draws),
+             sequence = "seed A"),
+  data.frame(draw = seq_len(n_draws),
+             cumulative_ne = cumsum(draw_b == "ne") / seq_len(n_draws),
+             sequence = "seed B")
+)
+
+stopifnot(
+  same_seed_identical,
+  !different_seed_identical,
+  all(paths$cumulative_ne >= 0 & paths$cumulative_ne <= 1)
+)
+
+data.frame(
+  comparison = c("same seed", "different seeds"),
+  identical_sequence = c(same_seed_identical, different_seed_identical)
+)
 ```
 
-Each result should be near the theoretical expectation $10(.60)=6$. If conclusions change across seeds, the simulation may use too few draws or contain an implementation error.
+Calling `set.seed()` restores the generator state. The same sampler then consumes the same uniform sequence and returns the same lemma sequence. The second seed changes the Monte Carlo realization but not the target PMF.
 
-Increasing the number of draws reduces Monte Carlo variation but does not repair an incorrect target distribution.
+```{r}
+#| label: plot-seed-ud-questions
+#| fig-cap: "Cumulative simulated proportion of ne under two seeds. The horizontal line is the empirical target probability."
+ggplot(paths, aes(draw, cumulative_ne, color = sequence)) +
+  geom_hline(yintercept = target_ne, color = "grey35", linetype = 2) +
+  geom_line(linewidth = 0.75) +
+  scale_color_manual(values = c("seed A" = "#8B1A1A", "seed B" = "grey55")) + # dqr-allow: algorithm-setting
+  labs(x = "Simulated draw", y = "Cumulative proportion of ne", color = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-## Placing the seed at the right scope
-
-An analysis may contain several related random operations. Setting one seed before the complete block makes the entire sequence reproducible, whereas resetting the seed before every call can create unintended repetition or dependence.
-
-The seed should be recorded with the code and set before the first random draw that affects the reported result.
-
-## Reproducibility is not validity
-
-A reproducible simulation is not necessarily statistically valid, since a fixed seed cannot make dependent tokens independent, correct an incorrect PMF, or make a convenience sample representative.
-
-Reproducibility answers whether another analyst can regenerate the same computation, whereas adequacy answers whether the computation represents the intended linguistic process. These questions require separate checks.
+Both paths fluctuate because each is finite. A seed makes those fluctuations inspectable and debuggable; choosing a different seed is not a robustness analysis by itself. Robustness requires examining the distribution of results across many independently generated sequences or using an exact calculation when one is available.
 
 ## Check your understanding
 
-1. What object does `set.seed()` hold fixed?
-2. Why does resetting the same seed inside a loop repeat outcomes?
-3. If a simulated estimate changes substantially across seeds, what should be checked?
-4. Why can a perfectly reproducible simulation still use an inadequate linguistic model?
+1. Confirm that `draw_a1` and `draw_a2` agree element by element.
+2. Move `set.seed()` outside the function and explain how the behavior changes.
+3. Repeat the final proportion across many seeds and plot its distribution.
+4. Why does setting a seed not address sentence-level dependence in the corpus?
 
-Simulation draws one variable at a time or several together. The [next page](joint-probability.qmd) begins the multivariable sequence by assigning probability to value combinations.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. `identical(draw_a1, draw_a2)` is `TRUE`, so the two same-seed draws agree element by element. <!-- dqr-allow: empirical-answer -->
+2. With `set.seed()` outside the function, successive calls consume later parts of the random stream and differ, though rerunning the whole seeded sequence remains reproducible. <!-- dqr-allow: empirical-answer -->
+3. Across seeds 1–1,000 with 250 draws each, the *ne* proportion has mean 0.878912, standard deviation 0.021040, and range 0.804–0.940 around the empirical target 0.880240. <!-- dqr-allow: empirical-answer -->
+4. A seed controls computational reproducibility but does not change the fact that corpus tokens can share sentences, registers, or other sampling units. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [joint-distribution page](joint-probability.qmd) turns from simulation to paired measurements in the English dative data.

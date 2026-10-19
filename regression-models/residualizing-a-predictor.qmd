@@ -1,168 +1,170 @@
 ---
 title: "Residualizing a predictor"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [multiple-regression page](multiple-regression.qmd) introduced partial coefficients, and the [residual page](residuals.qmd) defined an observed minus fitted discrepancy. The process of [**residualization**](https://doi.org/10.1016/j.jml.2013.12.003) combines these two ideas, but it does not create a new directly observed linguistic variable.
+**Residualizing a predictor** subtracts the part linearly predicted by declared controls. The resulting residual is sample- and model-dependent; it is not a purified linguistic measurement.
 
-Suppose surprisal and acceptability are correlated. One proposed response is to regress surprisal on acceptability and use the residual as a predictor of reading time.
+## The MALD phone-count coefficient
 
-The first regression is
+First regress phone count on syllable count, log duration, and log frequency:
 
 $$
-S_i
+P_i
 =
-\alpha_0+\alpha_1A_i+R_i,
+\alpha_0+\alpha_sS_i+\alpha_dD_i+\alpha_fF_i+R_{Pi}.
 $$
 
-where $S_i$ is surprisal, $A_i$ is acceptability, and $R_i$ is the surprisal residual.
-
-The residual satisfies
-
-$$
-R_i
-=
-S_i-(\widehat{\alpha}_0+\widehat{\alpha}_1A_i).
-$$
-
-It is the part of observed surprisal not linearly predicted by acceptability in the fitted sample.
-
-The final phrase is essential. $R_i$ is defined relative to one sample and one
-linear residualizer. A different sample, a nonlinear residualizer, or a different
-set of predictors would produce a different residualized variable.
-
-The residual thus depends on the model used to residualize the predictor. It is
-a statistical construction, not a directly observed linguistic property.
-
-## Interpreting the new predictor
-
-The second regression might be
+Then retain the same controls in the response model:
 
 $$
 Y_i
 =
-\beta_0+\beta_RR_i+\beta_AA_i+\epsilon_i.
+\gamma_0+\gamma_pR_{Pi}
++\gamma_sS_i+\gamma_dD_i+\gamma_fF_i+\varepsilon_i.
 $$
 
-The coefficient $\beta_R$ describes a change in reading time associated with residual surprisal while acceptability is held fixed. This is not the marginal association of the original surprisal variable.
-
-In an ordinary linear regression containing the same acceptability term, the coefficient on $R_i$ matches the partial coefficient on $S_i$. Residualization changes the parameterization, not the underlying fitted subspace.
-
-This equivalence can be derived. Since
-
-$$
-S_i=\widehat\alpha_0+\widehat\alpha_1A_i+R_i,
-$$
-
-substitute this expression into the original response model:
-
-$$
-\begin{aligned}
-Y_i
-&=\beta_0+\beta_SS_i+\beta_AA_i+\epsilon_i\\
-&=\beta_0+\beta_S
-(\widehat\alpha_0+\widehat\alpha_1A_i+R_i)
-+\beta_AA_i+\epsilon_i\\
-&=(\beta_0+\beta_S\widehat\alpha_0)
-+(\beta_A+\beta_S\widehat\alpha_1)A_i
-+\beta_SR_i+\epsilon_i.
-\end{aligned}
-$$
-
-The coefficient on $R_i$ is the original partial surprisal coefficient
-$\beta_S$. The intercept and acceptability coefficient change because the
-coordinate system has changed.
-
-## Verifying the equivalence
+The Frisch--Waugh--Lovell result implies that $\widehat\gamma_p$ equals the phone-count coefficient in the original multiple regression containing $P_i$ and the same controls.
 
 ```{r}
-#| label: verify-residualization-equivalence
-#| echo: true
-dat <- data.frame(
-  acceptability = c(2.1, 2.8, 3.4, 4.2, 4.8, 5.5, 6.1, 6.7),
-  surprisal = c(8.2, 7.4, 7.1, 6.0, 5.8, 4.9, 4.5, 3.7),
-  log_rt = c(6.775, 6.712, 6.687, 6.609, 6.596,
-             6.523, 6.501, 6.443)
+#| label: residualize-mald-phone-count
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+phone_residualizer <- lm(
+  n_phones ~ n_syllables + log_duration + log_frequency_subtlex,
+  data = mald
+)
+mald$residual_n_phones <- residuals(phone_residualizer)
+
+original_fit <- lm(
+  mean_log_rt ~ n_phones + n_syllables +
+    log_duration + log_frequency_subtlex,
+  data = mald
+)
+residualized_fit <- lm(
+  mean_log_rt ~ residual_n_phones + n_syllables +
+    log_duration + log_frequency_subtlex,
+  data = mald
 )
 
-fit_residualizer <- lm(surprisal ~ acceptability, data = dat)
-dat$residual_surprisal <- residuals(fit_residualizer)
+response_residualizer <- lm(
+  mean_log_rt ~ n_syllables + log_duration + log_frequency_subtlex,
+  data = mald
+)
+mald$residual_mean_log_rt <- residuals(response_residualizer)
+partial_fit <- lm(residual_mean_log_rt ~ residual_n_phones, data = mald)
 
-fit_original <- lm(log_rt ~ surprisal + acceptability, data = dat)
-fit_residual <- lm(log_rt ~ residual_surprisal + acceptability, data = dat)
+slope_difference <-
+  coef(original_fit)[["n_phones"]] -
+  coef(residualized_fit)[["residual_n_phones"]]
 
-c(
-  original_surprisal = coef(fit_original)["surprisal"],
-  residual_surprisal = coef(fit_residual)["residual_surprisal"]
+stopifnot(
+  abs(slope_difference) < 1e-10,
+  abs(
+    coef(original_fit)[["n_phones"]] -
+      coef(partial_fit)[["residual_n_phones"]]
+  ) < 1e-10
+)
+
+data.frame(
+  representation = c("original", "predictor residual", "both residuals"),
+  phone_slope = c(
+    coef(original_fit)[["n_phones"]],
+    coef(residualized_fit)[["residual_n_phones"]],
+    coef(partial_fit)[["residual_n_phones"]]
+  )
 )
 ```
 
-The coefficient on `surprisal` in the first response model equals the coefficient on `residual_surprisal` in the second, up to numerical precision.
-
-The other coefficients are not equal. After residualization, the acceptability
-coefficient absorbs both its original response association and the part of
-surprisal that the residualizer assigned to acceptability. This is why the
-residualized fit must be interpreted as a reparameterized system, not as the
-original coefficient table with one purified predictor substituted.
-
-## Residualizing both variables to expose the partial slope
-
-The same partial slope can be obtained by residualizing the response with respect
-to acceptability and regressing those response residuals on residual surprisal:
-
 ```{r}
-#| label: residualize-response-for-partial-slope
-#| echo: true
-outcome_residualizer <- lm(log_rt ~ acceptability, data = dat)
-dat$residual_log_rt <- residuals(outcome_residualizer)
-
-fit_residual_both <- lm(
-  residual_log_rt ~ residual_surprisal,
-  data = dat
-)
-
-coef(fit_residual_both)["residual_surprisal"]
+#| label: plot-mald-residualization
+#| fig-cap: "MALD response residuals against phone-count residuals. The line represents the same partial phone coefficient as the original multiple regression."
+point_opacity <- 0.07
+ggplot(mald, aes(residual_n_phones, residual_mean_log_rt)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.55) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = FALSE,
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(x = "Phone-count residual", y = "Mean log-RT residual") +
+  theme_classic(base_size = 12)
 ```
 
-This calculation reveals the comparison behind a partial coefficient. First
-remove the linear association with acceptability from both surprisal and the
-response. Then relate the two remaining quantities.
+## Residualization inside validation folds
 
-## Residuals and construct interpretation
+If residualized predictors are used for prediction, the residualizer must be fitted on training items only. Otherwise held-out predictor information leaks into preprocessing.
 
-Residual surprisal is not “pure processing difficulty.” It depends on the sample, the residualizer formula, measurement error in both variables, and the chosen functional form.
+```{r}
+#| label: validate-mald-foldwise-residualization
+n_folds <- 10L
+set.seed(20261020)
+fold_id <- sample(rep(seq_len(n_folds), length.out = nrow(mald)))
+fold_checks <- vector("list", n_folds)
 
-It is also directional. Residualizing surprisal against acceptability does not
-produce the same variable as residualizing acceptability against surprisal. The
-first preserves surprisal units and defines deviations from predicted
-surprisal. The second preserves acceptability units and defines deviations from
-predicted acceptability.
+for (fold in seq_len(n_folds)) {
+  training <- fold_id != fold
+  testing <- !training
 
-If acceptability is measured with error, subtracting its fitted association does not remove the underlying construct cleanly. It can also induce difficult interpretations when the residualizer is trained outside the predictive evaluation loop.
+  fold_residualizer <- lm(
+    n_phones ~ n_syllables + log_duration + log_frequency_subtlex,
+    data = mald[training, ]
+  )
+  train <- mald[training, ]
+  test <- mald[testing, ]
+  train$phone_residual <- residuals(fold_residualizer)
+  test$phone_residual <- test$n_phones -
+    predict(fold_residualizer, newdata = test)
 
-Interpreting that residual as a purified theoretical construct is not licensed. The linear algebra establishes coefficient
-equivalence. It does not establish that the residual corresponds to one causal
-or cognitive mechanism.
+  fold_original <- lm(
+    mean_log_rt ~ n_phones + n_syllables +
+      log_duration + log_frequency_subtlex,
+    data = train
+  )
+  fold_residualized <- lm(
+    mean_log_rt ~ phone_residual + n_syllables +
+      log_duration + log_frequency_subtlex,
+    data = train
+  )
 
-## Keeping the residualizer inside cross-validation
+  fold_checks[[fold]] <- data.frame(
+    fold = fold,
+    maximum_prediction_difference = max(abs(
+      predict(fold_original, newdata = test) -
+        predict(fold_residualized, newdata = test)
+    ))
+  )
+}
+fold_checks <- do.call(rbind, fold_checks)
+stopifnot(max(fold_checks$maximum_prediction_difference) < 1e-10)
 
-For held-out prediction, estimate $\widehat{\alpha}_0$ and $\widehat{\alpha}_1$ using only the training fold. Then compute residual surprisal for the test fold from those training estimates.
+fold_checks
+```
 
-Residualizing once on the complete dataset allows test-fold predictor relationships to influence the fitted transformation. That is leakage.
+The maximum foldwise prediction difference is `r format(max(fold_checks$maximum_prediction_difference), scientific = TRUE, digits = 2)`. This equality depends on retaining the same controls. Dropping them after residualization generally changes the fitted subspace and the estimand.
 
-The same rule applies to centering constants, scaling constants, and any selected
-functional form when these are learned from data. The test observations may be
-transformed using training estimates, but they may not determine those estimates.
+## Check your understanding
 
-Residualization is often unnecessary for an explanatory multiple regression
-because the original two-predictor model already estimates the same partial
-surprisal coefficient. The explicit residualizer can still be pedagogically
-useful because it displays which surprisal variation identifies the coefficient.
+1. Why is the phone residual not a directly observed phonological property?
+2. Which controls must be retained for the coefficient equivalence?
+3. Why is full-data residualization leakage during validation?
+4. What exactly agrees across the two foldwise models?
 
-::: {.callout-note title="Interpret a residualized predictor"}
-1. What does $R_i$ measure relative to the residualizer model?
-2. Does residualization eliminate uncertainty due to correlated constructs?
-3. Where must the residualizer be fitted during cross-validation?
-4. Which coefficients remain equal between the original and residualized response
-   models, and which may change?
-5. Explain why residualizing a predictor does not isolate a pure theoretical construct.
-:::
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The phone residual is the remainder from a sample-fitted linear model using syllables, duration, and frequency, so it depends on those controls and this MALD sample. <!-- dqr-allow: empirical-answer -->
+2. The response model must retain syllable count, log duration, and log frequency, the same controls used in the phone residualizer. <!-- dqr-allow: empirical-answer -->
+3. The full-data residualizer uses held-out predictor values to define the preprocessing transformation before prediction. <!-- dqr-allow: empirical-answer -->
+4. The two models produce the same held-out fitted predictions within each fold, and their corresponding partial phone coefficients agree when the same controls are retained. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](heteroscedasticity.qmd) examines changing residual spread across MALD frequency.

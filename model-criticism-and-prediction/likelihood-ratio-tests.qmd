@@ -2,201 +2,189 @@
 title: "Comparing nested likelihoods"
 ---
 
-The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) showed how a likelihood compares parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other.
+The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. We begin a five-page sequence with one fixed response table and one fixed pair of Gaussian models so that the comparison criterion, rather than the empirical object, changes from page to page.
 
-Suppose one ordinary linear regression predicts a log-transformed reading-time measure from word length. A second linear regression adds word surprisal, the negative log probability assigned to the observed word given its context. The second model can reproduce the first whenever the surprisal coefficient is zero. Thus, the two models differ by a specific, testable restriction.
+## Provo Corpus
 
-One statistical model is [**nested**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=261) within another when it can be obtained by restricting parameters in the larger model. This parameter-space relation differs from nested grouping in a sampling design, such as trials within speakers. A [**likelihood-ratio test (LRT)**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=261) asks whether relaxing the parameter restriction improves maximized likelihood by more than would usually be expected if the restriction held in the population. It does not ask which model predicts new passages better, and it does not apply to arbitrary pairs of models.
+[Luke and Christianson (2018)](https://doi.org/10.3758/s13428-017-0908-4) released cloze norms for each word in English passages and eye-movement measurements from readers of those passages. The [OSF release](https://osf.io/sjefs/) includes `OrthoMatchModel`, an orthographic-match cloze estimate from a logit mixed model with word intercepts. It is a fitted cloze estimate, not a language-model probability.
 
-## Stating the nesting relation
+The tracked course table retains complete content-word positions from all passages and averages first-fixation duration across readers at each position. One row is thus a position summary, not one reader's fixation. The analyses below cannot recover reader-level dependence from that aggregation.
 
-Let $M_0$ be the word-length-only linear regression:
-
-$$
-Y_i\sim\operatorname{Normal}(\mu_i,\sigma^2),
-\qquad
-\mu_i=\beta_0+\beta_1\operatorname{WordLength}_i.
-$$
-
-Let $M_1$ add word surprisal:
+Let $y_i$ be mean log first-fixation duration and let
 
 $$
-Y_i\sim\operatorname{Normal}(\mu_i,\sigma^2),
-\qquad
-\mu_i=\beta_0+\beta_1\operatorname{WordLength}_i
-+\beta_2\operatorname{Surprisal}_i.
+x_i=-\log_2(\texttt{OrthoMatchModel}_i)
 $$
 
-Setting $\beta_2=0$ in $M_1$ gives $M_0$. Every parameter setting available to the smaller model is thus also available to the larger model. We write this relation as
+be modeled cloze surprisal in bits. The restricted and expanded models are
 
 $$
-M_0\subset M_1.
+\begin{aligned}
+M_L &: y_i=\beta_0+\beta_1x_i+\epsilon_i,\\
+M_Q &: y_i=\beta_0+\beta_1x_i+\beta_2x_i^2+\epsilon_i,
+\qquad \epsilon_i\sim\operatorname{Normal}(0,\sigma^2).
+\end{aligned}
 $$
 
-This nesting statement depends on more than the printed mean formula. The models must also use the same response observations, response distribution, variance specification, and likelihood definition. Models for raw and log reading time are not nested merely because they contain the same predictors.
+Setting $\beta_2=0$ in $M_Q$ gives $M_L$, so $M_L\subset M_Q$. This nesting statement also requires identical response rows, response distribution, variance specification, and likelihood definition.
 
-## Moving from a likelihood ratio to a difference
+## From a likelihood ratio to a difference
 
-Let $\widehat{L}_0$ and $\widehat{L}_1$ be the maximized likelihoods under $M_0$ and $M_1$. Since the larger model can reproduce every fit available to the smaller model,
-
-$$
-\widehat{L}_1\geq\widehat{L}_0.
-$$
-
-The raw likelihood ratio compares the best fit under the restriction with the best unrestricted fit:
+Let $\widehat L_L$ and $\widehat L_Q$ be the maximized likelihoods. Since the expanded model can reproduce the restricted fit,
 
 $$
-\frac{\widehat{L}_0}{\widehat{L}_1}.
+\widehat L_Q\geq\widehat L_L.
 $$
 
-This ratio lies between 0 and 1. A value near 1 means that relaxing the restriction adds little fit. A much smaller value means that the larger model assigns substantially more likelihood to the observed responses.
-
-Log likelihood turns the ratio into a difference:
+The likelihood-ratio statistic is
 
 $$
--2\log
-\left(
-\frac{\widehat{L}_0}{\widehat{L}_1}
-\right)
-=
--2\left(\log\widehat{L}_0-\log\widehat{L}_1\right)
-=
-2(\ell_1-\ell_0),
+\begin{aligned}
+\Lambda
+&=-2\log\left(\frac{\widehat L_L}{\widehat L_Q}\right)\\
+&=-2(\log\widehat L_L-\log\widehat L_Q)\\
+&=2(\ell_Q-\ell_L).
+\end{aligned}
 $$
 
-where $\ell_0=\log\widehat{L}_0$ and $\ell_1=\log\widehat{L}_1$. We use
+When the expanded model adds regular parameters and the usual large-sample conditions hold,
 
 $$
-\Lambda=2(\ell_1-\ell_0)
+\Lambda\overset{\cdot}{\sim}\chi^2_{k_Q-k_L}
 $$
 
-as the likelihood-ratio statistic. The factor of two gives the statistic a convenient large-sample reference distribution.
+under the restricted model. The degrees of freedom equal the difference in freely estimated regular parameters.
 
-## Calculating one comparison
+## Fitting the Provo models
 
-Suppose the word-length-only model has maximized log likelihood
+The code reads the tracked position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means.
 
-$$
-\ell_0=-412.6,
-$$
+```{r}
+#| label: provo-likelihood-ratio
+#| message: false
+#| warning: false
 
-and the model that adds surprisal has
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
 
-$$
-\ell_1=-408.1.
-$$
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+stopifnot(identical(
+  rownames(model.frame(linear_fit)),
+  rownames(model.frame(quadratic_fit))
+))
 
-The larger model improves log likelihood by
+linear_log_likelihood <- as.numeric(logLik(linear_fit))
+quadratic_log_likelihood <- as.numeric(logLik(quadratic_fit))
+lr_statistic <- 2 * (
+  quadratic_log_likelihood - linear_log_likelihood
+)
+lr_df <- attr(logLik(quadratic_fit), "df") -
+  attr(logLik(linear_fit), "df")
+lr_p_value <- pchisq(
+  lr_statistic, df = lr_df, lower.tail = FALSE
+)
 
-$$
-\ell_1-\ell_0
-=
--408.1-(-412.6)
-=
-4.5.
-$$
+likelihood_comparison <- data.frame(
+  model = c("Linear", "Quadratic"),
+  n_positions = nrow(provo),
+  log_likelihood = c(
+    linear_log_likelihood, quadratic_log_likelihood
+  ),
+  likelihood_parameters = c(
+    attr(logLik(linear_fit), "df"),
+    attr(logLik(quadratic_fit), "df")
+  )
+)
+likelihood_comparison
 
-Thus,
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 200
+  )
+)
+grid$linear <- predict(linear_fit, grid)
+grid$quadratic <- predict(quadratic_fit, grid)
+
+ggplot2::ggplot(
+  provo,
+  ggplot2::aes(cloze_surprisal_bits, mean_log_ffd)
+) +
+  ggplot2::geom_point(size = 0.75, alpha = 0.22, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::geom_line(
+    data = grid,
+    ggplot2::aes(y = linear, linetype = "Linear"),
+    linewidth = 0.7,
+    color = "grey25"
+  ) +
+  ggplot2::geom_line(
+    data = grid,
+    ggplot2::aes(y = quadratic, linetype = "Quadratic"),
+    linewidth = 0.7,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::scale_linetype_manual(
+    values = c("Linear" = 2, "Quadratic" = 1)
+  ) +
+  ggplot2::labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration",
+    linetype = "Mean model"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The common analysis table has `r format(nrow(provo), big.mark = ",")` positions from `r length(unique(provo$Text_ID))` passages. The linear and quadratic log likelihoods are `r sprintf("%.3f", linear_log_likelihood)` and `r sprintf("%.3f", quadratic_log_likelihood)`. Thus,
 
 $$
 \Lambda
 =
-2(4.5)
+2\left(`r sprintf("%.3f", quadratic_log_likelihood)`-
+`r sprintf("%.3f", linear_log_likelihood)`\right)
 =
-9.
+`r sprintf("%.3f", lr_statistic)`.
 $$
 
-The larger model must improve the maximized likelihood. The inferential question is whether an improvement of this size is surprising under the restriction $\beta_2=0$.
+The expanded model adds `r lr_df` likelihood parameter, giving $p = `r sprintf("%.4f", lr_p_value)`$ under the usual $\chi^2$ approximation. The plot keeps the raw position summaries visible with both fitted mean functions. The curvature is slight, which makes the criterion comparisons on the following pages substantively readable.
 
-If the larger model adds one regular parameter and the usual large-sample conditions hold, then
+## Interpreting the restriction narrowly
 
-$$
-\Lambda\overset{\cdot}{\sim}\chi^2_1
-$$
-
-under the null hypothesis. The degrees of freedom equal the difference in the number of freely estimated regular parameters. Here that difference is one.
-
-In R, the tail probability is computed by
-
-```{r}
-#| eval: false
-
-pchisq(9, df = 1, lower.tail = FALSE)
-```
-
-The result is about $0.0027$. Under the null model and the approximation stated above, a likelihood-ratio statistic at least as large as 9 would occur in about 0.27 percent of comparable samples.
-
-## Fitting and comparing the models in R
-
-The model formulas make the restriction visible.
-
-```{r}
-#| eval: false
-
-fit_length <- lm(
-  log_rt ~ word_length,
-  data = reading
-)
-
-fit_surprisal <- lm(
-  log_rt ~ word_length + surprisal,
-  data = reading
-)
-
-ll_0 <- logLik(fit_length)
-ll_1 <- logLik(fit_surprisal)
-
-lrt <- 2 * (as.numeric(ll_1) - as.numeric(ll_0))
-df <- attr(ll_1, "df") - attr(ll_0, "df")
-
-c(
-  statistic = lrt,
-  df = df,
-  p_value = pchisq(lrt, df = df, lower.tail = FALSE)
-)
-```
-
-The comparison is valid only if both fits use the same rows. If `surprisal` is missing for some tokens, the second model may silently drop rows that the first model retains. A safe workflow first constructs the shared analysis dataset and then fits both models to that object.
-
-The coefficient output from `fit_surprisal` answers a different question from the LRT. The coefficient estimates the direction and magnitude of the conditional surprisal association on the chosen log-reading-time scale. Because word surprisal is derived from a probability model and is correlated with other properties of words and contexts, that coefficient is not automatically a causal effect of comprehenders' expectations. The LRT evaluates the joint restriction represented by the model comparison. With one added coefficient these questions are closely related, but with several added coefficients the LRT tests them together.
-
-## Interpreting the null hypothesis narrowly
-
-For this comparison, the null hypothesis is
+The null hypothesis is
 
 $$
 H_0:\beta_2=0.
 $$
 
-Rejecting that restriction suggests that surprisal improves the fitted likelihood beyond the word-length-only model, conditional on the specified response, likelihood, covariates, and analysis sample. It does not show that the larger model is true. It also does not show that surprisal causes reading-time differences or that a reader internally represents the fitted language model's probabilities, since either interpretation requires evidence beyond the likelihood comparison.
+Rejecting this restriction suggests that the quadratic term improves fitted likelihood conditional on this response, sample, and Gaussian specification. It does not show that the quadratic model is true, that cloze surprisal causes fixation-duration differences, or that readers internally represent `OrthoMatchModel`.
 
-Likewise, failing to reject does not establish that $\beta_2$ is exactly zero. The data may provide little information about the parameter, or the predictor may be measured noisily. The test calibrates one restriction under one model family.
+The LRT also does not evaluate a new passage. All positions contribute to fitting and comparison, and the response has already been aggregated across readers. The result concerns fitted position summaries under a nested mean restriction.
 
-## Recognizing when the reference distribution may fail
+## When the reference distribution may fail
 
-The $\chi^2$ approximation assumes that the null value is an interior, regular point of the parameter space and that the parameters are sufficiently identified. Several linguistic models violate these conditions.
+The $\chi^2$ approximation assumes that the null value is an interior, regular point and that parameters are sufficiently identified. Testing a random-effect variance against zero violates this condition because zero is a boundary. Mixture models can lose component identification under a null restriction. In such cases, a simulation-based reference distribution or a method derived for the boundary problem may be needed.
 
-Testing whether a random-effect variance equals zero is a standard failure case. A variance cannot be negative, so zero lies on the boundary of the permitted parameter space. The usual $\chi^2$ reference distribution need not apply.
+The likelihood difference remains a description of fitted improvement when these conditions fail. What becomes unreliable is the simple $\chi^2$ calibration.
 
-Mixture models present another difficulty because components can become unidentified under a null restriction. Small samples and weakly identified parameters may also make the large-sample approximation poor. In such cases, a simulation-based reference distribution or a method derived for the specific boundary problem may be needed.
+## Likelihood comparison and predictive validation
 
-Departures from the regular case do not make the likelihood difference uninformative. It remains a description of fitted improvement. What may fail is the simple claim that $\Lambda$ follows a particular $\chi^2$ distribution under the null.
-
-## Likelihood-ratio tests and predictive validation
-
-The LRT uses the same responses to estimate the models and to compare their maximized likelihoods. It thus answers an in-sample inferential question about a nested restriction.
-
-Cross-validation asks how the complete procedures predict responses excluded from fitting. A model may pass an LRT while producing only a small change in held-out loss. This pattern is possible when a conditional association is estimated precisely but contributes little to prediction relative to other sources of response variation.
-
-The reverse distinction also matters. A predictor may improve held-out prediction through a stable proxy relation without supporting the theoretical mechanism attached to it. Thus, likelihood inference and predictive validation provide different pieces of evidence.
+The LRT uses the same responses to estimate and compare the models. Cross-validation asks how the complete procedures predict responses excluded from fitting. A quadratic term can pass an LRT while changing held-out prediction only slightly, or a proxy can improve prediction without supporting its proposed mechanism. These are different pieces of evidence.
 
 ## Checking the nested comparison
 
-1. What parameter restriction makes the word-length-and-surprisal model reduce to the word-length-only model?
-2. Why can the larger model never have a lower maximized likelihood than the smaller model?
-3. If a larger model adds three regular parameters, what reference degrees of freedom would the usual LRT use?
-4. Why might fitting the two models on different rows invalidate the comparison?
-5. What part of the usual LRT fails when a random-effect variance is tested against zero?
-6. Why does the reported tail probability not evaluate prediction for a new passage?
+1. Which parameter restriction makes the quadratic model reduce to the linear model?
+2. Why can the expanded model not have a lower maximized likelihood?
+3. Why must both fits use the same position rows and response scale?
+4. Why does the reported tail probability not evaluate an omitted passage?
 
-The LRT compares models connected by a specific restriction. It measures the fitted likelihood gained by relaxing that restriction and calibrates the gain against an approximate null distribution when the regularity conditions hold. The [next page](information-criteria.qmd) considers a different comparison problem: how to penalize improved in-sample fit when candidate models need not be connected by one nested restriction.
+The LRT measures the fitted likelihood gained by relaxing a nested restriction and calibrates that gain when the regularity conditions hold. The [previous page](comparing-predictive-loss.qmd) evaluated unseen verbs. The [next page](information-criteria.qmd) applies two different penalties to these same Provo fits.

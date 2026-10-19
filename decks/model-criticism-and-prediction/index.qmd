@@ -1,5 +1,5 @@
 ---
-title: "Prediction beyond the fitted data"
+title: "Model criticism and out-of-sample prediction"
 subtitle: "Statistical Methods in Linguistics"
 author: "Aaron Steven White"
 institute: "University of Rochester"
@@ -13,419 +13,2635 @@ format:
     width: 1280
     height: 720
     margin: 0
+    center: false
     self-contained: true
     embed-resources: true
     transition: none
     slide-number: false
     controls: true
     progress: true
-    footer: ""
-    center: false
     incremental: false
+    html-math-method: katex
+execute:
+  enabled: false
 ---
 
-## Big Question {.role-slide}
+<!-- GENERATED FILE. Rebuild with scripts/rebuild_slides_and_transcripts.py. -->
+<!-- The generator does not read the previous deck body; stale slides cannot be retained. -->
 
-How well does a fitted model predict linguistic observations that did not contribute to its fit?
+<!-- generated-slide-id: model-criticism-and-prediction/index/01-section; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: section -->
+## Predicting observations the model did not see {.section-slide}
 
-## Data {.role-slide}
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
 
-A reading-time corpus repeats readers, passages, sentences, and word positions. A new row is not necessarily a new reader or a new passage.
+::: {.notes}
+[Transcript]
 
-## Challenge {.role-slide}
+We now turn to Predicting observations the model did not see. The corrected Natural Stories release, described by Futrell et al. (2021), pairs self-paced reading times with lexical and contextual predictors in ten construction-enriched stories. The pinned data are distributed under CC BY-NC-SA 4.0. This unit begins with its participant-by-word-position responses.
 
-Training fit rewards a model for adapting to the responses it has already seen. It does not measure prediction for omitted responses.
+[Sources]
 
-## This Module {.role-slide .compact}
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
 
-1. State what must be new at prediction time.
-2. Choose a loss and a validation split.
-3. Compare models on matched omitted observations.
-4. Relate predictive evaluation to likelihood-based criteria.
+<!-- generated-slide-id: model-criticism-and-prediction/index/02-dataset; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: dataset -->
+## Provo: the empirical object {.compact}
 
+The running data are content-word positions aggregated across Provo readers.
+
+<div class="source"><a href="https://doi.org/10.3758/s13428-017-0908-4">Luke and Christianson (2018), Provo Corpus</a></div>
+
+::: {.notes}
+[Transcript]
+
+This is the first use of Provo in this module. The slide names the observation represented in the teaching table and links the original source. We will keep that unit fixed when we compute and interpret quantities from these data.
+
+[Sources]
+
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/index/03-concept; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: concept -->
+## Predicting observations the model did not see {.compact}
+
+The corrected Natural Stories release, described by Futrell et al. (2021), pairs self-paced reading times with lexical and contextual predictors in ten construction-enriched stories. The pinned data are distributed under CC BY-NC-SA 4.0. This unit begins with its participant-by-word-position responses.
+
+::: {.notes}
+[Transcript]
+
+The corrected Natural Stories release, described by Futrell et al. (2021), pairs self-paced reading times with lexical and contextual predictors in ten construction-enriched stories. The pinned data are distributed under CC BY-NC-SA 4.0. This unit begins with its participant-by-word-position responses. An observed-minus-fitted residual describes a response used to estimate a model. It does not tell us how the complete procedure will predict a response unavailable during fitting. In Natural Stories, unavailable can mean one response row, every response from one participant, or every position in one story. This choice is the **prediction-unit problem (PUP)**. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/index/04-table; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: table -->
+## Overview {.small}
+
+| predictive target | absent during fitting | still represented |
+|:--|:--|:--|
+| another response row | that latency | its participant and story |
+| a new participant | every latency from that participant | the ten stories |
+| an omitted enriched story | every latency from that story | the participant sample |
+
+::: {.notes}
+[Transcript]
+
+Read the rows as observed summaries from the named dataset. An observed-minus-fitted residual describes a response used to estimate a model. It does not tell us how the complete procedure will predict a response unavailable during fitting. In Natural Stories, unavailable can mean one response row, every response from one participant, or every position in one story. This choice is the **prediction-unit problem (PUP)**.
+
+[Sources]
+
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/index/05-concept; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: concept -->
+## Defining and scoring a prediction
+
+Prediction targets state which responses or groups are new and which predictors remain available. Training and test data then enforce that separation, including training-only estimation of predictor transformations.
+
+::: {.notes}
+[Transcript]
+
+Prediction targets state which responses or groups are new and which predictors remain available. Training and test data then enforce that separation, including training-only estimation of predictor transformations. Cross-validation rotates a row-level split. Grouped cross-validation instead moves complete participants or stories together. These pages use the same Natural Stories population regression so that changing the split changes the predictive claim rather than the fitted predictor set. The teaching fit omits participant and story effects to expose those targets; it does not reproduce the source paper's validation models. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/index/06-concept; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: concept -->
+## Comparing models {.compact}
+
+Comparing predictive loss moves to MegaOrientation and evaluates additive and frame-specific ordinal models on verbs absent from fitting. This switch marks a conceptual break: the target becomes lexical transfer, and the response becomes ordered rather than continuous. The comparison thus follows the course's introduction to cumulative-logit regression.
+
+::: {.notes}
+[Transcript]
+
+Comparing predictive loss moves to MegaOrientation and evaluates additive and frame-specific ordinal models on verbs absent from fitting. This switch marks a conceptual break: the target becomes lexical transfer, and the response becomes ordered rather than continuous. The comparison thus follows the course's introduction to cumulative-logit regression. The final pages return to the Provo passage summaries used earlier in the course. Likelihood-ratio tests compare nested Gaussian models; information criteria add fit penalties; leave-one-out cross-validation, PSIS-LOO, and WAIC use matched observations and pointwise log-likelihood contributions. Each comparison keeps the response rows and candidate model family fixed. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/index/07-interpretation; notes-page: model-criticism-and-prediction/index.qmd; note-sha256: b48ec8cb0e8911f2ec62050855213fd5cd3c85cb5164915ec3c67f8a6796ae72; role: interpretation -->
+## Interpretation {.statement-slide}
+
+Successful prediction does not by itself identify a processing mechanism. The module thus proceeds in one order: name the prediction unit, separate fitting from scoring, choose and aggregate the loss, rotate the separation, and only then compare models.
+
+::: {.notes}
+[Transcript]
+
+Successful prediction does not by itself identify a processing mechanism. The module thus proceeds in one order: name the prediction unit, separate fitting from scoring, choose and aggregate the loss, rotate the separation, and only then compare models. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/01-section; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: section -->
 ## What must be new at prediction time {.section-slide}
 
-Naming the omitted observations
-
-## Question {.role-slide}
-
-Does the claim concern another response from represented units, a new participant, a new item, or a new passage?
-
-## Answer {.role-slide}
-
-[**Out-of-sample prediction**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) evaluates responses omitted during fitting. The omitted unit must match the claim.
-
-<div class="source">Nicenboim, Schad, and Vasishth, Chapter 14</div>
+<div class="source">Futrell et al., Natural Stories</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to What must be new at prediction time. The earlier page on populations and samples required an inferential claim to specify the population represented by a sample. Predictive evaluation requires a related decision. We must say which responses were unavailable during fitting and what information is available when those responses are predicted. This is the prediction-unit problem in operational form.
+
 [Sources]
 
-1. https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
 :::
 
-## Question {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/02-dataset; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: dataset -->
+## Natural Stories: the empirical object {.compact}
 
-For prediction to a new passage, which rows must be absent during fitting, and which predictors would remain available?
+The running data are reader-by-word self-paced reading responses.
 
-[Return to the notes](../../model-criticism-and-prediction/prediction-targets.html)
-
-## Predictive loss {.section-slide}
-
-Defining the cost of an error
-
-## Question {.role-slide}
-
-Should a 40 ms miss count twice as much as a 20 ms miss, or four times as much?
-
-## Answer {.role-slide}
-
-[**Squared-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) gives the 40 ms miss four times the loss. [**Absolute-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) gives it twice the loss.
-
-<div class="source">Wang, Probability and Statistical Theory</div>
+<div class="source"><a href="https://github.com/languageMIT/naturalstories">Futrell et al., Natural Stories</a></div>
 
 ::: {.notes}
+[Transcript]
+
+This is the first use of Natural Stories in this module. The slide names the observation represented in the teaching table and links the original source. We will keep that unit fixed when we compute and interpret quantities from these data.
+
 [Sources]
 
-1. https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/03-concept; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: concept -->
+## What must be new at prediction time {.compact}
 
-The loss function determines what counts as a costly prediction error. The averaging unit determines whether rows or linguistic groups receive equal weight.
+The earlier page on populations and samples required an inferential claim to specify the population represented by a sample. Predictive evaluation requires a related decision. We must say which responses were unavailable during fitting and what information is available when those responses are predicted. This is the prediction-unit problem in operational form.
 
-[Return to the notes](../../model-criticism-and-prediction/predictive-loss.html)
+::: {.notes}
+[Transcript]
 
-## Prediction bias and prediction variance {.section-slide}
+The earlier page on populations and samples required an inferential claim to specify the population represented by a sample. Predictive evaluation requires a related decision. We must say which responses were unavailable during fitting and what information is available when those responses are predicted. This is the prediction-unit problem in operational form. **Out-of-sample prediction** predicts responses that did not contribute to fitting the model. This definition leaves an important question open: is the held-out response new only as a row, or is its reader or text also absent from training? Use the graph or equation to say the result in ordinary language.
 
-Error across repeated training samples
+[Sources]
 
-## Surprising Fact {.role-slide}
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
 
-A flexible curve may follow the true frequency effect more closely on average while changing much more across possible corpora.
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/04-concept; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: concept -->
+## Natural Stories {.compact}
 
-## Method {.role-slide}
+We use the corrected Natural Stories release, introduced and validated by Futrell et al. (2021), throughout the first six pages of this unit. The corpus contains English stories enriched for low-frequency syntactic constructions, self-paced reading times, and aligned lexical annotations. The corrected release fixes a one-position displacement in the reading-time records.
 
-The [**bias-variance decomposition**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) applies the earlier ideas of [estimator bias](../../statistical-inference/estimator-bias.html) and [estimator variance](../../statistical-inference/properties-of-estimators.html) to predictions.
+::: {.notes}
+[Transcript]
+
+We use the corrected Natural Stories release, introduced and validated by Futrell et al. (2021), throughout the first six pages of this unit. The corpus contains English stories enriched for low-frequency syntactic constructions, self-paced reading times, and aligned lexical annotations. The corrected release fixes a one-position displacement in the reading-time records. The code below constructs the prediction table from the tracked release. One row is one retained button latency for one reader at one word position. It is a self-paced reading time, not an eye fixation. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/05-concept; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: concept -->
+## Three prediction targets
+
+All three procedures used later fit the population regression
+
+::: {.notes}
+[Transcript]
+
+All three procedures used later fit the population regression where $L_i$ is word length, $F_i$ is log unigram frequency, and $S_i$ is released GPT-3 surprisal. What changes is the **prediction unit**, the object excluded from training. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/06-table; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: table -->
+## Three prediction targets {.small}
+
+| target | absent from fitting | still represented in fitting |
+|:--|:--|:--|
+| new response row | that latency | the reader and story |
+| new participant | every latency from that reader | the ten stories |
+| omitted enriched story | every latency from that story | the reader population represented by the other stories |
+
+::: {.notes}
+[Transcript]
+
+Read the rows as observed summaries from the named dataset. where $L_i$ is word length, $F_i$ is log unigram frequency, and $S_i$ is released GPT-3 surprisal. What changes is the **prediction unit**, the object excluded from training.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/07-math; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: math -->
+## Three prediction targets {.equation-slide}
 
 $$
-\mathbb{E}(Y-\widehat f(x))^2
-=\sigma^2+\operatorname{Bias}(\widehat f(x))^2+\operatorname{Var}(\widehat f(x))
+\log RT_i
+=
+\beta_0+\beta_1z(L_i)+\beta_2z(F_i)+\beta_3z(S_i)+\epsilon_i,
 $$
 
-<div class="source">James et al., Chapter 2</div>
-
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes three prediction targets. All three procedures used later fit the population regression Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-1. https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/08-concept; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: concept -->
+## The prediction information set {.compact}
 
-Bias and prediction variance describe a complete learning procedure over repeated training samples. One observed corpus does not separately identify them.
+Holding out a group does not by itself determine which information about it may be used. In these analyses, a held-out row keeps its word length, frequency, and surprisal because those predictors are available at prediction time. A held-out participant contributes no reading-time response to fitting.
 
-[Return to the notes](../../model-criticism-and-prediction/bias-variance-tradeoff.html)
+::: {.notes}
+[Transcript]
 
+Holding out a group does not by itself determine which information about it may be used. In these analyses, a held-out row keeps its word length, frequency, and surprisal because those predictors are available at prediction time. A held-out participant contributes no reading-time response to fitting. The preprocessing rule is part of the information set. Each predictor mean and standard deviation is estimated from training rows and then applied to test rows. A full-data center would let held-out predictor values affect the training representation. A separately estimated test center would place the test observations in a different coordinate system. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/09-concept; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: concept -->
+## Theory determines what should be held out {.compact}
+
+The most demanding split is not automatically the right one. A reading model used for an already represented reader may reasonably target another response row. A claim about transfer across readers requires participant folds. A claim about connected text requires story folds and enough story-level replication to support it.
+
+::: {.notes}
+[Transcript]
+
+The most demanding split is not automatically the right one. A reading model used for an already represented reader may reasonably target another response row. A claim about transfer across readers requires participant folds. A claim about connected text requires story folds and enough story-level replication to support it. Successful prediction also does not establish a processing mechanism. Word surprisal can improve a held-out score without showing that readers internally represent the fitted language model's probabilities. Predictive evaluation establishes performance for a stated response, information set, split, and population; the mechanism requires additional evidence. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/10-concept; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: concept -->
+## Checking the target {.compact}
+
+1. Which Natural Stories target keeps the same reader and story represented during fitting? 2. What must move together when the target is a reader absent during fitting? 3. Why do the retained response rows not provide that many independent evaluations of an omitted story? 4.
+
+::: {.notes}
+[Transcript]
+
+1. Which Natural Stories target keeps the same reader and story represented during fitting? 2. What must move together when the target is a reader absent during fitting? 3. Why do the retained response rows not provide that many independent evaluations of an omitted story? 4. Out-of-sample prediction requires a response excluded from fitting. A complete predictive question also states which groups are held out, which predictors remain available, and where the result should generalize. The previous page introduces this sequence; the next page implements one participant-held-out split and makes its training-only preprocessing visible. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/prediction-targets/11-figure; notes-page: model-criticism-and-prediction/prediction-targets.qmd; note-sha256: 9c75249359ee66d32eba717e5fbeec74465332cb09b689233fe03012bbe4d5ad; role: figure -->
+## What must be new at prediction time {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/prediction-targets/figure-html/natural-targets-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for What must be new at prediction time."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for What must be new at prediction time. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612
+https://doi.org/10.1007/s10579-020-09503-7
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/01-section; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: section -->
 ## Training and test data {.section-slide}
 
-Separating fitting from evaluation
-
-## Idea {.role-slide}
-
-The [**training set**](https://otexts.com/fpp3/training-test.html) determines every fitted quantity. The [**test set**](https://otexts.com/fpp3/training-test.html) is used only to evaluate the fitted procedure.
-
-<div class="source">Hyndman and Athanasopoulos, Section 5.9</div>
+<div class="source">Futrell et al., Natural Stories</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Training and test data. The prediction-target page fixed three meanings of *new* for the corrected Natural Stories data. We now make one participant-held-out separation observable. The **training set** estimates every fitted quantity; the **test set** is used only to evaluate the resulting predictions.
+
 [Sources]
 
-1. https://otexts.com/fpp3/training-test.html
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
 :::
 
-## Challenge {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/02-concept; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: concept -->
+## Training and test data {.compact}
 
-[**Data leakage**](https://scikit-learn.org/stable/common_pitfalls.html#data-leakage) occurs when test information influences a fitted decision. Centering, selection, and imputation must therefore be estimated within training data.
-
-<div class="source">scikit-learn, Common pitfalls</div>
+The prediction-target page fixed three meanings of *new* for the corrected Natural Stories data. We now make one participant-held-out separation observable. The **training set** estimates every fitted quantity; the **test set** is used only to evaluate the resulting predictions.
 
 ::: {.notes}
+[Transcript]
+
+The prediction-target page fixed three meanings of *new* for the corrected Natural Stories data. We now make one participant-held-out separation observable. The **training set** estimates every fitted quantity; the **test set** is used only to evaluate the resulting predictions. The residuals of a fitted regression are observed-minus-fitted discrepancies on the observations used to estimate its coefficients. A flexible model can reduce those residuals by following features of the training responses that will not recur. Training fit thus cannot by itself estimate predictive loss for a reader absent during fitting. That distinction will matter again on the next slide.
+
 [Sources]
 
-1. https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/03-concept; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: concept -->
+## The separation rule
 
-Split first. Then estimate every response-adaptive step on the training set and evaluate the prespecified procedure once on the test set.
+Let $D_{\mathrm{train}}$ and $D_{\mathrm{test}}$ be disjoint collections of observations. A fitted predictor is
 
-[Return to the notes](../../model-criticism-and-prediction/training-and-test-data.html)
+::: {.notes}
+[Transcript]
 
+Let $D_{\mathrm{train}}$ and $D_{\mathrm{test}}$ be disjoint collections of observations. A fitted predictor is and test loss is Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/04-math; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: math -->
+## The separation rule: equation 1 {.equation-slide}
+
+$$
+\widehat{f}_{\mathrm{train}}
+=
+\operatorname{Fit}(D_{\mathrm{train}}),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes the separation rule: equation 1. Let $D_{\mathrm{train}}$ and $D_{\mathrm{test}}$ be disjoint collections of observations. A fitted predictor is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/05-math; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: math -->
+## The separation rule: equation 2 {.equation-slide}
+
+$$
+\widehat{R}_{\mathrm{test}}
+=
+\frac{1}{|D_{\mathrm{test}}|}
+\sum_{i\in D_{\mathrm{test}}}
+L\left(y_i,\widehat{f}_{\mathrm{train}}(x_i)\right).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes the separation rule: equation 2. and test loss is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/06-concept; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: concept -->
+## A participant-held-out Natural Stories split
+
+The data and their source are introduced on the prediction-target page. The following code independently loads the tracked release, recreates the frozen participant folds, learns all transformations from the training rows, and predicts the first held-out fold.
+
+::: {.notes}
+[Transcript]
+
+The data and their source are introduced on the prediction-target page. The following code independently loads the tracked release, recreates the frozen participant folds, learns all transformations from the training rows, and predicts the first held-out fold. The training set contains observed responses from observed readers. The test set contains observed responses from observed readers. All observed stories remain represented on both sides, so the target is a new reader of these stories rather than a new text. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/07-concept; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: concept -->
+## Leakage through preprocessing
+
+**Data leakage** occurs when information from the test set influences a fitted decision that should have been made without it. Directly fitting on a test response is one case, but preprocessing can leak more quietly.
+
+::: {.notes}
+[Transcript]
+
+**Data leakage** occurs when information from the test set influences a fitted decision that should have been made without it. Directly fitting on a test response is one case, but preprocessing can leak more quietly. - Centering a predictor using the complete dataset lets held-out predictor values affect the training representation. - Imputing a missing test response from a full-data mean uses held-out responses. - Selecting predictors by their full-data response correlation consults the test set. - Choosing a model because it has the best test score turns the test data into selection data. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/08-math; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: math -->
+## Leakage through preprocessing {.equation-slide}
+
+$$
+z_i=\frac{x_i-\overline{x}_{\mathrm{train}}}{s_{\mathrm{train}}}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes leakage through preprocessing. **Data leakage** occurs when information from the test set influences a fitted decision that should have been made without it. Directly fitting on a test response is one case, but preprocessing can leak more quietly. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/09-concept; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: concept -->
+## One split and repeated decisions {.compact}
+
+A single split combines model performance with the composition of one test set. Increasing the test fraction provides more evaluation responses but fewer fitting responses; decreasing it has the opposite effect. Cross-validation rotates the test role so that every observation receives a held-out prediction.
+
+::: {.notes}
+[Transcript]
+
+A single split combines model performance with the composition of one test set. Increasing the test fraction provides more evaluation responses but fewer fitting responses; decreasing it has the opposite effect. Cross-validation rotates the test role so that every observation receives a held-out prediction. The test set is also not a renewable source of decisions. If several specifications are compared on these responses and the best is selected, its reported score is optimistic. A three-way split or nested cross-validation keeps final test responses outside both coefficient fitting and model selection. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/10-concept; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: concept -->
+## Checking the separation {.compact}
+
+1. Which participants contribute responses to both sets in this split? 2. Which moments define the test-set predictor transformation? 3. Why does the calibration figure not estimate an omitted-story target? 4. What changes if the test responses guide model selection?
+
+::: {.notes}
+[Transcript]
+
+1. Which participants contribute responses to both sets in this split? 2. Which moments define the test-set predictor transformation? 3. Why does the calibration figure not estimate an omitted-story target? 4. What changes if the test responses guide model selection? Separating training and test data allows parameters and preprocessing to be estimated without the responses on which predictive loss is computed. The previous page fixed the prediction unit; the next page defines the numerical consequence assigned to these participant-held-out errors. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/training-and-test-data/11-figure; notes-page: model-criticism-and-prediction/training-and-test-data.qmd; note-sha256: c05ae41abad7fbf34fa3ae3cbb1b194a7524071d2e7fc672e9c298a14ba9772d; role: figure -->
+## Training and test data {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/training-and-test-data/figure-html/natural-train-test-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Training and test data."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Training and test data. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://otexts.com/fpp3/training-test.html
+https://scikit-learn.org/stable/common_pitfalls.html#data-leakage
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/01-section; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: section -->
+## Predictive loss {.section-slide}
+
+<div class="source">Futrell et al., Natural Stories</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Predictive loss. The training-and-test page produced predictions for readers absent during fitting. An evaluation still needs a numerical definition of error and an averaging unit. These choices form the **error-consequence problem**: they determine which misses receive the most weight and which empirical units receive equal influence.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/02-concept; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: concept -->
+## Predictive loss {.compact}
+
+The training-and-test page produced predictions for readers absent during fitting. An evaluation still needs a numerical definition of error and an averaging unit. These choices form the **error-consequence problem**: they determine which misses receive the most weight and which empirical units receive equal influence.
+
+::: {.notes}
+[Transcript]
+
+The training-and-test page produced predictions for readers absent during fitting. An evaluation still needs a numerical definition of error and an averaging unit. These choices form the **error-consequence problem**: they determine which misses receive the most weight and which empirical units receive equal influence. A **loss function** $L(y,\widehat y)$ assigns a nonnegative cost to predicting $\widehat y$ when the observed response is $y$. The **predictive risk** is expected loss on new responses from the population under study. A held-out mean loss estimates that expectation for the split and averaging unit stated by the analysis. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/03-concept; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: concept -->
+## Squared and absolute loss
+
+The **squared-error loss** is
+
+::: {.notes}
+[Transcript]
+
+The **squared-error loss** is Over $N$ held-out predictions, mean squared error and root mean squared error are Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/04-math; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: math -->
+## Squared and absolute loss: equation 1 {.equation-slide}
+
+$$
+L_{\mathrm{SE}}(y,\widehat y)=(y-\widehat y)^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes squared and absolute loss: equation 1. The **squared-error loss** is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/05-math; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: math -->
+## Squared and absolute loss: equation 2 {.equation-slide}
+
+$$
+\operatorname{MSE}
+=
+\frac{1}{N}\sum_{i=1}^N(y_i-\widehat y_i)^2,
+\qquad
+\operatorname{RMSE}=\sqrt{\operatorname{MSE}}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes squared and absolute loss: equation 2. Over $N$ held-out predictions, mean squared error and root mean squared error are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/06-math; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: math -->
+## Squared and absolute loss: equation 3 {.equation-slide}
+
+$$
+L_{\mathrm{AE}}(y,\widehat y)=|y-\widehat y|,
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes squared and absolute loss: equation 3. Squaring gives large errors disproportionate influence. Taking the root returns the score to the response scale. For Natural Stories, that scale is log reading time, not milliseconds. The conditional mean is the optimal point prediction under squared loss. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/07-math; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: math -->
+## Squared and absolute loss: equation 4 {.equation-slide}
+
+$$
+\operatorname{MAE}
+=
+\frac{1}{N}\sum_{i=1}^N|y_i-\widehat y_i|.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes squared and absolute loss: equation 4. The **absolute-error loss** is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/08-concept; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: concept -->
+## Computing loss for held-out Natural Stories readers {.compact}
+
+The code reconstructs participant fold 1 from the Natural Stories run, fits the same fold-local regression, and computes the errors. It then averages squared and absolute loss in two ways: once over response rows and once within readers before averaging readers.
+
+::: {.notes}
+[Transcript]
+
+The code reconstructs participant fold 1 from the Natural Stories run, fits the same fold-local regression, and computes the errors. It then averages squared and absolute loss in two ways: once over response rows and once within readers before averaging readers. The row-weighted RMSE is observed and MAE is observed. Giving each held-out reader equal weight yields RMSE observed and MAE observed. The calculations use the same predictions. They differ because the second estimand first averages loss within each of the observed readers. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/09-concept; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: concept -->
+## Loss is not explanatory adequacy {.compact}
+
+Lower predictive loss does not show that a predictor is causal or that a reader internally computes the fitted predictor. In this regression, lower loss from GPT-3 surprisal would not isolate lexical expectation from correlated properties of words and contexts.
+
+::: {.notes}
+[Transcript]
+
+Lower predictive loss does not show that a predictor is causal or that a reader internally computes the fitted predictor. In this regression, lower loss from GPT-3 surprisal would not isolate lexical expectation from correlated properties of words and contexts. Conversely, a theoretically meaningful coefficient can contribute little to held-out prediction. A small, stable association may be estimable while accounting for little response variation. Predictive loss thus addresses an additional question rather than replacing parameter interpretation. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/10-concept; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: concept -->
+## Checking the loss {.compact}
+
+1. Which score is more sensitive to a small number of large errors? 2. On what response scale are the reported Natural Stories scores? 3. Why do row-weighted and participant-weighted losses differ when their prediction vector is identical? 4. Can a nonzero coefficient fail to improve held-out loss?
+
+::: {.notes}
+[Transcript]
+
+1. Which score is more sensitive to a small number of large errors? 2. On what response scale are the reported Natural Stories scores? 3. Why do row-weighted and participant-weighted losses differ when their prediction vector is identical? 4. Can a nonzero coefficient fail to improve held-out loss? A loss function defines the consequence of each error, while the averaging unit determines what receives equal weight. The previous page constructed the split. The next page uses an empirically calibrated simulation to separate prediction bias and prediction variance. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/predictive-loss/11-figure; notes-page: model-criticism-and-prediction/predictive-loss.qmd; note-sha256: f608a3907db54b173da939a1b5c9689ae905e207e2bea7e91d82d05b0103cc2d; role: figure -->
+## Predictive loss {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/predictive-loss/figure-html/natural-predictive-loss-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Predictive loss."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Predictive loss. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/01-section; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: section -->
+## Prediction bias and prediction variance {.section-slide}
+
+<div class="source">Futrell et al., Natural Stories</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Prediction bias and prediction variance. The earlier pages defined estimator bias, estimator variance, and their contribution to mean squared error. Here the estimator is a fitted prediction at a specified predictor vector. The same decomposition concerns prediction bias and prediction variance across repeated training samples.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/02-concept; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: concept -->
+## Prediction bias and prediction variance {.compact}
+
+The earlier pages defined estimator bias, estimator variance, and their contribution to mean squared error. Here the estimator is a fitted prediction at a specified predictor vector. The same decomposition concerns prediction bias and prediction variance across repeated training samples.
+
+::: {.notes}
+[Transcript]
+
+The earlier pages defined estimator bias, estimator variance, and their contribution to mean squared error. Here the estimator is a fitted prediction at a specified predictor vector. The same decomposition concerns prediction bias and prediction variance across repeated training samples. A linear reading-time model may miss curvature in the association among length, frequency, surprisal, and mean response. A more flexible model may instead follow sample-specific variation. The **bias-variance decomposition** separates these two failure modes. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/03-concept; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: concept -->
+## Beginning with repeated training samples
+
+At a fixed predictor vector $x$, let the response be generated by
+
+::: {.notes}
+[Transcript]
+
+At a fixed predictor vector $x$, let the response be generated by where $f(x)=\mathbb E[Y\mid X=x]$ and Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/04-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Beginning with repeated training samples: equation 1 {.equation-slide}
+
+$$
+Y=f(x)+\varepsilon,
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with repeated training samples: equation 1. At a fixed predictor vector $x$, let the response be generated by Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/05-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Beginning with repeated training samples: equation 2 {.equation-slide}
+
+$$
+\mathbb E[\varepsilon\mid X=x]=0,
+\qquad
+\operatorname{Var}(\varepsilon\mid X=x)=\sigma^2.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with repeated training samples: equation 2. where $f(x)=\mathbb E[Y\mid X=x]$ and Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/06-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Beginning with repeated training samples: equation 3 {.equation-slide}
+
+$$
+\operatorname{Bias}(\widehat f(x))
+=
+\mathbb E[\widehat f(x)]-f(x)
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with repeated training samples: equation 3. Repeatedly drawing a comparable training sample and applying the same complete fitting procedure produces a different $\widehat f(x)$ on each repetition. Prediction variance describes variation among those learned predictions. It does not describe variation among observed responses with the same predictors. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/07-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Beginning with repeated training samples: equation 4 {.equation-slide}
+
+$$
+\operatorname{Var}(\widehat f(x))
+=
+\mathbb E\left[
+  \left(\widehat f(x)-\mathbb E[\widehat f(x)]\right)^2
+\right].
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes beginning with repeated training samples: equation 4. The bias and prediction variance are Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/08-concept; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: concept -->
+## Deriving the decomposition
+
+We want expected squared error for a new response at the fixed predictor vector:
+
+::: {.notes}
+[Transcript]
+
+We want expected squared error for a new response at the fixed predictor vector: Add and subtract both $f(x)$ and $\mathbb E[\widehat f(x)]$: Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/09-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Deriving the decomposition: equation 1 {.equation-slide}
+
+$$
+\mathbb E\left[(Y-\widehat f(x))^2\right].
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes deriving the decomposition: equation 1. We want expected squared error for a new response at the fixed predictor vector: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/10-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Deriving the decomposition: equation 2 {.equation-slide}
+
+$$
+Y-\widehat f(x)
+=
+\underbrace{Y-f(x)}_{\text{response noise}}
++
+\underbrace{f(x)-\mathbb E[\widehat f(x)]}_{\text{negative bias}}
++
+\underbrace{\mathbb E[\widehat f(x)]-\widehat f(x)}_{\text{training-sample variation}}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes deriving the decomposition: equation 2. Add and subtract both $f(x)$ and $\mathbb E[\widehat f(x)]$: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/11-math; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: math -->
+## Deriving the decomposition: equation 3 {.equation-slide}
+
+$$
+\mathbb E\left[(Y-\widehat f(x))^2\right]
+=
+\sigma^2
++
+\operatorname{Bias}(\widehat f(x))^2
++
+\operatorname{Var}(\widehat f(x)).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes deriving the decomposition: equation 3. After squaring, the expected cross-products are zero because the response noise has mean zero and the fitted predictions are centered around their own expectation. Thus, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/12-concept; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: concept -->
+## An empirically calibrated Natural Stories simulation {.compact}
+
+True bias is not identified from one observed corpus. We thus use the only simulation in this module and label its assumptions. The code loads the Natural Stories data, averages responses and predictors to observed story positions, fits a cubic reference surface, and declares that fitted surface to be the simulation truth.
+
+::: {.notes}
+[Transcript]
+
+True bias is not identified from one observed corpus. We thus use the only simulation in this module and label its assumptions. The code loads the Natural Stories data, averages responses and predictors to observed story positions, fits a cubic reference surface, and declares that fitted surface to be the simulation truth. The target is also an observed position rather than an invented predictor vector. It is the position closest to the observed 90th percentile of surprisal and the median frequency and length. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/13-concept; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: concept -->
+## What the simulation establishes {.compact}
+
+This calibration demonstrates the decomposition using observed predictor values, response scale, and residuals. It does not estimate the unknown Natural Stories data-generating process. The cubic reference surface is assumed true for the exercise; another calibrated truth could change the comparison.
+
+::: {.notes}
+[Transcript]
+
+This calibration demonstrates the decomposition using observed predictor values, response scale, and residuals. It does not estimate the unknown Natural Stories data-generating process. The cubic reference surface is assumed true for the exercise; another calibrated truth could change the comparison. The example also shows why coefficient count is not a definition of prediction variance. Regularization, sample size, preprocessing, and the predictor distribution all affect how much a procedure changes across training samples. Held-out loss can evaluate their combined consequence, but it cannot identify separate bias and variance terms without an assumption about $f(x)$. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/14-concept; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: concept -->
+## Checking the decomposition {.compact}
+
+1. Across which repetitions is $\operatorname{Var}(\widehat f(x))$ defined? 2. Which procedure has smaller squared bias at the selected Natural Stories position? 3. Which procedure has smaller expected squared error under the declared simulation? 4. Why is the horizontal line an assumed truth rather than an estimate of the unknown response process?
+
+::: {.notes}
+[Transcript]
+
+1. Across which repetitions is $\operatorname{Var}(\widehat f(x))$ defined? 2. Which procedure has smaller squared bias at the selected Natural Stories position? 3. Which procedure has smaller expected squared error under the declared simulation? 4. Why is the horizontal line an assumed truth rather than an estimate of the unknown response process? The bias-variance decomposition explains why a procedure that follows training data more closely need not predict a new response better. The previous page defined held-out loss. The next page rotates the training and test roles to obtain predictions for every retained response. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/bias-variance-tradeoff/15-figure; notes-page: model-criticism-and-prediction/bias-variance-tradeoff.qmd; note-sha256: d074171f384dbb26d60103fbff0c412ff5a450a7c3f9cdaa5fa531c3ce31c882; role: figure -->
+## Prediction bias and prediction variance {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/bias-variance-tradeoff/figure-html/natural-bias-variance-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Prediction bias and prediction variance."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Prediction bias and prediction variance. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/01-section; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: section -->
 ## Cross-validation {.section-slide}
 
-Rotating the separation
-
-## Method {.role-slide}
-
-[**K-fold cross-validation (CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) divides the data into folds and rotates which fold supplies the omitted responses.
-
-<div class="source">Nicenboim, Schad, and Vasishth, Chapter 14</div>
+<div class="source">Futrell et al., Natural Stories</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Cross-validation. The training-and-test page separated one training set from one test set. **$K$-fold cross-validation (CV)** reduces dependence on a single partition by rotating which fold serves as the test set.
+
 [Sources]
 
-1. https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
 :::
 
-## Implementation {.role-slide .compact}
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/02-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## Cross-validation
 
-1. Fit the complete procedure outside fold $k$.
-2. Predict the responses in fold $k$.
-3. Store predictions in their original rows.
-4. Repeat until every row has one omitted-data prediction.
-
-## Upshot {.role-slide}
-
-Cross-validation estimates the performance of the complete procedure. Every fitted transformation and selection decision belongs inside the rotation.
-
-[Return to the notes](../../model-criticism-and-prediction/cross-validation.html)
-
-## Leaving out one unit at a time {.section-slide}
-
-The meaning of one
-
-## Method {.role-slide}
-
-[**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) refits the procedure after omitting one specified unit at a time.
-
-<div class="source">Nicenboim, Schad, and Vasishth, Chapter 14</div>
+The training-and-test page separated one training set from one test set. **$K$-fold cross-validation (CV)** reduces dependence on a single partition by rotating which fold serves as the test set.
 
 ::: {.notes}
+[Transcript]
+
+The training-and-test page separated one training set from one test set. **$K$-fold cross-validation (CV)** reduces dependence on a single partition by rotating which fold serves as the test set. The output is one out-of-fold prediction for every observation. Each prediction comes from a fit that excluded that response. This does not make its reader or story new as well; the fold construction determines which units cross the training-test boundary. That distinction will matter again on the next slide.
+
 [Sources]
 
-1. https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
 :::
 
-## Question {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/03-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## The algorithm
 
-If one unit is a trial, other trials from the same participant remain in training. Does that answer a new-participant question?
+Partition observation indices into disjoint folds $F_1,\ldots,F_K$. For fold $k$:
 
-## Upshot {.role-slide}
+::: {.notes}
+[Transcript]
 
-The omitted unit is part of the statistical procedure. It cannot be inferred from the phrase “leave one out.”
+Partition observation indices into disjoint folds $F_1,\ldots,F_K$. For fold $k$: 1. fit the complete procedure to observations outside $F_k$; 2. use that fitted procedure to predict observations in $F_k$; and 3. store the predictions in their original rows. That distinction will matter again on the next slide.
 
-[Return to the notes](../../model-criticism-and-prediction/leave-one-out-cross-validation.html)
+[Sources]
 
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/04-math; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: math -->
+## The algorithm {.equation-slide}
+
+$$
+\widehat R_{\mathrm{CV}}
+=
+\frac{1}{N}
+\sum_{k=1}^K
+\sum_{i\in F_k}
+L\left(y_i,\widehat f_{-k}(x_i)\right),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes the algorithm. Partition observation indices into disjoint folds $F_1,\ldots,F_K$. For fold $k$: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/05-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## Random-row validation in Natural Stories {.compact}
+
+The following code independently loads the corrected Natural Stories data, assigns retained responses to five random folds with the frozen seed, fits the same standardized regression inside each fold, and stores every held-out prediction. Predictor moments are recomputed from the training rows of each fold.
+
+::: {.notes}
+[Transcript]
+
+The following code independently loads the corrected Natural Stories data, assigns retained responses to five random folds with the frozen seed, fits the same standardized regression inside each fold, and stores every held-out prediction. Predictor moments are recomputed from the training rows of each fold. The five fold RMSEs range from observed to observed. Every held-out fold contains responses from all observed stories and observed represented participants. The estimand is thus a new retained response when its story and reader remain represented in training. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/06-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## Every fitted decision stays inside the loop {.compact}
+
+Cross-validation evaluates the complete procedure, not just its final coefficient formula. Centering, scaling, feature selection, imputation, and penalty tuning must be repeated using only each training portion. A tuning parameter requires an inner validation loop if it adapts to responses; the outer prediction then evaluates the complete selection rule.
+
+::: {.notes}
+[Transcript]
+
+Cross-validation evaluates the complete procedure, not just its final coefficient formula. Centering, scaling, feature selection, imputation, and penalty tuning must be repeated using only each training portion. A tuning parameter requires an inner validation loop if it adapts to responses; the outer prediction then evaluates the complete selection rule. This nesting is unnecessary when the specification is fixed in advance. The Natural Stories code has no tuning step: its predictor set and fold seed are fixed, but its training moments and regression coefficients remain fold-specific. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/07-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## What $K$ changes
+
+With larger $K$, each model uses a larger training fraction and a smaller test fold. Leave-one-out CV sets $K=N$ for row-level omission. Fewer folds cost less computation but fit on less of the data for each prediction.
+
+::: {.notes}
+[Transcript]
+
+With larger $K$, each model uses a larger training fraction and a smaller test fold. Leave-one-out CV sets $K=N$ for row-level omission. Fewer folds cost less computation but fit on less of the data for each prediction. Fold count is a design setting, not a probability law. If the scientific target is an omitted story, the ten story identifiers naturally define ten held-out groups. Randomly creating more row folds cannot manufacture additional story-level replication. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/08-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## Fold scores are not independent experiments
+
+The five fits reuse most of their training rows. Their losses are consequently not five independent studies. A test applied to fold means would treat computational partitions as if they were sampling units.
+
+::: {.notes}
+[Transcript]
+
+The five fits reuse most of their training rows. Their losses are consequently not five independent studies. A test applied to fold means would treat computational partitions as if they were sampling units. Predictive differences should instead be returned to the groups specified by the claim. For an omitted-story claim, that means story-level losses even when several stories share one computational fold. The next page changes the fold assignment while retaining the same fitting algorithm. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/09-concept; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: concept -->
+## Checking the split {.compact}
+
+1. Why is each stored prediction out of sample for its response? 2. Which quantities are re-estimated inside every Natural Stories fold? 3. Why does this random-row procedure not evaluate a reader or story absent from fitting? 4. Why are the five fold scores not independent experiments?
+
+::: {.notes}
+[Transcript]
+
+1. Why is each stored prediction out of sample for its response? 2. Which quantities are re-estimated inside every Natural Stories fold? 3. Why does this random-row procedure not evaluate a reader or story absent from fitting? 4. Why are the five fold scores not independent experiments? $K$-fold CV rotates training and test roles to obtain one held-out prediction per response. The previous page described repeated training samples; the next page keeps complete participants and stories together when those groups must be absent during fitting. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/cross-validation/10-figure; notes-page: model-criticism-and-prediction/cross-validation.qmd; note-sha256: 5cb4a2f5e855e985fabc6f485b51c1a0ba8d0d235e36696e65f304cdf1d7ca5e; role: figure -->
+## Cross-validation {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/cross-validation/figure-html/natural-row-cv-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Cross-validation."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Cross-validation. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/01-section; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: section -->
 ## Grouped cross-validation {.section-slide}
 
-Omitting complete linguistic units
-
-## Data {.role-slide}
-
-The Natural Stories Corpus contains word positions nested in sentences and stories, with responses repeated across readers.
-
-<div class="source">Futrell et al. 2018</div>
+<div class="source">Futrell et al., Natural Stories</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Grouped cross-validation. The cross-validation page placed response rows into random folds. The same reader and story consequently occurred in both training and test data. **Grouped $K$-fold cross-validation** instead assigns every row from a group to the same fold.
+
 [Sources]
 
-1. https://aclanthology.org/L18-1012/
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
 :::
 
-## Method {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/02-concept; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: concept -->
+## Grouped cross-validation
 
-[**Grouped K-fold cross-validation**](https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data) assigns all rows from one group to the same fold.
-
-<div class="source">scikit-learn, Grouped data</div>
+The cross-validation page placed response rows into random folds. The same reader and story consequently occurred in both training and test data. **Grouped $K$-fold cross-validation** instead assigns every row from a group to the same fold.
 
 ::: {.notes}
+[Transcript]
+
+The cross-validation page placed response rows into random folds. The same reader and story consequently occurred in both training and test data. **Grouped $K$-fold cross-validation** instead assigns every row from a group to the same fold. The Natural Stories introduction fixed participant and story as two candidate grouping units. Holding out participants evaluates new readers of the represented stories. Holding out a story evaluates one omitted member of the ten construction-enriched texts. The interpretation is conditional on the sampling and measurement design.
+
 [Sources]
 
-1. https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/03-concept; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: concept -->
+## Constructing grouped folds
 
-Holding out complete readers tests prediction for absent readers. Holding out complete passages tests prediction for absent passages. These are different claims.
+Let $g(i)$ be the group containing observation $i$. Grouped validation requires
 
-[Return to the notes](../../model-criticism-and-prediction/grouped-cross-validation.html)
+::: {.notes}
+[Transcript]
 
+Let $g(i)$ be the group containing observation $i$. Grouped validation requires The group controls both the split and the interpretation. Moving story rows together removes its sentences and word positions automatically; splitting sentences cannot evaluate an omitted story if other sentences from the same story remain in training. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/04-math; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: math -->
+## Constructing grouped folds {.equation-slide}
+
+$$
+g(i)=g(j)
+\quad\Longrightarrow\quad
+\operatorname{fold}(i)=\operatorname{fold}(j).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes constructing grouped folds. Let $g(i)$ be the group containing observation $i$. Grouped validation requires Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/05-concept; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: concept -->
+## Participant and story validation {.compact}
+
+The code fits the same population regression under two grouped designs. Participants receive five frozen folds. Stories use leave-one-story-out validation. For the story comparison, a base model includes length and frequency, while an expanded model adds GPT-3 surprisal. Each training fold estimates its own predictor moments.
+
+::: {.notes}
+[Transcript]
+
+The code fits the same population regression under two grouped designs. Participants receive five frozen folds. Stories use leave-one-story-out validation. For the story comparison, a base model includes length and frequency, while an expanded model adds GPT-3 surprisal. Each training fold estimates its own predictor moments. Participant-fold RMSE ranges from observed to observed. Story-fold RMSE ranges from observed to observed. These ranges should not be treated as a difficulty ranking because the held-out groups differ in size and composition. They show that predictive performance is a property of the validation target. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/06-concept; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: concept -->
+## Group-weighted scores
+
+For group $g$ with $n_g$ responses, define
+
+::: {.notes}
+[Transcript]
+
+For group $g$ with $n_g$ responses, define A group-weighted score is The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/07-math; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: math -->
+## Group-weighted scores: equation 1 {.equation-slide}
+
+$$
+\overline L_g
+=
+\frac{1}{n_g}
+\sum_{i:g(i)=g}L(y_i,\widehat y_i).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes group-weighted scores: equation 1. For group $g$ with $n_g$ responses, define Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/08-math; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: math -->
+## Group-weighted scores: equation 2 {.equation-slide}
+
+$$
+\frac{1}{G}\sum_{g=1}^G\overline L_g.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes group-weighted scores: equation 2. A group-weighted score is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/09-concept; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: concept -->
+## Group leakage and limits {.compact}
+
+Moving rows together does not prevent leakage from a response-derived predictor constructed before the split. A word-position mean reading time computed across all participants would contain the test participants' responses. For that reason, this analysis retains participant-level response rows and fits predictor transformations inside folds.
+
+::: {.notes}
+[Transcript]
+
+Moving rows together does not prevent leakage from a response-derived predictor constructed before the split. A word-position mean reading time computed across all participants would contain the test participants' responses. For that reason, this analysis retains participant-level response rows and fits predictor transformations inside folds. The participant model remains a population regression without participant or story effects. It is designed to expose the difference among targets, not to reproduce the mixed-effects validation in Futrell et al. The story results concern ten omitted enriched texts. They do not license generalization to arbitrary English stories. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/10-concept; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: concept -->
+## Checking the grouping variable {.compact}
+
+1. Why is a sentence split insufficient for an omitted-story target? 2. Which assertion verifies that participants do not cross folds? 3. Why can row-weighted and group-weighted losses answer different questions? 4. What does the story-difference plot show that a pooled RMSE change would hide?
+
+::: {.notes}
+[Transcript]
+
+1. Why is a sentence split insufficient for an omitted-story target? 2. Which assertion verifies that participants do not cross folds? 3. Why can row-weighted and group-weighted losses answer different questions? 4. What does the story-difference plot show that a pooled RMSE change would hide? Grouped cross-validation makes a complete empirical group absent during fitting. The previous page evaluated new rows from represented readers and stories. The next page switches to MegaOrientation and compares ordinal models on entirely unseen verbs. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/11-figure; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: figure -->
+## Grouped cross-validation {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/grouped-cross-validation/figure-html/natural-grouped-cv-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Grouped cross-validation."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Grouped cross-validation. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/grouped-cross-validation/12-figure; notes-page: model-criticism-and-prediction/grouped-cross-validation.qmd; note-sha256: 0873b064c7ddaa02659701837b5e2eadcb70b453b443c0d37ed4a37e03069ef1; role: figure -->
+## Grouped cross-validation {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/grouped-cross-validation/figure-html/natural-grouped-cv-2.png){.empirical-plot fig-alt="Observed data and fitted quantities for Grouped cross-validation."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Grouped cross-validation. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/01-section; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: section -->
 ## Comparing predictive loss {.section-slide}
 
-Pairing models on the same omitted groups
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
 
-## Method {.role-slide}
+::: {.notes}
+[Transcript]
 
-For each held-out group $g$, compare paired losses with
+We now turn to Comparing predictive loss. The grouped-validation page returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the transfer target visible.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/02-concept; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: concept -->
+## Comparing predictive loss {.compact}
+
+The grouped-validation page returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the transfer target visible.
+
+::: {.notes}
+[Transcript]
+
+The grouped-validation page returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the transfer target visible. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/03-concept; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: concept -->
+## MegaOrientation
+
+Moon and White (2020) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale.
+
+::: {.notes}
+[Transcript]
+
+Moon and White (2020) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale. The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. The teaching comparison is narrower. It restricts the release to verbs attested in at least two frames, fits population cumulative-logit models, and holds out every response from a verb together. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/04-math; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: math -->
+## MegaOrientation: equation 1 {.equation-slide}
 
 $$
-\Delta_g=L_{g,A}-L_{g,B}.
+\begin{aligned}
+M_0 &: \text{response}\sim\text{orientation}+\text{frame},\\
+M_1 &: \text{response}\sim\text{orientation}*\text{frame}.
+\end{aligned}
 $$
 
-Positive values favor Model B.
+::: {.notes}
+[Transcript]
 
-## Interpretation {.role-slide}
+The displayed expression formalizes megaorientation: equation 1. Moon and White (2020) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale. The corrected MegaOrientation v1.1 release changes the released participant and verb inventories after items with irregular-inflection errors were rerun. Keep track of what each term refers to in the linguistic dataset.
 
-Report the aggregate difference, the proportion of groups that improve, and the distribution of group differences. Fold means are not independent replications.
+[Sources]
 
-## Upshot {.role-slide}
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
 
-A coefficient and a held-out loss difference answer different questions. The first describes a fitted association. The second describes predictive contribution under the chosen split.
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/05-math; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: math -->
+## MegaOrientation: equation 2 {.equation-slide}
 
-[Return to the notes](../../model-criticism-and-prediction/comparing-predictive-loss.html)
+$$
+L_i(M)=-\log p_M(Y_i=y_i\mid x_i).
+$$
 
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes megaorientation: equation 2. The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. The teaching comparison is narrower. It restricts the release to verbs attested in at least two frames, fits population cumulative-logit models, and holds out every response from a verb together. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/06-concept; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: concept -->
+## Held-out-verb comparison {.compact}
+
+The code loads the tracked response table and frozen verb folds, fits both ordinal models in every fold, and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the observed verbs, preventing verbs with more judgment rows from receiving greater weight.
+
+::: {.notes}
+[Transcript]
+
+The code loads the tracked response table and frozen verb folds, fits both ordinal models in every fold, and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the observed verbs, preventing verbs with more judgment rows from receiving greater weight. The interaction improves the verb-weighted mean log score by observed, with a conditional verb-bootstrap interval of [observed, observed]. The row-weighted gain is observed, and observed of observed folds favor the interaction. The gray points show all held-out verb differences; the blue points show fold means. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/07-concept; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: concept -->
+## Raw responses and the descriptive fit
+
+The predictive comparison uses held-out verbs. A full-data interaction fit serves a different purpose: it lets us check fitted ordinal probabilities against the empirical rating distribution in each represented frame-orientation cell.
+
+::: {.notes}
+[Transcript]
+
+The predictive comparison uses held-out verbs. A full-data interaction fit serves a different purpose: it lets us check fitted ordinal probabilities against the empirical rating distribution in each represented frame-orientation cell. The tracked comparison contains observed judgments from observed multi-frame verbs and observed predicate-frame pairs. Points are empirical category probabilities; lines are the descriptive full-data interaction fit. Those fitted lines do not supply the held-out comparison numbers. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/08-concept; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: concept -->
+## Scope of the gain {.compact}
+
+The conditional bootstrap resamples the stored verb differences while holding the fitted cross-validation predictions fixed. It respects verb as the resampling unit, but it does not reproduce participant, item, or refitting uncertainty. The population models also omit participant and sentence-item effects.
+
+::: {.notes}
+[Transcript]
+
+The conditional bootstrap resamples the stored verb differences while holding the fitted cross-validation predictions fixed. It respects verb as the resampling unit, but it does not reproduce participant, item, or refitting uncertainty. The population models also omit participant and sentence-item effects. The interaction gain suggests that frame-specific orientation patterns help predict ratings for unseen verbs within this selected inventory. It does not turn acceptability into a directly observed temporal-orientation label, reproduce Moon and White's lexical-versus-structural theory comparison, or generalize to unrestricted English embedding verbs. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/09-concept; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: concept -->
+## Checking the comparison {.compact}
+
+1. Why does a positive difference favor the interaction model? 2. Why are log scores averaged within verbs before the primary mean is taken? 3. What does the full-data probability plot check, and what does it not estimate? 4. Which omitted sources of dependence limit the bootstrap interval?
+
+::: {.notes}
+[Transcript]
+
+1. Why does a positive difference favor the interaction model? 2. Why are log scores averaged within verbs before the primary mean is taken? 3. What does the full-data probability plot check, and what does it not estimate? 4. Which omitted sources of dependence limit the bootstrap interval? A paired comparison evaluates two models on identical held-out groups and returns their differences to the unit specified by the scientific claim. The previous page developed grouped splitting with Natural Stories. The next page begins a five-page Provo sequence using two fixed Gaussian mean models. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/10-figure; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: figure -->
+## Comparing predictive loss {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/comparing-predictive-loss/figure-html/megaorientation-predictive-comparison-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Comparing predictive loss."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Comparing predictive loss. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/comparing-predictive-loss/11-figure; notes-page: model-criticism-and-prediction/comparing-predictive-loss.qmd; note-sha256: 158a759983f5db2b5abf2f8982a9053ec0903cceaeb03fd190e94b9fb0e22231; role: figure -->
+## Comparing predictive loss {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/comparing-predictive-loss/figure-html/megaorientation-raw-fitted-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Comparing predictive loss."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Comparing predictive loss. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://ling.auf.net/lingbuzz/005282/current.pdf
+https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/01-section; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: section -->
 ## Comparing nested likelihoods {.section-slide}
 
-Likelihood-ratio tests
-
-## Question {.role-slide}
-
-Does a larger model improve maximized likelihood enough to reject the restrictions imposed by a nested smaller model?
-
-## Method {.role-slide}
-
-The [**likelihood-ratio test (LRT)**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=261) uses
-
-$$
-D=2\{\ell(\widehat\theta_1)-\ell(\widehat\theta_0)\}.
-$$
-
-<div class="source">Winter, Chapter 15</div>
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Comparing nested likelihoods. The earlier maximum-likelihood page compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. We begin a five-page sequence with one fixed response table and one fixed pair of Gaussian models so that the comparison criterion, rather than the empirical object, changes from page to page.
+
 [Sources]
 
-1. https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=261
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/02-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## Comparing nested likelihoods
 
-The test concerns a specified nested restriction under its reference conditions. It is not an estimate of out-of-sample predictive performance.
+The earlier maximum-likelihood page compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other.
 
-[Return to the notes](../../model-criticism-and-prediction/likelihood-ratio-tests.html)
+::: {.notes}
+[Transcript]
 
+The earlier maximum-likelihood page compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. The earlier maximum-likelihood page compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. We begin a five-page sequence with one fixed response table and one fixed pair of Gaussian models so that the comparison criterion, rather than the empirical object, changes from page to page. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/03-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## Provo Corpus {.compact}
+
+Luke and Christianson (2018) released cloze norms for each word in English passages and eye-movement measurements from readers of those passages. The OSF release includes `OrthoMatchModel`, an orthographic-match cloze estimate from a logit mixed model with word intercepts. It is a fitted cloze estimate, not a language-model probability.
+
+::: {.notes}
+[Transcript]
+
+Luke and Christianson (2018) released cloze norms for each word in English passages and eye-movement measurements from readers of those passages. The OSF release includes `OrthoMatchModel`, an orthographic-match cloze estimate from a logit mixed model with word intercepts. It is a fitted cloze estimate, not a language-model probability. The tracked course table retains complete content-word positions from all passages and averages first-fixation duration across readers at each position. One row is thus a position summary, not one reader's fixation. The analyses below cannot recover reader-level dependence from that aggregation. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/04-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## Provo Corpus: equation 1 {.equation-slide}
+
+$$
+x_i=-\log_2(\texttt{OrthoMatchModel}_i)
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes provo corpus: equation 1. Luke and Christianson (2018) released cloze norms for each word in English passages and eye-movement measurements from readers of those passages. The OSF release includes `OrthoMatchModel`, an orthographic-match cloze estimate from a logit mixed model with word intercepts. It is a fitted cloze estimate, not a language-model probability. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/05-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## Provo Corpus: equation 2 {.equation-slide}
+
+$$
+\begin{aligned}
+M_L &: y_i=\beta_0+\beta_1x_i+\epsilon_i,\\
+M_Q &: y_i=\beta_0+\beta_1x_i+\beta_2x_i^2+\epsilon_i,
+\qquad \epsilon_i\sim\operatorname{Normal}(0,\sigma^2).
+\end{aligned}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes provo corpus: equation 2. The tracked course table retains complete content-word positions from all passages and averages first-fixation duration across readers at each position. One row is thus a position summary, not one reader's fixation. The analyses below cannot recover reader-level dependence from that aggregation. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/06-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## From a likelihood ratio to a difference
+
+Let $\widehat L_L$ and $\widehat L_Q$ be the maximized likelihoods. Since the expanded model can reproduce the restricted fit,
+
+::: {.notes}
+[Transcript]
+
+Let $\widehat L_L$ and $\widehat L_Q$ be the maximized likelihoods. Since the expanded model can reproduce the restricted fit, The likelihood-ratio statistic is Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/07-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## From a likelihood ratio to a difference: equation 1 {.equation-slide}
+
+$$
+\widehat L_Q\geq\widehat L_L.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a likelihood ratio to a difference: equation 1. Let $\widehat L_L$ and $\widehat L_Q$ be the maximized likelihoods. Since the expanded model can reproduce the restricted fit, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/08-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## From a likelihood ratio to a difference: equation 2 {.equation-slide}
+
+$$
+\begin{aligned}
+\Lambda
+&=-2\log\left(\frac{\widehat L_L}{\widehat L_Q}\right)\\
+&=-2(\log\widehat L_L-\log\widehat L_Q)\\
+&=2(\ell_Q-\ell_L).
+\end{aligned}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a likelihood ratio to a difference: equation 2. The likelihood-ratio statistic is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/09-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## From a likelihood ratio to a difference: equation 3 {.equation-slide}
+
+$$
+\Lambda\overset{\cdot}{\sim}\chi^2_{k_Q-k_L}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes from a likelihood ratio to a difference: equation 3. When the expanded model adds regular parameters and the usual large-sample conditions hold, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/10-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## Fitting the Provo models
+
+The code reads the tracked position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means.
+
+::: {.notes}
+[Transcript]
+
+The code reads the tracked position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means. The common analysis table has observed positions from observed passages. The linear and quadratic log likelihoods are observed and observed. Thus, Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/11-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## Fitting the Provo models {.equation-slide}
+
+$$
+\Lambda
+=
+2\left(1493.619-
+1490.543\right)
+=
+6.152.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fitting the provo models. The code reads the tracked position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means. Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/12-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## Interpreting the restriction narrowly
+
+The null hypothesis is
+
+::: {.notes}
+[Transcript]
+
+The null hypothesis is Rejecting this restriction suggests that the quadratic term improves fitted likelihood conditional on this response, sample, and Gaussian specification. It does not show that the quadratic model is true, that cloze surprisal causes fixation-duration differences, or that readers internally represent `OrthoMatchModel`. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/13-math; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: math -->
+## Interpreting the restriction narrowly {.equation-slide}
+
+$$
+H_0:\beta_2=0.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes interpreting the restriction narrowly. The null hypothesis is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/14-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## When the reference distribution may fail {.compact}
+
+The $\chi^2$ approximation assumes that the null value is an interior, regular point and that parameters are sufficiently identified. Testing a random-effect variance against zero violates this condition because zero is a boundary. Mixture models can lose component identification under a null restriction.
+
+::: {.notes}
+[Transcript]
+
+The $\chi^2$ approximation assumes that the null value is an interior, regular point and that parameters are sufficiently identified. Testing a random-effect variance against zero violates this condition because zero is a boundary. Mixture models can lose component identification under a null restriction. The likelihood difference remains a description of fitted improvement when these conditions fail. What becomes unreliable is the simple $\chi^2$ calibration. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/15-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## Likelihood comparison and predictive validation {.compact}
+
+The LRT uses the same responses to estimate and compare the models. Cross-validation asks how the complete procedures predict responses excluded from fitting. A quadratic term can pass an LRT while changing held-out prediction only slightly, or a proxy can improve prediction without supporting its proposed mechanism.
+
+::: {.notes}
+[Transcript]
+
+The LRT uses the same responses to estimate and compare the models. Cross-validation asks how the complete procedures predict responses excluded from fitting. A quadratic term can pass an LRT while changing held-out prediction only slightly, or a proxy can improve prediction without supporting its proposed mechanism. The earlier maximum-likelihood page compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. We begin a five-page sequence with one fixed response table and one fixed pair of Gaussian models so that the comparison criterion, rather than the empirical object, changes from page to page. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/16-concept; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: concept -->
+## Checking the nested comparison {.compact}
+
+1. Which parameter restriction makes the quadratic model reduce to the linear model? 2. Why can the expanded model not have a lower maximized likelihood? 3. Why must both fits use the same position rows and response scale? 4. Why does the reported tail probability not evaluate an omitted passage?
+
+::: {.notes}
+[Transcript]
+
+1. Which parameter restriction makes the quadratic model reduce to the linear model? 2. Why can the expanded model not have a lower maximized likelihood? 3. Why must both fits use the same position rows and response scale? 4. Why does the reported tail probability not evaluate an omitted passage? The LRT measures the fitted likelihood gained by relaxing a nested restriction and calibrates that gain when the regularity conditions hold. The previous page evaluated unseen verbs. The next page applies two different penalties to these same Provo fits. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/likelihood-ratio-tests/17-figure; notes-page: model-criticism-and-prediction/likelihood-ratio-tests.qmd; note-sha256: c89d0550e32b3ca71aecdd569ac9161a76643debfc8f5a9cfce1d431e7652cdd; role: figure -->
+## Comparing nested likelihoods {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/likelihood-ratio-tests/figure-html/provo-likelihood-ratio-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Comparing nested likelihoods."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Comparing nested likelihoods. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://doi.org/10.3758/s13428-017-0908-4
+https://osf.io/sjefs/
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/01-section; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: section -->
 ## Penalizing in-sample fit {.section-slide}
 
-Information criteria
-
-## Method {.role-slide}
-
-[**Akaike information criterion (AIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) combines maximized fit with a parameter-count penalty.
-
-$$
-\mathrm{AIC}=-2\ell(\widehat\theta)+2k
-$$
-
-<div class="source">James et al., Chapter 6</div>
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to Penalizing in-sample fit. The likelihood-ratio page fixed a Provo position table and two nested Gaussian mean models. Information criteria use those same likelihoods but replace null-hypothesis calibration with a penalty for estimated flexibility. This lets the penalty, rather than a change in data or response, explain any disagreement.
+
 [Sources]
 
-1. https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
 :::
 
-## Interpretation {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/02-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## Penalizing in-sample fit {.compact}
 
-[**Bayesian information criterion (BIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) uses a penalty of $k\log n$. Its preferred model may differ from the AIC choice.
-
-<div class="source">James et al., Chapter 6</div>
+The likelihood-ratio page fixed a Provo position table and two nested Gaussian mean models. Information criteria use those same likelihoods but replace null-hypothesis calibration with a penalty for estimated flexibility. This lets the penalty, rather than a change in data or response, explain any disagreement.
 
 ::: {.notes}
+[Transcript]
+
+The likelihood-ratio page fixed a Provo position table and two nested Gaussian mean models. Information criteria use those same likelihoods but replace null-hypothesis calibration with a penalty for estimated flexibility. This lets the penalty, rather than a change in data or response, explain any disagreement. The **optimism of training error** is the fact that performance on observations used for fitting tends to be better than expected performance on new observations. An **information criterion** estimates a correction by combining fitted likelihood with a complexity penalty. Its score is relative to compatible candidates; the absolute value has no standalone linguistic unit. Now connect the notation back to the linguistic comparison.
+
 [Sources]
 
-1. https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/03-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## AIC: fit plus a parameter-count penalty
 
-Information criteria compare models fit to the same responses. A raw difference is evidence only relative to the declared candidate set.
+Let $\ell$ be maximized log likelihood and $k$ the number of likelihood parameters. The **Akaike information criterion (AIC)** is
 
-[Return to the notes](../../model-criticism-and-prediction/information-criteria.html)
+::: {.notes}
+[Transcript]
 
-## Pareto-smoothed importance sampling {.section-slide}
+Let $\ell$ be maximized log likelihood and $k$ the number of likelihood parameters. The **Akaike information criterion (AIC)** is Greater maximized log likelihood lowers the first term; additional parameters increase the second. Lower AIC is preferred. The penalty is motivated as an approximation to relative expected predictive discrepancy, not as a significance threshold. Now connect the notation back to the linguistic comparison.
 
-Approximating Bayesian leave-one-out prediction
+[Sources]
 
-## Goal {.role-slide}
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
 
-Compute each omitted response density under the [posterior](../../statistical-inference/posterior-distributions.html) that would have been obtained without that response.
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/04-math; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: math -->
+## AIC: fit plus a parameter-count penalty {.equation-slide}
 
 $$
-p(y_i\mid y_{-i})=\int p(y_i\mid\theta)p(\theta\mid y_{-i})\,d\theta
+\operatorname{AIC}=2k-2\ell
+=
+\underbrace{-2\ell}_{\text{lack of fitted likelihood}}
++
+\underbrace{2k}_{\text{complexity penalty}}.
 $$
 
-## Method {.role-slide}
-
-[**Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)**](https://mc-stan.org/loo/articles/online-only/faq.html) approximates omitted posteriors using draws from the full posterior.
-
-<div class="source">loo documentation</div>
-
 ::: {.notes}
+[Transcript]
+
+The displayed expression formalizes aic: fit plus a parameter-count penalty. Let $\ell$ be maximized log likelihood and $k$ the number of likelihood parameters. The **Akaike information criterion (AIC)** is Keep track of what each term refers to in the linguistic dataset.
+
 [Sources]
 
-1. https://mc-stan.org/loo/articles/online-only/faq.html
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
 :::
 
-## Question {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/05-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## BIC: a different penalty and motivation
 
-The [**Pareto $k$ diagnostic**](https://mc-stan.org/loo/reference/pareto-k-diagnostic.html) evaluates the importance-sampling approximation. A large value does not establish that an observation should be deleted.
-
-<div class="source">loo reference</div>
+The **Bayesian information criterion (BIC)** is
 
 ::: {.notes}
+[Transcript]
+
+The **Bayesian information criterion (BIC)** is where $n$ is the sample size supplied to the approximation. Its penalty grows with $\log n$. BIC is not merely a universally stricter AIC: it arises from a different approximation connected to model evidence under additional assumptions. Notice what is observed and what is supplied by the model.
+
 [Sources]
 
-1. https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
 :::
 
-## Upshot {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/06-math; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: math -->
+## BIC: a different penalty and motivation {.equation-slide}
 
-The resulting expected log pointwise predictive density remains tied to the unit represented by one likelihood contribution.
+$$
+\operatorname{BIC}=k\log n-2\ell,
+$$
 
-[Return to the notes](../../model-criticism-and-prediction/psis-loo.html)
+::: {.notes}
+[Transcript]
 
+The displayed expression formalizes bic: a different penalty and motivation. The **Bayesian information criterion (BIC)** is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/07-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## The Provo criterion disagreement
+
+The code reloads the Provo table introduced on the preceding page, refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the residual scale parameter.
+
+::: {.notes}
+[Transcript]
+
+The code reloads the Provo table introduced on the preceding page, refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the residual scale parameter. Both criteria use the same observed position summaries. AIC prefers the observed model; the other model is worse by observed AIC points. BIC prefers the observed model; the other model is worse by observed BIC points. The empirical disagreement follows from applying different penalties to a modest fitted-likelihood gain. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/08-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## Keeping responses and observations fixed {.compact}
+
+Information criteria compare models only when their likelihoods concern the same observed responses. A model of raw duration and a model of log duration assign density to different response variables. Their printed values are not directly comparable without accounting for the transformation.
+
+::: {.notes}
+[Transcript]
+
+Information criteria compare models only when their likelihoods concern the same observed responses. A model of raw duration and a model of log duration assign density to different response variables. Their printed values are not directly comparable without accounting for the transformation. Candidate models can also silently use different rows when an added predictor has missing values. The code thus checks the row names in both model frames. Equal row counts alone would not establish that the same positions were used. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/09-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## What the criteria do not encode {.compact}
+
+AIC approximates observation-level expected performance under its regularity conditions. It does not create held-out predictions or know which linguistic group should be new. BIC likewise cannot distinguish another position in an observed passage from a position in a passage absent during fitting.
+
+::: {.notes}
+[Transcript]
+
+AIC approximates observation-level expected performance under its regularity conditions. It does not create held-out predictions or know which linguistic group should be new. BIC likewise cannot distinguish another position in an observed passage from a position in a passage absent during fitting. The position count also does not license reader-level or passage-level inference. Direct grouped validation is preferable when prediction for a wholly new passage is the target. Here the criteria compare two compatible likelihood models for the fixed aggregated position table. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/10-concept; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: concept -->
+## Checking the penalized comparison {.compact}
+
+1. Which term rewards fitted likelihood in AIC, and which term penalizes flexibility? 2. Why can AIC and BIC prefer different Provo models while using identical fits? 3. Why must both candidates use the same response rows and response scale? 4. Which held-out unit is not represented by either criterion calculation?
+
+::: {.notes}
+[Transcript]
+
+1. Which term rewards fitted likelihood in AIC, and which term penalizes flexibility? 2. Why can AIC and BIC prefer different Provo models while using identical fits? 3. Why must both candidates use the same response rows and response scale? 4. Which held-out unit is not represented by either criterion calculation? Information criteria combine fitted likelihood with an approximation-specific complexity penalty. The previous page calibrated the nested restriction; the next page obtains exact omitted-position predictions under a fixed Bayesian specification. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/information-criteria/11-figure; notes-page: model-criticism-and-prediction/information-criteria.qmd; note-sha256: 9afe720d8fa6eff3e93f51f1034e809e6c207529a528c4da54a7a71238d16412; role: figure -->
+## Penalizing in-sample fit {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/information-criteria/figure-html/provo-information-criteria-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Penalizing in-sample fit."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Penalizing in-sample fit. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://www.statlearning.com/s/ISLRSeventhPrinting.pdf
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/01-section; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: section -->
+## Leaving out one unit at a time {.section-slide}
+
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Leaving out one unit at a time. The information-criteria page approximated predictive discrepancy without constructing omitted-data predictions. **Leave-one-out cross-validation (LOO-CV)** instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/02-concept; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: concept -->
+## Leaving out one unit at a time {.compact}
+
+The information-criteria page approximated predictive discrepancy without constructing omitted-data predictions. **Leave-one-out cross-validation (LOO-CV)** instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage.
+
+::: {.notes}
+[Transcript]
+
+The information-criteria page approximated predictive discrepancy without constructing omitted-data predictions. **Leave-one-out cross-validation (LOO-CV)** instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/03-concept; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: concept -->
+## Defining the rotation
+
+Let the data contain $N$ position summaries. For each position $i$, fit the complete procedure to the data with $i$ removed. Write the fitted predictor as
+
+::: {.notes}
+[Transcript]
+
+Let the data contain $N$ position summaries. For each position $i$, fit the complete procedure to the data with $i$ removed. Write the fitted predictor as and its prediction as Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/04-math; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: math -->
+## Defining the rotation: equation 1 {.equation-slide}
+
+$$
+\widehat f_{-i}
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the rotation: equation 1. Let the data contain $N$ position summaries. For each position $i$, fit the complete procedure to the data with $i$ removed. Write the fitted predictor as Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/05-math; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: math -->
+## Defining the rotation: equation 2 {.equation-slide}
+
+$$
+\widehat y_{-i}=\widehat f_{-i}(x_i).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the rotation: equation 2. and its prediction as Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/06-math; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: math -->
+## Defining the rotation: equation 3 {.equation-slide}
+
+$$
+\widehat R_{\mathrm{LOO}}
+=
+\frac{1}{N}
+\sum_{i=1}^N
+L(y_i,\widehat y_{-i}).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes defining the rotation: equation 3. For a chosen loss $L$, the leave-one-out risk estimate is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/07-concept; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: concept -->
+## Exact Bayesian LOO for the Provo models
+
+We use the same Provo position table and Gaussian mean models as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted.
+
+::: {.notes}
+[Transcript]
+
+We use the same Provo position table and Gaussian mean models as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted. The source paper reports excluding fixations shorter than 80 ms and longer than 800 ms. Their log-scale midpoint sets the prior intercept mean; slope means are zero. The expected residual variance treats four standard deviations as spanning those study bounds, and each coefficient's conditional prior variance multiplier is derived from the same span. That distinction will matter again on the next slide.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/08-concept; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: concept -->
+## What one means here {.compact}
+
+One omitted unit is a content-word position summary. Other positions from the same passage remain in the training data, and the response already averages over readers. The target is thus one position summary conditional on the remaining position table. It is not a new passage, reader, participant response, or word type.
+
+::: {.notes}
+[Transcript]
+
+One omitted unit is a content-word position summary. Other positions from the same passage remain in the training data, and the response already averages over readers. The target is thus one position summary conditional on the remaining position table. It is not a new passage, reader, participant response, or word type. The distinction persists even though every position receives an out-of-sample prediction. Summing pointwise scores within a passage would not retroactively remove that passage from fitting. A passage target requires leave-one-passage-out validation from the start. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/09-concept; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: concept -->
+## Computation, tuning, and overlap
+
+Literal LOO usually requires $N$ fits, which can be expensive. Conjugacy makes all observed Provo calculations available analytically. The next page evaluates whether posterior draws from the full fit can approximate these exact omitted-position quantities.
+
+::: {.notes}
+[Transcript]
+
+Literal LOO usually requires $N$ fits, which can be expensive. Conjugacy makes all observed Provo calculations available analytically. The next page evaluates whether posterior draws from the full fit can approximate these exact omitted-position quantities. Any response-adaptive tuning would still have to occur within each (N-1) training set. Fixing a transformation or penalty after consulting all responses would let the omitted response influence its own prediction. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/10-concept; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: concept -->
+## Checking the omitted unit {.compact}
+
+1. What empirical object does one Provo LOO unit represent? 2. Which data remain available when a position is omitted? 3. Why is this not an omitted-passage analysis? 4. Which part of the prior uses the source-study measurement bounds?
+
+::: {.notes}
+[Transcript]
+
+1. What empirical object does one Provo LOO unit represent? 2. Which data remain available when a position is omitted? 3. Why is this not an omitted-passage analysis? 4. Which part of the prior uses the source-study measurement bounds? LOO-CV gives every position a prediction from a fit that excluded it. The previous page used an in-sample approximation; the next page approximates these exact Bayesian omitted-position densities using full-posterior draws. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/leave-one-out-cross-validation/11-figure; notes-page: model-criticism-and-prediction/leave-one-out-cross-validation.qmd; note-sha256: 231466fce0ba67809d9d559e40222edee96bb848e741543a108b702d559f9996; role: figure -->
+## Leaving out one unit at a time {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/leave-one-out-cross-validation/figure-html/provo-exact-loo-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Leaving out one unit at a time."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Leaving out one unit at a time. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://bruno.nicenboim.me/bayescogsci/ch-cv.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/01-section; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: section -->
+## Pareto-smoothed importance sampling leave-one-out cross-validation {.section-slide}
+
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
+
+::: {.notes}
+[Transcript]
+
+We now turn to Pareto-smoothed importance sampling leave-one-out cross-validation. The exact LOO page computed every omitted-position posterior directly under a conjugate Provo model. **Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)** approximates those omitted-data posteriors using draws from the posterior fit to all observations. Because exact values are available here, approximation error becomes observable.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/02-concept; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: concept -->
+## Pareto-smoothed importance sampling leave-one-out cross-validation {.compact}
+
+The exact LOO page computed every omitted-position posterior directly under a conjugate Provo model. **Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)** approximates those omitted-data posteriors using draws from the posterior fit to all observations. Because exact values are available here, approximation error becomes observable.
+
+::: {.notes}
+[Transcript]
+
+The exact LOO page computed every omitted-position posterior directly under a conjugate Provo model. **Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)** approximates those omitted-data posteriors using draws from the posterior fit to all observations. Because exact values are available here, approximation error becomes observable. Notice what is observed and what is supplied by the model.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/03-concept; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: concept -->
+## Exact Bayesian leave-one-out prediction
+
+Let $y_{-i}$ contain all responses except $y_i$. Given a factorized likelihood and prior $p(\theta)$,
+
+::: {.notes}
+[Transcript]
+
+Let $y_{-i}$ contain all responses except $y_i$. Given a factorized likelihood and prior $p(\theta)$, The exact predictive density is The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/04-math; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: math -->
+## Exact Bayesian leave-one-out prediction: equation 1 {.equation-slide}
+
+$$
+p(\theta\mid y_{-i})
+\propto
+p(\theta)\prod_{j\neq i}p(y_j\mid\theta).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes exact bayesian leave-one-out prediction: equation 1. Let $y_{-i}$ contain all responses except $y_i$. Given a factorized likelihood and prior $p(\theta)$, Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/05-math; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: math -->
+## Exact Bayesian leave-one-out prediction: equation 2 {.equation-slide}
+
+$$
+p(y_i\mid y_{-i})
+=
+\int p(y_i\mid\theta)p(\theta\mid y_{-i})\,\mathrm d\theta.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes exact bayesian leave-one-out prediction: equation 2. The exact predictive density is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/06-math; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: math -->
+## Exact Bayesian leave-one-out prediction: equation 3 {.equation-slide}
+
+$$
+\operatorname{elpd}_{\mathrm{loo}}
+=
+\sum_{i=1}^N\log p(y_i\mid y_{-i}).
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes exact bayesian leave-one-out prediction: equation 3. Summing its logarithm gives expected log pointwise predictive density: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/07-concept; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: concept -->
+## Relating the omitted posterior to the full posterior
+
+Given draws $\theta^{(1)},\ldots,\theta^{(S)}$ from
+
+::: {.notes}
+[Transcript]
+
+Given draws $\theta^{(1)},\ldots,\theta^{(S)}$ from removing the (i\)th contribution gives Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/08-math; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: math -->
+## Relating the omitted posterior to the full posterior: equation 1 {.equation-slide}
+
+$$
+p(\theta\mid y)
+\propto
+p(\theta)\prod_{j=1}^Np(y_j\mid\theta),
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes relating the omitted posterior to the full posterior: equation 1. Given draws $\theta^{(1)},\ldots,\theta^{(S)}$ from Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/09-math; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: math -->
+## Relating the omitted posterior to the full posterior: equation 2 {.equation-slide}
+
+$$
+p(\theta\mid y_{-i})
+\propto
+\frac{p(\theta\mid y)}{p(y_i\mid\theta)}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes relating the omitted posterior to the full posterior: equation 2. removing the (i\)th contribution gives Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/10-math; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: math -->
+## Relating the omitted posterior to the full posterior: equation 3 {.equation-slide}
+
+$$
+r_i^{(s)}\propto\frac{1}{p(y_i\mid\theta^{(s)})}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes relating the omitted posterior to the full posterior: equation 3. The raw importance ratio is consequently Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/11-concept; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: concept -->
+## PSIS and exact LOO on the same Provo positions
+
+The code reloads the Provo position table, reconstructs the fixed study-calibrated priors, draws independently from both conjugate posteriors, and preserves one log-likelihood column per position. It also recomputes exact LOO so the PSIS totals can be checked directly.
+
+::: {.notes}
+[Transcript]
+
+The code reloads the Provo position table, reconstructs the fixed study-calibrated priors, draws independently from both conjugate posteriors, and preserves one log-likelihood column per position. It also recomputes exact LOO so the PSIS totals can be checked directly. The independent posterior draws make the relative effective sample size one for every position. PSIS-LOO gives ELPD observed for the linear model and observed for the quadratic model. The differences from exact conjugate LOO are observed and observed. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/12-concept; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: concept -->
+## The pointwise likelihood fixes the target
+
+The log-likelihood matrices have observed position columns and observed posterior-draw rows. A vector of total log likelihoods cannot support omission because it discards the pointwise contributions.
+
+::: {.notes}
+[Transcript]
+
+The log-likelihood matrices have observed position columns and observed posterior-draw rows. A vector of total log likelihoods cannot support omission because it discards the pointwise contributions. Default PSIS-LOO omits one such contribution. Here that contribution is one aggregated content-word position. Other positions from the same passage remain in the full posterior, so summing position scores by passage cannot create leave-one-passage-out validation. A new-passage target would require a grouped likelihood and validation design from the start. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/13-concept; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: concept -->
+## Checking the approximation {.compact}
+
+1. Why are raw importance ratios inversely related to the held-out likelihood contribution? 2. What does Pareto $k$ diagnose? 3. Why is exact LOO available as a decisive check in this example? 4. Which prediction target is fixed by one column of the log-likelihood matrix?
+
+::: {.notes}
+[Transcript]
+
+1. Why are raw importance ratios inversely related to the held-out likelihood contribution? 2. What does Pareto $k$ diagnose? 3. Why is exact LOO available as a decisive check in this example? 4. Which prediction target is fixed by one column of the log-likelihood matrix? PSIS-LOO uses full-posterior draws to approximate omitted-position predictive density and supplies a diagnostic for that approximation. The previous page computed the exact target; the next page applies a posterior-variance correction to the same pointwise likelihood matrices. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/psis-loo/14-figure; notes-page: model-criticism-and-prediction/psis-loo.qmd; note-sha256: a685f503794a59e9f9483d913b84ec7f91c41b2c677c63d768291cb9d67ddd79; role: figure -->
+## Pareto-smoothed importance sampling leave-one-out cross-validation {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/psis-loo/figure-html/provo-psis-loo-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for Pareto-smoothed importance sampling leave-one-out cross-validation."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for Pareto-smoothed importance sampling leave-one-out cross-validation. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://mc-stan.org/loo/articles/online-only/faq.html
+https://mc-stan.org/loo/reference/pareto-k-diagnostic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/01-section; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: section -->
 ## The widely applicable information criterion {.section-slide}
 
-A posterior-variance correction
-
-## Idea {.role-slide}
-
-[**Widely applicable information criterion (WAIC)**](https://mc-stan.org/loo/reference/waic.html) subtracts a pointwise estimate of optimism from fitted posterior predictive density.
-
-<div class="source">loo reference</div>
+<div class="source">Luke and Christianson (2018), Provo Corpus</div>
 
 ::: {.notes}
+[Transcript]
+
+We now turn to The widely applicable information criterion. The PSIS-LOO page used full-posterior draws to approximate omitted-position posteriors. The **widely applicable information criterion (WAIC)** instead corrects fitted pointwise posterior predictive density using posterior variation. Both calculations require the same pointwise likelihood matrix, but their approximations differ.
+
 [Sources]
 
-1. https://mc-stan.org/loo/reference/waic.html
+https://mc-stan.org/loo/reference/waic.html
 :::
 
-## Method {.role-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/waic/02-concept; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: concept -->
+## The widely applicable information criterion
+
+The PSIS-LOO page used full-posterior draws to approximate omitted-position posteriors. The **widely applicable information criterion (WAIC)** instead corrects fitted pointwise posterior predictive density using posterior variation. Both calculations require the same pointwise likelihood matrix, but their approximations differ.
+
+::: {.notes}
+[Transcript]
+
+The PSIS-LOO page used full-posterior draws to approximate omitted-position posteriors. The **widely applicable information criterion (WAIC)** instead corrects fitted pointwise posterior predictive density using posterior variation. Both calculations require the same pointwise likelihood matrix, but their approximations differ. Now connect the notation back to the linguistic comparison.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/03-concept; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: concept -->
+## Fitted posterior predictive density
+
+For observation $i$, the **log pointwise predictive density (lppd)** is
+
+::: {.notes}
+[Transcript]
+
+For observation $i$, the **log pointwise predictive density (lppd)** is The average integrates the likelihood of $y_i$ over posterior uncertainty. But $y_i$ helped determine the posterior, so this remains a fitted predictive quantity. Summing gives Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/04-math; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: math -->
+## Fitted posterior predictive density: equation 1 {.equation-slide}
+
+$$
+\operatorname{lppd}_i
+=
+\log\left[
+\frac{1}{S}
+\sum_{s=1}^S
+p(y_i\mid\theta^{(s)})
+\right].
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fitted posterior predictive density: equation 1. For observation $i$, the **log pointwise predictive density (lppd)** is Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/05-math; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: math -->
+## Fitted posterior predictive density: equation 2 {.equation-slide}
+
+$$
+\operatorname{lppd}=\sum_{i=1}^N\operatorname{lppd}_i.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes fitted posterior predictive density: equation 2. The average integrates the likelihood of $y_i$ over posterior uncertainty. But $y_i$ helped determine the posterior, so this remains a fitted predictive quantity. Summing gives Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/06-concept; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: concept -->
+## The pointwise optimism correction
+
+WAIC estimates effective flexibility from the posterior variance of each pointwise log likelihood:
+
+::: {.notes}
+[Transcript]
+
+WAIC estimates effective flexibility from the posterior variance of each pointwise log likelihood: and Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/07-math; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: math -->
+## The pointwise optimism correction: equation 1 {.equation-slide}
+
+$$
+p_{\mathrm{waic},i}
+=
+\operatorname{Var}_s\left[
+\log p(y_i\mid\theta^{(s)})
+\right],
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes the pointwise optimism correction: equation 1. WAIC estimates effective flexibility from the posterior variance of each pointwise log likelihood: Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/08-math; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: math -->
+## The pointwise optimism correction: equation 2 {.equation-slide}
+
+$$
+p_{\mathrm{waic}}
+=
+\sum_{i=1}^Np_{\mathrm{waic},i}.
+$$
+
+::: {.notes}
+[Transcript]
+
+The displayed expression formalizes the pointwise optimism correction: equation 2. and Keep track of what each term refers to in the linguistic dataset.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/09-math; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: math -->
+## The pointwise optimism correction: equation 3 {.equation-slide}
 
 $$
 \operatorname{elpd}_{\mathrm{waic}}
-=\operatorname{lppd}
--\sum_i\operatorname{Var}_s\!\left[\log p(y_i\mid\theta^{(s)})\right]
+=
+\operatorname{lppd}-p_{\mathrm{waic}}.
 $$
 
-Larger values are preferred.
+::: {.notes}
+[Transcript]
 
-## Upshot {.role-slide}
+The displayed expression formalizes the pointwise optimism correction: equation 3. The effective count depends on the fitted posterior, not merely on the number of regression coefficients. WAIC's expected log predictive density is Keep track of what each term refers to in the linguistic dataset.
 
-WAIC uses the same pointwise log-likelihood matrix as PSIS-LOO, but its approximation is harder to diagnose when pointwise posterior variation is large.
+[Sources]
 
-[Return to the notes](../../model-criticism-and-prediction/waic.html)
+https://mc-stan.org/loo/reference/waic.html
+:::
 
-## Conclusion {.section-slide}
+<!-- generated-slide-id: model-criticism-and-prediction/waic/10-math; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: math -->
+## The pointwise optimism correction: equation 4 {.equation-slide}
 
-Prediction beyond the fitted data
+$$
+\operatorname{WAIC}=-2\operatorname{elpd}_{\mathrm{waic}},
+$$
 
-## Big Question {.role-slide}
+::: {.notes}
+[Transcript]
 
-How well does a fitted model predict linguistic observations that did not contribute to its fit?
+The displayed expression formalizes the pointwise optimism correction: equation 4. Larger values are preferred. The deviance-scale quantity is Keep track of what each term refers to in the linguistic dataset.
 
-## Answer {.role-slide .compact}
+[Sources]
 
-1. Name what is omitted and what remains available.
-2. Choose a loss whose scale matches the scientific question.
-3. Fit every adaptive step without the held-out responses.
-4. Interpret comparison at the linguistic unit named by the claim.
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/11-concept; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: concept -->
+## WAIC and exact LOO for the Provo models {.compact}
+
+The code independently reloads the Provo data, reconstructs the fixed conjugate posteriors, and generates the same independent posterior draws used for PSIS. It computes WAIC both manually and with `loo::waic()`, then compares each pointwise WAIC contribution with exact LOO.
+
+::: {.notes}
+[Transcript]
+
+The code independently reloads the Provo data, reconstructs the fixed conjugate posteriors, and generates the same independent posterior draws used for PSIS. It computes WAIC both manually and with `loo::waic()`, then compares each pointwise WAIC contribution with exact LOO. WAIC gives ELPD observed with $p_{\mathrm{waic}} = observed$ for the linear model. The quadratic values are observed and $p_{\mathrm{waic}} = observed$. The manual pointwise implementation and `loo::waic()` agree to the asserted numerical tolerance. The interpretation is conditional on the sampling and measurement design.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/12-concept; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: concept -->
+## What the correction does not change {.compact}
+
+WAIC is tied to the unit represented by one likelihood column. Here that unit is an aggregated content-word position. The correction does not create prediction for a wholly new reader, word type, or passage. Other positions from the same passage remain part of the fitted posterior used to calculate each contribution.
+
+::: {.notes}
+[Transcript]
+
+WAIC is tied to the unit represented by one likelihood column. Here that unit is an aggregated content-word position. The correction does not create prediction for a wholly new reader, word type, or passage. Other positions from the same passage remain part of the fitted posterior used to calculate each contribution. Large posterior variance in a pointwise log likelihood can warn that WAIC is unreliable for that position. The warning concerns the approximation; it does not license discarding a linguistically surprising point. PSIS-LOO is often easier to diagnose because Pareto $k$ targets its importance-sampling approximation directly. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/13-concept; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: concept -->
+## Checking the correction {.compact}
+
+1. Why is lppd a fitted rather than omitted-data quantity? 2. Which posterior quantity supplies WAIC's optimism correction? 3. Why can $p_{\mathrm{waic}}$ differ from a coefficient count? 4. What is the empirical unit of one point in the final figure?
+
+::: {.notes}
+[Transcript]
+
+1. Why is lppd a fitted rather than omitted-data quantity? 2. Which posterior quantity supplies WAIC's optimism correction? 3. Why can $p_{\mathrm{waic}}$ differ from a coefficient count? 4. What is the empirical unit of one point in the final figure? WAIC subtracts a posterior-variance correction from fitted pointwise predictive density. The previous page approximated omitted-position posteriors with importance sampling. Return to the module overview to place both approximations within the full model-evaluation sequence. Keep the observational unit fixed while you interpret the result.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/14-figure; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: figure -->
+## The widely applicable information criterion {.plot-slide}
+
+![](../../_freeze/model-criticism-and-prediction/waic/figure-html/provo-waic-1.png){.empirical-plot fig-alt="Observed data and fitted quantities for The widely applicable information criterion."}
+
+::: {.notes}
+[Transcript]
+
+Start with the axes and the observed values. Observed data and fitted quantities for The widely applicable information criterion. Read the pattern before attaching a model interpretation to it.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::
+
+<!-- generated-slide-id: model-criticism-and-prediction/waic/15-interpretation; notes-page: model-criticism-and-prediction/waic.qmd; note-sha256: 59c63329e791be3b4611956ba6501d5df267d94543471996336041c5ad37d91b; role: interpretation -->
+## Interpretation {.statement-slide}
+
+WAIC subtracts a posterior-variance correction from fitted pointwise predictive density. The previous page approximated omitted-position posteriors with importance sampling. Return to the module overview to place both approximations within the full model-evaluation sequence.
+
+::: {.notes}
+[Transcript]
+
+WAIC subtracts a posterior-variance correction from fitted pointwise predictive density. The previous page approximated omitted-position posteriors with importance sampling. Return to the module overview to place both approximations within the full model-evaluation sequence. Use the graph or equation to say the result in ordinary language.
+
+[Sources]
+
+https://mc-stan.org/loo/reference/waic.html
+:::

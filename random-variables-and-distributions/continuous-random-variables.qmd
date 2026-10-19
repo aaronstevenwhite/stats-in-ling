@@ -1,14 +1,67 @@
 ---
 title: "Continuous random variables"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [discrete variable page](discrete-random-variables.qmd) treated separate, listable support values. Suppose instead that $V$ maps each stop consonant token to its measured voice onset time in milliseconds. Two tokens might have values 18.4 and 18.41. Between them lie 18.401, 18.402, and indefinitely many other values. How should probability be represented when the modeled values fill an interval rather than occupying separate points?
+The [discrete variable page](discrete-random-variables.qmd) treated separate, listable support values. Acoustic measurements such as vowel duration are different: between two possible durations lie indefinitely many others. How should probability be represented when modeled values fill an interval rather than occupy separate points?
 
-[Voice onset time](https://doi.org/10.1080/00437956.1964.11659830) is an acoustic interval between stop release and the onset of voicing. It can support comparisons among measured tokens under a stated protocol, but one value does not by itself identify a phonological category or explain how a listener represents the stop.
+## Hillenbrand vowel duration
 
-One tempting answer is to call every variable with an uncountable range continuous. That answer is too weak for our purposes: an uncountable range does not by itself guarantee that probability can be represented by a density. We use *continuous random variable* for the stronger, absolutely continuous case defined below.
+We use the vowel measurements from [Hillenbrand, Getty, Clark, and Wheeler (1995)](https://doi.org/10.1121/1.411872). The study recorded men, women, and children producing 12 American English vowels in /hVd/ words, measured duration and formant trajectories, and collected listener identifications. The [prepared teaching table](../data/hillenbrand/vowels-complete.csv) is the audited `phonTools::h95` table from package version 0.2-2.2 under its BSD-2-Clause license; the [data record](../data/hillenbrand/README.md) documents the source and checksum.
 
-To see why range and distribution must be separated, consider paired formant measurements. Let
+One row is one vowel token nested within one speaker, and each speaker contributes one token for each vowel. The package imputed some F2 and F3 measurements, but our focal duration and F1 columns are complete. We restrict attention to adult men producing *heed* /i/, giving one token per speaker and avoiding a mixture over vowels.
+
+```{r}
+#| label: load-hillenbrand-continuous
+library(ggplot2)
+
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+adult_i <- subset(vowels, speaker_type == "man" & vowel == "i")
+
+stopifnot(
+  nrow(vowels) == 1668L,
+  length(unique(vowels$speaker_id)) == 139L,
+  all(table(vowels$speaker_id) == 12L),
+  nrow(adult_i) == 45L,
+  !anyDuplicated(adult_i$speaker_id),
+  !anyNA(adult_i[c("duration_ms", "f1_hz")])
+)
+
+head(adult_i[c("speaker_id", "duration_ms", "f1_hz")])
+```
+
+Let $D$ map a token to its vowel duration in milliseconds. A useful modeled support is
+
+$$
+\operatorname{supp}(D)=(0,\infty)
+$$
+
+because durations are positive. This support is a modeling choice about the acoustic quantity, not a claim that the recording system stored infinitely precise values.
+
+```{r}
+#| label: plot-hillenbrand-duration-strip
+#| fig-cap: "Raw durations for adult men producing /i/ in Hillenbrand et al. (1995). Small vertical jitter separates overlapping records."
+set.seed(20261018) # dqr-allow: random-seed
+ggplot(adult_i, aes(duration_ms, 0)) +
+  geom_point(
+    position = position_jitter(height = 0.035, width = 0),
+    color = "grey"
+  ) +
+  labs(x = "Vowel duration (ms)", y = NULL) +
+  scale_y_continuous(NULL, breaks = NULL) +
+  theme_classic(base_size = 12)
+```
+
+One tempting definition calls every variable with an uncountable range continuous. That definition is too weak for current purposes: an uncountable range does not guarantee that probability can be represented by a density. We use *continuous random variable* for the stronger, absolutely continuous case.
+
+To see why range and distribution must be separated, consider paired duration and F1 measurements. Let
 
 $$
 \Omega\equiv\mathbb R_+^2
@@ -33,85 +86,61 @@ so $X$ is measurable. This fact alone does not make its distribution absolutely 
 More specifically, a random variable $X$ is [**absolutely continuous**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Applied_Probability_%28Pfeiffer%29/07%3A_Distribution_and_Density_Functions/7.01%3A_Distribution_and_Density_Functions) when there is a nonnegative function $f_X$ such that
 
 $$
-\mathbb{P}(X\in A)=\int_A f_X(x)\,\mathrm{d}x
+\mathbb{P}(X\in A)=\int_A f_X(x)\,\mathrm dx
 $$
 
-for every measurable set $A$. We use *continuous random variable* for this class. This definition is stronger than merely requiring an uncountable range.
+for every measurable set $A$. We use *continuous random variable* for this class.
 
-For a voice onset time measure that permits negative and positive values, a simple modeled support might be
+## A recorded value and a modeled point
 
-$$
-\operatorname{supp}(V)=\mathbb{R}.
-$$
-
-A vowel duration variable might instead have support $(0,\infty)$ because durations are positive. The appropriate interval depends on the measurement and the scientific representation.
-
-## A point and an interval are different events
-
-Consider the point event
-
-$$
-V=18.417.
-$$
-
-Under a continuous model, one point receives probability zero:
-
-$$
-\mathbb{P}(V=18.417)=0.
-$$
-
-This statement does not make a voice onset time near 18.417 ms impossible. An interval around the point may receive positive probability:
-
-$$
-\mathbb{P}(18<V<19)>0.
-$$
-
-The fact that a single point has zero probability follows because an integral over a singleton is zero. Intervals may nevertheless have positive probability.
-
-## Working through measurement resolution
-
-Suppose an instrument reports values to the nearest millisecond. A stored token may appear as 18 ms even if its underlying measured quantity before rounding was 18.37 ms. The integer in the file does not force the model to make $V$ discrete.
-
-We have at least two possible representations.
-
-1. A continuous model treats the stored integer as a rounded observation of an interval valued quantity.
-2. A discrete model treats the reported integer itself as the result produced by the measurement process.
-
-The choice depends on the target. If differences smaller than one millisecond matter and rounding is part of measurement error, the continuous representation may be useful. If only the instrument's reported categories matter, a discrete representation may be sufficient.
-
-## Simulating the distinction in base R
+The durations are stored as whole milliseconds. We derive the observed median and its empirical mass directly from the table.
 
 ```{r}
-#| eval: false
-unrounded_vot <- c(18.37, 18.62, 19.14)
-stored_vot <- round(unrounded_vot)
+#| label: hillenbrand-point-event
+median_duration <- unname(quantile(adult_i$duration_ms, 0.5, type = 1))
+recorded_mass_at_median <- mean(adult_i$duration_ms == median_duration)
+continuous_point_probability <- 0 # dqr-allow: symbolic-derivation
 
-data.frame(unrounded_vot, stored_vot)
+stopifnot(
+  median_duration %in% adult_i$duration_ms,
+  recorded_mass_at_median > 0,
+  continuous_point_probability == 0
+)
+
+c(median_duration_ms = median_duration,
+  empirical_mass_at_recorded_value = recorded_mass_at_median,
+  continuous_model_point_probability = continuous_point_probability)
 ```
 
-Several interval values can map to the same stored integer. The code illustrates rounding; it does not decide which support the scientific model should use.
+In the empirical distribution of the stored records, the value `r median_duration` ms has mass `r sprintf("%.3f", recorded_mass_at_median)`. Under an absolutely continuous model,
 
-## Comparing discrete and continuous support
+$$
+\mathbb{P}(D=d)=0
+$$
 
-| question | discrete variable | continuous variable |
-|---|---|---|
-| possible values | separate and listable | commonly represented across an interval |
-| one value | may have positive probability | has probability zero |
-| several values | probability found by adding masses | probability assigned across a region |
+for every exact duration $d$, including the recorded median. This does not make a duration near $d$ impossible. An interval around it may have positive probability:
 
-The distinction concerns the modeled support. It does not follow from whether a spreadsheet column is stored as an integer or decimal.
+$$
+\mathbb{P}(d-\varepsilon<D<d+\varepsilon)>0.
+$$
 
-## Storage precision does not determine the modeled support
-
-The precision of values stored in a file does not determine whether the modeled support is discrete or continuous. A column with values `18`, `19`, and `20` may record rounded measurements of a continuous quantity. Conversely, a slider rendered as a line may permit only seven selectable responses and thus remain discrete.
-
-To avoid the conflation, state what the observation process can produce and what distinctions the analysis aims to represent. The display format alone does not answer either question.
+The distinction is between a stored, rounded measurement and a continuous model of the acoustic quantity. A spreadsheet column containing integers does not settle that representational choice.
 
 ## Check your understanding
 
-1. Give one reason to model whole millisecond response times as continuous and one reason to model them as discrete.
-2. Explain why $\mathbb{P}(V=18.417)=0$ does not mean that a value near 18.417 is impossible.
-3. Which support is more plausible for a manually assigned five point prominence score? Explain from the response process.
-4. Give one continuous linguistic measurement whose support is restricted to positive values.
+1. Why does the empirical distribution assign positive mass to `median_duration` while an absolutely continuous model assigns point probability zero?
+2. Give one reason to model the integer durations as rounded observations from a continuous process and one reason to analyze the recorded integers discretely.
+3. Which dependence was removed by restricting to one vowel token per adult male speaker? Which population limitation remains?
+4. Is a manually assigned five-point prominence score continuous? Explain from its response process rather than its display format.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The empirical distribution places mass $1/45=0.022222$ at the recorded median of 240 ms, whereas an absolutely continuous model assigns $\mathbb{P}(D=240)=0$. <!-- dqr-allow: empirical-answer -->
+2. A continuous model can represent integer milliseconds as rounded measurements of latent duration, while a discrete analysis respects the actual recorded values without adding that measurement model. <!-- dqr-allow: empirical-answer -->
+3. Selecting one /i/ token per adult male speaker removes repeated-speaker dependence within the subset, but the result remains limited to sampled adult men and the study's regional population. <!-- dqr-allow: empirical-answer -->
+4. A manually assigned five-point prominence score is discrete and ordinal because its response process offers only five ordered categories, regardless of numeric display. <!-- dqr-allow: empirical-answer -->
+
+</details>
 
 A continuous support cannot be represented by a PMF over individual points. The [next page](probability-density-functions.qmd) represents probability by area across intervals.

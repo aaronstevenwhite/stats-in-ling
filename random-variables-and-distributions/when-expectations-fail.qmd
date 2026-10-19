@@ -7,7 +7,55 @@ execute:
   message: false
 ---
 
-The [expected value page](expected-values.qmd) required an absolute sum or integral. Why do we need that condition when a symmetric distribution appears to balance perfectly around its center? The Cauchy family gives a case in which the visual center exists but the probability-weighted mean does not.
+The [expected value page](expected-values.qmd) required an absolute sum or integral. Why do we need that condition when a symmetric distribution appears to balance around its center? The Cauchy family gives a case in which a visual center exists but the probability-weighted mean does not.
+
+We calibrate a Cauchy reference to the [Hillenbrand adult-men /i/ duration subset](continuous-random-variables.qmd#hillenbrand-vowel-duration). This calibration supplies linguistically grounded location and scale values. It does not turn the Cauchy family into an adequate model of vowel duration: the family assigns probability to negative durations and is used here only to expose expectation failure.
+
+```{r}
+#| label: fit-hillenbrand-cauchy
+library(ggplot2)
+
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+adult_i <- subset(vowels, speaker_type == "man" & vowel == "i")
+
+negative_log_likelihood <- function(theta) {
+  location <- theta[1]
+  scale <- exp(theta[2])
+  -sum(dcauchy(
+    adult_i$duration_ms,
+    location = location,
+    scale = scale,
+    log = TRUE
+  ))
+}
+
+cauchy_fit <- optim(
+  par = c(
+    median(adult_i$duration_ms),
+    log(IQR(adult_i$duration_ms) / 2)
+  ),
+  fn = negative_log_likelihood,
+  method = "BFGS"
+)
+cauchy_location <- unname(cauchy_fit$par[1])
+cauchy_scale <- unname(exp(cauchy_fit$par[2]))
+
+stopifnot(
+  nrow(adult_i) == 45L,
+  !anyDuplicated(adult_i$speaker_id),
+  cauchy_fit$convergence == 0L,
+  is.finite(cauchy_location),
+  is.finite(cauchy_scale),
+  cauchy_scale > 0
+)
+
+c(location_ms = cauchy_location,
+  scale_ms = cauchy_scale,
+  observed_duration_mean_ms = mean(adult_i$duration_ms))
+```
 
 ## The Cauchy density
 
@@ -27,17 +75,41 @@ f_X(x)
 \qquad x\in\mathbb R.
 $$
 
-The standard Cauchy distribution has $x_0=0$ and $\gamma=1$.
+The fitted location is `r sprintf("%.2f", cauchy_location)` ms and the fitted scale is `r sprintf("%.2f", cauchy_scale)` ms. These values are computed from the observed tokens, but the curve is a reference distribution rather than observed speech data.
 
 ```{r}
-x <- seq(-6, 6, length.out = 1000)
-plot(x, dcauchy(x, location = 0, scale = 1),
-     type = "l", lwd = 3, col = "#2166AC",
-     xlab = "x", ylab = "Density",
-     main = "PDF of Cauchy(0, 1)", bty = "l")
-```
+#| label: plot-hillenbrand-cauchy-fit
+#| fig-cap: "Observed adult-men /i/ durations and the data-calibrated Cauchy reference. The curve is not proposed as a phonetic model."
+bin_width <- 2 * IQR(adult_i$duration_ms) / nrow(adult_i)^(1 / 3)
+cauchy_grid <- data.frame(
+  duration_ms = seq(
+    min(adult_i$duration_ms),
+    max(adult_i$duration_ms),
+    length.out = 1000L # dqr-allow: algorithm-setting
+  )
+)
+cauchy_grid$density <- dcauchy(
+  cauchy_grid$duration_ms,
+  location = cauchy_location,
+  scale = cauchy_scale
+)
 
-The density is symmetric around zero, so the tempting move is to pair each positive contribution with a negative one and declare the mean zero. The next calculation shows why that move is not licensed.
+ggplot(adult_i, aes(duration_ms)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    binwidth = bin_width,
+    boundary = min(adult_i$duration_ms),
+    fill = "lightgrey", color = "white"
+  ) +
+  geom_rug(color = "grey") +
+  geom_line(
+    data = cauchy_grid,
+    aes(duration_ms, density),
+    color = "steelblue"
+  ) +
+  labs(x = "Vowel duration (ms)", y = "Density") +
+  theme_classic(base_size = 12)
+```
 
 ## Checking the two sides before combining them
 
@@ -59,10 +131,10 @@ $$
 As $b\to\infty$, this quantity diverges to $+\infty$. By symmetry, the integral over the negative half-line diverges to $-\infty$. An expectation exists only when these two parts can be combined without making the result depend on how the limits are taken. Here they cannot, so
 
 $$
-\mathbb E[X]
+\mathbb{E}[X]
 $$
 
-is undefined.
+is undefined. Changing $x_0$ and $\gamma$ does not repair this failure.
 
 ## Principal value is not expectation
 
@@ -72,17 +144,88 @@ $$
 \int_{-b}^{b}x f_X(x)\,\mathrm dx=0.
 $$
 
-Taking the symmetric limit produces a Cauchy principal value of zero. An expectation is not defined by forcing the positive and negative truncation bounds to approach infinity at the same rate. It requires the probability-weighted integral itself to exist. Thus the principal value is not $\mathbb E[X]$.
+Taking the symmetric limit produces a Cauchy principal value of zero. An expectation is not defined by forcing the positive and negative truncation bounds to approach infinity at the same rate. It requires the probability-weighted integral itself to exist. Thus the principal value is not $\mathbb{E}[X]$.
 
 ## Finite samples do not repair the model expectation
 
-Every finite sample of Cauchy draws has a finite arithmetic mean, but that fact does not imply that the distribution has an expected value. As the sample grows, an extreme draw can move the sample mean by an arbitrarily large amount. The model supplies no finite population mean to which those sample means must converge.
+Every finite sample of Cauchy draws has a finite arithmetic mean, but that fact does not imply that the distribution has an expected value. We compare running means from two procedures: bootstrap draws from the observed duration distribution and simulated draws from the data-calibrated Cauchy reference.
+
+```{r}
+#| label: simulate-hillenbrand-cauchy-means
+set.seed(20261018) # dqr-allow: random-seed
+n_draws <- 5000L # dqr-allow: algorithm-setting
+n_paths <- 8L # dqr-allow: algorithm-setting
+
+make_running_path <- function(source, path_id) {
+  draws <- if (source == "Observed-duration bootstrap") {
+    sample(adult_i$duration_ms, n_draws, replace = TRUE)
+  } else {
+    rcauchy(n_draws, location = cauchy_location, scale = cauchy_scale)
+  }
+  data.frame(
+    draw = seq_len(n_draws),
+    running_mean = cumsum(draws) / seq_len(n_draws),
+    source = source,
+    path = path_id
+  )
+}
+
+running_paths <- do.call(
+  rbind,
+  c(
+    lapply(seq_len(n_paths), function(i) {
+      make_running_path("Observed-duration bootstrap", i)
+    }),
+    lapply(seq_len(n_paths), function(i) {
+      make_running_path("Cauchy reference", i)
+    })
+  )
+)
+reference_lines <- data.frame(
+  source = c("Observed-duration bootstrap", "Cauchy reference"),
+  reference = c(mean(adult_i$duration_ms), cauchy_location)
+)
+
+stopifnot(
+  nrow(running_paths) == 2L * n_draws * n_paths,
+  all(is.finite(running_paths$running_mean))
+)
+```
+
+```{r}
+#| label: plot-hillenbrand-cauchy-means
+#| fig-cap: "Running means from empirical-duration bootstrap draws and simulated Cauchy-reference draws. The Cauchy paths are not observed speech data."
+ggplot(running_paths,
+       aes(draw, running_mean, group = interaction(source, path))) +
+  geom_line(color = "grey") +
+  geom_hline(
+    data = reference_lines,
+    aes(yintercept = reference),
+    color = "steelblue"
+  ) +
+  facet_wrap(~ source, scales = "free_y", ncol = 1) +
+  scale_x_log10() +
+  labs(x = "Number of draws (log scale)", y = "Running mean (ms)") +
+  theme_classic(base_size = 12)
+```
+
+The bootstrap paths target the finite empirical mean of the observed durations. The Cauchy paths have no such target; their horizontal line marks the fitted location, not an expectation. An extreme simulated draw may move a Cauchy sample mean by an arbitrarily large amount.
 
 ## Check your understanding
 
 1. Evaluate the antiderivative of $x/[\pi(1+x^2)]$.
 2. Explain why symmetry does not define the Cauchy mean.
 3. Distinguish the Cauchy principal value from an expected value.
-4. Explain why every finite sample can have a finite arithmetic mean even when the distributional expectation is undefined.
+4. Which elements of the figures are observed Hillenbrand data, which are estimates from those data, and which are simulated references?
 
-The exact upshot is that symmetry identifies a geometric center but does not guarantee a finite expected value. The later summaries in this module, including [variance](variance-and-covariance.qmd), likewise require their defining expectations to exist.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. An antiderivative is $\int x/[\pi(1+x^2)]\,\mathrm dx=\log(1+x^2)/(2\pi)+C$. <!-- dqr-allow: empirical-answer -->
+2. Symmetry does not define the Cauchy mean because the positive and negative expectation integrals diverge separately, so their subtraction is undefined. <!-- dqr-allow: empirical-answer -->
+3. A Cauchy principal value takes a coordinated symmetric limit that may cancel, whereas an expected value requires the positive and negative parts to be separately finite. <!-- dqr-allow: empirical-answer -->
+4. The duration histogram uses observed Hillenbrand tokens; the KDE, location, and scale are estimates from those tokens; the bootstrap and Cauchy running-mean paths are simulated references. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+Symmetry identifies a geometric center but does not guarantee a finite expected value. The later summaries in this module, including [variance](variance-and-covariance.qmd), likewise require their defining expectations to exist.

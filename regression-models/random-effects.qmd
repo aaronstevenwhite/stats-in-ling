@@ -1,97 +1,121 @@
 ---
 title: "Random effects and partial pooling"
+execute: {warning: false, message: false}
 ---
 
-The [preceding page](fixed-and-random-effects.qmd) separated planned population contrasts from variation across sampled groups. A random-effects model represents the latter through a shared group distribution and partial pooling.
-
-Suppose three speakers have observed mean acoustic durations of vowel tokens of 90, 110, and 160 ms. The first two means are based on 20 tokens each. The third is based on only 2 tokens. Treating 160 ms as an equally stable speaker estimate ignores the difference in information. These token measurements describe duration; they do not by themselves establish a phonological length category.
-
-A random effects model addresses this problem through [**partial pooling**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html). Each speaker has a distinct deviation, but those deviations belong to one estimated population distribution.
+The [preceding page](fixed-and-random-effects.qmd) separated population associations from variation across sampled listeners and words. A random-effects model represents the latter through a shared group distribution and **partial pooling**.
 
 ## Model deviations from a shared center
 
-Let $\beta_0$ be the population baseline. Give speaker $j$ a deviation $b_j$:
+Begin with a crossed intercept-only model for the correct MALD latencies:
 
 $$
-\text{speaker baseline}_j
-=\beta_0+b_j.
-$$
-
-Model the deviations as draws from a common distribution:
-
-$$
-b_j\sim\mathcal{N}(0,\tau^2).
-$$
-
-The parameter $\tau$ is the standard deviation of speaker baselines around the population baseline. The deviation $b_j$ is the random effect introduced on the [preceding page](fixed-and-random-effects.qmd).
-
-The zero center is not a claim that speakers do not differ. It defines $\beta_0$ as the population center and lets positive and negative deviations occur around it. The parameter $\tau$ measures the extent of those differences.
-
-## Comparing three pooling strategies
-
-[**Complete pooling**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) ignores persistent speaker differences. Every speaker receives the same baseline $\beta_0$.
-
-[**No pooling**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) estimates an unrelated baseline for every speaker. The two token speaker estimate relies only on two observations.
-
-[**Partial pooling**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) combines each speaker's observations with the estimated population distribution. Speakers can differ, but the amount of evidence for each difference matters.
-
-These strategies represent different claims. Complete pooling says the group labels add no persistent structure. No pooling says the observed groups share no informative population relation. Partial pooling says the groups vary and that their deviations arise from a common population.
-
-## Examining where shrinkage comes from
-
-In a simple random-intercept model with known variances, the estimated speaker deviation has the form
-
-$$
-\widehat b_j
-=w_j(\overline y_j-\beta_0),
+Y_{pwi}=\beta_0+b_p+c_w+\varepsilon_{pwi},
 $$
 
 where
 
 $$
-w_j
-=\frac{n_j\tau^2}
-{\sigma^2+n_j\tau^2}.
+b_p\sim\mathcal N(0,\tau_p^2),\qquad
+c_w\sim\mathcal N(0,\tau_w^2),\qquad
+\varepsilon_{pwi}\sim\mathcal N(0,\sigma^2).
 $$
 
-The quantity $w_j$ is between zero and one. It determines how much of the raw speaker difference is retained.
+The zero centers define $\beta_0$ as the population center. They do not assert that participants or words are identical. The parameters $\tau_p$ and $\tau_w$ describe the extent of persistent baseline differences.
 
-If $n_j$ is small or the residual variance $\sigma^2$ is large, $w_j$ is closer to zero. The estimate moves toward the population baseline. If $n_j$ is large and the observations are consistent, $w_j$ is closer to one. The estimate remains closer to the speaker's raw mean.
+## Comparing pooling strategies
 
-This movement is called [**shrinkage**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) or partial pooling. It is a consequence of the joint probability model, not a correction applied after unrelated speaker means have been estimated.
+Complete pooling ignores participant identity and assigns every participant the population baseline $\beta_0$. No pooling estimates an unrelated mean for every participant. Partial pooling gives each participant a distinct deviation while estimating those deviations under one population distribution.
 
-## Keeping two variances separate
-
-The group standard deviation
+For a one-group normal random-intercept model with known variance components, the participant deviation has the form
 
 $$
-\tau
+\widehat b_p
+=w_p(\overline y_p-\beta_0),
 $$
 
-describes stable between speaker baseline variation. The residual standard deviation
+with
 
 $$
-\sigma
+w_p
+=\frac{n_p\tau_p^2}{\sigma^2+n_p\tau_p^2}.
 $$
 
-describes token variation around a speaker's baseline and the modeled predictor effects.
+The weight $w_p$ lies between zero and one. More observations or greater between-participant variation move it toward one; more within-participant residual variation moves it toward zero. Shrinkage is thus a consequence of the joint probability model, not a correction applied after fitting unrelated participant means.
 
-One cannot substitute for the other. A large residual variance does not represent persistent speaker differences. A large group variance does not represent token noise within a speaker.
+## Computing the three MALD summaries
 
-## Understanding the exchangeability claim
+```{r}
+#| label: mald-partial-pooling
+library(lme4)
+library(ggplot2)
 
-The shared distribution treats speaker labels as exchangeable after conditioning on included predictors. Before observing the responses, swapping labels p01 and p02 does not change the model. The labels identify groups, but the model does not give one label a special distribution without a predictor that justifies it.
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
 
-If speakers differ systematically by measured age or dialect, that structure should enter the population relation. The random effects then describe remaining speaker variation after those predictors are known.
+fit <- lmer(
+  log_rt ~ 1 +
+    (1 | participant_id) +
+    (1 | item),
+  data = mald,
+  control = lmerControl(optimizer = "bobyqa")
+)
 
-Exchangeability is thus conditional rather than absolute. It asks whether the unexplained deviations can reasonably share one distribution. A model that pools speakers across known populations with very different variance structures may need a more specific group model.
+raw_means <- aggregate(
+  log_rt ~ participant_id,
+  data = mald,
+  FUN = mean
+)
+names(raw_means)[names(raw_means) == "log_rt"] <- "raw_mean"
 
-## Reading a pooled estimate carefully
+participant_modes <- ranef(fit)$participant_id
+partial_means <- data.frame(
+  participant_id = rownames(participant_modes),
+  partially_pooled_mean =
+    fixef(fit)[["(Intercept)"]] + participant_modes[["(Intercept)"]],
+  row.names = NULL
+)
 
-An estimated deviation near zero can have two sources. The speaker's observations may lie close to the population relation, or the observations may provide little information and receive strong shrinkage. The estimate alone cannot distinguish these cases. Its uncertainty and the number of observations are part of the interpretation.
+pooling <- merge(raw_means, partial_means, by = "participant_id")
+pooling$complete_pooling_mean <- fixef(fit)[["(Intercept)"]]
+pooling$movement_toward_center <- with(
+  pooling,
+  abs(raw_mean - complete_pooling_mean) -
+    abs(partially_pooled_mean - complete_pooling_mean)
+)
 
-::: {.callout-note title="Check the pooling"}
-Why should a speaker mean based on two tokens usually receive more shrinkage than a speaker mean based on two hundred consistent tokens? Which quantities in $w_j$ express this difference?
-:::
+summary(pooling$movement_toward_center)
+```
 
-The [next page](random-intercepts.qmd) places one partially pooled baseline deviation in a regression equation.
+```{r}
+#| label: plot-mald-pooling
+ggplot(
+  pooling,
+  aes(x = raw_mean, y = partially_pooled_mean)
+) +
+  geom_abline(slope = 1, intercept = 0, color = "grey70") +
+  geom_hline(
+    yintercept = fixef(fit)[["(Intercept)"]],
+    color = "#1F5A85",
+    linewidth = 0.5
+  ) +
+  geom_point(size = 1.3) +
+  coord_equal() +
+  labs(
+    x = "Raw participant mean log response time",
+    y = "Partially pooled participant mean"
+  ) +
+  theme_classic()
+```
+
+The diagonal marks equality between raw and partially pooled means. Points move toward the horizontal population center, with the amount of movement determined by the fitted variances and the information available for each listener.
+
+## Keeping two kinds of variation separate
+
+The participant standard deviation $\tau_p$ describes stable between-listener variation. The residual standard deviation $\sigma$ describes trial variation around participant and word baselines. One cannot substitute for the other: large residual variation is not persistent listener heterogeneity, and large group variation is not within-listener trial noise.
+
+## Understanding exchangeability
+
+The shared normal distribution treats participant labels as exchangeable after conditioning on included predictors. Before observing the responses, swapping two arbitrary participant labels does not change the model. If listeners differ systematically by a measured property, that property should enter the population relation; the random effects then describe remaining variation.
+
+An estimated deviation near zero can indicate either that a listener lies near the fitted center or that the listener's trials provide weak information and receive strong shrinkage. The estimate, its conditional uncertainty, and the number of trials must be interpreted together. The [next page](random-intercepts.qmd) derives the dependence induced by the shared deviations.

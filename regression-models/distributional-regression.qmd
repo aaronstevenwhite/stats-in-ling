@@ -1,223 +1,215 @@
 ---
 title: "Modeling conditional scale"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [heteroscedasticity page](heteroscedasticity.qmd) diagnosed changes in conditional variance. Distributional regression represents such changes directly by giving more than one parameter of the response distribution its own predictor equation.
-
-Ordinary linear regression usually gives predictors to the conditional mean and holds the conditional standard deviation fixed. If response variability is theoretically relevant, we can give the scale parameter its own predictor model.
-
-Let
+**Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use
 
 $$
-Y_i\sim\mathcal{N}(\mu_i,\sigma_i^2).
+Y_{ij}\sim\mathcal N(\mu_i,\sigma_i^2),
 $$
 
-Model the mean as usual:
+with
 
 $$
 \mu_i
 =
-\beta_0+\beta_1x_i.
+\beta_0+\beta_fF_i^c+\beta_dD_i^c+\beta_pP_i^c
 $$
 
-Now model the log standard deviation:
+and
 
 $$
 \log\sigma_i
 =
-\gamma_0+\gamma_1x_i.
+\gamma_0+\gamma_fF_i^c.
 $$
 
-This is [**distributional regression**](https://paulbuerkner.com/brms/articles/brms_distreg.html). Different parameters of the response distribution receive separate predictor equations.
+The log link keeps every fitted standard deviation positive.
 
-Here the conditional standard deviation depends on one predictor. The mean and standard deviation still have separate equations, even when the same predictor appears in both.
+## A likelihood for grouped item summaries
 
-## Keeping the scale positive
-
-The standard deviation must be positive. A straight line can be negative, so we
-model its logarithm and exponentiate:
+The course table does not retain the individual correct trials used in this sequence. For item $i$, it retains their count $n_i$, mean $\overline y_i$, and variance $s_i^2$. The identity
 
 $$
-\sigma_i
+\sum_{j=1}^{n_i}(y_{ij}-\mu_i)^2
 =
-\exp(\gamma_0+\gamma_1x_i).
+(n_i-1)s_i^2+n_i(\overline y_i-\mu_i)^2
 $$
 
-Suppose
-
-$$
-\gamma_0=\log100
-\qquad\text{and}\qquad
-\gamma_1=-.20.
-$$
-
-At $x=0$,
-
-$$
-\sigma(0)=100.
-$$
-
-At $x=1$,
-
-$$
-\sigma(1)=100e^{-.20}\approx81.9.
-$$
-
-A one-unit predictor increase multiplies the conditional standard deviation by $e^{-.20}\approx.819$, an 18.1% decrease.
-
-For a two-unit increase, the multiplier is
-
-$$
-e^{2(-.20)}=e^{-.40}\approx.670.
-$$
-
-The conditional standard deviation decreases by about 33.0 percent across that
-two-unit contrast. The change is multiplicative because the scale equation is
-additive on $\log\sigma_i$.
-
-The coefficient $\gamma_1$ is not a change in the response mean. The mean coefficient remains $\beta_1$.
-
-This gives two separate questions:
-
-1. Does the center of the response distribution change with $x$?
-2. Does the spread around that center change with $x$?
-
-$\beta_1$ answers the first, while $\gamma_1$ answers the second. Interpreting one
-as the other confuses location with scale.
-
-## Calculating two conditional distributions
-
-Suppose the mean model has
-
-$$
-\beta_0=6.2
-\qquad\text{and}\qquad
-\beta_1=-.08,
-$$
-
-while the scale model has
-
-$$
-\gamma_0=\log(.20)
-\qquad\text{and}\qquad
-\gamma_1=-.20.
-$$
-
-At $x=0$,
-
-$$
-Y\mid x=0\sim\mathcal{N}(6.2,.20^2).
-$$
-
-At $x=2$, the conditional mean is
-
-$$
-6.2-.08(2)=6.04,
-$$
-
-and the conditional standard deviation is
-
-$$
-.20e^{-.20(2)}\approx.134.
-$$
-
-Thus
-
-$$
-Y\mid x=2\sim\mathcal{N}(6.04,.134^2).
-$$
-
-The second distribution has both a lower center and a narrower spread. One
-equation does not stand in for the other.
-
-We can verify the calculations directly:
+allows the Gaussian likelihood to be evaluated exactly from these sufficient summaries, conditional on the independence approximation.
 
 ```{r}
-#| label: calculate-distributional-predictions
-#| echo: true
-x <- c(0, 2)
+#| label: fit-mald-distributional-regression
+library(ggplot2)
 
-conditional_mean <- 6.2 - .08 * x
-conditional_sd <- .20 * exp(-.20 * x)
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+mald$n_phones_c <- mald$n_phones - mean(mald$n_phones)
 
-data.frame(
-  x = x,
-  conditional_mean = conditional_mean,
-  conditional_sd = conditional_sd
+X_mu <- model.matrix(
+  ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = mald
 )
-```
+Z_constant <- matrix(1, nrow = nrow(mald), ncol = 1L)
+Z_frequency <- model.matrix(~ log_frequency_c, data = mald)
 
-## Fitting separate formulas
+negative_log_likelihood <- function(parameters, X, Z, data) {
+  n_beta <- ncol(X)
+  beta <- parameters[seq_len(n_beta)]
+  gamma <- parameters[n_beta + seq_len(ncol(Z))]
+  mu <- drop(X %*% beta)
+  log_sigma <- drop(Z %*% gamma)
+  sigma_squared <- exp(2 * log_sigma)
+  squared_error <-
+    (data$n_observations - 1) * data$variance_log_rt +
+    data$n_observations * (data$mean_log_rt - mu)^2
 
-In `brms`, the mean and scale formulas can be written explicitly:
+  .5 * sum(
+    data$n_observations * log(2 * pi) +
+      2 * data$n_observations * log_sigma +
+      squared_error / sigma_squared
+  )
+}
 
-```r
-fit_distributional <- brm(
-  bf(
-    log_rt ~ frequency + duration,
-    sigma ~ frequency
+weighted_mean_fit <- lm(
+  mean_log_rt ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = mald,
+  weights = n_observations
+)
+initial_beta <- coef(weighted_mean_fit)
+initial_sigma <- sqrt(sum(
+  (mald$n_observations - 1) * mald$variance_log_rt +
+    mald$n_observations * residuals(weighted_mean_fit)^2
+) / sum(mald$n_observations))
+
+constant_scale_fit <- optim(
+  c(initial_beta, log(initial_sigma)),
+  negative_log_likelihood,
+  X = X_mu,
+  Z = Z_constant,
+  data = mald,
+  method = "BFGS",
+  control = list(maxit = 2000L, reltol = 1e-11)
+)
+frequency_scale_fit <- optim(
+  c(initial_beta, log(initial_sigma), 0),
+  negative_log_likelihood,
+  X = X_mu,
+  Z = Z_frequency,
+  data = mald,
+  method = "BFGS",
+  hessian = TRUE,
+  control = list(maxit = 4000L, reltol = 1e-11)
+)
+
+n_beta <- ncol(X_mu)
+parameter_names <- c(
+  paste0("mu_", colnames(X_mu)),
+  paste0("log_sigma_", colnames(Z_frequency))
+)
+coefficient_table <- data.frame(
+  term = parameter_names,
+  estimate = frequency_scale_fit$par
+)
+
+model_comparison <- data.frame(
+  model = c("constant scale", "frequency-dependent scale"),
+  parameters = c(
+    length(constant_scale_fit$par),
+    length(frequency_scale_fit$par)
   ),
-  family = gaussian(),
-  data = lexical_data
+  negative_log_likelihood = c(
+    constant_scale_fit$value,
+    frequency_scale_fit$value
+  )
 )
+model_comparison$aic <-
+  2 * model_comparison$negative_log_likelihood +
+  2 * model_comparison$parameters
+
+stopifnot(
+  constant_scale_fit$convergence == 0L,
+  frequency_scale_fit$convergence == 0L
+)
+
+coefficient_table
+model_comparison
 ```
 
-The second formula predicts the conditional standard deviation on its log scale. A custom Stan model writes the same two equations before the observation statement.
+The frequency coefficient in the mean equation is `r sprintf("%.4f", frequency_scale_fit$par[[2]])`; the frequency coefficient in the log-scale equation is `r sprintf("%.4f", tail(frequency_scale_fit$par, 1))`. Thus greater observed frequency is associated with both a lower item mean and a lower fitted conditional spread in this grouped specification.
 
-In `brms`, the scale formula is interpreted on the log scale for a Gaussian
-family. Thus a positive frequency coefficient in the `sigma` formula multiplies
-residual spread upward, while a negative coefficient multiplies it downward.
-The coefficient table should be translated into values of $\sigma_i$ at
-theoretically relevant predictor values.
+Allowing frequency-dependent scale changes AIC from `r sprintf("%.2f", model_comparison$aic[[1]])` to `r sprintf("%.2f", model_comparison$aic[[2]])`. This comparison uses the same grouped Gaussian likelihood and the same item summaries.
 
-The mean and scale formulas need priors in a Bayesian fit. A prior on
-$\gamma_1$ can be inspected by drawing scale curves across the observed
-frequency range. Priors that routinely imply residual standard deviations near
-zero or many times the response range need reconsideration.
-
-## Reading predictions as distributions
-
-Distributional regression should be checked by simulating complete responses, not only by plotting fitted means. At low and high frequency, compare the observed and predicted center, spread, and tails.
-
-```r
-predicted <- posterior_predict(
-  fit_distributional,
-  newdata = prediction_grid
+```{r}
+#| label: plot-mald-distributional-regression
+#| fig-cap: "MALD item means and within-item standard deviations with fitted mean and scale relations at observed mean duration and phone count."
+grid <- data.frame(
+  log_frequency_subtlex = seq(
+    quantile(mald$log_frequency_subtlex, .01),
+    quantile(mald$log_frequency_subtlex, .99),
+    length.out = 160L
+  )
 )
+grid$log_frequency_c <-
+  grid$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+grid$log_duration_c <- 0
+grid$n_phones_c <- 0
+X_grid <- model.matrix(
+  ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = grid
+)
+Z_grid <- model.matrix(~ log_frequency_c, data = grid)
+grid$fitted_mean <- drop(
+  X_grid %*% frequency_scale_fit$par[seq_len(n_beta)]
+)
+grid$fitted_sd <- exp(drop(
+  Z_grid %*%
+    frequency_scale_fit$par[n_beta + seq_len(ncol(Z_frequency))]
+))
+
+location_opacity <- 0.05
+scale_opacity <- 0.045
+ggplot(mald, aes(log_frequency_subtlex, mean_log_rt)) +
+  geom_point(color = "grey70", alpha = location_opacity, size = 0.5) +
+  geom_line(data = grid, aes(y = fitted_mean), color = "#2C6E9B", linewidth = 0.8) +
+  labs(x = "Log SUBTLEX frequency", y = "Mean log lexical-decision time") +
+  theme_classic(base_size = 12)
 ```
 
-A successful scale model should reproduce the change in conditional spread that motivated it. A lower information criterion without the intended variance pattern would not establish that the model solved the scientific problem.
+```{r}
+#| label: plot-mald-distributional-scale
+#| fig-cap: "Observed within-item log-RT standard deviations and the fitted frequency-dependent scale."
+ggplot(mald, aes(log_frequency_subtlex, sd_log_rt)) +
+  geom_point(color = "grey70", alpha = scale_opacity, size = 0.5) +
+  geom_line(data = grid, aes(y = fitted_sd), color = "#2C6E9B", linewidth = 0.85) +
+  labs(x = "Log SUBTLEX frequency", y = "Log-RT standard deviation") +
+  theme_classic(base_size = 12)
+```
 
-Useful checks compare observations and replicated responses within predictor
-regions. For low and high frequency, calculate a spread statistic such as the
-standard deviation or an interquantile range. Then ask whether the observed
-contrast falls within the distribution produced by the model.
+The likelihood treats retained correct trials as conditionally independent. Because the summaries omit participant identifiers, the fitted scale may combine trial noise with participant heterogeneity and cannot recover participant effects. The model demonstrates separate mean and scale equations; it is not a replacement for the crossed analysis used in the MALD paper.
 
-The mean model must be checked at the same time. A curved mean that is forced to
-be linear can make residual spread appear to change because some predictor
-regions have larger systematic misses. Adding a predictor to the scale equation of a misspecified mean can
-absorb those misses without representing the intended source of variability.
+## Check your understanding
 
-The scale equation may then absorb systematic errors in the mean equation. Model
-criticism should first ask whether the residual center remains near zero, then
-ask whether its spread changes.
+1. Why is log used for the scale equation?
+2. Which sufficient summaries enter the grouped likelihood?
+3. What does the scale-frequency coefficient describe?
+4. Why can the model not separate participant heterogeneity from trial variation?
 
-## Avoiding giving every parameter every predictor
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-The scale formula needs a linguistic or measurement rationale. Adding all mean predictors to all distributional parameters can make the model weakly identified and difficult to interpret.
+1. Modeling $\log\sigma_i$ allows an unconstrained linear predictor while ensuring $\sigma_i=\exp(\cdot)>0$. <!-- dqr-allow: empirical-answer -->
+2. Each item's retained-trial count $n_i$, mean $\overline y_i$, and variance $s_i^2$ enter the grouped Gaussian likelihood. <!-- dqr-allow: empirical-answer -->
+3. The scale-frequency coefficient describes the change in fitted log conditional standard deviation for a one-unit increase in centered log frequency, holding the scale model's other terms fixed. <!-- dqr-allow: empirical-answer -->
+4. Only grouped item summaries remain, so the fitted scale combines trial noise and participant heterogeneity without identifiers that could separate them. <!-- dqr-allow: empirical-answer -->
 
-For a frequency hypothesis, compare a constant-scale model with one prespecified frequency term. Later extensions can add participant or item variation when the design supports it.
+</details>
 
-The predictor also needs enough observations across its range to estimate
-spread. A mean can be estimated from relatively few observations at a predictor
-value, but local variance is harder to learn. Sparse edges of the range may
-leave $\gamma_1$ strongly dependent on its prior.
-
-::: {.callout-note title="Read the scale equation"}
-1. Why is a log link used for $\sigma_i$?
-2. Which coefficient describes the change in the conditional mean?
-3. What posterior predictive pattern would show that the scale model is useful?
-4. Calculate the multiplier on $\sigma$ for a three-unit increase when
-   $\gamma_1=.10$.
-5. Explain how a scale equation can absorb systematic errors in a misspecified mean equation.
-:::
+The next module turns from fitting equations to [prediction targets and model criticism](../model-criticism-and-prediction/prediction-targets.qmd).

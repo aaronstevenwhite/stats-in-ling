@@ -1,57 +1,70 @@
 ---
 title: "Linearity of expectation"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](expectation-of-functions.qmd) showed that a transformation is ordinarily applied before its expectation is taken. A linear combination has an additional simplification. Suppose a corpus sample contains three clause positions, and $I_i$ records whether position $i$ contains a resumptive pronoun. Must we derive the complete distribution of the total before finding its expectation?
+The [preceding page](expectation-of-functions.qmd) showed that a nonlinear transformation is ordinarily applied before its expectation is taken. A linear combination has an additional simplification. In a CMUdict pronunciation, total phone count $X$ is the sum of vowel-phone count $V$ and consonant-phone count $C$. Must we derive a new PMF for $X$ before finding its expectation?
+
+```{r}
+#| label: load-cmudict-linearity
+library(ggplot2)
+
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+cmu$consonant_phone_count <- cmu$phone_count - cmu$vowel_phone_count
+
+mean_total <- mean(cmu$phone_count)
+mean_vowels <- mean(cmu$vowel_phone_count)
+mean_consonants <- mean(cmu$consonant_phone_count)
+linearity_error <- mean_total - (mean_vowels + mean_consonants)
+
+stopifnot(
+  nrow(cmu) == 133854L,
+  all(cmu$phone_count ==
+        cmu$vowel_phone_count + cmu$consonant_phone_count),
+  abs(linearity_error) < 1e-12
+)
+
+c(E_total = mean_total,
+  E_vowels = mean_vowels,
+  E_consonants = mean_consonants,
+  identity_error = linearity_error)
+```
+
+Basically, we can average each contribution and then add those averages. More specifically, [**linearity of expectation**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/04%3A_Expected_Value/4.01%3A_Definitions_and_Basic_Properties) gives
 
 $$
-T\equiv I_1+I_2+I_3.
+\mathbb{E}[X]
+=\mathbb{E}[V+C]
+=\mathbb{E}[V]+\mathbb{E}[C].
 $$
 
-We want the expected total count, but deriving every possible value of $T$ would require tracking all combinations of the three indicators. Basically, we can average each contribution and then add those averages. More specifically, [**linearity of expectation**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/04%3A_Expected_Value/4.01%3A_Definitions_and_Basic_Properties) lets us work term by term instead.
+The expected vowel and consonant contributions are `r sprintf("%.3f", mean_vowels)` and `r sprintf("%.3f", mean_consonants)` phones. Their sum is the empirical expected total, `r sprintf("%.3f", mean_total)` phones.
 
-## Beginning with one indicator
-
-An indicator $I_i$ takes value 1 when the target event occurs and 0 otherwise. Define its target probability by $\pi_i\equiv p_{I_i}(1)$. Then
-
-$$
-\begin{aligned}
-\mathbb{E}[I_i]
-&=0\times p_{I_i}(0)
- +1\times p_{I_i}(1)\\
-&=\pi_i.
-\end{aligned}
-$$
-
-The expected value of an indicator is the probability of the event it marks.
-
-Suppose the three target probabilities are
-
-$$
-\pi_1=.20,
-\qquad
-\pi_2=.50,
-\qquad
-\pi_3=.80.
-$$
-
-Then the expected total is
-
-$$
-\begin{aligned}
-\mathbb{E}[T]
-&=\mathbb{E}[I_1+I_2+I_3]\\
-&=\mathbb{E}[I_1]+\mathbb{E}[I_2]+\mathbb{E}[I_3]\\
-&=.20+.50+.80\\
-&=1.50.
-\end{aligned}
-$$
-
-The value 1.50 need not be an observed count. It is the probability weighted average count under repeated realizations of the three positions.
+```{r}
+#| label: plot-cmudict-linearity
+#| fig-cap: "Every observed total phone count equals the sum of its vowel and consonant counts. Point area represents repeated count pairs."
+ggplot(cmu, aes(vowel_phone_count + consonant_phone_count, phone_count)) +
+  geom_count(color = "grey", fill = "lightgrey") +
+  geom_abline(slope = 1, intercept = 0, color = "steelblue") +
+  coord_equal() +
+  labs(x = "Vowel phones + consonant phones",
+       y = "Total phones",
+       size = "Entries") +
+  theme_classic(base_size = 12)
+```
 
 ## Stating the general rule
 
-For random variables $X_1,\ldots,X_n$ satisfying $\mathbb E[|X_i|]<\infty$ and constants $a_1,\ldots,a_n$,
+For random variables $X_1,\ldots,X_n$ satisfying $\mathbb{E}[|X_i|]<\infty$ and constants $a_1,\ldots,a_n$,
 
 $$
 \mathbb{E}\!\left[\sum_{i=1}^n a_iX_i\right]
@@ -67,47 +80,38 @@ $$
 
 The expectation operation passes through sums and constant multiples.
 
-## Independence is not required
+## Indicators
 
-The three clause positions may be dependent. A speaker who uses a resumptive pronoun in one position might be more likely to use another later in the same discourse. Linearity of expectation still gives
-
-$$
-\mathbb{E}[T]=\pi_1+\pi_2+\pi_3.
-$$
-
-Dependence, as defined for [events in the foundations module](../foundations/independence.qmd), affects how probability is arranged across the possible total counts. It does not change the expected sum when the three marginal event probabilities remain fixed.
-
-A smaller hand check makes this point visible. Suppose exactly one of two variants is selected, so $I_1+I_2=1$ on every outcome. If
+An indicator $I_A$ takes value one when event $A$ occurs and zero otherwise. Define $\pi_A\equiv p_{I_A}(1)$. Then
 
 $$
-p_{I_1}(1)=.70
+\begin{aligned}
+\mathbb{E}[I_A]
+&=0\times p_{I_A}(0)+1\times p_{I_A}(1)\\
+&=\pi_A.
+\end{aligned}
 $$
 
-and
-
-$$
-p_{I_2}(1)=.30,
-$$
-
-then
-
-$$
-\mathbb{E}[I_1+I_2]=.70+.30=1.
-$$
-
-The indicators are constrained by one another, but linearity still holds.
-
-## Computing the expected total in base R
+We verify the identity with the data-derived event that vowel-phone count equals its empirical median.
 
 ```{r}
-#| eval: false
-resumptive_probability <- c(.20, .50, .80)
+#| label: cmudict-indicator-expectation
+median_vowels <- unname(quantile(cmu$vowel_phone_count, 0.5, type = 1))
+median_indicator <- as.integer(cmu$vowel_phone_count == median_vowels)
+indicator_expectation <- mean(median_indicator)
+event_probability <-
+  sum(cmu$vowel_phone_count == median_vowels) / nrow(cmu)
 
-expected_total <- sum(resumptive_probability)
-expected_total
+stopifnot(abs(indicator_expectation - event_probability) < 1e-12)
+
+c(median_vowel_count = median_vowels,
+  E_indicator = indicator_expectation,
+  event_probability = event_probability)
 ```
 
-The result is `1.5`. The calculation can use unequal probabilities for different linguistic contexts.
+## Independence is not required
+
+Vowel and consonant counts are associated across pronunciation entries. Their empirical covariance is `r sprintf("%.3f", mean((cmu$vowel_phone_count - mean_vowels) * (cmu$consonant_phone_count - mean_consonants)))` phones squared. Linearity nevertheless holds because it concerns sums and marginal expectations, not products.
 
 The linear rule should not be extended to nonlinear operations. In general,
 
@@ -116,13 +120,23 @@ $$
 \neq\mathbb{E}[X]\mathbb{E}[Y].
 $$
 
-That product equality requires additional conditions. Linearity concerns sums and constant multiples only.
+That product equality requires additional conditions.
 
 ## Check your understanding
 
-1. If four token positions have target probabilities $.10$, $.25$, $.40$, and $.60$, what is the expected total count?
-2. Why does the expected count calculation not require independent positions?
-3. Show from the two possible indicator values that $\mathbb{E}[I]=p_I(1)$.
-4. Which operation in $\mathbb{E}[XY]$ prevents direct use of linearity?
+1. Verify linearity for the transformed count $2V+C$ using the row values and the component means.
+2. Why does the expected total calculation not require independent vowel and consonant counts?
+3. Show from the two possible indicator values that $\mathbb{E}[I_A]=p_{I_A}(1)$.
+4. Which operation in $\mathbb{E}[VC]$ prevents direct use of linearity?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The row mean of $2V+C$ is 8.849799, and $2\mathbb{E}[V]+\mathbb{E}[C]=2(2.469213)+3.911374=8.849799$. <!-- dqr-allow: empirical-answer -->
+2. Linearity applies to sums and constant multiples regardless of dependence, so vowel and consonant counts need not be independent. <!-- dqr-allow: empirical-answer -->
+3. Because $I_A$ takes only 0 and 1, $\mathbb{E}[I_A]=0\,p_{I_A}(0)+1\,p_{I_A}(1)=p_{I_A}(1)$. <!-- dqr-allow: empirical-answer -->
+4. The product in $\mathbb{E}[VC]$ is not a linear combination, so it cannot be separated without an additional condition such as independence. <!-- dqr-allow: empirical-answer -->
+
+</details>
 
 Linearity simplifies expectations that exist. The [next page](when-expectations-fail.qmd) asks what must be checked before treating an expectation as a finite summary.

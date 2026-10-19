@@ -2,114 +2,162 @@
 title: "Missingness patterns"
 ---
 
-Suppose an acoustic dataset has one row per recorded vowel token and columns for duration, first-formant center frequency (F1), and third-formant center frequency (F3). Some tokens have no usable F3 estimate. Before deciding why the estimator failed or whether a model should predict the absent estimate, we need a representation of where intended measurements are available.
+The Tanaka corpus provides a useful first case because its absences arise inside a linguistic analysis pipeline, not from an invented table. In the Redwoods-style workflow described by [Tanaka et al. (2005)](https://aclanthology.org/P05-1041/), the Jacy grammar generates analyses for a Japanese sentence and a human annotator selects among them using discriminants. [Bond, Kuribayashi, and Hashimoto (2008)](https://www.anlp.jp/proceedings/annual_meeting/2008/pdf_dir/PC1-7.pdf) describe the Tanaka annotation cycle. A selected analysis carries a grammar-derived [Minimal Recursion Semantics (MRS)](https://www.cl.cam.ac.uk/~aac10/papers/mrs.pdf) representation; its predicates and links are thus not separate hand annotations.
 
-For each intended measurement, a [**missingness indicator**](https://stefvanbuuren.name/fimd/sec-MCAR.html) records whether the value was observed. The collection of these indicators is the [**missingness pattern**](https://stefvanbuuren.name/fimd/sec-MCAR.html). Unlike the missing measurements, the indicators are available for every intended cell. This notation extends the retention indicator used for [exclusion rules](../experimental-design/exclusion-rules.qmd), but it records availability rather than a later decision to retain an already observed response.
+We use the current profile extract from the [official Jacy documentation](https://delph-in.github.io/docs/grammars/JacyHinoki/) and the [pinned Jacy release](https://github.com/delph-in/jacy/tree/82c282e2592841478d07aa81a83489344bb16e00). The row unit is one sentence in one `[incr tsdb()]` profile. This release is later than the annotation stage reported in the 2008 paper, so the empirical counts below describe the pinned release rather than reproducing the paper's table.
 
-This setup assumes that token $i$ exists in the realized dataset and that measurement $j$ was intended for it. A speaker who was never sampled has no row to index. Likewise, a condition deliberately omitted by a counterbalancing scheme is part of the [experimental design](../experimental-design/counterbalancing.qmd), not an accidental hole in this acoustic table.
+## Loading and checking the profile table
 
-## Defining the indicator
+```{r}
+#| label: load-jacy-patterns
+#| message: false
+#| warning: false
 
-Let $Y_{ij}$ be the value that measurement protocol $j$ is intended to produce for recorded token $i$. Define
+jacy <- utils::read.csv(
+  "data/jacy-mrs/tanaka-selection.csv",
+  check.names = FALSE
+)
+
+item_key <- paste(jacy$profile, jacy$item_id, sep = "::")
+
+stopifnot(
+  nrow(jacy) == 15000L,
+  !anyDuplicated(item_key),
+  sum(jacy$preferred_analysis_count) == 9128L,
+  sum(jacy$preferred_analysis_count > 0L) == 8670L,
+  sum(jacy$parse_readings == -1L) == 318L
+)
+```
+
+The table has `r format(nrow(jacy), big.mark = ",")` items and `r format(sum(jacy$preferred_analysis_count), big.mark = ",")` preference records. Those are different units: `r sum(jacy$preferred_analysis_count > 1L)` items have more than one accepted result. Thus the selected-item count is `r format(sum(jacy$preferred_analysis_count > 0L), big.mark = ",")`, not the number of preference records.
+
+## From a binary indicator to three observed states
+
+Let $Y_i$ denote a downstream quantity calculated from the selected MRS for item $i$. Its availability indicator is
 
 $$
-R_{ij}=
+R_i=
 \begin{cases}
-1 & \text{if }Y_{ij}\text{ is observed},\\
-0 & \text{if }Y_{ij}\text{ is missing}.
+1 & \text{if at least one analysis was selected},\\
+0 & \text{if no analysis was selected}.
 \end{cases}
 $$
 
-The measurement matrix $\mathbf{Y}$ may contain blanks. The indicator matrix $\mathbf{R}$ does not. It represents each absent intended value as zero and each available estimate as one. Here $R_{i3}=0$ does not mean that token $i$ had a zero-hertz F3 or lacked a phonological category. It means that the protocol did not return a usable F3 estimate.
-
-This coding convention is arbitrary, so it must be stated. We use one for observed and zero for missing throughout the module.
-
-## Working through a small acoustic table
-
-Consider five vowel tokens.
-
-| token | duration | F1 | F3 |
-|:--|--:|--:|--:|
-| t1 | 120 | 310 | 2450 |
-| t2 | 135 | 325 | missing |
-| t3 | 110 | 300 | 2510 |
-| t4 | 160 | missing | missing |
-| t5 | 145 | 340 | 2380 |
-
-The corresponding indicator matrix is
+The binary indicator records whether $Y_i$ is available, but it merges two observed pipeline outcomes. Some unselected items have positive parse readings, while others have no positive reading recorded. We thus define the **selected-analysis availability pattern (SAAP)** as
 
 $$
-\mathbf{R}=
-\begin{pmatrix}
-1&1&1\\
-1&1&0\\
-1&1&1\\
-1&0&0\\
-1&1&1
-\end{pmatrix}.
+C_i=
+\begin{cases}
+\text{selected analysis} & \text{if a preference record exists},\\
+\text{parsed, unselected} & \text{if positive readings exist but none was selected},\\
+\text{no positive reading} & \text{otherwise}.
+\end{cases}
 $$
 
-Read the matrix by column first. Duration has zero missing values, F1 has one, and F3 has two. Then read it by row. Token t4 has two absent measurements, while t2 has one. Finally, read entire row patterns. Three tokens have pattern $(1,1,1)$, one has $(1,1,0)$, and one has $(1,0,0)$.
-
-These summaries answer different questions. Column counts locate measurement procedures with substantial loss. Row counts locate recorded tokens with little usable acoustic information. Pattern counts show which estimates tend to be unavailable together. None yet tells us whether the failures arose from the recording, the tracking algorithm, manual quality control, or a property of the signal.
-
-## Computing the same summaries in R
+The release uses `-1` as a parser sentinel. It is not minus one analysis and should not enter an arithmetic count. The following recoding tests the positive-reading condition instead.
 
 ```{r}
-acoustic <- data.frame(
-  token = paste0("t", 1:5),
-  duration = c(120, 135, 110, 160, 145),
-  F1 = c(310, 325, 300, NA, 340),
-  F3 = c(2450, NA, 2510, NA, 2380)
+#| label: recode-jacy-patterns
+
+jacy$selected <- jacy$preferred_analysis_count > 0L
+jacy$analysis_state <- ifelse(
+  jacy$selected,
+  "Selected analysis",
+  ifelse(
+    jacy$parse_readings > 0L,
+    "Parsed, unselected",
+    "No positive reading"
+  )
+)
+jacy$analysis_state <- factor(
+  jacy$analysis_state,
+  levels = c(
+    "Selected analysis",
+    "Parsed, unselected",
+    "No positive reading"
+  )
 )
 
-measurement_columns <- c("duration", "F1", "F3")
-indicator <- 1L * !is.na(acoustic[measurement_columns])
+state_counts <- as.data.frame(table(jacy$analysis_state))
+names(state_counts) <- c("analysis_state", "items")
+state_counts$proportion <- state_counts$items / nrow(jacy)
 
-indicator
-colSums(1L - indicator)
-rowSums(1L - indicator)
+stopifnot(
+  state_counts$items[state_counts$analysis_state ==
+    "Selected analysis"] == 8670L,
+  state_counts$items[state_counts$analysis_state ==
+    "Parsed, unselected"] == 3666L,
+  state_counts$items[state_counts$analysis_state ==
+    "No positive reading"] == 2664L,
+  all(jacy$analysis_state[jacy$parse_readings == -1L] ==
+    "No positive reading")
+)
+
+state_counts
 ```
 
-`is.na()` returns `TRUE` for a blank, so `!is.na()` returns `TRUE` for an observed cell. Multiplying by one changes the logical values into the stated zero and one coding. Subtracting the indicator from one then produces a count of missing values.
+The `r format(state_counts$items[1], big.mark = ",")` selected items account for `r scales::percent(state_counts$proportion[1], accuracy = 0.1)` of the release. Another `r format(state_counts$items[2], big.mark = ",")` items were parsed but have no accepted preference record, and `r format(state_counts$items[3], big.mark = ",")` have no positive reading. Thus a zero in $R_i$ does not identify one kind of failure.
 
-To count complete row patterns, combine each row of the indicator matrix into a label.
+## The pattern varies across profiles
+
+The same states can be summarized within each profile. This plot shows the observed composition directly; it does not attach a causal explanation to the differences.
 
 ```{r}
-pattern <- apply(indicator, 1, paste0, collapse = "")
-table(pattern)
+#| label: plot-jacy-patterns
+#| fig-width: 7.2
+#| fig-height: 4.2
+
+profile_pattern <- as.data.frame(
+  table(jacy$profile, jacy$analysis_state)
+)
+names(profile_pattern) <- c("profile", "analysis_state", "items")
+profile_pattern$proportion <- with(
+  profile_pattern,
+  items / ave(items, profile, FUN = sum)
+)
+
+stopifnot(all(rowSums(
+  xtabs(proportion ~ profile + analysis_state, profile_pattern)
+) > 0.999999))
+
+ggplot2::ggplot(
+  profile_pattern,
+  ggplot2::aes(profile, proportion, fill = analysis_state)
+) +
+  ggplot2::geom_col(width = 0.78) +
+  ggplot2::scale_fill_manual(
+    values = c("#2B6F8A", "#9E9E9E", "#D1D1D1") # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_y_continuous(
+    labels = scales::label_percent(accuracy = 1) # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::labs(
+    x = "Jacy profile",
+    y = "Proportion of profile items",
+    fill = NULL
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
 ```
 
-The labels `111`, `110`, and `100` correspond to the three patterns identified by hand. The column order belongs to the definition of each label, so a report should give that order.
+The SAAP locates where a selected grammar analysis is and is not available. It does not show that an unselected sentence lacks a meaning, is ungrammatical, or is rare in Japanese usage. Nor does it identify whether a no-selection outcome arose because the grammar did not span the sentence, because the available analyses were rejected, or because another stage of the pipeline intervened.
 
-## Relating the indicator to observed information
+## A pattern does not identify its mechanism
 
-The indicator can be compared with measurements or labels that are observed. Suppose every token also has a vowel label and a recording session. We could tabulate whether F3 is observed within each vowel or session.
+A missingness pattern is observed data. A missingness mechanism is an assumption about the process that produced it. The profile differences above may challenge a description in which selected analyses are equally available everywhere, but they cannot establish why selection varies.
 
-```{r}
-acoustic$vowel <- c("i", "a", "i", "a", "i")
-acoustic$session <- c("morning", "morning", "afternoon", "afternoon", "afternoon")
-acoustic$F3_observed <- !is.na(acoustic$F3)
+This boundary matters for downstream MRS analyses. Restricting attention to selected items changes the analyzed population to sentences for which this grammar-and-selection pipeline supplied an accepted analysis. That population may be appropriate for a narrowly stated grammar evaluation. It is not automatically a sample of all Japanese sentences.
 
-with(acoustic, table(vowel, F3_observed))
-with(acoustic, table(session, F3_observed))
-```
+## Inspecting the pattern
 
-With five tokens, these tables are descriptive rather than stable estimates. Their role is to show which observed dimensions should receive attention in a larger dataset. If missingness differs by vowel, speaker, session, or an observed acoustic measurement, deletion may change the composition of the retained sample.
+1. Why are `preferred_analysis_count` and the number of selected items different units?
+2. What information is lost when the three SAAP states are collapsed to $R_i$?
+3. Why must `parse_readings = -1` be treated as a sentinel rather than a count?
+4. Which claims about Japanese sentences remain unsupported by the profile plot?
 
-## A pattern does not identify a missingness mechanism
+A selected-analysis indicator represents availability, while the three-state SAAP retains the observed distinction between parsing and selection outcomes. Neither object identifies its own cause. The [next page](missingness-mechanisms.qmd) asks what the association with observed profile length can and cannot establish.
 
-An observed pattern does not identify the process that caused it. A table of missingness indicators thus cannot by itself establish a causal account of why values are missing.
-
-For instance, F3 estimates may be absent more often for tokens labeled /a/. One possibility is that the analysis settings interact with the spectra of those tokens; Praat's tracking documentation notes that tracking requires enough formant candidates and that parameter choices matter ([Praat, `Formant: Track`](https://www.fon.hum.uva.nl/praat/manual/Formant__Track___.html)). Another possibility is that the session containing more /a/ tokens had poorer recordings. Both processes can produce the same observed association between vowel label and measurement availability. Neither licenses a conclusion about the phonological representation of /a/.
-
-Pattern analysis can rule out a claim that blanks are distributed evenly when strong structure is visible. It cannot establish that unobserved values are unrelated to their probability of being absent. That claim belongs to a missingness mechanism.
-
-::: {.callout-note title="Inspect the pattern"}
-1. What does $R_{ij}=0$ mean under the convention used here?
-2. For the five token table, which token has the least observed acoustic information?
-3. Why do column counts and pattern counts answer different questions?
-4. Give two processes that could make F3 missing more often for one vowel category.
-:::
-
-A missingness indicator turns the locations of absent intended measurements into fully observed data. Counts by column, row, and joint pattern describe different parts of that structure. The pattern cannot identify its own cause. Different [missingness mechanisms](missingness-mechanisms.qmd) state alternative assumptions about that cause, with respect to particular named variables.
+[Previous: Missing data](index.qmd) · [Next: Missingness mechanisms](missingness-mechanisms.qmd)

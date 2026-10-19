@@ -1,83 +1,27 @@
 ---
 title: "Effective sample size"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [autocorrelation page](autocorrelation.qmd) showed why dependent draws contain less information about some summaries than the same number of independent draws. For the basic calculation, suppose one stationary chain contains
+Dependent draws contain less information about many posterior summaries than the same number of independent target draws. **Effective sample size** (ESS) approximates the independent-draw count that would give comparable Monte Carlo precision for a particular quantity.
 
-$$
-S=3{,}000
-$$
+## From autocorrelation to ESS
 
-saved draws for a difference in log fundamental frequency between two phonological tone categories. Fundamental frequency is the acoustic rate of vocal-fold vibration and may cue tone, but the measurement is not itself a tone category. If those draws are strongly dependent, they do not estimate posterior summaries as precisely as 3,000 independent target draws. Modern software extends the calculation across multiple chains.
-
-The question is how many independent target draws would provide comparable precision for a particular summary. The [**effective sample size**](https://mc-stan.org/docs/reference-manual/analysis.html) (ESS) answers that question approximately.
-
-## Connecting ESS to autocorrelation
-
-For a stationary scalar sequence and a particular scalar function $g(\Theta)$, a basic expression is
+For a stationary scalar sequence of $S$ draws,
 
 $$
 \operatorname{ESS}
 \approx
-\frac{S}
-{1+2\sum_{t=1}^{\infty}\rho_t},
+\frac{S}{1+2\sum_{t=1}^{\infty}\rho_t}.
 $$
 
-where $\rho_t$ is the autocorrelation at lag $t$ for the sequence $g(\Theta_1),\ldots,g(\Theta_S)$. The denominator is the [**integrated autocorrelation time**](https://mc-stan.org/docs/reference-manual/analysis.html), which positive dependence increases, thereby reducing ESS. Negative dependence can make ESS larger than the raw draw count for some summaries, so ESS is not literally a subset of retained iterations.
+The denominator is the integrated autocorrelation time. Positive dependence increases it and reduces ESS; negative dependence can make ESS exceed the raw draw count for some summaries.
 
-## Calculating a geometric case
-
-Suppose
-
-$$
-\rho_t=.5^t.
-$$
-
-The sum of this geometric series is
-
-$$
-\sum_{t=1}^{\infty}.5^t
-=1.
-$$
-
-Thus
-
-$$
-1+2\sum_{t=1}^{\infty}\rho_t
-=1+2(1)
-=3.
-$$
-
-The effective sample size is
-
-$$
-\operatorname{ESS}
-\approx
-\frac{3000}{3}
-=1000.
-$$
-
-The chain output has roughly the mean-estimation precision of 1,000 independent target draws.
-
-```{r}
-#| label: geometric-effective-sample-size
-#| echo: true
-
-saved_draws <- 3000
-rho_sum <- sum(.5^(1:100))
-integrated_time <- 1 + 2 * rho_sum
-ess <- saved_draws / integrated_time
-
-stopifnot(abs(rho_sum - 1) < 1e-12)
-stopifnot(abs(ess - 1000) < 1e-8)
-c(raw_draws = saved_draws,
-  integrated_time = integrated_time,
-  ESS = ess)
-```
-
-## Connecting ESS to Monte Carlo error
-
-If $g(\Theta)$ has posterior standard deviation $\sigma_g$, the Monte Carlo standard error of its estimated mean is approximately
+For a function $g(\Theta)$ with posterior standard deviation $\sigma_g$,
 
 $$
 \operatorname{MCSE}
@@ -85,40 +29,79 @@ $$
 \frac{\sigma_g}{\sqrt{\operatorname{ESS}}}.
 $$
 
-Suppose the posterior standard deviation of the tone contrast is $.30$. With ESS equal to 1,000,
+This is uncertainty in a numerical estimate of a posterior mean, not posterior uncertainty about a linguistic quantity.
 
-$$
-\operatorname{MCSE}
-\approx
-\frac{.30}{\sqrt{1000}}
-\approx.0095.
-$$
+## PCT effective sample sizes
 
-This is numerical uncertainty in the estimated posterior mean. It is not the posterior standard deviation $.30$ and does not describe uncertainty about the linguistic parameter.
+The code computes a textbook positive-sequence estimate for chain one's $\mu$ draws, then obtains modern four-chain bulk and tail ESS from `posterior`.
 
-## Distinguishing bulk and tail information
+```{r}
+#| label: compute-provo-effective-sample-size
+library(posterior)
 
-[**Bulk ESS**](https://mc-stan.org/learn-stan/diagnostics-warnings.html) is the ESS of rank-normalized draws. It is a robust diagnostic for location summaries such as means and medians, though it is not exactly the ESS of the raw-parameter mean. [**Tail ESS**](https://mc-stan.org/learn-stan/diagnostics-warnings.html) is the smaller of ESS estimates associated with the pooled 5% and 95% quantiles, so it diagnoses exploration relevant to interval endpoints and tail probabilities.
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
+)
+production <- posterior::subset_draws(
+  cache$production_draws,
+  variable = c("mu", "sigma")
+)
+draws <- as.data.frame(posterior::as_draws_df(production))
+mu_chain_one <- draws$mu[draws$.chain == 1L]
+acf_values <- as.numeric(acf(mu_chain_one, lag.max = 40L,
+                             plot = FALSE, demean = TRUE)$acf)[-1]
+first_nonpositive <- which(acf_values <= 0)
+if (length(first_nonpositive)) {
+  keep <- first_nonpositive[1] - 1L
+  acf_values <- if (keep > 0L) acf_values[seq_len(keep)] else numeric(0)
+}
+integrated_time <- 1 + 2 * sum(acf_values)
+textbook_ess <- length(mu_chain_one) / integrated_time
 
-A chain may move adequately through the center while rarely reaching a posterior tail. Its mean can then be estimated precisely while a 2.5% quantile remains unstable. The required ESS depends on the quantity being reported.
+mu_draws <- posterior::subset_draws(production, variable = "mu")
+sigma_draws <- posterior::subset_draws(production, variable = "sigma")
+ess_summary <- data.frame(
+  quantity = c("chain-one textbook mu", "four-chain bulk mu",
+               "four-chain tail mu", "four-chain bulk sigma",
+               "four-chain tail sigma"),
+  ess = c(
+    textbook_ess,
+    posterior::ess_bulk(mu_draws),
+    posterior::ess_tail(mu_draws),
+    posterior::ess_bulk(sigma_draws),
+    posterior::ess_tail(sigma_draws)
+  )
+)
+posterior_sd_mu <- sd(draws$mu)
+mcse_mu <- posterior::mcse_mean(mu_draws)
 
-Modern ESS estimates combine multiple chains and stabilize the estimated autocorrelation sequence before summing it. The infinite-series formula is the conceptual target, while software must estimate it from finite draws. Current Stan guidance recommends bulk and tail ESS of roughly 100 per chain for final summaries, but the inferential requirement is that MCSE be small enough for the precision of the reported claim. The count threshold supports reliable diagnostics; it is not a universal guarantee of substantive precision.
+stopifnot(nrow(provo) == 55L, length(mu_chain_one) == 1000L,
+          min(ess_summary$ess) > 100L)
+ess_summary
+```
 
-## Effective sample size does not count participants
+The one-chain textbook value is `r round(textbook_ess)`. The modern bulk ESS for $\mu$ is `r round(posterior::ess_bulk(mu_draws))`, while its tail ESS is `r round(posterior::ess_tail(mu_draws))`. These are different estimators applied to different collections of draws, so their difference is not a disagreement.
 
-ESS counts simulation information, not participants, speakers, items, or tokens. An ESS of 1,000 thus does not mean that the study has 1,000 observations.
+The posterior standard deviation of $\mu$ is `r sprintf("%.6f", posterior_sd_mu)`, whereas the estimated MCSE of its posterior mean is `r sprintf("%.6f", mcse_mu)`. This separation is the point of ESS.
 
-Running longer can increase ESS and reduce Monte Carlo error. It cannot add information to the posterior target. Low ESS calls the numerical summary into question, while wide posterior uncertainty may remain even after ESS is excellent.
+Bulk ESS uses rank-normalized draws and is useful for location summaries. Tail ESS targets information relevant to the 5% and 95% quantiles. A chain can move adequately through the center but rarely reach a tail, so the appropriate diagnostic depends on the reported summary.
 
-Raw draw count is thus a storage fact, while ESS is a summary-specific estimate of computational information. Neither is a measure of linguistic sample size.
-
-::: {.callout-note title="Problem Set 4 connection"}
-[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) reports both bulk and tail effective sample sizes for the model quantities used in the projection analysis. A stable posterior center does not establish that interval endpoints are estimated with comparable simulation information, so both summaries are required.
-:::
+ESS counts simulation information, not passages, word positions, or readers. Running longer can increase ESS and reduce MCSE. It cannot add evidence to the PCT or narrow its posterior target.
 
 ## Check your understanding
 
-1. Why does positive autocorrelation usually reduce ESS?
-2. If the integrated autocorrelation time is five and $S=10{,}000$, what is ESS?
-3. Why can bulk ESS and tail ESS differ?
-4. Which quantity changes when the sampler runs longer, posterior spread or Monte Carlo error?
+1. Why does positive autocorrelation tend to reduce ESS?
+2. Why can bulk and tail ESS differ?
+3. Which quantity changes when the sampler runs longer: posterior spread or MCSE?
+4. Why is PCT ESS not a linguistic sample size?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Positive autocorrelations increase the integrated autocorrelation time in the denominator of ESS. <!-- dqr-allow: empirical-answer -->
+2. Movement can be efficient near the posterior center but slow in the tails, and the two diagnostics target different summaries of the draws. <!-- dqr-allow: empirical-answer -->
+3. MCSE can decrease as the run grows; posterior spread remains a property of the fixed posterior target. <!-- dqr-allow: empirical-answer -->
+4. PCT ESS counts information in simulated posterior draws, not Provo passages, word positions, readers, or any other linguistic unit. <!-- dqr-allow: empirical-answer -->
+
+</details>

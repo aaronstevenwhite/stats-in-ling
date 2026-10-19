@@ -2,103 +2,191 @@
 title: "Predictive loss"
 ---
 
-The earlier [mean-squared-error page](../statistical-inference/mean-squared-error.qmd) used squared error to evaluate an estimator across repeated samples. Predictive loss uses the same algebra to evaluate predictions for held-out responses. The random object and averaging scheme differ, so the two quantities should not be conflated.
+The [training-and-test page](training-and-test-data.qmd) produced predictions for readers absent during fitting. An evaluation still needs a numerical definition of error and an averaging unit. These choices form the **error-consequence problem**: they determine which misses receive the most weight and which empirical units receive equal influence.
 
-Once [what must be held out](prediction-targets.qmd) is fixed, an evaluation still needs a numerical definition of error. A 20 ms mistake in first-fixation duration and a 100 ms mistake should not receive the same assessment, but there is more than one defensible way to express how much worse the second mistake is. This remaining choice is the **error-consequence problem**.
+A [**loss function**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) $L(y,\widehat y)$ assigns a nonnegative cost to predicting $\widehat y$ when the observed response is $y$. The [**predictive risk**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is expected loss on new responses from the population under study. A held-out mean loss estimates that expectation for the split and averaging unit stated by the analysis.
 
-A [**loss function**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) $L(y,\widehat{y})$ assigns a nonnegative cost to predicting $\widehat{y}$ when the observed response is $y$. Lower loss is better, and zero loss usually occurs when prediction and observation coincide. The choice of loss states which mistakes matter for the intended use.
-
-The [**predictive risk**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) of a procedure is its expected loss on new responses from the population under study. A held-out mean loss estimates that expectation from the available data. Risk is thus an expectation over future responses, not a synonym for one observed error.
-
-## Squared loss
+## Squared and absolute loss
 
 The [**squared-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is
 
 $$
-L_{\mathrm{SE}}(y,\widehat{y})=(y-\widehat{y})^2.
+L_{\mathrm{SE}}(y,\widehat y)=(y-\widehat y)^2.
 $$
 
-Doubling the absolute error multiplies squared loss by four. Thus squared loss gives large errors disproportionate influence. Over $N$ held-out predictions, the mean squared error is
+Over $N$ held-out predictions, mean squared error and root mean squared error are
 
 $$
 \operatorname{MSE}
 =
-\frac{1}{N}\sum_{i=1}^N (y_i-\widehat{y}_i)^2.
+\frac{1}{N}\sum_{i=1}^N(y_i-\widehat y_i)^2,
+\qquad
+\operatorname{RMSE}=\sqrt{\operatorname{MSE}}.
 $$
 
-The [**root mean squared error (RMSE)**](https://otexts.com/fpp3/accuracy.html) is the square root of mean squared error:
-
-$$
-\operatorname{RMSE}=\sqrt{\operatorname{MSE}},
-$$
-
-Taking the square root returns the score to the response's units. If the response is log reading time, RMSE remains on the log scale; it is not an error in milliseconds merely because the untransformed response was measured that way.
-
-The conditional mean is the optimal point prediction under squared loss. This connection explains why RMSE is a natural score for a regression model that estimates $\mathbb{E}[Y\mid X]$. It does not make squared loss universally appropriate.
-
-## Absolute loss
+Squaring gives large errors disproportionate influence. Taking the root returns the score to the response scale. For Natural Stories, that scale is log reading time, not milliseconds. The conditional mean is the optimal point prediction under squared loss.
 
 The [**absolute-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is
 
 $$
-L_{\mathrm{AE}}(y,\widehat{y})=|y-\widehat{y}|,
+L_{\mathrm{AE}}(y,\widehat y)=|y-\widehat y|,
 $$
 
-Its held-out average is the [**mean absolute error (MAE)**](https://otexts.com/fpp3/accuracy.html):
+with held-out average
 
 $$
 \operatorname{MAE}
 =
-\frac{1}{N}\sum_{i=1}^N |y_i-\widehat{y}_i|.
+\frac{1}{N}\sum_{i=1}^N|y_i-\widehat y_i|.
 $$
 
-Absolute loss grows linearly with the error. A mistake of 100 units costs twice as much as a mistake of 50 units, rather than four times as much. The conditional median is the optimal point prediction under absolute loss.
+Absolute loss grows linearly, and the conditional median is its optimal point prediction. Reporting RMSE and MAE can expose sensitivity to large errors, but the analysis should still designate a primary loss before comparing models.
 
-RMSE and MAE can thus prefer different models. A model that is usually accurate but makes a few very large mistakes may have low MAE and high RMSE. Reporting both can reveal this pattern, but it does not remove the need to designate a primary loss. Otherwise, the preferred score may be selected after the comparison is seen.
+## Computing loss for held-out Natural Stories readers
 
-## A small linguistic example
-
-Suppose two models predict mean log first-fixation duration for four fixated word positions. The numbers are hypothetical, so the calculation illustrates the loss rather than making a claim about lexical processing.
+The code reconstructs participant fold 1 from the [Natural Stories run](prediction-targets.qmd#natural-stories), fits the same fold-local regression, and computes the errors. It then averages squared and absolute loss in two ways: once over response rows and once within readers before averaging readers.
 
 ```{r}
-#| eval: false
+#| label: natural-predictive-loss
+#| message: false
+#| warning: false
 
-observed <- c(5.1, 5.2, 5.0, 5.4)
-model_a <- c(5.0, 5.3, 5.1, 5.3)
-model_b <- c(5.1, 5.2, 5.0, 5.8)
+natural_all <- readRDS(
+  "data/natural-stories/natural-stories-corrected.rds"
+)
+keep <- with(
+  natural_all,
+  is.finite(log_rt) & is.finite(word_length) &
+    is.finite(log_unigram_frequency) & is.finite(gpt3_surprisal)
+)
+natural <- natural_all[keep, c(
+  "participant_id", "story_id", "log_rt", "word_length",
+  "log_unigram_frequency", "gpt3_surprisal"
+)]
 
-loss <- function(prediction) {
-  error <- observed - prediction
-  c(
-    RMSE = sqrt(mean(error^2)),
-    MAE = mean(abs(error))
+participants <- sort(unique(as.character(natural$participant_id)))
+set.seed(20261101)
+participant_map <- data.frame(
+  participant_id = sample(participants, length(participants)),
+  fold = rep(seq_len(5), length.out = length(participants))
+)
+fold_lookup <- setNames(
+  participant_map$fold, participant_map$participant_id
+)
+participant_fold <- unname(fold_lookup[natural$participant_id])
+test <- participant_fold == 1
+train <- !test
+
+predictors <- c(
+  "word_length", "log_unigram_frequency", "gpt3_surprisal"
+)
+training_mean <- vapply(
+  natural[train, predictors, drop = FALSE], mean, numeric(1)
+)
+training_sd <- vapply(
+  natural[train, predictors, drop = FALSE], sd, numeric(1)
+)
+training_matrix <- sweep(
+  as.matrix(natural[train, predictors]), 2, training_mean, "-"
+)
+training_matrix <- sweep(training_matrix, 2, training_sd, "/")
+test_matrix <- sweep(
+  as.matrix(natural[test, predictors]), 2, training_mean, "-"
+)
+test_matrix <- sweep(test_matrix, 2, training_sd, "/")
+
+fit <- lm.fit(
+  cbind("(Intercept)" = 1, training_matrix), natural$log_rt[train]
+)
+prediction <- drop(
+  cbind("(Intercept)" = 1, test_matrix) %*% fit$coefficients
+)
+error <- natural$log_rt[test] - prediction
+held_out_participant <- natural$participant_id[test]
+
+participant_mse <- aggregate(
+  error^2,
+  list(participant_id = held_out_participant),
+  mean
+)
+participant_mae <- aggregate(
+  abs(error),
+  list(participant_id = held_out_participant),
+  mean
+)
+
+loss_summary <- data.frame(
+  averaging_unit = c("response row", "participant"),
+  n_units = c(length(error), nrow(participant_mse)),
+  mse_log_rt = c(mean(error^2), mean(participant_mse$x)),
+  rmse_log_rt = c(
+    sqrt(mean(error^2)), sqrt(mean(participant_mse$x))
+  ),
+  mae_log_rt = c(mean(abs(error)), mean(participant_mae$x))
+)
+loss_summary
+
+calibration <- data.frame(
+  observed = natural$log_rt[test], predicted = prediction
+)
+calibration$bin <- cut(
+  calibration$predicted,
+  breaks = unique(quantile(
+    calibration$predicted,
+    probs = seq(0, 1, length.out = 11),
+    names = FALSE
+  )),
+  include.lowest = TRUE
+)
+calibration_bins <- do.call(rbind, lapply(
+  split(calibration, calibration$bin),
+  function(rows) data.frame(
+    mean_predicted = mean(rows$predicted),
+    mean_observed = mean(rows$observed)
   )
-}
+))
 
-rbind(A = loss(model_a), B = loss(model_b))
+set.seed(20261102)
+display_rows <- sample.int(
+  nrow(calibration), min(12000, nrow(calibration))
+)
+ggplot2::ggplot(
+  calibration[display_rows, ],
+  ggplot2::aes(predicted, observed)
+) +
+  ggplot2::geom_point(size = 0.45, alpha = 0.08, color = "grey30") + # dqr-allow: algorithm-setting
+  ggplot2::geom_abline(
+    slope = 1, intercept = 0, color = "grey55", linewidth = 0.45
+  ) +
+  ggplot2::geom_point(
+    data = calibration_bins,
+    ggplot2::aes(mean_predicted, mean_observed),
+    inherit.aes = FALSE,
+    size = 1.7,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::labs(
+    x = "Held-out predicted log reading time",
+    y = "Observed log reading time"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
 ```
 
-Model B predicts three positions exactly but badly misses the fourth. Absolute loss may reward its three exact predictions, while squared loss emphasizes the one large error. The scores disagree because they encode different consequences, not because one calculation is defective.
+The row-weighted RMSE is `r sprintf("%.4f", loss_summary$rmse_log_rt[loss_summary$averaging_unit == "response row"])` and MAE is `r sprintf("%.4f", loss_summary$mae_log_rt[loss_summary$averaging_unit == "response row"])`. Giving each held-out reader equal weight yields RMSE `r sprintf("%.4f", loss_summary$rmse_log_rt[loss_summary$averaging_unit == "participant"])` and MAE `r sprintf("%.4f", loss_summary$mae_log_rt[loss_summary$averaging_unit == "participant"])`. The calculations use the same predictions. They differ because the second estimand first averages loss within each of the `r nrow(participant_mse)` readers.
 
-## The unit of averaging
-
-The formula for MSE averages over $N$ observations. But the predictive question may concern groups. If one passage contains 100 word positions and another contains 20, a position-weighted MSE gives the first passage five times as much influence. A passage-weighted score first computes loss within each passage and then averages the passage means.
-
-Neither weighting is neutral. Position weighting describes a randomly selected observed position from the corpus mixture. Passage weighting describes first selecting uniformly among the represented passages and then selecting a position within that passage. Neither score automatically generalizes to a population of naturally occurring texts that the corpus sampling process did not represent. The predictive question should determine which is primary.
-
-The weighting choice also determines the relevant replication for uncertainty. Thousands of position losses may be observed, but a new-passage claim varies across the number of passages. We will return to this issue after defining grouped validation.
+This is the **averaging-unit effect**. Row weighting describes a randomly selected retained response from the fold. Participant weighting describes first selecting uniformly among held-out readers and then averaging that reader's responses. Neither is neutral, and neither becomes a story-level estimate merely because all stories occur in the data.
 
 ## Loss is not explanatory adequacy
 
-A lower predictive loss does not show that a predictor is causal, that a latent component corresponds to a linguistic category, or that a model's parameters have the interpretation assigned to them. In the eye-movement example, lower loss for lexical frequency does not isolate lexical access from correlated properties of words, readers, and contexts. Prediction evaluates a specified mapping from available information to responses under the stated data separation and population.
+Lower predictive loss does not show that a predictor is causal or that a reader internally computes the fitted predictor. In this regression, lower loss from GPT-3 surprisal would not isolate lexical expectation from correlated properties of words and contexts. Prediction evaluates a specified mapping from available information to responses under a stated separation.
 
-Conversely, a theoretically meaningful coefficient need not produce a practically important loss reduction. A small and stable association can be real while contributing little to prediction relative to other variation. Comparing predictive loss thus addresses an additional question rather than replacing parameter interpretation.
+Conversely, a theoretically meaningful coefficient can contribute little to held-out prediction. A small, stable association may be estimable while accounting for little response variation. Predictive loss thus addresses an additional question rather than replacing parameter interpretation.
 
 ## Checking the loss
 
-1. Which score, RMSE or MAE, is more sensitive to a small number of large errors? Why?
-2. If the response is log duration, on what scale is RMSE computed?
-3. Explain the population weighting difference between a position-weighted and passage-weighted loss.
-4. Can a predictor have a nonzero estimated coefficient but fail to improve held-out loss? Give one reason.
+1. Which score is more sensitive to a small number of large errors?
+2. On what response scale are the reported Natural Stories scores?
+3. Why do row-weighted and participant-weighted losses differ when their prediction vector is identical?
+4. Can a nonzero coefficient fail to improve held-out loss?
 
-A loss function defines the cost of each prediction error. Squared loss targets conditional means and emphasizes large misses; absolute loss targets conditional medians and grows linearly. The averaging unit determines what receives weight. The [next page](bias-variance-tradeoff.qmd) explains why predictive error changes across possible training samples. [Training and test data](training-and-test-data.qmd) then explains why loss must be computed on responses excluded from fitting.
+A loss function defines the consequence of each error, while the averaging unit determines what receives equal weight. The [previous page](training-and-test-data.qmd) constructed the split. The [next page](bias-variance-tradeoff.qmd) uses an empirically calibrated simulation to separate prediction bias and prediction variance.

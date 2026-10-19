@@ -1,158 +1,118 @@
 ---
 title: "Influence"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](leverage-and-influence.qmd) defined leverage from predictor position alone. But an unusual
-position need not change the fitted coefficients. [**Influence**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) measures the
-extent to which a fitted result depends on a particular observation.
+Leverage measures unusual predictor position. **Influence** asks how much the fitted result changes when an observation, or a scientifically meaningful group of observations, is removed.
 
-Influence asks a case-deletion question: how much would the
-fit change if observation $i$ were not used? This question combines the
-observation's predictor position with the mismatch between its response and the
-fitted conditional mean.
+## Cook's distance and grouped deletion
 
-## Comparing two edge observations
-
-Consider predictor values
-
-$$
-\mathbf{x}=(2,3,4,5,11).
-$$
-
-The point at $x=11$ has high leverage. Now consider two possible responses for
-that point.
-
-In dataset A, the responses are
-
-$$
-\mathbf{y}_A=(6.1,6.4,6.5,6.8,8.0).
-$$
-
-In dataset B, only the last response changes:
-
-$$
-\mathbf{y}_B=(6.1,6.4,6.5,6.8,10.5).
-$$
-
-The last observation has the same leverage in both datasets because the
-predictor values are identical. But it should affect the fitted slope much more
-in dataset B because its response lies farther from the relation supported by
-the four central observations.
-
-## Asking the deletion question directly
-
-We can fit each dataset with and without the edge observation:
-
-```{r}
-#| label: compare-case-deleted-slopes
-#| echo: true
-dataset_a <- data.frame(
-  x = c(2, 3, 4, 5, 11),
-  y = c(6.1, 6.4, 6.5, 6.8, 8.0)
-)
-
-dataset_b <- transform(
-  dataset_a,
-  y = c(6.1, 6.4, 6.5, 6.8, 10.5)
-)
-
-fit_a <- lm(y ~ x, data = dataset_a)
-fit_b <- lm(y ~ x, data = dataset_b)
-
-fit_a_without_edge <- lm(y ~ x, data = dataset_a[-5, ])
-fit_b_without_edge <- lm(y ~ x, data = dataset_b[-5, ])
-
-rbind(
-  a_full = coef(fit_a),
-  a_without_edge = coef(fit_a_without_edge),
-  b_full = coef(fit_b),
-  b_without_edge = coef(fit_b_without_edge)
-)
-```
-
-Removing the edge observation changes the dataset B slope much more. This is a
-direct answer to the case-deletion question for one coefficient.
-
-## Summarizing case deletion with Cook's distance
-
-Refitting a model after deleting every observation can produce many coefficient
-comparisons. Cook's distance summarizes the overall change in fitted values when
-observation $i$ is deleted:
+For a Gaussian linear model with $p$ coefficients and residual variance estimate $s^2$, Cook's distance for position $i$ is
 
 $$
 D_i
-=\frac{e_i^2}{p\widehat\sigma^2}
-\frac{h_{ii}}{(1-h_{ii})^2},
+=
+\frac{e_i^2}{ps^2}
+\frac{h_{ii}}{(1-h_{ii})^2}.
 $$
 
-where $e_i$ is the residual, $h_{ii}$ is the leverage,
-$\widehat\sigma^2$ is the fitted residual variance, and $p$ is the number of
-estimated coefficients.
-
-The formula exposes the two ingredients. A larger residual increases influence,
-and larger leverage increases influence. Neither ingredient alone guarantees a
-large Cook's distance.
+Large residuals and high leverage can jointly produce a large $D_i$. But the PRS retains passages as a grouping unit, so deleting one position is not the only relevant perturbation. We also refit after deleting each whole passage.
 
 ```{r}
-#| label: compare-cooks-distance
-#| echo: true
-cbind(
-  x = dataset_a$x,
-  leverage = hatvalues(fit_a),
-  cooks_a = cooks.distance(fit_a),
-  cooks_b = cooks.distance(fit_b)
+#| label: compute-provo-influence
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
 )
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+provo$cooks_distance <- cooks.distance(fit)
+
+full_slope <- coef(fit)[["cloze_surprisal_c"]]
+passage_deletion <- do.call(rbind, lapply(
+  sort(unique(provo$Text_ID)),
+  function(current_passage) {
+    reduced_fit <- lm(
+      mean_log_ffd ~ cloze_surprisal_c,
+      data = subset(provo, Text_ID != current_passage)
+    )
+    reduced_slope <- coef(reduced_fit)[["cloze_surprisal_c"]]
+    data.frame(
+      deleted_passage = current_passage,
+      deleted_positions = sum(provo$Text_ID == current_passage),
+      slope_without_passage = reduced_slope,
+      slope_change = reduced_slope - full_slope
+    )
+  }
+))
+passage_deletion$absolute_change <- abs(passage_deletion$slope_change)
+most_influential_passage <- passage_deletion$deleted_passage[
+  which.max(passage_deletion$absolute_change)
+]
+fit_without_passage <- lm(
+  mean_log_ffd ~ cloze_surprisal_c,
+  data = subset(provo, Text_ID != most_influential_passage)
+)
+
+stopifnot(nrow(passage_deletion) == length(unique(provo$Text_ID)))
+
+passage_deletion[order(-passage_deletion$absolute_change), ][1:6, ]
 ```
 
-The last observation has the same leverage in both columns but a different
-Cook's distance. Its response determines whether the unusual predictor position
-substantially changes the fit.
+The largest whole-passage deletion changes the slope by `r sprintf("%.6f", passage_deletion$slope_change[which.max(passage_deletion$absolute_change)])` log milliseconds per bit. This change is computed by removing passage `r most_influential_passage`, not by inventing a perturbation.
 
-## Treating a large value as a question
+```{r}
+#| label: plot-provo-influence
+#| fig-cap: "Observed Provo positions with the full fit in blue and the fit after deleting the most slope-influential passage in black."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+grid$full_fit <- predict(fit, newdata = grid)
+grid$deleted_fit <- predict(fit_without_passage, newdata = grid)
 
-A large Cook's distance identifies an observation that deserves investigation.
-It does not decide that the observation is invalid. The useful sequence is:
+point_opacity <- 0.18
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey70", alpha = point_opacity, size = 0.8) +
+  geom_line(data = grid, aes(y = full_fit), color = "#2C6E9B", linewidth = 0.85) +
+  geom_line(data = grid, aes(y = deleted_fit), color = "black", linetype = 2) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
 
-1. verify the measurement, transcription, and coding;
-2. check whether the observation belongs to the population targeted by the study;
-3. inspect which coefficient or fitted region changes under deletion; and
-4. report whether the theoretical conclusion depends on the observation.
+The two lines remain close. That stability is specific to the fitted PRS slope under these passage deletions. It does not show that the missing reader-level grouping is unimportant.
 
-These steps answer different questions. A miscoded value can be corrected. A
-valid but unusual token cannot be deleted merely because it changes the result.
+## Check your understanding
 
-Deleting an observation only because it produces an inconvenient effect estimate changes the sample using information about the desired
-conclusion. It can make the reported uncertainty much too small.
+1. Why does Cook's distance combine residual size and leverage?
+2. Which deletion unit matches the remaining PRS grouping structure?
+3. What would a large passage-level slope change imply?
+4. Why is influence a diagnostic rather than a deletion command?
 
-## Connecting influence to linguistic sampling
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-Suppose a study of a rare syntactic construction contains one verb with many
-tokens in an unusual frame. Row-level Cook's distances ask about individual
-tokens. But the theoretical result may depend on the verb as a group. Deleting
-one token at a time may then make every value look modest even though deleting
-the verb changes the conclusion.
+1. Residual size measures disagreement with the fitted line, while leverage measures capacity to move it; Cook's distance is large when those features act together. <!-- dqr-allow: empirical-answer -->
+2. Deleting a whole passage matches the remaining grouping structure marked by `Text_ID`. <!-- dqr-allow: empirical-answer -->
+3. A large passage-level slope change would show that the fitted surprisal slope is sensitive to evidence concentrated in that passage. <!-- dqr-allow: empirical-answer -->
+4. Influence identifies consequential observations or groups for investigation; deletion requires a separate measurement or design justification. <!-- dqr-allow: empirical-answer -->
 
-The diagnostic unit should match the sampling claim. If the intended
-generalization concerns verbs, a verb-level deletion analysis is informative. If
-it concerns speakers, a speaker-level analysis is informative. This principle
-does not require a multilevel model, though later models represent these grouped
-sources of variation directly.
+</details>
 
-## Reporting the sensitivity
-
-An influence analysis is most useful when it reports the quantity that changes.
-For instance: "Deleting verb V changed the frame coefficient from .42 to .17,
-while deleting any other verb changed it by less than .04." This statement lets
-the reader evaluate the concentration of evidence.
-
-A statement that "no influential observations were found" is weaker unless the
-analysis defines the diagnostic, the unit of deletion, and the consequence that
-was examined.
-
-::: {.callout-note title="Answer the case-deletion question"}
-1. Why can two observations with the same leverage have different influence?
-2. Which two quantities enter Cook's distance?
-3. Why does a large Cook's distance not by itself license deletion?
-4. If the scientific generalization concerns verbs, why might deleting one row
-   at a time answer the wrong question?
-:::
+The [next page](bayesian-linear-regression.qmd) places a posterior distribution over the same line.

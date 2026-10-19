@@ -1,98 +1,128 @@
 ---
-title: "Singular mixed model fits"
+title: "Singular fits"
+execute: {warning: false, message: false}
 ---
 
-The [random-effects-correlation page](random-effect-correlations.qmd) represented intercept and slope deviations with a covariance matrix. A [**singular fit**](https://lme4.github.io/lme4/reference/isSingular.html) occurs when the estimated random-effects covariance matrix has lower rank than the model specification allows.
+The [random-effects-correlation page](random-effect-correlations.qmd) represented intercept and slope deviations with a covariance matrix. A **singular fit** occurs when the estimated covariance matrix has lower rank than the formula allows.
 
-A singularity warning concerns the rank of the fitted covariance matrix. A convergence warning concerns the numerical search used to fit the model.
+## Rank and covariance dimensions
 
-## Beginning with a two dimensional structure
+Suppose a grouping term requests $q$ random-effect dimensions with covariance matrix $\boldsymbol\Sigma$. A nonsingular fit requires
 
-Suppose a model includes listener random intercepts and noise slopes:
+$$
+\operatorname{rank}(\boldsymbol\Sigma)=q.
+$$
 
-```r
-log_rt ~ noise_condition +
-  (1 + noise_condition | listener)
-```
-
-The listener covariance matrix is
+Writing the eigendecomposition as
 
 $$
 \boldsymbol\Sigma
-=
-\begin{bmatrix}
-\tau_0^2 & \rho\tau_0\tau_1\\
-\rho\tau_0\tau_1 & \tau_1^2
-\end{bmatrix}.
+=\mathbf Q\boldsymbol\Lambda\mathbf Q^{\mathsf T},
 $$
 
-With positive intercept and slope variances and a correlation inside the interval $(-1,1)$, the matrix has rank two. It represents two directions of group variation.
+the rank is the number of positive eigenvalues in $\boldsymbol\Lambda$. If one eigenvalue is zero, one linear combination of the requested deviations has no fitted variation and
 
-If $\widehat\tau_1=0$, the slope direction collapses. The model requested between-group slope variation, but the fitted covariance matrix contains none. If $|\widehat\rho|=1$, one deviation is a perfect linear function of the other, and the matrix again loses a dimension.
+$$
+\operatorname{rank}(\boldsymbol\Sigma)<q.
+$$
 
-In either case, the fitted random-effect covariance matrix has lost a dimension and is singular.
+In a two-dimensional intercept-slope model, singularity can arise when a variance reaches zero or when the correlation reaches an endpoint. In a larger structure, a collapsed dimension may involve a combination of several terms and may not be obvious from any one printed variance.
 
-## Separating singularity from nonconvergence
+## Fitting a predeclared MALD stress test
 
-An optimizer can converge successfully to a boundary value while the fitted covariance matrix is singular. Software may thus report successful convergence and a singularity warning for the same fit.
+The stress-test model asks participants to vary in an intercept, frequency slope, duration slope, trial-order slope, and frequency-by-duration interaction slope. It also gives words a trial-order slope. The fixed interaction remains in both models because the diagnostic concerns the group covariance structure.
 
-The reverse is also possible. An estimated covariance matrix can be nonsingular even though the optimizer failed to settle at a reliable optimum. That fit receives a convergence warning without a singularity warning.
+```{r}
+#| label: mald-singular
+library(lme4)
+library(ggplot2)
 
-Both checks are needed:
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
 
-```r
-isSingular(fit_correlated, tol = 1e-4)
-summary(fit_correlated)
+standardize <- function(x) {
+  as.numeric(scale(x))
+}
+
+mald$z_frequency <- standardize(mald$log_frequency_subtlex)
+mald$z_duration <- standardize(mald$log_duration)
+mald$z_trial <- standardize(mald$trial_order)
+
+fit_control <- lmerControl(
+  optimizer = "bobyqa",
+  optCtrl = list(maxfun = 200000L)
+)
+
+overfit <- lmer(
+  log_rt ~ z_frequency * z_duration + z_trial +
+    (1 + z_frequency * z_duration + z_trial | participant_id) +
+    (1 + z_trial | item),
+  data = mald,
+  control = fit_control
+)
+
+revised <- lmer(
+  log_rt ~ z_frequency * z_duration + z_trial +
+    (1 + z_frequency + z_duration + z_trial | participant_id) +
+    (1 + z_trial | item),
+  data = mald,
+  control = fit_control
+)
+
+singularity_check <- c(
+  interaction_slope_model = isSingular(overfit, tol = 1e-4),
+  revised_model = isSingular(revised, tol = 1e-4)
+)
+singularity_check
 ```
 
-The first command checks the rank of the fitted covariance matrix. The summary and optimizer messages report whether the numerical search converged.
-
-## Inspecting the design before changing the model
-
-A random slope requires within group predictor variation. If many listeners appear in only one condition, the design cannot separate their baselines from listener specific condition associations. Few listener levels or few observations per condition can also leave the slope variance weakly informed.
-
-The same reasoning applies to crossed item slopes. A condition that varies within listeners but not within items may support a listener slope and fail to support an item slope.
-
-Thus a singular fit should send us back to the sources of dependence and the within-group predictor support. The first question is not which term makes a warning disappear. It is which requested population variation the design can identify.
+The model requesting participant interaction-slope variation is singular. Removing only that unsupported random slope gives the prespecified nonsingular revision. This comparison does not remove the fixed frequency-by-duration interaction or the item trial-order slope.
 
 ## Inspecting the fitted dimensions
 
-`rePCA()` rotates the estimated covariance matrix into independent directions and reports their standard deviations:
+`rePCA()` rotates each fitted covariance matrix into orthogonal directions. The returned standard deviations are the square roots of the rotated, residual-scaled eigenvalues.
 
-```r
-rePCA(fit_correlated)
+```{r}
+#| label: mald-singular-dimensions
+overfit_sd <- rePCA(overfit)$participant_id$sdev
+revised_sd <- rePCA(revised)$participant_id$sdev
+
+dimension_table <- rbind(
+  data.frame(
+    model = "Interaction slope requested",
+    dimension = seq_along(overfit_sd),
+    orthogonal_sd = overfit_sd
+  ),
+  data.frame(
+    model = "Interaction slope removed",
+    dimension = seq_along(revised_sd),
+    orthogonal_sd = revised_sd
+  )
+)
+dimension_table
 ```
 
-In a larger random effects structure, individual variances and correlations may not reveal the collapsed combination. The rotated representation can show that one linear combination of deviations has an estimated standard deviation near zero.
+The final participant direction in the larger model collapses to the boundary. Because the rotated directions are linear combinations, this fact is stronger than merely inspecting whether one named standard deviation looks small.
 
-When a formula has several slopes, the singularity may involve a combination of them rather than one variance component equal to zero. The rotated standard deviations help identify that combination.
+```{r}
+#| label: singularity-plot
+ggplot(
+  dimension_table,
+  aes(x = factor(dimension), y = orthogonal_sd)
+) +
+  geom_col(width = 0.72, fill = "grey55") +
+  facet_wrap(~model) +
+  labs(
+    x = "Participant covariance dimension",
+    y = "Orthogonal SD (residual-scaled)"
+  ) +
+  theme_classic()
+```
 
-## Revising the population model deliberately
+## Separating singularity from convergence
 
-After inspecting the design and fitted covariance matrix, consider the following responses.
+An optimizer can reach a boundary optimum successfully, producing a singular fit without a convergence failure. Conversely, a nonsingular covariance estimate can accompany an optimizer warning. `isSingular()` and the optimizer diagnostics answer different questions and both should be checked.
 
-1. removing an unsupported correlation while retaining both variances;
-2. removing a slope variance that the design cannot identify;
-3. collecting more levels or within group contrasts;
-4. using a regularized model that retains uncertainty near the boundary.
+A singular fit should send us back to the design: which predictor contrasts vary within which groups, how many group levels support the covariance, and which population variation the scientific claim requires. Plausible responses include removing an unsupported correlation, removing an unsupported slope, collecting more within-group contrasts, or using a regularized model. These moves encode different population assumptions.
 
-These responses do not make the same assumption. Removing the correlation sets the intercept-slope correlation to zero. Removing a slope sets its between-group variance to zero. Collecting more data retains the richer population model while changing the design.
-
-Do not simplify solely to obtain a smaller standard error or a preferred significance result. The random effects structure encodes the populations across which the comparison should generalize.
-
-## Reporting the resolution
-
-A singular-fit report should answer four questions:
-
-1. the original random effects specification;
-2. the diagnostic showing singularity;
-3. the revised specification and its design justification;
-4. whether the population comparison changes materially.
-
-The singular fit is evidence about the relation between the requested covariance structure and the available data. Hiding the warning loses that evidence. Treating every singular fit as proof that group variation is exactly zero overstates it.
-
-::: {.callout-note title="Check the dimensions"}
-A model converges but estimates its random slope standard deviation as zero. Which diagnostic has failed? What design property would you inspect before removing the slope?
-:::
-
-The [next page](generalized-linear-mixed-models.qmd) combines group variation with nonnormal response models.
+The MALD revision above follows a predeclared design audit: it removes only the collapsed participant interaction slope. It is not a general stepwise-selection recipe, and it should not be used to search for a preferred fixed-effect conclusion. The [next page](generalized-linear-mixed-models.qmd) carries the same group-variation logic to a binary linguistic response.

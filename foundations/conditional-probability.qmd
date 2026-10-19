@@ -2,11 +2,9 @@
 title: "Conditional probability"
 ---
 
-The joint probability $\mathbb{P}(P_4,A_4)=.40$ is computed relative to the complete sample space. But suppose we ask a narrower question: among the plural forms, what proportion are accusative? Conditional probability changes the reference event so that the phrase *among the plural forms* is part of the calculation.
+The joint probability $\mathbb{P}(N,O)$ is computed relative to the full token extract. Suppose instead we ask: among tokens whose lemma is *ne*, what proportion are annotated `obj`? The phrase *among the* changes the reference event.
 
-## Definition
-
-Basically, we keep only the probability mass inside the conditioning event and rescale that mass to sum to one. More specifically, for events $B,C\in\mathcal F$ with $\mathbb{P}(C)>0$, the [**conditional probability**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) of $B$ given $C$ is defined by
+Basically, conditioning keeps only the mass inside a reference event and rescales it to sum to one. More specifically, for events $B,C\in\mathcal F$ with $\mathbb{P}(C)>0$, the [**conditional probability**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) of $B$ given $C$ is
 
 $$
 \mathbb{P}(B\mid C)
@@ -14,132 +12,145 @@ $$
 \frac{\mathbb{P}(B,C)}{\mathbb{P}(C)}.
 $$
 
-The denominator is the probability of the reference event, and dividing by it performs the rescaling; the numerator is the part of that reference event for which the target event also occurs.
+The denominator identifies the reference event; the numerator identifies the part of that event for which the target event also occurs.
 
-The original uniform example asks for the probability of third person given accusative case. Since
+```{r}
+#| label: load-conditional-data
+library(ggplot2)
 
-$$
-\mathbb P(T_{14},A_{14})=\frac{4}{14}
-\qquad\text{and}\qquad
-\mathbb P(A_{14})=\frac{7}{14},
-$$
+wh <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8"
+)
 
-the conditional probability is
+stopifnot(nrow(wh) == 167L)
 
-$$
-\begin{aligned}
-\mathbb P(T_{14}\mid A_{14})
-&=\frac{\mathbb P(T_{14},A_{14})}{\mathbb P(A_{14})}\\
-&=\frac{4/14}{7/14}\\
-&=\frac47.
-\end{aligned}
-$$
+is_ne <- as.logical(wh$ne_lemma)
+is_object <- as.logical(wh$object)
+p_ne <- mean(is_ne)
+p_object <- mean(is_object)
+p_ne_object <- mean(is_ne & is_object)
 
-The four-form example below repeats the calculation with the nonuniform measure used throughout the numerical exercises. Working through both makes the role of the denominator visible.
+p_object_given_ne <- p_ne_object / p_ne
+p_ne_given_object <- p_ne_object / p_object
 
-The phrase *among plural forms* makes $P_4$ the conditioning event. We write
+stopifnot(
+  p_ne > 0,
+  p_object > 0,
+  isTRUE(all.equal(
+    p_object_given_ne,
+    mean(is_object[is_ne])
+  )),
+  isTRUE(all.equal(
+    p_ne_given_object,
+    mean(is_ne[is_object])
+  ))
+)
 
-$$
-\mathbb{P}(A_4\mid P_4)
-$$
-
-and read it as “the probability of $A_4$ given $P_4$.” The event to the right of the bar is the condition, whereas the event to the left is the target.
+c(object_given_ne = p_object_given_ne,
+  ne_given_object = p_ne_given_object)
+```
 
 ## Conditioning as rescaling
 
-The plural event contains two outcomes:
+Let $N$ be the *ne* event and $O$ the object event. Then
 
 $$
-P_4=\{\textit{they},\textit{them}\}.
+\mathbb{P}(O\mid N)
+=
+\frac{\mathbb{P}(O,N)}{\mathbb{P}(N)}.
 $$
 
-Their original probabilities are $.10$ and $.40$, which sum to $.50$ because the plural event receives half of the mass in the full space.
-
-| plural outcome | probability in $\Omega_4$ | probability within $P_4$ |
-|---|---:|---:|
-| *they* | $.10$ | $.10/.50=.20$ |
-| *them* | $.40$ | $.40/.50=.80$ |
-
-Dividing each plural probability by $.50$ produces a conditional probability measure on $P_4$. Within this restricted space, *them* receives probability $.80$. Since *them* is the only plural accusative outcome,
+The empirical value is `r round(p_object_given_ne, 3)`. The conditional complement follows from the same rescaling:
 
 $$
-\mathbb{P}(A_4\mid P_4)=.80.
+\mathbb{P}(O^c\mid N)
+=
+1-\mathbb{P}(O\mid N).
 $$
 
-In the pronoun probability space,
+```{r}
+#| label: check-conditional-complement
+p_subject_given_ne <- mean(
+  wh$dependency_relation[is_ne] == "nsubj"
+)
 
-$$
-\begin{aligned}
-\mathbb{P}(A_4\mid P_4)
-&=\frac{\mathbb{P}(A_4,P_4)}{\mathbb{P}(P_4)}\\
-&=\frac{.40}{.50}\\
-&=.80.
-\end{aligned}
-$$
+stopifnot(isTRUE(all.equal(
+  p_object_given_ne + p_subject_given_ne,
+  1
+)))
 
-This rescaling makes the conditioning event certain within itself:
+c(object = p_object_given_ne, subject = p_subject_given_ne)
+```
+
+Conditioning also makes its own reference event certain:
 
 $$
 \mathbb{P}(C\mid C)
-=\frac{\mathbb{P}(C,C)}{\mathbb{P}(C)}
-=\frac{\mathbb{P}(C)}{\mathbb{P}(C)}
+=
+\frac{\mathbb{P}(C,C)}{\mathbb{P}(C)}
+=
+\frac{\mathbb{P}(C)}{\mathbb{P}(C)}
 =1.
 $$
 
 ## Reversing target and condition
 
-Now ask for the probability of plurality among accusative forms. The numerator is still the same intersection, since $P_4\cap A_4=A_4\cap P_4$. The denominator changes:
+The reversed probability uses the same intersection but a different denominator:
 
 $$
-\begin{aligned}
-\mathbb{P}(P_4\mid A_4)
-&=\frac{\mathbb{P}(P_4,A_4)}{\mathbb{P}(A_4)}\\
-&=\frac{.40}{.70}\\
-&\approx .571.
-\end{aligned}
+\mathbb{P}(N\mid O)
+=
+\frac{\mathbb{P}(N,O)}{\mathbb{P}(O)}.
 $$
 
-Thus $\mathbb{P}(A_4\mid P_4)=.80$, while $\mathbb{P}(P_4\mid A_4)\approx.57$. The two expressions use the same joint probability but different reference events.
-
-Base R makes the denominator visible.
+Its empirical value is `r round(p_ne_given_object, 3)`. Thus $\mathbb{P}(O\mid N)$ and $\mathbb{P}(N\mid O)$ answer different linguistic questions even though they share a numerator.
 
 ```{r}
-#| eval: false
-p_plural_and_acc <- .40
-p_plural <- .50
-p_acc <- .70
+#| label: plot-conditional-probabilities
+#| fig-cap: "Observed dependency-relation proportions within each lemma. Bars rescale separately within lemma."
+conditional_counts <- as.data.frame(
+  xtabs(~ lemma + dependency_relation, data = wh)
+)
+names(conditional_counts)[3] <- "tokens"
+conditional_counts$conditional_probability <- ave(
+  conditional_counts$tokens,
+  conditional_counts$lemma,
+  FUN = function(x) x / sum(x)
+)
 
-p_acc_given_plural <- p_plural_and_acc / p_plural
-p_plural_given_acc <- p_plural_and_acc / p_acc
-
-c(p_acc_given_plural, p_plural_given_acc)
+ggplot(conditional_counts,
+       aes(lemma, conditional_probability, fill = dependency_relation)) +
+  geom_col(color = "white") +
+  scale_fill_manual(values = c(nsubj = "grey", obj = "steelblue")) +
+  labs(x = "Annotated lemma",
+       y = "Conditional probability within lemma",
+       fill = "UD relation") +
+  theme_classic(base_size = 12)
 ```
-
-The output is `.8` and approximately `.571`.
 
 ## Positive-probability conditions
 
-This elementary ratio definition requires $\mathbb{P}(C)>0$. If $\mathbb{P}(C)=0$, the ratio has denominator zero and is undefined. Thus the positivity condition licenses the division in the definition.
+The ratio definition requires $\mathbb{P}(C)>0$. If the conditioning event has zero probability, the denominator is zero and the elementary conditional probability is undefined. All three lemma events have positive mass in the observed extract, as the raw bars show.
 
-We will later encounter settings in which conditioning on exact continuous values requires a more careful construction. Nothing from those settings is needed for the finite event calculation here.
+The conditional values remain descriptions of this filtered treebank population. A difference among lemma-specific object proportions may reflect syntax, lexical semantics, register composition, annotation, or their combination. Conditioning changes a denominator; it does not identify a causal account.
 
-## The order of the events
-
-Swapping the target event and conditioning event changes the conditional probability. A corpus may show that most passive clauses contain an animate subject. This is a claim about
-
-$$
-\mathbb{P}(\text{animate subject}\mid\text{passive}).
-$$
-
-It does not by itself show that most clauses with animate subjects are passive, which concerns the reversed conditional.
-
-Read the event on the right of the bar first because it determines the denominator; the target event on the left determines which part of that denominator enters the numerator.
-
-The exact upshot is that conditioning changes the reference event and then renormalizes. The [next page](probability-factorization.qmd) rearranges this definition to recover a joint probability from a conditional and a marginal probability.
+Conditioning changes the reference event and renormalizes its mass. The [next page](probability-factorization.qmd) rearranges the definition to recover a joint probability from a conditional and a marginal probability.
 
 ## Check your understanding
 
-1. Compute $\mathbb{P}(A_4^c\mid P_4)$ from the table and verify that it sums with $\mathbb{P}(A_4\mid P_4)$ to one.
-2. Compute $\mathbb{P}(P_4\mid A_4^c)$ and describe the reference event in words.
-3. Explain why $\mathbb{P}(A_4\mid P_4)$ and $\mathbb{P}(P_4\mid A_4)$ share a numerator but need not be equal.
-4. Give a linguistic pair of events for which reversing the condition changes the scientific question.
+1. Compute $\mathbb{P}(O^c\mid N)$ from the raw rows and with the complement rule.
+2. Compute $\mathbb{P}(O\mid L=\textit{kim})$ and $\mathbb{P}(L=\textit{kim}\mid O)$. Explain their denominators.
+3. Verify directly that conditioning $N$ on itself returns the certain-event probability in the empirical measure.
+4. Which scientific claims remain unsupported by the observed difference among lemma-specific object proportions?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $\mathbb{P}(O^c\mid N)=35/147=0.238095$, which also equals $1-112/147$. <!-- dqr-allow: empirical-answer -->
+2. $\mathbb{P}(O\mid L=\textit{kim})=3/17=0.176471$ uses 17 *kim* tokens as its denominator; $\mathbb{P}(L=\textit{kim}\mid O)=3/116=0.025862$ uses 116 object tokens. <!-- dqr-allow: empirical-answer -->
+3. $\mathbb{P}(N\mid N)=147/147=1$ because filtering the *ne* rows by the same *ne* condition retains every row. <!-- dqr-allow: empirical-answer -->
+4. The observed lemma-specific object proportions do not identify syntax, lexical semantics, register, or annotation as a cause because the treebank did not manipulate or balance those explanations. <!-- dqr-allow: empirical-answer -->
+
+</details>

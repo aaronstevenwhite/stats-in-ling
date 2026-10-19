@@ -1,180 +1,150 @@
 ---
 title: "Checking a linear regression"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [residual page](residuals.qmd) distinguished an observed residual from an unobserved error term. An ordinary linear regression with normally distributed errors makes predictions about patterns that should remain
-after subtracting the fitted conditional mean. [**Residual diagnostics**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) compare
-those predictions with the observed residuals.
+A **regression check** compares a model prediction with an observable pattern. The aim is not to certify the model as true. It is to locate failures that matter for the linguistic comparison.
 
-The aim is not to certify that a model is true. A finite dataset cannot establish
-that every assumption holds. The aim is to find consequential ways in which the
-model fails to reproduce the data.
+For the PRS, we check three restrictions: (i) a straight conditional mean, (ii) stable residual location across passages, and (iii) an approximately normal residual shape for conventional finite-sample inference.
 
-Each check needs three parts: a model prediction, an observable discrepancy, and
-a consequence for the linguistic analysis. A generic statement that a plot
-"looks bad" omits the first and third parts.
-
-## Constructing a diagnostic example
-
-Suppose a phonetic study relates a speaker's local articulation rate to a segment
-duration. We construct observations with a slight bend in the mean and greater
-duration variation at faster rates, then fit a straight line with constant
-variance.
+## Linear form and passage structure
 
 ```{r}
-#| label: construct-duration-diagnostic-data
-#| echo: true
-set.seed(214)
+#| label: fit-provo-diagnostic-models
+library(ggplot2)
 
-duration_data <- data.frame(
-  rate = seq(2, 7, length.out = 80)
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+
+linear_fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_c + I(cloze_surprisal_c^2),
+  data = provo
+)
+provo$linear_fitted <- fitted(linear_fit)
+provo$linear_residual <- residuals(linear_fit)
+
+passage_residuals <- aggregate(
+  linear_residual ~ Text_ID,
+  data = provo,
+  FUN = mean
 )
 
-duration_data$mean_duration <-
-  175 - 15 * duration_data$rate +
-  3 * (duration_data$rate - 4.5)^2
-
-duration_data$duration <- rnorm(
-  nrow(duration_data),
-  mean = duration_data$mean_duration,
-  sd = 3 + duration_data$rate
+data.frame(
+  model = c("linear", "quadratic diagnostic"),
+  r_squared = c(
+    summary(linear_fit)$r.squared,
+    summary(quadratic_fit)$r.squared
+  ),
+  residual_sd = c(
+    summary(linear_fit)$sigma,
+    summary(quadratic_fit)$sigma
+  )
 )
-
-fit <- lm(duration ~ rate, data = duration_data)
 ```
 
-The fitted model is intentionally incomplete. This lets us connect visible
-residual patterns to the exact commitments the line fails to represent.
-
-## Checking the mean shape
-
-Plot residuals against fitted values:
+Adding the squared observed predictor changes $R^2$ from `r sprintf("%.4f", summary(linear_fit)$r.squared)` to `r sprintf("%.4f", summary(quadratic_fit)$r.squared)`. This is a diagnostic sensitivity, not automatic evidence for a quadratic processing mechanism.
 
 ```{r}
-#| label: residuals-versus-fitted
-#| echo: true
-plot(fitted(fit), residuals(fit),
-     xlab = "fitted conditional mean", ylab = "residual")
-abline(h = 0, lty = 2)
-```
-
-If the linear mean is adequate, the residual center should stay near zero across the fitted range.
-
-A U-shaped pattern suggests that the mean bends while the model forces a straight line. A systematic rise suggests that the fitted slope misses part of the association.
-
-Why does a U shape diagnose curvature? At the low and high ends, the observations
-fall systematically above the line, so residuals tend to be positive. Near the
-middle, they fall below the line, so residuals tend to be negative. The residual
-sign changes in an ordered way across fitted values. Random scatter around zero
-would not have this systematic sequence.
-
-This is evidence about the conditional mean. It does not yet identify which
-alternative mean function should replace the line. A theoretical account of
-articulation rate should guide that choice.
-
-## Checking constant variance
-
-The ordinary linear regression model assumes one conditional response variance $\sigma^2$ at every predictor value.
-
-If the residual cloud is narrow at low fitted values and wide at high fitted values, the variance changes with the mean. This fan shape is evidence against the constant-variance assumption.
-
-The constructed durations should show this pattern because their standard
-deviation was set to $3+\text{rate}$. The fitted line uses one residual standard
-deviation for all observations. It may consequently understate uncertainty for
-fast speech and overstate it for slow speech.
-
-We should also plot residuals against theoretically relevant predictors or groups. A speaker-specific residual shift can be invisible when all speakers are pooled against fitted values.
-
-The predictor on a residual plot need not appear in the fitted formula. Plotting
-residuals against an omitted variable can reveal structure left in the data. For
-instance, if residuals for phrase-final segments are mostly positive, the model
-may have omitted phrase-final lengthening. The pattern is theory-bearing because
-it isolates a particular linguistic contrast the fitted mean does not represent.
-
-## Checking distributional shape
-
-A normal quantile plot compares ordered residuals with the quantiles expected from a normal distribution:
-
-```{r}
-#| label: normal-quantile-residuals
-#| echo: true
-qqnorm(residuals(fit))
-qqline(residuals(fit))
-```
-
-Systematic tail departures indicate that extreme residuals occur differently from the prediction under normally distributed errors. Skew creates an asymmetric pattern.
-
-The quantile plot pairs each ordered residual with the corresponding theoretical
-normal quantile. If the empirical and theoretical distributions differ mainly
-in the upper tail, the largest observed durations will bend away from the line
-while most middle residuals remain near it. This location matters if the analysis
-uses predictions for unusually long segments.
-
-The goal is not to demand a perfect diagonal. We ask whether the departure is large enough to affect the quantities the analysis uses, such as coefficient intervals or predictions for slow responses.
-
-Treating every departure from a diagonal as a binary violation, and every nearly diagonal plot as approval, gives the plot too much authority.
-Instead ask what feature differs, where it differs, and which inferential
-quantity may change.
-
-## Checking observation order
-
-Conditional independence also makes a prediction. Once the modeled predictors
-are accounted for, residuals should not retain an ordered pattern induced by the
-sampling process.
-
-```{r}
-#| label: residuals-in-observation-order
-#| echo: true
-plot(
-  seq_along(residuals(fit)),
-  residuals(fit),
-  xlab = "observation order",
-  ylab = "residual"
+#| label: plot-provo-linear-quadratic-check
+#| fig-cap: "Provo positions with the linear fit in blue and the quadratic diagnostic in black."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
 )
-abline(h = 0, lty = 2)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+grid$linear <- predict(linear_fit, newdata = grid)
+grid$quadratic <- predict(quadratic_fit, newdata = grid)
+
+point_opacity <- 0.18
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(data = grid, aes(y = linear), color = "#2C6E9B", linewidth = 0.8) +
+  geom_line(data = grid, aes(y = quadratic), color = "black", linetype = 2) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
 ```
 
-A sequence of positive residuals followed by negative residuals might reflect
-drift over an experimental session. Alternation between positive and negative
-values might reflect a counterbalancing or trial-order pattern. The plot does
-not prove a particular source, but it locates dependence the fitted model does
-not represent.
+```{r}
+#| label: plot-provo-passage-residual-locations
+#| fig-cap: "Mean residual for each Provo passage, ordered from lowest to highest."
+passage_residuals <- passage_residuals[
+  order(passage_residuals$linear_residual),
+]
+passage_residuals$ordered_passage <- seq_len(nrow(passage_residuals))
 
-For repeated linguistic data, row order may not be the most informative order.
-We may instead group or order residuals by participant, item, recording session,
-or corpus document. The choice should follow the sampling structure.
+ggplot(passage_residuals, aes(ordered_passage, linear_residual)) +
+  geom_hline(yintercept = 0, color = "grey55", linewidth = 0.4) +
+  geom_point(color = "#2C6E9B", size = 1.5) +
+  labs(x = "Passage, ordered by mean residual", y = "Passage mean residual") +
+  theme_classic(base_size = 12)
+```
 
-## Checking the right discrepancy
+The passage means show location differences that the single line does not represent. Their ordering is descriptive; the plot does not treat adjacent ranks as linguistically adjacent passages.
 
-A reading-time model should be checked for right skew and condition-specific spread. A phonetic model may need speaker-specific residual patterns. A lexical model may need item or frequency structure.
+## Residual shape
 
-Generic normality tests compress all departures into one number and become sensitive to negligible deviations in large datasets. Diagnostic plots are more useful when they identify the form and location of a mismatch.
+If the normal working model were exact, ordered standardized residuals would track normal quantiles. A quantile plot makes tail departures visible without reducing the check to one test statistic.
 
-## Transforming a pattern into an analysis decision
+```{r}
+#| label: plot-provo-normal-quantiles
+#| fig-cap: "Normal quantiles against ordered PRS residuals. The line passes through the empirical quartiles."
+n <- nrow(provo)
+qq_data <- data.frame(
+  normal_quantile = qnorm((seq_len(n) - 0.5) / n),
+  ordered_residual = sort(provo$linear_residual)
+)
+sample_quartiles <- quantile(provo$linear_residual, c(.25, .75))
+normal_quartiles <- qnorm(c(.25, .75))
+qq_slope <- diff(sample_quartiles) / diff(normal_quartiles)
+qq_intercept <- sample_quartiles[[1]] - qq_slope * normal_quartiles[[1]]
 
-Finding a mismatch begins a model revision. It does not automatically license
-deleting observations or trying transformations until a plot appears tidy. The
-revision should target the observed discrepancy.
+qq_opacity <- 0.45
+ggplot(qq_data, aes(normal_quantile, ordered_residual)) +
+  geom_point(color = "grey50", alpha = qq_opacity, size = 0.8) +
+  geom_abline(
+    slope = qq_slope,
+    intercept = qq_intercept,
+    color = "#2C6E9B",
+    linewidth = 0.7
+  ) +
+  labs(x = "Normal quantile", y = "Ordered residual") +
+  theme_classic(base_size = 12)
+```
 
-For instance, curvature in the residual center motivates reconsidering the mean
-function. A fan shape motivates reconsidering constant variance. A speaker shift
-motivates representing speaker structure. These responses differ because the
-checks diagnose different commitments.
+The checks point to modest curvature and some tail departure. They do not repair passage or reader dependence. This limit matters: changing the mean function cannot recreate a missing sampling unit.
 
-Report the observed pattern and its consequence. "Residual
-spread increased with fitted duration, so the constant-variance model may
-understate uncertainty at the upper end" is more informative than "assumptions
-were checked."
+## Check your understanding
 
-::: {.callout-note title="Keep two checks separate"}
-MCMC diagnostics ask whether an algorithm represented a posterior. Residual checks ask whether the statistical model reproduces relevant patterns in the observations.
-:::
+1. Which restriction does the quadratic diagnostic probe?
+2. Why is a better in-sample $R^2$ not enough to select the quadratic model?
+3. What pattern would an exact normal residual model predict in the quantile plot?
+4. Which dependence problem survives both checks?
 
-::: {.callout-note title="Diagnose the discrepancy"}
-1. What residual pattern would a mean function that bends upward tend to
-   produce under a fitted straight line?
-2. What model prediction does a fan-shaped residual cloud challenge?
-3. Why might plotting residuals by participant reveal a pattern hidden in a
-   residual-versus-fitted plot?
-4. State the model prediction, observed discrepancy, and inferential consequence for one pattern above.
-:::
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The quadratic diagnostic probes the straight-line restriction on the conditional mean by allowing a squared surprisal term. <!-- dqr-allow: empirical-answer -->
+2. Adding a parameter cannot by itself establish a processing mechanism, and in-sample fit does not measure new-passage performance or account for complexity. <!-- dqr-allow: empirical-answer -->
+3. The ordered residuals would track the reference line across the center and tails, apart from ordinary sampling fluctuation. <!-- dqr-allow: empirical-answer -->
+4. Passage dependence remains, and missing reader-level dependence cannot be checked or repaired from the aggregated table. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](leverage-and-influence.qmd) asks which observed predictor positions have unusual capacity to affect the line.

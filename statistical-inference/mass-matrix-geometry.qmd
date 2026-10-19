@@ -1,99 +1,141 @@
 ---
 title: "Mass matrices and posterior geometry"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding HMC transition](hamiltonian-monte-carlo.qmd) used the same momentum scale in every parameter direction. That choice works naturally for a round posterior whose parameters vary on comparable scales, but it can work poorly when one parameter varies over tenths and another varies over tens.
+The [HMC trajectory](hamiltonian-monte-carlo.qmd) whitened the PCT before applying unit-mass leapfrog steps. A **mass matrix** supplies HMC with a constant scale and orientation for its momentum without changing the posterior target.
 
-One leapfrog step size must then serve directions with substantially different posterior widths. The question is how to rescale the sampler's motion without changing the posterior. The mass matrix allows HMC to account for those differences in posterior scale and correlation.
+## General kinetic energy
 
-The [**mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) gives HMC a constant scale and orientation for its momentum. We focus on that geometric role and on the quantities Stan can learn during warmup.
-
-## Generalizing the kinetic energy
-
-Let $M$ be a covariance-like matrix. It is symmetric, and every nonzero parameter direction receives positive variance. A matrix with these properties is called [**symmetric positive definite**](https://mc-stan.org/docs/reference-manual/mcmc.html). Draw the auxiliary momentum from a mean-zero multivariate normal distribution with covariance $M$:
+For symmetric positive-definite $M$, draw
 
 $$
-\rho\sim\mathcal{N}(0,M).
+\rho\sim\mathcal N(0,M)
 $$
 
-The kinetic energy becomes
+and define
 
 $$
-K(\rho)
-=
-\frac{1}{2}\rho^{\mathsf T}M^{-1}\rho.
+K(\rho)=\frac12\rho^\mathsf TM^{-1}\rho.
 $$
 
-The position equation and its leapfrog update now use
+The position equation becomes
 
 $$
-\frac{\mathrm{d}q}{\mathrm{d}t}
-=
-M^{-1}\rho
+\frac{\mathrm dq}{\mathrm dt}=M^{-1}\rho,
 $$
 
-and
+and the leapfrog position update is
 
 $$
-q_{t+1}
-=
-q_t+\epsilon M^{-1}\rho_{t+\frac12}.
+q_{t+1}=q_t+\epsilon M^{-1}\rho_{t+\frac12}.
 $$
 
-Thus $M^{-1}$ converts momentum into velocity through the parameter space. The HMC transition on the preceding page is the special case $M=I$.
-
-## Matching velocity to posterior scale
-
-The velocity is $v=M^{-1}\rho$. Because $\rho$ has covariance $M$, the velocity has covariance
+Because the velocity is $v=M^{-1}\rho$,
 
 $$
 \operatorname{Cov}(v)
-=
-M^{-1}M M^{-1}
-=
-M^{-1}.
+=M^{-1}MM^{-1}=M^{-1}.
 $$
 
-This relationship explains why the inverse mass matrix should roughly match posterior covariance. Directions with wider posterior variation then receive wider typical velocities, while narrower directions receive smaller typical velocities.
+Thus the inverse mass matrix should roughly match posterior covariance: wider posterior directions receive wider typical velocities.
 
-Consider two independent parameters with posterior standard deviations 10 and 1. A unit inverse mass matrix gives their velocities the same standard deviation. By contrast,
+## Geometry of the PCT
 
-$$
-M^{-1}
-=
-\begin{pmatrix}
-100 & 0\\
-0 & 1
-\end{pmatrix}
-$$
+The code reconstructs the exact PCT grid and compares the observed $(\mu,\log\sigma)$ covariance with its whitening transformation.
 
-gives the first velocity a standard deviation of 10 and the second a standard deviation of 1. A common integration time can then move a comparable fraction of each parameter's posterior width.
+```{r}
+#| label: provo-mass-matrix-geometry
+library(ggplot2)
 
-The mass matrix does not change the posterior density. It changes how the numerical trajectory moves through the coordinates used to express that density.
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+y <- provo$noun_minus_verb_log_ffd
+nu <- 4
+prior_scale <- 2 * sd(y)
+log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
+log_target <- function(eta) {
+  mu <- eta[1]; sigma <- exp(eta[2])
+  sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, prior_scale, log = TRUE) +
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+}
+mode_fit <- optim(c(median(y), log(mad(y))),
+                  function(eta) -log_target(eta), method = "BFGS",
+                  hessian = TRUE,
+                  control = list(reltol = 1e-12, maxit = 1000L))
+local_sd <- sqrt(diag(solve(mode_fit$hessian)))
+grid <- expand.grid(
+  mu = seq(mode_fit$par[1] - 7 * local_sd[1],
+           mode_fit$par[1] + 7 * local_sd[1], length.out = 321L),
+  log_sigma = seq(mode_fit$par[2] - 7 * local_sd[2],
+                  mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
+)
+grid$log_kernel <- apply(grid, 1, log_target)
+grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
+grid_values <- as.matrix(grid[, c("mu", "log_sigma")])
+grid_mean <- colSums(grid_values * grid$weight)
+centered <- sweep(grid_values, 2, grid_mean, "-")
+covariance <- crossprod(centered * sqrt(grid$weight))
+whitening <- solve(t(chol(covariance)))
+white <- t(whitening %*% t(centered))
+white_covariance <- crossprod(white * sqrt(grid$weight))
 
-## Distinguishing three matrix structures
+geometry <- rbind(
+  data.frame(coordinates = "mu, log_sigma",
+             variance_1 = covariance[1, 1],
+             variance_2 = covariance[2, 2],
+             correlation = cov2cor(covariance)[1, 2]),
+  data.frame(coordinates = "posterior-whitened",
+             variance_1 = white_covariance[1, 1],
+             variance_2 = white_covariance[2, 2],
+             correlation = cov2cor(white_covariance)[1, 2])
+)
+stopifnot(length(y) == 55L, all(eigen(covariance)$values > 0))
+geometry
+```
 
-HMC implementations commonly use one of three structures:
+```{r}
+#| label: plot-provo-whitened-geometry
+#| fig-cap: "PCT grid cells before and after posterior whitening. Point darkness represents normalized posterior mass."
+display <- rbind(
+  data.frame(x = centered[, 1], y = centered[, 2], weight = grid$weight,
+             coordinates = "centered PCT coordinates"),
+  data.frame(x = white[, 1], y = white[, 2], weight = grid$weight,
+             coordinates = "posterior-whitened coordinates")
+)
+display <- subset(display, weight >= quantile(weight, .80))
 
-1. A [**unit mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) treats every direction as uncorrelated and equally scaled.
-2. A [**diagonal mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) assigns a separate scale to every parameter but does not represent correlations.
-3. A [**dense mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) can represent both separate scales and global linear correlations.
+ggplot(display, aes(x, y, alpha = weight)) +
+  geom_point(color = "#8B1A1A", size = .45) +
+  facet_wrap(~coordinates, scales = "free") +
+  scale_alpha(range = c(.06, .7), guide = "none") +
+  labs(x = "First coordinate", y = "Second coordinate") +
+  theme_classic(base_size = 12)
+```
 
-Suppose two parameters form a narrow diagonal ellipse. A diagonal matrix can adjust the horizontal and vertical scales, but it cannot rotate the velocity distribution toward the long axis of that ellipse. A dense matrix can represent that orientation through its off diagonal entries.
+A unit matrix treats all directions as equally scaled and uncorrelated. A diagonal matrix supplies separate scales but no rotation. A dense matrix can also represent global linear correlation. One constant dense matrix cannot remove curvature that changes across the posterior.
 
-This distinction concerns global geometry. One constant dense matrix may represent a tilted ellipse, but it cannot remove curvature that changes from one posterior region to another.
-
-## Learning the matrix during warmup
-
-Stan estimates a regularized inverse mass matrix during warmup. In the current Stan parameterization, this inverse mass matrix estimates the posterior covariance, or its diagonal when the diagonal option is used. The default diagonal structure estimates separate marginal scales, while an optional dense structure also estimates global linear correlations.
-
-Because the mass matrix is learned from chain states, adaptation could in principle change the target distribution. Stan confines that adaptation to warmup and discards those draws. The retained sampling phase uses a fixed learned matrix, so the posterior target remains the one defined by the model.
-
-Adaptation is not a guarantee of useful geometry. Short warmup, weak identification, or strongly changing local curvature can leave a constant matrix poorly matched to the posterior. The fitted chains must still be checked.
+Stan estimates a regularized inverse mass matrix during warmup, then holds it fixed during retained sampling. Adaptation must stop because changing the transition indefinitely could change its stationary distribution. The matrix improves computation; it does not alter the 55 passage summaries or repair the PCT's aggregation limits.
 
 ## Check your understanding
 
-1. Which matrix determines the covariance of the momentum, $M$ or $M^{-1}$?
-2. Why does the inverse mass matrix govern the scale of the velocity?
-3. What posterior feature can a dense matrix represent that a diagonal matrix cannot?
-4. Why must mass matrix adaptation stop before retained sampling begins?
+1. Which matrix is the momentum covariance?
+2. Why does the inverse mass matrix determine velocity covariance?
+3. What can a dense matrix represent that a diagonal one cannot?
+4. Why must adaptation end before retained sampling?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The mass matrix $M$ is the covariance of momentum: $\rho\sim\mathcal N(0,M)$. <!-- dqr-allow: empirical-answer -->
+2. Because $v=M^{-1}\rho$, $\operatorname{Cov}(v)=M^{-1}MM^{-1}=M^{-1}$. <!-- dqr-allow: empirical-answer -->
+3. A dense matrix can represent global linear correlation and rotate the coordinate system; a diagonal matrix can only rescale axes. <!-- dqr-allow: empirical-answer -->
+4. The retained transition must remain fixed to preserve a single stationary distribution; indefinite adaptation would keep changing the kernel. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [NUTS page](no-u-turn-sampler.qmd) turns from trajectory geometry to trajectory length.

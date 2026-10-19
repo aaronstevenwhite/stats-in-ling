@@ -2,169 +2,200 @@
 title: "Leaving out one unit at a time"
 ---
 
-The [$K$-fold cross-validation page](cross-validation.qmd) rotated several observations through each test fold. [**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) is the special case that makes one observation the test set at a time.
-
-Suppose a small eye-tracking experiment contains too few word-level responses to place a large portion of the data in a test set. We still want every observed first-fixation duration to be evaluated out of sample, and we would like each fitted model to use nearly all of the remaining data. This is a computational motivation for LOO, not yet a decision about the linguistic population to which the score applies.
-
-The word *one* is doing important work. One validation unit may be one row, one participant, one sentence item, or one passage, depending on the predictive question. We reserve **row-level LOO** for the first case and use **leave-one-group-out** when one unit contains several rows. The calculation is meaningful only after the analysis says which meaning of *one* it uses.
-
-We first define LOO-CV as a special case of cross-validation, then work through a three-row regression by hand and implement the same procedure in R. The final example shows why row-level LOO does not automatically evaluate prediction for a speaker, item, or text absent during fitting.
+The [information-criteria page](information-criteria.qmd) approximated predictive discrepancy without constructing omitted-data predictions. [**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage.
 
 ## Defining the rotation
 
-Begin with the simplest case in which rows are the observations left out. Let the data contain $N$ observations. For each row $i$, fit the complete procedure to the data with row $i$ removed. We write the resulting predictor as
+Let the data contain $N$ position summaries. For each position $i$, fit the complete procedure to the data with $i$ removed. Write the fitted predictor as
 
 $$
-\widehat{f}_{-i}.
+\widehat f_{-i}
 $$
 
-The subscript $-i$ means that observation $i$ did not contribute to fitting. Its out-of-sample prediction is
+and its prediction as
 
 $$
-\widehat{y}_{-i}=\widehat{f}_{-i}(x_i).
+\widehat y_{-i}=\widehat f_{-i}(x_i).
 $$
 
-Given a previously chosen loss function $L$, the leave-one-out risk estimate is
+For a chosen loss $L$, the leave-one-out risk estimate is
 
 $$
-\widehat{R}_{\mathrm{LOO}}
+\widehat R_{\mathrm{LOO}}
 =
 \frac{1}{N}
-\sum_{i=1}^{N}
-L(y_i,\widehat{y}_{-i}).
+\sum_{i=1}^N
+L(y_i,\widehat y_{-i}).
 $$
 
-LOO-CV is thus $K$-fold cross-validation with $K=N$ when each row is one unit. Every row receives one prediction from a model that did not use that row's response.
+Each response is absent from its own fit. The fits still overlap extensively, so they are not independent replications of the study.
 
-## Following three observations by hand
+## Exact Bayesian LOO for the Provo models
 
-Consider three hypothetical fixated word positions. Let $x$ be word length on a simplified scale, and let $y$ be log first-fixation duration. The three values are chosen for arithmetic convenience; they are not an empirical model of the word-length effect.
+We use the same [Provo position table and Gaussian mean models](likelihood-ratio-tests.qmd#provo-corpus) as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted.
 
-| row | $x$ | $y$ |
-|---:|---:|---:|
-| 1 | 1 | 1.0 |
-| 2 | 2 | 2.0 |
-| 3 | 3 | 2.5 |
+The source paper reports excluding fixations shorter than 80 ms and longer than 800 ms. Their log-scale midpoint sets the prior intercept mean; slope means are zero. The expected residual variance treats four standard deviations as spanning those study bounds, and each coefficient's conditional prior variance multiplier is derived from the same span. The inverse-gamma shape is a fixed computational setting, and its rate follows from the declared residual-variance mean.
 
-We use a straight-line regression only because it lets us see each fit without software. Each training set contains two points, so its fitted line passes through those points.
-
-First leave out row 1. The line through $(2,2)$ and $(3,2.5)$ has slope $0.5$ and intercept $1$. At $x_1=1$, it predicts
-
-$$
-\widehat{y}_{-1}=1+0.5(1)=1.5.
-$$
-
-The prediction error is $1.0-1.5=-0.5$, so its squared loss is $0.25$.
-
-Next leave out row 2. The line through $(1,1)$ and $(3,2.5)$ has slope $0.75$ and intercept $0.25$. It predicts
-
-$$
-\widehat{y}_{-2}=0.25+0.75(2)=1.75.
-$$
-
-This error is $2.0-1.75=0.25$, and its squared loss is $0.0625$.
-
-Finally leave out row 3. The line through $(1,1)$ and $(2,2)$ has slope $1$ and intercept $0$. It predicts
-
-$$
-\widehat{y}_{-3}=0+1(3)=3.
-$$
-
-The error is $2.5-3=-0.5$, so the squared loss is again $0.25$. Thus, the leave-one-out mean squared error is
-
-$$
-\widehat{R}_{\mathrm{LOO}}
-=
-\frac{0.25+0.0625+0.25}{3}
-=
-0.1875.
-$$
-
-The corresponding root mean squared error is $\sqrt{0.1875}\approx 0.433$. This number is on the scale of the response, which here is the simplified log-time scale.
-
-## Implementing the same rotation
-
-The R code follows the definition one row at a time.
+This prior is calibrated to study-level measurement bounds, not to the observed Provo response values. It is a teaching prior, not a prior proposed by Luke and Christianson.
 
 ```{r}
-#| eval: false
+#| label: provo-exact-loo
+#| message: false
+#| warning: false
 
-dat <- data.frame(
-  word_length = c(1, 2, 3),
-  log_time = c(1.0, 2.0, 2.5)
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
 )
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
 
-prediction <- rep(NA_real_, nrow(dat))
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+X_linear <- model.matrix(linear_fit)
+X_quadratic <- model.matrix(quadratic_fit)
+y <- provo$mean_log_ffd
 
-for (i in seq_len(nrow(dat))) {
-  fit_i <- lm(
-    log_time ~ word_length,
-    data = dat[-i, ]
-  )
-
-  prediction[i] <- predict(
-    fit_i,
-    newdata = dat[i, , drop = FALSE]
+make_prior <- function(X) {
+  log_bounds <- log(c(80, 800))
+  log_span <- diff(log_bounds)
+  expected_sigma2 <- (log_span / 4)^2
+  list(
+    b0 = c(mean(log_bounds), rep(0, ncol(X) - 1L)),
+    V0 = diag(rep(log_span^2 / expected_sigma2, ncol(X))),
+    a0 = 3,
+    d0 = 2 * expected_sigma2,
+    lower_ms = min(exp(log_bounds)),
+    upper_ms = max(exp(log_bounds))
   )
 }
 
-squared_loss <- (dat$log_time - prediction)^2
-mean(squared_loss)
-sqrt(mean(squared_loss))
+exact_nig_loo <- function(X, y, prior) {
+  n <- nrow(X)
+  V0_inverse <- solve(prior$V0)
+  full_xtx <- crossprod(X)
+  full_xty <- crossprod(X, y)
+  full_yty <- sum(y^2)
+  result <- data.frame(
+    observation = seq_len(n),
+    predictive_location = NA_real_,
+    predictive_scale = NA_real_,
+    predictive_df = NA_real_,
+    log_predictive_density = NA_real_
+  )
+
+  for (i in seq_len(n)) {
+    xi <- matrix(X[i, ], nrow = 1L)
+    yi <- y[i]
+    Vn <- solve(V0_inverse + full_xtx - crossprod(xi))
+    bn <- drop(Vn %*% (
+      V0_inverse %*% prior$b0 + full_xty - drop(xi) * yi
+    ))
+    an <- prior$a0 + (n - 1L) / 2
+    dn <- as.numeric(
+      prior$d0 + 0.5 * (
+        full_yty - yi^2 +
+          t(prior$b0) %*% V0_inverse %*% prior$b0 -
+          t(bn) %*% solve(Vn) %*% bn
+      )
+    )
+    location <- drop(xi %*% bn)
+    scale <- sqrt(
+      (dn / an) * (1 + drop(xi %*% Vn %*% t(xi)))
+    )
+    degrees <- 2 * an
+
+    result$predictive_location[i] <- location
+    result$predictive_scale[i] <- scale
+    result$predictive_df[i] <- degrees
+    result$log_predictive_density[i] <-
+      dt((yi - location) / scale, df = degrees, log = TRUE) -
+      log(scale)
+  }
+  result
+}
+
+linear_prior <- make_prior(X_linear)
+quadratic_prior <- make_prior(X_quadratic)
+linear_loo <- exact_nig_loo(X_linear, y, linear_prior)
+quadratic_loo <- exact_nig_loo(X_quadratic, y, quadratic_prior)
+
+loo_summary <- data.frame(
+  model = c("Linear", "Quadratic"),
+  omitted_positions = nrow(provo),
+  exact_elpd_loo = c(
+    sum(linear_loo$log_predictive_density),
+    sum(quadratic_loo$log_predictive_density)
+  ),
+  exact_loo_rmse = c(
+    sqrt(mean((y - linear_loo$predictive_location)^2)),
+    sqrt(mean((y - quadratic_loo$predictive_location)^2))
+  )
+)
+loo_summary
+
+loo_plot <- data.frame(
+  cloze_surprisal_bits = provo$cloze_surprisal_bits,
+  observed = y,
+  linear = linear_loo$predictive_location,
+  quadratic = quadratic_loo$predictive_location
+)
+loo_plot <- loo_plot[order(loo_plot$cloze_surprisal_bits), ]
+
+ggplot2::ggplot(
+  loo_plot,
+  ggplot2::aes(cloze_surprisal_bits, observed)
+) +
+  ggplot2::geom_point(size = 0.7, alpha = 0.18, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::geom_line(
+    ggplot2::aes(y = linear, linetype = "Linear"),
+    linewidth = 0.65,
+    color = "grey25"
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(y = quadratic, linetype = "Quadratic"),
+    linewidth = 0.65,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::scale_linetype_manual(
+    values = c("Linear" = 2, "Quadratic" = 1)
+  ) +
+  ggplot2::labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Observed and LOO-predicted mean log FFD",
+    linetype = "LOO mean"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
 ```
 
-The expression `dat[-i, ]` constructs the training data. The expression `dat[i, , drop = FALSE]` supplies the omitted predictor value at prediction time. No omitted response enters `fit_i`.
+Conjugacy gives a Student-$t$ predictive density for every omitted position. Exact ELPD is `r sprintf("%.3f", loo_summary$exact_elpd_loo[loo_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", loo_summary$exact_elpd_loo[loo_summary$model == "Quadratic"])` for the quadratic model. The corresponding RMSEs are `r sprintf("%.5f", loo_summary$exact_loo_rmse[loo_summary$model == "Linear"])` and `r sprintf("%.5f", loo_summary$exact_loo_rmse[loo_summary$model == "Quadratic"])` on the mean log-duration scale.
 
-For an actual analysis, the loop must contain every fitted decision. If predictors are centered, the center is estimated from `dat[-i, ]`. If a penalty is tuned, the tuning procedure uses only `dat[-i, ]`. LOO-CV evaluates the complete procedure rather than a coefficient formula chosen using all of the responses.
+The raw points and LOO predictive means remain on the same axes. This matters because a small aggregate advantage can otherwise hide where the two fitted functions differ.
 
-## Deciding what one means
+## What one means here
 
-Now suppose each participant contributes 100 trials. Row-level LOO removes one trial but leaves 99 trials from the same participant in training. It also tends to leave other responses to the same item in training. This may be appropriate for predicting another trial from observed participants and items.
+One omitted unit is a content-word position summary. Other positions from the same passage remain in the training data, and the response already averages over readers. The target is thus one position summary conditional on the remaining position table. It is not a new passage, reader, participant response, or word type.
 
-It does not evaluate prediction for an unadapted participant absent during fitting. Other responses from that participant can inform a [group-specific estimate](../regression-models/random-effect-estimates.qmd), so the task is conditional on a represented participant. For a new-participant question, one participant and all of that participant's rows must be omitted together. If there are $S$ participants, the procedure makes $S$ fits:
+The distinction persists even though every position receives an out-of-sample prediction. Summing pointwise scores within a passage would not retroactively remove that passage from fitting. A passage target requires leave-one-passage-out validation from the start.
 
-$$
-\widehat{R}_{\text{leave-subject-out}}
-=
-\frac{1}{S}
-\sum_{s=1}^{S}
-\frac{1}{n_s}
-\sum_{i:g(i)=s}
-L(y_i,\widehat{f}_{-s}(x_i)),
-$$
+## Computation, tuning, and overlap
 
-where $\widehat{f}_{-s}$ is fit without participant $s$. This is often called leave-one-subject-out validation. The new idea is not a different loss or fitting method. It is a different meaning of one.
+Literal LOO usually requires $N$ fits, which can be expensive. Conjugacy makes all `r nrow(provo)` Provo calculations available analytically. The next page evaluates whether posterior draws from the full fit can approximate these exact omitted-position quantities.
 
-The same reasoning applies to items and texts. Prediction for an omitted passage requires omitting a complete passage, not one position in that passage. Prediction for an omitted verb type requires omitting every annotated token headed by that verb type. This last design evaluates lexical transfer across the represented verbs; it does not turn corpus tokens into experimental evidence about a categorical grammatical restriction. The [next page](grouped-cross-validation.qmd) develops this grouping decision directly.
+Any response-adaptive tuning would still have to occur within each (N-1) training set. Fixing a transformation or penalty after consulting all responses would let the omitted response influence its own prediction.
 
-## Understanding the dependence among fits
-
-In the three-row example, the fitted training sets overlap. With a larger dataset, any two row-level LOO fits share $N-2$ observations. The resulting prediction losses are not independent experiments, even though each response was individually withheld from its own fit.
-
-This dependence does not invalidate the average in $\widehat{R}_{\mathrm{LOO}}$. It does rule out treating $N$ fitted models as $N$ independent repetitions of the study. The relevant uncertainty calculation still depends on the sampling units specified by the scientific claim.
-
-## Comparing training size and computation
-
-Each LOO model uses all but one observation. Its training set is thus very similar in size to the complete dataset. This may be useful when the dataset is small.
-
-But the similarity comes at a computational cost. Row-level LOO with 10,000 observations requires 10,000 fits if carried out directly. A complex model may make that cost prohibitive. Five-fold or ten-fold cross-validation uses fewer fits, though each fit omits a larger portion of the observations.
-
-LOO-CV can also be sensitive when one omitted observation has unusual predictor values. That observation may be difficult to predict because the training set supplies little nearby information. This is not automatically a flaw. It may reveal that the fitted relationship is being asked to extrapolate beyond predictor values well represented by the rest of the sample.
-
-## Tuning and the omitted response
-
-A common failure is to use all rows to choose a transformation, set of predictors, or tuning parameter and then report leave-one-out predictions from that fixed choice. The omitted response has already influenced the procedure, so the prediction is not fully out of sample.
-
-The repair is the same separation used for any cross-validation procedure. Every response-adaptive decision must be repeated inside the training portion. If that decision itself needs held-out evaluation, it requires an inner validation step within the $N-1$ training rows.
-
-This requirement can make literal LOO-CV unattractive for procedures with expensive tuning. In that case, fewer outer folds may provide a more practical evaluation without changing which observations or groups are held out.
+The training sets also overlap. Two LOO fits share all but their two distinct omitted positions. This dependence does not invalidate the mean score, but it rules out treating the position fits as independent study replications.
 
 ## Checking the omitted unit
 
-1. How many direct fits are required for row-level LOO with 250 rows?
-2. In the three-row calculation, why is $\widehat{y}_{-2}$ an out-of-sample prediction even though rows 1 and 3 appear in two different fits?
-3. What must be omitted when predicting for an unadapted participant absent during fitting?
-4. Why does row-level LOO usually evaluate another response from represented participants and items in a repeated participant by item experiment?
-5. If a researcher chooses a penalty using all responses before running LOO-CV, which part of the separation has failed?
+1. What empirical object does one Provo LOO unit represent?
+2. Which data remain available when a position is omitted?
+3. Why is this not an omitted-passage analysis?
+4. Which part of the prior uses the source-study measurement bounds?
 
-LOO-CV rotates a one-observation test set so that every observation receives a prediction from a fit that excluded it. The method uses nearly all available data for each fit, but the meaning of one observation must still match the scientific question. The [next page](grouped-cross-validation.qmd) shows how to keep complete speakers, items, passages, or languages together whenever those groups must be absent during fitting.
+LOO-CV gives every position a prediction from a fit that excluded it. The [previous page](information-criteria.qmd) used an in-sample approximation; the [next page](psis-loo.qmd) approximates these exact Bayesian omitted-position densities using full-posterior draws.

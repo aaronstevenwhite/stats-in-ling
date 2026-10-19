@@ -244,3 +244,15 @@ Each deck must follow the dependency order of the notes. A deck may remind stude
 Each worked analysis must use the dataset assigned to that notes section. Do not import a later technique to make the example work. Do not reuse a dataset merely for convenience when the notes use a different dataset for the current method.
 
 The slides must use standard statistical terminology. In particular, use `ordinary linear regression`, not `Gaussian regression`; use `out-of-sample prediction`, not `prediction target`; and do not coin local names for model failures or validation settings.
+
+## Empirical grounding and alignment contract
+
+Every numerical quantity on a slide must either be computed from the linguistic dataset assigned to the corresponding notes page or be a symbolic term in a retained mathematical definition. Do not use small invented counts, probabilities, expectations, variances, coefficients, or model outputs to make an operation look easy.
+
+The first slide that uses a dataset must name it, state what its observations represent, and display a citation linked to the data source. All R code needed to reproduce an analysis remains explicit in the notes. The slide deck shows the resulting table, plot, or fitted quantity and points students to the matching notes page.
+
+Figures are scientific displays. Show observations before summaries and show raw data with fitted values when model fitting is the concept at hand. Use labeled axes, restrained color, light grids, and direct labels only when they resolve a real ambiguity. Do not turn a statistical figure into an infographic.
+
+Every generated slide records four provenance fields: a unique slide identifier, its source notes page, the SHA-256 digest of that page, and its instructional role. The alignment validator compares these fields with the current notes and rejects missing pages, reordered pages, changed notes, missing figures, excess text, schematic-language markers, or a transcript whose order differs from the deck.
+
+Each slide has exactly one speaker-notes block containing `Transcript` and `Sources` sections. The standalone transcript repeats these entries in slide order. Thus slide text, source record, and spoken explanation remain one aligned unit.

@@ -1,179 +1,117 @@
 ---
 title: "Earlier-versus-later Helmert contrasts"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [Helmert-coding page](helmert-coding.qmd) constructed a sequence in which each later level was compared
-with the average of earlier levels. We can reverse the grouping question. At
-each step, compare an earlier level with the average of the levels that follow
-it.
+**Reverse Helmert coding** compares each earlier level with the average of the levels that follow it. The matrix, rather than the label, determines the comparison.
 
-This contrast family is usually called [**reverse Helmert contrasts**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/contrast.html). Some sources use *inverse Helmert contrasts*. The displayed matrix, rather than the label alone, determines the interpretation.
+## Reversing the MALD syllable comparisons
 
-Suppose a stress factor has three ordered levels: primary stress, secondary
-stress, and unstressed. A phonetic hypothesis might compare primary stress with
-the average of the two weaker categories, then compare secondary stress with
-unstressed.
-
-One unscaled reverse Helmert matrix is
+For the MALD syllable bands, use
 
 $$
-\begin{array}{c|rr}
-&C_1&C_2\\\hline
-\text{primary}&2&0\\
-\text{secondary}&-1&1\\
-\text{unstressed}&-1&-1
-\end{array}.
+\mathbf C=
+\begin{bmatrix}
+3&0&0\\ % dqr-allow: symbolic-derivation
+-1&2&0\\
+-1&-1&1\\
+-1&-1&-1
+\end{bmatrix},
 $$
 
-The first column compares primary stress with the average of secondary and
-unstressed. The second compares secondary stress with unstressed.
-
-## Deriving the coefficient meanings
-
-The linear predictor is
-
-$$
-\eta_i=\beta_0+\beta_1C_{1i}+\beta_2C_{2i}.
-$$
-
-Substituting each row gives
-
-$$
-\eta_{\text{primary}}=\beta_0+2\beta_1,
-$$
-
-$$
-\eta_{\text{secondary}}=\beta_0-\beta_1+\beta_2,
-$$
-
-and
-
-$$
-\eta_{\text{unstressed}}=\beta_0-\beta_1-\beta_2.
-$$
-
-The primary-minus-weaker-average comparison is
-
-$$
-\begin{aligned}
-\eta_{\text{primary}}
--\frac{\eta_{\text{secondary}}+\eta_{\text{unstressed}}}{2}
-&=(\beta_0+2\beta_1)-(\beta_0-\beta_1)\\
-&=3\beta_1.
-\end{aligned}
-$$
-
-The secondary-minus-unstressed comparison is
-
-$$
-\eta_{\text{secondary}}-\eta_{\text{unstressed}}=2\beta_2.
-$$
-
-The coefficients encode the reverse Helmert comparisons after accounting for column scaling. Dividing
-the first column by 3 and the second by 2 would make each coefficient equal the
-corresponding raw mean difference.
-
-## When the comparisons are meaningful
-
-ELCs are useful when a theory distinguishes one leading category from a set of
-categories ordered below it. For the stress example, the first hypothesis groups
-secondary and unstressed as weaker than primary stress. The second asks whether
-the two weaker categories are themselves different.
-
-This interpretation requires more than a meaningful order. It requires the
-particular nested groupings encoded by the columns. Applying reverse Helmert contrasts to an unordered
-set of dialects would create arbitrary comparisons. Applying them to an ordered
-factor is also unmotivated if the theory asks for different groupings.
-
-Ordering alone does not justify reverse Helmert contrasts. Order makes the comparison sequence possible. It does not make
-that sequence theoretically relevant.
-
-## Inspecting predictions as a check
-
-No full-rank contrast matrix changes the fitted mean for each factor level when
-the same complete model is used. After fitting, reconstruct the level means and
-verify that the coefficient interpretation matches the matrix.
+with rows ordered as one, two, three, and four-or-more syllables. The orthogonal columns encode one versus the later-band average, two versus the later-two average, and three versus four-or-more. Under this scaling, those three mean differences are respectively four, three, and two times their fitted coefficients.
 
 ```{r}
-#| label: construct-earlier-versus-later-contrasts
-#| echo: true
-stress_data <- data.frame(
-  stress = factor(
-    c("primary", "secondary", "unstressed"),
-    levels = c("primary", "secondary", "unstressed")
-  )
+#| label: fit-mald-reverse-helmert-coding
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+band_levels <- c(as.character(seq_len(3L)), "4+")
+mald$syllable_band <- factor(
+  ifelse(mald$n_syllables >= 4L, "4+", as.character(mald$n_syllables)),
+  levels = band_levels
 )
 
-elc <- matrix(
-  c(2, -1, -1,
-    0,  1, -1),
-  nrow = 3,
-  ncol = 2
+reverse_matrix <- matrix(
+  c(3, -1, -1, -1, 0, 2, -1, -1, 0, 0, 1, -1), # dqr-allow: symbolic-derivation
+  nrow = 4L,
+  ncol = 3L
+)
+rownames(reverse_matrix) <- levels(mald$syllable_band)
+colnames(reverse_matrix) <- c(
+  "one_vs_later", "two_vs_later", "three_vs_four_plus"
 )
 
-colnames(elc) <- c("primary_vs_weaker", "secondary_vs_unstressed")
-rownames(elc) <- levels(stress_data$stress)
+reverse_data <- mald
+contrasts(reverse_data$syllable_band) <- reverse_matrix
+reverse_fit <- lm(
+  mean_log_rt ~ syllable_band + log_frequency_c + log_duration_c,
+  data = reverse_data
+)
 
-contrasts(stress_data$stress) <- elc
-contrasts(stress_data$stress)
+treatment_data <- mald
+contrasts(treatment_data$syllable_band) <- contr.treatment(4)
+treatment_fit <- lm(
+  mean_log_rt ~ syllable_band + log_frequency_c + log_duration_c,
+  data = treatment_data
+)
+
+maximum_fit_difference <- max(abs(
+  fitted(reverse_fit) - fitted(treatment_fit)
+))
+stopifnot(maximum_fit_difference < 1e-9)
+
+reverse_matrix
+coef(summary(reverse_fit))
 ```
 
-Constructing the matrix explicitly makes the sign and grouping visible. A
-package function may use the opposite sign, a different scaling, or the opposite
-naming convention. Do not infer the coefficient meaning from a function name
-alone.
+The fitted values agree to within `r format(maximum_fit_difference, scientific = TRUE, digits = 2)`. Reverse Helmert coding has changed the coordinate system for the category effects, not the fitted conditional means.
 
-## Reconstructing a numerical example
+```{r}
+#| label: plot-mald-reverse-helmert
+#| fig-cap: "Observed MALD item summaries and the fitted syllable-band means preserved by reverse Helmert coding."
+prediction_data <- data.frame(
+  syllable_band = factor(
+    levels(reverse_data$syllable_band),
+    levels = levels(reverse_data$syllable_band)
+  ),
+  log_frequency_c = 0,
+  log_duration_c = 0
+)
+prediction_data$fit <- predict(reverse_fit, newdata = prediction_data)
 
-Suppose the fitted duration means are 120 milliseconds for primary stress, 92
-for secondary stress, and 76 for unstressed syllables. The first reverse Helmert comparison is
+point_opacity <- 0.06
+ggplot(reverse_data, aes(syllable_band, mean_log_rt)) +
+  geom_jitter(color = "grey70", alpha = point_opacity, width = 0.16, height = 0, size = 0.55) +
+  geom_point(data = prediction_data, aes(y = fit), color = "#2C6E9B", size = 2) +
+  labs(x = "Syllable-count band", y = "Mean log lexical-decision time") +
+  theme_classic(base_size = 12)
+```
 
-$$
-120-\frac{92+76}{2}=36.
-$$
+The top band remains open-ended. Thus the final coefficient compares two observed bands, but it does not estimate the effect of adding exactly one syllable.
 
-Under the unscaled matrix,
+## Check your understanding
 
-$$
-\beta_1=\frac{36}{3}=12.
-$$
+1. Which rows receive nonzero weights in the first contrast?
+2. Why do treatment and reverse Helmert coding preserve fitted values?
+3. What does the final contrast compare?
+4. Why is that contrast not a one-syllable causal effect?
 
-The second reverse Helmert comparison is
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-$$
-92-76=16,
-$$
+1. All four rows receive nonzero weights: 3 for the one-syllable band and -1 for each later band. <!-- dqr-allow: empirical-answer -->
+2. Both are full-rank bases for the same category-mean subspace, so they change coefficients but preserve fitted conditional means. <!-- dqr-allow: empirical-answer -->
+3. The final reverse Helmert contrast compares the fitted three-syllable mean with the fitted four-or-more-syllable mean; under the displayed scaling, that difference is twice the coefficient. <!-- dqr-allow: empirical-answer -->
+4. The upper band is open-ended and membership is observational, so the contrast neither adds exactly one syllable nor identifies a causal intervention. <!-- dqr-allow: empirical-answer -->
 
-so
+</details>
 
-$$
-\beta_2=\frac{16}{2}=8.
-$$
-
-The intercept is the unweighted average of the three means:
-
-$$
-\beta_0=\frac{120+92+76}{3}=96.
-$$
-
-Substituting $(\beta_0,\beta_1,\beta_2)=(96,12,8)$ into the three design rows
-recovers 120, 92, and 76.
-
-## Keeping sign and grouping separate
-
-Multiplying an entire contrast column by $-1$ reverses the sign of its
-coefficient. The fitted category means remain unchanged. Reordering factor
-levels, in contrast, can change which categories are grouped together. These are
-different operations.
-
-For this reason, state the comparison in words and provide the
-matrix. "We used reverse Helmert contrasts" is not enough when the terminology and
-sign convention can vary.
-
-::: {.callout-note title="Recover the reverse Helmert coefficients"}
-1. What does the second reverse Helmert contrast compare in the displayed three-level factor?
-2. Why is the primary-minus-weaker-average difference equal to $3\beta_1$?
-3. Verify the three fitted means using $(96,12,8)$.
-4. Explain why an ordered factor does not by itself justify reverse Helmert contrasts.
-5. Why should a report provide the matrix in addition to a contrast-family name?
-:::
+The [next page](interactions.qmd) uses paired MegaOrientation judgments to define a difference in orientation shifts.

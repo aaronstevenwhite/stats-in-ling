@@ -2,113 +2,148 @@
 title: "Data-generating processes"
 ---
 
-Suppose annotators judge a sentence's acceptability on a four-category scale. We observe an acceptability response, not grammaticality itself. The response alone does not say how the sentence and context, trial-level variation, and category boundaries combined to produce it. Writing code before answering that question can hide incompatible assumptions inside one function call.
+The event-structure annotations in [Universal Decompositional Semantics (UDS)](https://aclanthology.org/2020.lrec-1.699/) attach properties to predicate nodes anchored in sentence context. In the natural-parts task, an annotator first reports whether the situation described by a predicate has natural subparts. The response is evidence about event structure under this instrument; it is not event structure itself. [Gantt, Glass, and White (2022)](https://aclanthology.org/2022.tacl-1.2/) describe the event protocol and its conditional branches, while the [Decomp documentation](https://decomp.readthedocs.io/en/latest/data/semantic-types.html) describes the released semantic graph attributes.
 
-A [**data-generating process**](https://bruno.nicenboim.me/bayescogsci/ch-workflow.html) is an ordered account of the random choices and deterministic mappings that could produce an observation. The threshold account below gives a latent-variable representation of the [cumulative logit model](../regression-models/ordinal-regression.qmd) introduced earlier. It is written before the joint distribution so that every later probability term has a stated role in the annotation process.
+A **data-generating process (DGP)** is an ordered account of the random choices and deterministic mappings that could produce an observation. We begin with the observed binary gate because the local extract contains its raw responses. The conditional follow-up responses and raw confidence judgments are not present in an audited form, so this analysis does not invent them.
+
+## Inspecting the observed response process
+
+```{r}
+#| label: load-uds-generative
+#| message: false
+#| warning: false
+
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$item_id)) == 1000L,
+  length(unique(uds$annotator_id)) == 12L,
+  setequal(unique(uds$natural_parts), 0:1),
+  sum(uds$natural_parts) == 659L,
+  !anyDuplicated(paste(uds$item_id, uds$annotator_id, sep = "::")),
+  all(uds$item_id == paste(uds$graph_id, uds$node_id, sep = "%%"))
+)
+
+item_response_counts <- table(uds$item_id)
+response_summary <- data.frame(
+  responses = nrow(uds),
+  items = length(unique(uds$item_id)),
+  annotators = length(unique(uds$annotator_id)),
+  no = sum(uds$natural_parts == 0L),
+  yes = sum(uds$natural_parts == 1L),
+  items_with_two_responses = sum(item_response_counts == 2L),
+  items_with_three_responses = sum(item_response_counts == 3L)
+)
+
+knitr::kable(response_summary)
+```
+
+The extract contains `r format(response_summary$responses, big.mark = ",")` responses to `r format(response_summary$items, big.mark = ",")` predicate nodes from `r response_summary$annotators` anonymized annotators. Of these responses, `r response_summary$yes` are yes and `r response_summary$no` are no. The item identifier joins a graph identifier to a predicate-node identifier; it is not a verb lemma.
+
+The annotation design is sparse and crossed. The raw rates below describe the responses each annotator happened to give to the items they saw. They do not yet separate annotator response location from item composition.
+
+```{r}
+#| label: plot-uds-annotator-design
+#| fig-width: 6.2
+#| fig-height: 4.2
+#| fig-cap: "Raw natural-parts response rates by anonymized annotator. Point size records the number of observed responses."
+
+annotator_n <- stats::aggregate(natural_parts ~ annotator_id, uds, length)
+names(annotator_n)[2] <- "responses"
+annotator_rate <- stats::aggregate(natural_parts ~ annotator_id, uds, mean)
+names(annotator_rate)[2] <- "yes_rate"
+annotator_design <- merge(annotator_n, annotator_rate, by = "annotator_id")
+annotator_design$annotator_id <- stats::reorder(
+  annotator_design$annotator_id,
+  annotator_design$yes_rate
+)
+
+ggplot2::ggplot(
+  annotator_design,
+  ggplot2::aes(yes_rate, annotator_id, size = responses)
+) +
+  ggplot2::geom_point(color = "steelblue4", alpha = 0.85) + # dqr-allow: algorithm-setting
+  ggplot2::scale_x_continuous(
+    labels = scales::label_percent(accuracy = 1) # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_size_continuous(range = c(2, 6), guide = "none") +
+  ggplot2::labs(
+    x = "Raw natural-parts yes rate",
+    y = "Anonymized annotator"
+  ) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
 
 ## Stating one step at a time
 
-For a first model of the ordered judgment, consider the following process.
+Let $i$ index predicate nodes and $j$ index annotators. A first DGP has four steps.
 
-1. Each sentence-in-context item $i$ has an unobserved response location $\theta_i$ under this instrument.
-2. A trial response $Z_{ij}$ varies around that value.
-3. Fixed ordered thresholds map $Z_{ij}$ to the recorded category $Y_{ij}$.
+1. Draw an item deviation $u_i$ from an item population.
+2. Draw an annotator deviation $a_j$ from an annotator population.
+3. Map the population location and deviations to a yes probability $\pi_{ij}$.
+4. Draw the recorded response $Y_{ij}$ from that probability.
 
-This process intentionally omits stable annotator differences. Its purpose is to expose the item and observation rule before a later page extends the account.
-
-To retain the earlier cumulative-logit response model, let trial variation follow a standard logistic distribution:
+The corresponding model is
 
 $$
-Z_{ij}=\theta_i+\varepsilon_{ij},
+u_i\sim\mathcal N(0,\sigma_{\text{item}}^2),
 \qquad
-\varepsilon_{ij}\sim\operatorname{Logistic}(0,1).
+a_j\sim\mathcal N(0,\sigma_{\text{annotator}}^2),
 $$
 
-For four response categories, let $c_1<c_2<c_3$ be the thresholds. The recorded response is
-
 $$
-Y_{ij}=k
-\quad\text{when}\quad
-c_{k-1}<Z_{ij}\leq c_k,
+\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j,
+\qquad
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}).
 $$
 
-where $c_0=-\infty$ and $c_4=\infty$. The dependence sequence is
+The dependence sequence is
 
 $$
-\theta_i
-\longrightarrow
-Z_{ij}
-\longrightarrow
-Y_{ij}.
+(\alpha,u_i,a_j)\longrightarrow\pi_{ij}\longrightarrow Y_{ij}.
 $$
 
-The arrows describe an order of generation, not a chronology in the annotator's mind. They state which values are needed to generate each later value.
+The arrows describe an order of generation, not a chronology in the annotator's mind. The response is the only observed quantity in this sequence. The probability and both deviations are model quantities.
 
-## Working through one response
+## Grounding the indices in an observed item
 
-Suppose one sentence has $\theta_i=.8$, and one trial receives noise $\varepsilon_{ij}=-.2$. Its latent response is
-
-$$
-Z_{ij}=.8-.2=.6.
-$$
-
-Let the thresholds be $c_1=-1$, $c_2=0$, and $c_3=1$. Since
-
-$$
-0<.6\leq1,
-$$
-
-the recorded category is $Y_{ij}=3$. The model interprets category 3 as the result of a latent response falling between the second and third thresholds. It does not interpret the numeral 3 as a direct measurement of $\theta_i$, and it does not identify $\theta_i$ with a binary grammaticality category.
-
-Different noise draws can yield different categories for the same sentence. If $\varepsilon_{ij}=.5$, then $Z_{ij}=1.3$ and the response becomes category 4. Trial variation is thus part of the measurement account rather than evidence that the sentence changed between presentations.
-
-## Implementing the generation in base R
+The following code chooses the first predicate node in file order that received both response values and prints its recorded rows. Selection depends on response pattern here only to make disagreement visible; it is not part of the teaching extract's construction or any fitted model.
 
 ```{r}
-generate_ordered_response <- function(theta, noise, thresholds) {
-  latent_response <- theta + noise
-  response <- findInterval(latent_response, thresholds) + 1L
+#| label: inspect-one-uds-item
 
-  data.frame(
-    theta = theta,
-    noise = noise,
-    latent_response = latent_response,
-    response = response
-  )
-}
+responses_by_item <- split(uds$natural_parts, uds$item_id)
+mixed_item_ids <- names(responses_by_item)[
+  vapply(responses_by_item, function(x) length(unique(x)) == 2L, logical(1))
+]
+example_item <- uds[
+  uds$item_id == mixed_item_ids[[1]],
+  c("split", "graph_id", "node_id", "annotator_id", "natural_parts")
+]
 
-generate_ordered_response(
-  theta = 0.8,
-  noise = -0.2,
-  thresholds = c(-1, 0, 1)
-)
+knitr::kable(example_item)
 ```
 
-The function accepts the random draw `noise` rather than generating it internally. This makes the hand calculation visible. A simulator would draw many noise values and then apply the same deterministic threshold mapping.
+These rows share one $u_i$ but have different annotator indices $j$. A joint model may attribute their disagreement to Bernoulli variation, annotator location, or both. The rows do not license assigning the predicate a categorical event type.
 
-## A data-generating process makes commitments
+## Declaring what is outside the process
 
-The process says that variation enters before thresholding and that every annotator uses the same thresholds. If annotators differ in scale use, common thresholds may fail. And if repeated responses come from the same participant, treating $\varepsilon_{ij}$ as the only participant-level variation may overstate the information in the sample. These are measurement commitments, not implementation details.
+The original protocol uses the natural-parts answer to determine which later questions appear. A yes reveals questions about part similarity and part duration; a no reveals questions about whole-event duration and dynamicity. This display logic matters, but the present extract does not contain audited raw responses to those branches. Raw confidence is also blocked: the paper describes a one-to-five scale, the package metadata describes a zero-to-four scale, and the inspected raw serialization repeats a duration response in the confidence position. The released normalized confidence field is thus not treated as an additional raw judgment.
 
-The process also brackets a question. It does not yet represent stable annotator tendencies. This omission is acceptable only because it is explicit and temporary. A later extension adds an annotator component after the joint distribution for the simpler process is clear.
-
-## Accounting for every recorded variable
-
-Every recorded variable should either appear in the data-generating process or be declared outside its scope. If confidence is recorded but omitted, the analysis should say that it does not model confidence. If a follow up question appears only after an affirmative gate, the display rule belongs in the process.
-
-Conversely, every latent quantity needs a role. Adding an unobserved variable can make a model flexible while leaving its scale or meaning unidentified. A verbal label does not identify a latent variable.
-
-## Every variable needs a role in the model
-
-Every recorded or latent quantity must have a defined role in the generative process. An observed confidence score is omitted when the model silently ignores it while claiming to represent the complete instrument. A latent state is unidentified when it affects no observation or when several latent states make identical predictions.
-
-The repair is a design decision. Give the variable a role in the data-generating process, narrow the model's claim so the variable is explicitly omitted, or remove an unnecessary latent quantity. Writing the process before code exposes the choice.
+Thus this DGP is deliberately a model of the observed natural-parts gate. It is not a model of the complete event-structure instrument. The narrower claim keeps every recorded variable in the likelihood and every omitted variable outside it.
 
 ::: {.callout-note title="Check the generative order"}
-1. Which value is generated directly from $\theta_i$ in the worked process?
-2. Why can two responses to the same sentence differ under the model?
-3. What model commitment is made by using one threshold vector for every response?
-4. What happens when an observed variable has no defined role in the generative process?
+1. Which quantity in the model is recorded directly?
+2. Why do the rows for one item share $u_i$ but not $a_j$?
+3. Why is an item identifier not a verb-lemma identifier?
+4. Which response branches remain outside this model?
 :::
 
-A data-generating process orders the random choices and mappings that connect a linguistic quantity to a recorded annotation. The order exposes assumptions before they are compressed into software. Each step can then be translated into a factor in [one joint distribution](writing-a-joint-model.qmd).
+A DGP orders the random choices and mappings that connect a linguistic target to an annotation. The next page translates this sequence into [one joint distribution](writing-a-joint-model.qmd).
+
+[Previous: Custom models](index.qmd) · [Next: Writing a joint model](writing-a-joint-model.qmd)

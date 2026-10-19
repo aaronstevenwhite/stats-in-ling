@@ -1,112 +1,66 @@
 ---
-title: "Quasi-Poisson variance"
+title: "Quasi-Poisson regression"
+execute:
+  warning: false
+  message: false
 ---
 
-The [dispersion diagnostic](count-overdispersion.qmd) can reveal more conditional variation than a Poisson model permits. One narrow response is to keep the Poisson mean relation while multiplying its variance by a constant. This specification is called a [**quasi-Poisson model**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234).
-
-The word *quasi* signals that this is not a complete probability distribution. The model specifies a conditional mean and conditional variance, but it does not assign probabilities to all possible counts. This difference limits the quantities we can compute from the fit.
-
-## Keeping the same conditional mean
-
-Suppose $Y_i$ is a linguistic count and $\mathbf{x}_i$ contains its predictors. The quasi-Poisson mean uses the familiar log relation:
+Quasi-Poisson regression keeps the Poisson mean function but allows
 
 $$
-\operatorname{E}(Y_i\mid\mathbf{x}_i)=\mu_i,
+\operatorname{Var}[Y_i\mid\mathbf x_i]=\phi\mu_i.
 $$
 
-$$
-\log\mu_i=\mathbf{x}_i^{\mathsf T}\boldsymbol{\beta}.
-$$
+It thus changes uncertainty, not fitted means. The Nettle data show the distinction directly.
 
-The coefficients retain their multiplicative interpretation. If $x_i$ increases by one unit while the other predictors remain fixed, then
-
-$$
-\frac{\mu(x+1)}{\mu(x)}=\exp(\beta_x).
-$$
-
-An exposure offset can also remain in the conditional mean. The predictors and offset encode the same comparison as they would in the corresponding Poisson regression.
-
-## Multiplying the variance
-
-The Poisson restriction is
-
-$$
-\operatorname{Var}(Y_i\mid\mathbf{x}_i)=\mu_i.
-$$
-
-The quasi-Poisson model replaces it with
-
-$$
-\operatorname{Var}(Y_i\mid\mathbf{x}_i)=\phi\mu_i,
-$$
-
-where $\phi$ is a dispersion multiplier. This is the quasi-Poisson variance function.
-
-When $\phi=1$, the mean variance relation matches the Poisson model. When $\phi>1$, the response is overdispersed. When $\phi<1$, it is underdispersed.
-
-Suppose a fitted conditional mean is 9 and $\widehat\phi=4$. The Poisson model assigns variance 9 and standard deviation 3. The quasi-Poisson model assigns
-
-$$
-\widehat{\operatorname{Var}}(Y_i\mid\mathbf{x}_i)
-=4\times 9=36
-$$
-
-and standard deviation 6. The fitted mean remains 9. Only the represented spread changes.
-
-## Examining what changes in estimation
-
-With the same log-linked mean, Poisson and quasi-Poisson regression return the same coefficient estimates. The dispersion multiplier changes their estimated uncertainty.
-
-The standard errors are multiplied by approximately $\sqrt{\widehat\phi}$. If a Poisson standard error is $.10$ and $\widehat\phi=4$, then
-
-$$
-\operatorname{SE}_{\text{quasi}}
-=.10\sqrt{4}
-=.20.
-$$
-
-The same coefficient is now estimated with twice the standard error. The uncertainty calculation now acknowledges that the counts vary more than the Poisson distribution predicts.
-
-```r
-poisson_fit <- glm(
-  count ~ predictor,
-  family = poisson(link = "log"),
-  data = counts
-)
-
-quasi_fit <- glm(
-  count ~ predictor,
-  family = quasipoisson(link = "log"),
-  data = counts
-)
-
-cbind(
-  poisson = coef(poisson_fit),
-  quasi = coef(quasi_fit)
-)
-
-c(
-  poisson = coef(summary(poisson_fit))["predictor", "Std. Error"],
-  quasi = coef(summary(quasi_fit))["predictor", "Std. Error"]
+```{r}
+#| label: load-and-fit-quasi
+#| echo: true
+path <- "data/nettle/nettle-1999-climate.csv"
+if (file.exists(path)) {
+  nettle <- read.csv(path)
+} else {
+  url <- paste0("https://raw.githubusercontent.com/bodowinter/",
+                "applied_statistics_book_data/master/nettle_1999_climate.csv")
+  source_file <- tempfile(fileext = ".csv")
+  download.file(url, source_file, mode = "wb")
+  stopifnot(digest::digest(source_file, "sha256", file = TRUE, serialize = FALSE) ==
+    "3c5abfbec7b2132a9b81ee9a178cbd5559426578032b60c6c4ad74046898793b")
+  raw <- read.csv(source_file)
+  nettle <- data.frame(country = raw$Country, log10_population = raw$Population,
+    log10_area_km2 = raw$Area, log_area_km2 = log(10) * raw$Area,
+    mean_growing_season_months = raw$MGS, language_count = as.integer(raw$Langs))
+}
+formula <- language_count ~ mean_growing_season_months + offset(log_area_km2)
+poisson_fit <- glm(formula, poisson(), nettle)
+quasi_fit <- glm(formula, quasipoisson(), nettle)
+stopifnot(max(abs(fitted(poisson_fit) - fitted(quasi_fit))) < 1e-8)
+data.frame(
+  model = c("Poisson", "quasi-Poisson"),
+  mgs_estimate = c(coef(poisson_fit)[[2L]], coef(quasi_fit)[[2L]]),
+  mgs_standard_error = c(summary(poisson_fit)$coefficients[2L, 2L],
+                         summary(quasi_fit)$coefficients[2L, 2L]),
+  dispersion = c(1, summary(quasi_fit)$dispersion)
 )
 ```
 
-The first comparison should return the same coefficients. The second should return different standard errors whenever the estimated dispersion differs from one.
+The MGS coefficient and every fitted rate are identical, while the standard error expands from `r round(summary(poisson_fit)$coefficients[2L, 2L], 4)` to `r round(summary(quasi_fit)$coefficients[2L, 2L], 4)`. The estimated dispersion is `r round(summary(quasi_fit)$dispersion, 2)`.
 
-## The missing likelihood
+```{r}
+#| label: plot-quasi-shared-fit
+#| echo: true
+library(ggplot2)
+nettle$rate <- nettle$language_count / exp(nettle$log_area_km2)
+grid <- data.frame(mean_growing_season_months =
+  seq(min(nettle$mean_growing_season_months),
+      max(nettle$mean_growing_season_months), length.out = 200L))
+grid$rate <- exp(coef(quasi_fit)[[1L]] + coef(quasi_fit)[[2L]] *
+                   grid$mean_growing_season_months)
+ggplot(nettle, aes(mean_growing_season_months, rate)) +
+  geom_point(size = 1.5) + geom_line(data = grid, color = "#1F5A85", linewidth = .8) +
+  scale_y_log10() +
+  labs(x = "Mean growing season (months)", y = "Languages per square kilometer") +
+  theme_classic()
+```
 
-A complete response distribution assigns a probability to every possible count. The quasi-Poisson variance function does not. It states how the variance relates to the mean, but it does not specify the full shape of the count distribution.
-
-Because the quasi-Poisson model does not specify a complete count distribution, it has no ordinary likelihood. We cannot compute likelihood quantities such as AIC or obtain a full predictive distribution for new counts directly from this model.
-
-The quasi-Poisson model is most useful when the conditional mean coefficients are the target and a constant variance multiplier gives an adequate uncertainty adjustment. It is less useful when the shape of the response distribution, the probability of zeros, or predictive count intervals are central to the question.
-
-## Interpreting the repair narrowly
-
-An estimated $\phi$ greater than one says that residual variation is larger than the Poisson variance. It does not explain why. For instance, omitted predictors or unrepresented dependence can also inflate the dispersion estimate. Multiplying the variance does not recover either source.
-
-The dispersion multiplier adjusts the uncertainty around the predictor coefficients. It does not explain the linguistic source of the extra variation. That explanation would require predictors or dependence terms that represent the proposed source.
-
-::: {.callout-note title="Check the repair"}
-A Poisson fit and a quasi-Poisson fit have the same predictor coefficient, but the second fit has a standard error three times as large. What does this difference imply about $\widehat\phi$? Which part of the scientific claim remains unchanged?
-:::
+Quasi-likelihood does not define a complete probability mass function, so ordinary likelihood comparisons such as AIC are unavailable. It repairs the variance used for standard errors, not omitted structure, country dependence, or the exposure assumption.

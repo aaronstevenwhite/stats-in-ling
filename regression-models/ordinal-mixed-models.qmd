@@ -1,150 +1,333 @@
 ---
 title: "Ordinal mixed models"
+execute: {warning: false, message: false}
 ---
 
 An ordinal mixed model combines the cumulative link introduced for [ordinal regression](ordinal-regression.qmd) with the group deviations introduced for [generalized linear mixed models](generalized-linear-mixed-models.qmd).
 
-Suppose each annotator rates several naturally occurring discourses on an ordered speaker-commitment scale from *no* through *maybe* to *yes*. Each discourse also receives judgments from several annotators. The ordinal regression page represents the response order, but it does not yet represent the two repeated units. These responses are annotations of perceived speaker commitment; they are not direct observations of a discourse's semantic value.
+We use **MegaVeridicality v1**, the *no*, *maybe*, and *yes* veridicality judgments described by White and Rawlins ([2018](https://ling.auf.net/lingbuzz/004012/current.pdf)) and distributed through the [official MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). Each row records one response to a low-content sentence containing a clause-embedding verb. The direct task asks whether the embedded event happened after an assertion; the conditional task places that assertion in a conditional antecedent.
 
-An [**ordinal mixed model**](https://paulbuerkner.com/brms/articles/brms_families.html) places random effects inside the location predictor of a cumulative link model. The response categories and cutpoints are unchanged. The new step is the same one used by a generalized linear mixed model: observations that share an annotator or discourse also share a modeled deviation.
+The two tasks recruited separate samples. Numeric participant labels recur across tasks, so the prepared table prefixes them with the task before constructing `respondent_id`. Treating the repeated numbers as the same people would invent a dependence relation not present in the study.
 
-## Starting from the cumulative link
+## A fixed teaching subset
 
-Let $Y_{ijd}$ be annotator $j$'s ordered response to discourse $d$ in condition $i$. For each cutpoint $c$, an ordinal regression has
+```{r}
+#| label: prepare-megaveridicality-teaching-subset
+data_path <- paste0(
+  "data/megaveridicality/",
+  "megaveridicality-v1-active-native.csv"
+)
+fold_path <- "data/megaveridicality/verb-folds.csv"
+teaching_fold <- 1L
+
+full_judgments <- read.csv(
+  data_path,
+  stringsAsFactors = FALSE
+)
+verb_folds <- read.csv(
+  fold_path,
+  stringsAsFactors = FALSE
+)
+
+judgments <- merge(
+  full_judgments,
+  verb_folds,
+  by = "verb",
+  all.x = TRUE,
+  sort = FALSE
+)
+
+stopifnot(
+  nrow(judgments) == 14951L,
+  !anyNA(judgments$fold)
+)
+
+# Select whole verbs using the preassigned, outcome-blind fold.
+judgments <- judgments[judgments$fold == teaching_fold, ]
+row.names(judgments) <- NULL
+```
+
+The full active/native table contains `r nrow(full_judgments)` responses from `r length(unique(full_judgments$verb))` active-frame verbs. Fitting the correlated-slope ordinal mixed model to that table makes routine course builds unnecessarily slow. We therefore use a fixed teaching subset: all `r nrow(judgments)` responses for the `r length(unique(judgments$verb))` verbs assigned to fold `r teaching_fold` by the release's salted verb-hash partition. The partition was constructed without reference to the response values. It retains all four polarity-by-task conditions for every selected verb and all `r length(unique(judgments$respondent_id))` task-specific respondents.
+
+This is a computational teaching subset, not a probability sample from the English clause-embedding lexicon. The estimates describe the selected verbs and should not be reported as full-data estimates. The model also analyzes raw ordered responses; it does not reproduce White and Rawlins's participant-threshold normalization, derived veridicality and factivity measures, or responsivity analysis.
+
+## Retaining the ordered response
+
+For response $Y_i$ and cutpoint $c$, the cumulative-logit model is
 
 $$
-\operatorname{logit}\Pr(Y_{ijd}\leq c)
-=\kappa_c-\eta_{ijd}.
+\operatorname{logit}\mathbb{P}(Y_i\le c)
+=\kappa_c-\eta_i,
+\qquad c\in\{1,2\}.
 $$
 
-Suppose $X_{ijd}$ represents an embedding environment. Without random effects,
+The location predictor is
 
 $$
-\eta_{ijd}=\beta_0+\beta_1X_{ijd}.
+\eta_i
+=\mathbf x_i^{\mathsf T}\boldsymbol\beta
++\mathbf z_{v[i]}^{\mathsf T}\mathbf b_{v[i]}
++u_{r[i]}.
 $$
 
-All annotators and discourses with the same predictor value receive the same location. Repeated observations are treated as independent after conditioning on that predictor.
-
-## Adding both repeated units
-
-Let $u_j$ be an annotator deviation and $v_d$ be a discourse deviation:
+The fixed part contains polarity, task, and their interaction. Verbs receive correlated intercept, polarity-slope, and task-slope deviations; respondents receive intercept deviations. For verb $v$ and respondent $r$,
 
 $$
-\eta_{ijd}
-=\beta_0+\beta_1X_{ijd}+u_j+v_d,
+\mathbf b_v\sim\mathcal N(\mathbf 0,\boldsymbol\Sigma_v),
+\qquad
+u_r\sim\mathcal N(0,\tau_r^2).
 $$
 
-with
+With logistic cumulative distribution $F$, the three category probabilities are
 
 $$
-u_j\sim\mathcal N(0,\tau_{\text{annotator}}^2)
+\mathbb{P}(Y_i=\text{no})=F(\kappa_1-\eta_i),
+$$
+
+$$
+\mathbb{P}(Y_i=\text{maybe})
+=F(\kappa_2-\eta_i)-F(\kappa_1-\eta_i),
 $$
 
 and
 
 $$
-v_d\sim\mathcal N(0,\tau_{\text{discourse}}^2).
+\mathbb{P}(Y_i=\text{yes})=1-F(\kappa_2-\eta_i).
 $$
 
-A positive annotator deviation moves that annotator toward higher response categories across represented discourses. A positive discourse deviation moves judgments of that discourse upward across annotators. The two variance parameters describe different sources of heterogeneity and should not be combined into one generic error term.
+The ordered thresholds preserve category order without assigning equal numerical spacing to the labels.
 
-The model is crossed when annotators judge multiple discourses and discourses receive judgments from multiple annotators. Neither unit nests inside the other. The formula should preserve that design.
+## Fitting the verb-and-respondent model
 
-## Following one observation through the model
+```{r}
+#| label: fit-megaveridicality-clmm
+library(ordinal)
+library(ggplot2)
 
-Suppose one observation has fixed predictor location $.6$, annotator deviation $.3$, and discourse deviation $-.4$. Its complete location is
-
-$$
-\eta=.6+.3-.4=.5.
-$$
-
-With cutpoints $\kappa_1=-.8$ and $\kappa_2=1$, its predicted category probabilities are
-
-$$
-\Pr(Y=\text{no})=F(-.8-.5)=F(-1.3)\approx.214,
-$$
-
-$$
-\Pr(Y=\text{maybe})
-=F(1-.5)-F(-.8-.5)
-\approx.622-.214=.408,
-$$
-
-and
-
-$$
-\Pr(Y=\text{yes})=1-F(.5)\approx.378.
-$$
-
-The annotator deviation raises the response location, while the discourse deviation partly offsets that rise. Both operate before the inverse link converts the location into category probabilities.
-
-## Fitting the crossed model
-
-```r
-judgments$commitment <- ordered(
-  judgments$commitment,
+judgments$outcome <- ordered(
+  judgments$response,
   levels = c("no", "maybe", "yes")
 )
+judgments$polarity <- factor(
+  judgments$polarity,
+  levels = c("positive", "negative")
+)
+judgments$task <- factor(
+  judgments$task,
+  levels = c("direct", "conditional")
+)
+judgments$verb <- factor(judgments$verb)
+judgments$respondent_id <- factor(judgments$respondent_id)
 
-fit_commitment_mixed <- ordinal::clmm(
-  commitment ~ embedding_environment + discourse_status +
-    (1 | annotator_id) +
-    (1 | discourse_id),
-  data = judgments,
-  link = "logit"
+cell_counts <- xtabs(
+  ~ verb + polarity + task,
+  data = judgments
+)
+
+direct_ids <- unique(
+  judgments$respondent_id[judgments$task == "direct"]
+)
+conditional_ids <- unique(
+  judgments$respondent_id[judgments$task == "conditional"]
+)
+
+stopifnot(
+  nrow(judgments) == 2990L,
+  nlevels(judgments$verb) == 75L,
+  nlevels(judgments$respondent_id) == 319L,
+  length(direct_ids) == 159L,
+  length(conditional_ids) == 160L,
+  length(intersect(direct_ids, conditional_ids)) == 0L,
+  length(cell_counts) == 300L,
+  all(cell_counts > 0L),
+  identical(
+    sort(as.integer(cell_counts)),
+    c(rep(9L, 10L), rep(10L, 290L))
+  ),
+  all(
+    xtabs(~ task + polarity + outcome, data = judgments) > 0L
+  )
+)
+
+model_formula <- outcome ~ polarity * task +
+  (1 + polarity + task | verb) +
+  (1 | respondent_id)
+
+cache_path <- paste0(
+  "data/megaveridicality/",
+  "megaveridicality-clmm-fold1-cache.rds"
+)
+
+cache_signature <- list(
+  input_md5 = unname(tools::md5sum(c(data_path, fold_path))),
+  teaching_fold = teaching_fold,
+  formula = paste(deparse(model_formula), collapse = " "),
+  link = "logit",
+  nAGQ = 1L,
+  maxIter = 100L,
+  gradTol = 1e-3,
+  R_version = as.character(getRversion()),
+  ordinal_version = as.character(packageVersion("ordinal"))
+)
+
+cached <- if (file.exists(cache_path)) {
+  readRDS(cache_path)
+} else {
+  NULL
+}
+
+cache_is_valid <- is.list(cached) &&
+  all(c("fit", "signature") %in% names(cached)) &&
+  identical(cached$signature, cache_signature)
+
+if (cache_is_valid) {
+  fit <- cached$fit
+} else {
+  fit <- clmm(
+    model_formula,
+    data = judgments,
+    link = "logit",
+    Hess = FALSE,
+    nAGQ = 1L,
+    control = clmm.control(
+      maxIter = 100L,
+      gradTol = 1e-3
+    )
+  )
+
+  saveRDS(
+    list(
+      fit = fit,
+      signature = cache_signature
+    ),
+    cache_path,
+    version = 3
+  )
+}
+
+data_summary <- c(
+  judgments = nrow(judgments),
+  verbs = nlevels(judgments$verb),
+  task_specific_respondents = nlevels(judgments$respondent_id),
+  verb_polarity_task_cells = nrow(unique(
+    judgments[c("verb", "polarity", "task")]
+  ))
+)
+data_summary
+```
+
+The threshold and fixed-effect estimates are computed directly from the raw ordered responses:
+
+```{r}
+#| label: megaveridicality-clmm-parameters
+data.frame(
+  parameter = c(names(fit$alpha), names(fit$beta)),
+  type = c(
+    rep("Threshold", length(fit$alpha)),
+    rep("Fixed effect", length(fit$beta))
+  ),
+  estimate = c(unname(fit$alpha), unname(fit$beta)),
+  row.names = NULL
 )
 ```
 
-The fixed terms describe the modeled linguistic contrasts. `(1 | annotator_id)` represents baseline annotation tendencies. `(1 | discourse_id)` represents baseline differences among the linguistic materials. The cutpoints are estimated jointly with the fixed coefficients and variance parameters.
+These values describe one fitted teaching model. They do not define a latent taxonomy of clause-embedding verbs.
 
-The model can include an interaction when the linguistic theory predicts that the embedding effect changes with discourse status:
+## Comparing observed and fitted category probabilities
 
-```r
-fit_commitment_interaction <- ordinal::clmm(
-  commitment ~ embedding_environment * discourse_status +
-    (1 | annotator_id) +
-    (1 | discourse_id),
-  data = judgments,
-  link = "logit"
+The fitted points below set verb and respondent deviations to zero. The bars are raw teaching-subset response proportions for the same polarity-by-task cells. Thus the figure compares raw and fitted quantities from the same `r nlevels(judgments$verb)` verbs.
+
+```{r}
+#| label: plot-megaveridicality-clmm
+raw_probabilities <- as.data.frame(table(
+  judgments$polarity,
+  judgments$task,
+  judgments$outcome,
+  dnn = c("polarity", "task", "response")
+))
+names(raw_probabilities)[names(raw_probabilities) == "Freq"] <- "responses"
+raw_probabilities$probability <- ave(
+  raw_probabilities$responses,
+  raw_probabilities$polarity,
+  raw_probabilities$task,
+  FUN = function(x) x / sum(x)
 )
-```
 
-The interaction belongs in the formula only when its contrast has been stated before fitting. The presence of several response categories does not by itself motivate a larger fixed effect structure.
+prediction_cells <- expand.grid(
+  polarity = factor(
+    c("positive", "negative"),
+    levels = levels(judgments$polarity)
+  ),
+  task = factor(
+    c("direct", "conditional"),
+    levels = levels(judgments$task)
+  )
+)
+
+fixed_matrix <- model.matrix(
+  ~ polarity * task,
+  data = prediction_cells
+)
+location <- drop(
+  fixed_matrix[, names(fit$beta), drop = FALSE] %*% fit$beta
+)
+cumulative_probability <- plogis(outer(
+  location,
+  fit$alpha,
+  function(eta, threshold) threshold - eta
+))
+category_probability <- cbind(
+  cumulative_probability[, 1L],
+  cumulative_probability[, 2L] - cumulative_probability[, 1L],
+  1 - cumulative_probability[, 2L]
+)
+colnames(category_probability) <- levels(judgments$outcome)
+
+fitted_probabilities <- do.call(
+  rbind,
+  lapply(seq_len(nrow(prediction_cells)), function(row) {
+    data.frame(
+      polarity = prediction_cells$polarity[[row]],
+      task = prediction_cells$task[[row]],
+      response = factor(
+        levels(judgments$outcome),
+        levels = levels(judgments$outcome),
+        ordered = TRUE
+      ),
+      probability = category_probability[row, ]
+    )
+  })
+)
+
+ggplot(raw_probabilities, aes(x = response)) +
+  geom_col(
+    aes(y = probability),
+    width = 0.68,
+    fill = "grey80",
+    color = "grey45"
+  ) +
+  geom_point(
+    data = fitted_probabilities,
+    aes(y = probability),
+    color = "#1F5A85",
+    size = 2.2
+  ) +
+  facet_grid(task ~ polarity) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Veridicality response", y = "Response probability") +
+  theme_classic()
+```
 
 ## Stating which groups are represented in a prediction
 
-A prediction for an observed annotator and discourse can condition on both estimated deviations. A prediction for a new annotator judging an observed discourse may condition on the discourse deviation but must average over or newly draw the annotator effect. A prediction for a new annotator and new discourse must handle both random-effect populations.
+A prediction for an observed respondent and verb can condition on both estimated deviations. A prediction for a new respondent judging an observed verb may condition on the verb deviation but cannot reuse an observed respondent effect. A prediction for a new respondent and new verb must handle both group distributions.
 
-These are distinct predictive questions. Setting every random effect to zero gives a location at the center of each grouping distribution. It is not automatically the same as averaging response probabilities over those distributions because the cumulative logit inverse is nonlinear.
+Setting both deviations to zero gives a location at the center of the link-scale distributions, as in the figure. Averaging category probabilities over either distribution generally produces different response-scale probabilities because the inverse cumulative-logit transformation is nonlinear. A reported probability must thus state which groups are represented in the target.
 
-The target should thus be stated before predictions are generated. Otherwise the same fixed coefficient can be accompanied by several apparently conflicting probability summaries that differ only in their conditioning choices.
+## What the fitted location can and cannot represent
 
-## Interpreting the linguistic contrast on the response scale
+A positive location shift moves probability toward higher ordered responses. It does not add a fixed number of slider points, because the response is categorical and the change depends on both thresholds and the starting location.
 
-An embedding coefficient remains a common shift across cumulative logits. Random effects do not turn it into a change in slider points or category numbers. Report predicted probabilities for *no*, *maybe*, and *yes* in the theoretically diagnostic conditions.
+The verb random slopes allow the polarity and task associations to vary across observed verbs. The respondent random intercept allows overall response location to vary across respondents. It cannot represent every response style: respondents might also differ in threshold spacing or in how often they use *maybe*. A location-intercept model leaves those possibilities outside its structure.
 
-Annotator and discourse variation also bear on the claim. A large discourse variance means that the represented materials differ substantially after the fixed predictors are included. It does not show that the fixed contrast is absent. It shows that the fixed contrast is not a complete account of discourse-level commitment judgments.
-
-For lexical semantic predictors such as factivity, a coarse predicate category may show an average contrast while individual predicates or discourses vary widely. The model can support the average association without implying that the category determines every response.
-
-## What a random intercept cannot repair
-
-Annotator response behavior may differ in more than baseline location. Some annotators may use *maybe* broadly, while others divide their responses between the endpoints. A location random intercept cannot represent every threshold or scale difference. Likewise, discourse variation may interact with the embedding manipulation rather than merely shifting every condition together.
-
-These limitations should be diagnosed from response distributions and theoretically relevant contrasts. Adding a complex random effect structure without sufficient replication can make the model weakly identified. A simpler model should be described as simpler, not as proof that the omitted variation is zero.
-
-::: {.callout-note title="Reading: de Marneffe, Simons, and Tonhauser (2019)"}
-Read [*The CommitmentBank: Investigating projection in naturally occurring discourse*](https://ojs.ub.uni-konstanz.de/sub/index.php/sub/article/view/601), focusing on the response scale, embedding environments, and variation among predicates, items, and annotators. The reading is included because it shows why an average factivity contrast and substantial discourse level variation can coexist. The problem set uses a prespecified teaching model rather than reproducing every analysis in the paper.
-:::
-
-::: {.callout-note title="Problem Set 4 connection"}
-[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) fits a seven category cumulative logit model with annotator, discourse, and predicate intercepts. Students must keep the ordered measurement and all three repeated units in one model before interpreting factivity.
-:::
-
-::: {.callout-note title="Check the grouping structure"}
-Why are annotator and discourse intercepts crossed? For a new discourse prediction, which estimated deviation cannot be reused? What kind of annotator response variation is not represented by a location random intercept?
-:::
-
-## What the mixed model adds
-
-An ordinal mixed model retains ordered cutpoints and cumulative logits while adding shared annotator and discourse deviations to the response location. The model separates a linguistic contrast from annotator and discourse variation. Its predictions must state whether each grouping unit is observed or new. Problem Set 4 applies this model to commitment judgments and then asks how far the average embedding pattern transfers across discourses.
+White and Rawlins normalize responses and study derived veridicality, factivity, responsivity, and clause-selection patterns. The course model instead analyzes raw ordered responses as a function of polarity and task. It is related to the source design, but it is not a reproduction of the paper's normalization or responsivity analysis. The [next worked page](aspectual-similarity-example.qmd) asks whether the fixed interaction predicts judgments for verbs absent from fitting.

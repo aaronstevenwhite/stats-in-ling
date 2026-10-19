@@ -1,122 +1,143 @@
 ---
 title: "Probability mass functions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](discrete-random-variables.qmd) distinguished a random variable's
-declared codomain from its positive-probability support. Suppose $S$ records the number
-of syllables in a sampled word token. Knowing that $S$ is discrete does not tell us how
-likely its codomain values are. What object pairs each possible count with its
-probability?
+The [preceding page](discrete-random-variables.qmd) distinguished a random variable's declared codomain from its positive-probability support. Knowing that CMUdict phone count $X$ is discrete does not tell us how often its values occur. What object pairs each possible count with its probability?
 
-Consider this constructed probability table.
+We answer this question with the empirical distribution over the [CMUdict pronunciation entries introduced earlier](why-random-variables.qmd#the-pronunciation-entry-outcomes). Uniformly sampling one row gives each pronunciation entry the same mass; aggregating those row masses by `phone_count` produces an empirical probability mass function.
 
-The syllable counts and masses are hypothetical. In observed data, the count would depend on a declared pronunciation and syllabification analysis; the PMF cannot resolve that linguistic representation for us.
+```{r}
+#| label: load-cmudict-pmf
+library(ggplot2)
 
-| syllable count $s$ | probability |
-|---:|---:|
-| 1 | $.42$ |
-| 2 | $.33$ |
-| 3 | $.17$ |
-| 4 | $.08$ |
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
 
-Basically, we need a lookup rule from values to probabilities. More specifically, the
-function assigning a probability to each codomain value is a [**probability mass function**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), abbreviated
-[**PMF**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html). We write
+phone_frequency <- as.data.frame(table(cmu$phone_count))
+names(phone_frequency) <- c("phone_count", "entries")
+phone_frequency$phone_count <-
+  as.integer(as.character(phone_frequency$phone_count))
+phone_frequency$mass <- phone_frequency$entries / nrow(cmu)
+
+stopifnot(
+  nrow(cmu) == 133854L,
+  all(phone_frequency$mass >= 0),
+  abs(sum(phone_frequency$mass) - 1) < 1e-12,
+  sum(phone_frequency$entries) == nrow(cmu)
+)
+
+phone_frequency
+```
+
+Basically, we need a lookup rule from values to probabilities. More specifically, the function assigning a probability to each codomain value is a [**probability mass function**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), abbreviated [**PMF**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html). We write
 
 $$
-p_S:\mathbb Z_{\geq0}\to[0,1],
+p_X:\mathbb Z_{\geq0}\to[0,1],
 \qquad
-p_S(s)\equiv\mathbb{P}(S=s).
+p_X(x)\equiv\mathbb{P}(X=x).
 $$
 
-The capital $S$ denotes the random variable. The lowercase $s$ stands for one possible value. Thus
+For the empirical lexicon distribution with $N$ entries,
 
 $$
-p_S(2)=.33.
+\widehat p_X(x)
+\equiv
+\frac{1}{N}\sum_{i=1}^N\mathbb 1\{X(\omega_i)=x\}.
 $$
 
-By the PMF definition, the probability measure assigns $.33$ to the event $\{\omega\in\Omega\mid S(\omega)=2\}$.
-In this constructed model, $\operatorname{cod}(S)=\mathbb Z_{\geq0}$ and
-$\operatorname{supp}(S)=\{1,2,3,4\}$. Thus $p_S(s)=0$ for every other $s\in\operatorname{cod}(S)$.
+The capital $X$ denotes the random variable. The lowercase $x$ stands for one possible value.
+
+```{r}
+#| label: cmudict-pmf-events
+modal_row <- phone_frequency[which.max(phone_frequency$mass), ]
+phone_threshold <- unname(quantile(cmu$phone_count, 0.75, type = 1))
+upper_tail_mass <- sum(
+  phone_frequency$mass[phone_frequency$phone_count > phone_threshold]
+)
+
+stopifnot(
+  abs(modal_row$mass -
+        mean(cmu$phone_count == modal_row$phone_count)) < 1e-12,
+  abs(upper_tail_mass - mean(cmu$phone_count > phone_threshold)) < 1e-12
+)
+
+c(modal_phone_count = modal_row$phone_count,
+  modal_mass = modal_row$mass,
+  third_quartile = phone_threshold,
+  mass_above_third_quartile = upper_tail_mass)
+```
+
+The most frequent value is `r modal_row$phone_count` phones, with mass `r sprintf("%.3f", modal_row$mass)`. By the PMF definition, this is the empirical probability of the event containing all pronunciation entries with that phone count.
 
 ## Checking the two PMF requirements
 
 First, a PMF must assign nonnegative mass:
 
 $$
-p_S(s)\geq0
-\qquad\text{for every }s\in\operatorname{cod}(S).
+p_X(x)\geq0
+\qquad\text{for every }x\in\operatorname{cod}(X).
 $$
 
 Second, the masses across the codomain must sum to one:
 
 $$
-\sum_{s\in\operatorname{cod}(S)}p_S(s)=1.
+\sum_{x\in\operatorname{cod}(X)}p_X(x)=1.
 $$
 
-Values in the codomain but outside the support contribute zero, so this sum has the
-same numerical value as a sum restricted to $\operatorname{supp}(S)$ without using
-support as the default indexing set.
+Values in the codomain but outside the support contribute zero, so this sum has the same numerical value as a sum restricted to $\operatorname{supp}(X)$. The displayed assertions check nonnegativity and normalization from the data.
 
-For the constructed table,
-
-$$
-.42+.33+.17+.08=1.
-$$
-
-The rows represent the positive-probability value events. They are mutually exclusive,
-and their union has probability one. The other codomain values remain part of the PMF
-but contribute zero mass.
+```{r}
+#| label: plot-cmudict-pmf
+#| fig-cap: "Empirical PMF of total phone count under uniform sampling from the pinned CMUdict pronunciation entries."
+ggplot(phone_frequency, aes(phone_count, mass)) +
+  geom_col(fill = "grey65", width = 0.8) +
+  labs(x = "Phones in pronunciation", y = "Empirical probability") +
+  theme_classic(base_size = 12)
+```
 
 ## Adding mass across selected values
 
-What is the probability of a token with at least three syllables? The relevant event contains the rows for 3 and 4:
+The probability that $X$ exceeds its empirical third quartile is
 
 $$
 \begin{aligned}
-\mathbb{P}(S\geq3)
-&=p_S(3)+p_S(4)\\
-&=.17+.08\\
-&=.25.
+\mathbb{P}(X>q_{.75})
+&=\sum_{\substack{x\in\operatorname{cod}(X)\\x>q_{.75}}}p_X(x).
 \end{aligned}
 $$
 
-The calculation adds masses because the two value events do not overlap. A token cannot have exactly three syllables and at least four syllables under this representation.
-
-## Representing the PMF in base R
-
-```{r}
-#| eval: false
-syllable_value <- c("1", "2", "3", "4")
-syllable_mass <- c(.42, .33, .17, .08)
-
-all(syllable_mass >= 0)
-sum(syllable_mass)
-sum(syllable_mass[syllable_value %in% c("3", "4")])
-```
-
-The three results are `TRUE`, `1`, and `.25`. These checks establish that the entered table satisfies the PMF requirements and recover the selected event probability.
+Here $q_{.75}$ is `r phone_threshold` phones and the computed tail mass is `r sprintf("%.3f", upper_tail_mass)`. We add masses because exact-count events do not overlap.
 
 ## Interpreting zero mass carefully
 
-If $p_S(7)=0$, then the event $S=7$ has zero probability under the stated model. This may reflect a deliberately restricted support or a model that treats the value as impossible. It need not mean that no seven syllable word can exist in every linguistic population.
+If $p_X(x)=0$, then $X=x$ has zero probability under the stated empirical model. This may mean only that the count does not occur in the pinned lexicon. It does not mean that no English pronunciation with that count can exist.
 
-The PMF belongs to a represented sampling process. A lexicon weighted by word types and a corpus weighted by word tokens can assign different masses to the same syllable counts.
-
-## The masses must cover the codomain
-
-A probability mass function cannot omit codomain values without accounting for their
-probability. Suppose the first three positive-mass rows above were retained but the
-final row were dropped. The remaining masses would sum to $.92$, so the table would
-not define a PMF unless the omitted value were assigned its missing mass elsewhere.
-
-Renormalizing the three values would define a different model conditional on at most three syllables. That change may be useful, but it must be stated as a new reference event rather than treated as harmless deletion.
+The PMF belongs to a represented sampling process. A lexicon weighted by pronunciation entries and a corpus weighted by word tokens would generally assign different masses to the same phone counts.
 
 ## Check your understanding
 
-1. Verify that the values $.50$, $.30$, and $.20$ define a PMF over a three value support.
-2. Under the syllable PMF, compute $\mathbb{P}(S\leq2)$.
-3. Explain why the support must be declared before interpreting a mass of zero for a count above 4.
-4. What model change occurs if the final row is dropped and the remaining masses are renormalized?
+1. Use `phone_frequency` to compute $\mathbb{P}(X\leq q_{.75})$ and verify it by averaging a logical condition over `cmu$phone_count`.
+2. Find an integer inside the observed minimum--maximum range that has zero mass. Does it belong to the declared codomain?
+3. Recompute the PMF over unique `word` values after retaining only one pronunciation per word. Which probability experiment has changed?
+4. Why would dropping rare counts and renormalizing define a conditional distribution rather than preserve the PMF above?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The third quartile is 8 phones, and both the PMF sum and `mean(cmu$phone_count <= 8)` give $\mathbb{P}(X\leq q_{.75})=0.848693$. <!-- dqr-allow: empirical-answer -->
+2. The integer 21 lies between the observed minimum and maximum but has mass zero; it still belongs to the declared nonnegative-integer codomain. <!-- dqr-allow: empirical-answer -->
+3. Retaining one pronunciation for each of 133,228 unique words changes the experiment from sampling a pronunciation entry to sampling a word with one selected pronunciation. <!-- dqr-allow: empirical-answer -->
+4. Dropping rare counts restricts the experiment to the event that the count was retained, and renormalization thus produces the conditional PMF given that event. <!-- dqr-allow: empirical-answer -->
+
+</details>
 
 A PMF assigns mass to separate support values. The [next page](continuous-random-variables.qmd) considers a model whose values instead fill an interval.

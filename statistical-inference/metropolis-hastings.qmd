@@ -1,171 +1,160 @@
 ---
-title: "Metropolis-Hastings sampling"
+title: "Metropolis--Hastings sampling"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](markov-chain-monte-carlo.qmd) stated the properties required of a transition without constructing one. The Metropolis-Hastings algorithm supplies a transition that leaves a chosen target distribution invariant. Suppose $\Delta$ is a standardized difference in vowel midpoint $F_1$ between two conditions. [$F_1$](../random-variables-and-distributions/normal-distribution.qmd) is an acoustic formant measurement that may bear on vowel quality but does not by itself identify a phonological category. For a small teaching model, take the target for $\Delta$ to be a standard normal density:
+The [MCMC page](markov-chain-monte-carlo.qmd) used a random-walk transition without yet deriving its correction. The **Metropolis--Hastings (MH) algorithm** accepts or rejects proposals so that the PCT posterior remains stationary.
+
+## Proposal and acceptance
+
+At current state $\eta^{(s)}$, draw a proposal
 
 $$
-f_\Delta(\delta)\propto\exp\left(-\frac{\delta^2}{2}\right).
+\eta'\sim q(\eta'\mid\eta^{(s)}).
 $$
 
-The question is how a transition may propose from a convenient distribution without changing the stationary target. The [**Metropolis-Hastings algorithm**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html) does so by proposing a move and then accepting or rejecting it with a probability that corrects the proposal process.
-
-## Step 1: propose a move
-
-Suppose the current state is
-
-$$
-\delta^{(s)}=.20.
-$$
-
-Use a normal random-walk proposal:
-
-$$
-\delta'\mid\delta^{(s)}
-\sim
-\operatorname{Normal}(\delta^{(s)},.75^2).
-$$
-
-Suppose this transition proposes
-
-$$
-\delta'=1.00.
-$$
-
-The proposal density is written $q(\delta'\mid\delta^{(s)})$. It describes a computational move, not uncertainty about the linguistic contrast.
-
-## Step 2: form the acceptance ratio
-
-For a target kernel $\kappa$ and a general proposal density $q$, the ratio is
+For posterior density kernel $\widetilde f$, form
 
 $$
 r
 =
 \frac{
-\kappa(\delta')
-q(\delta^{(s)}\mid\delta')
+\widetilde f(\eta'\mid\mathbf y)
+q(\eta^{(s)}\mid\eta')
 }{
-\kappa(\delta^{(s)})
-q(\delta'\mid\delta^{(s)})
+\widetilde f(\eta^{(s)}\mid\mathbf y)
+q(\eta'\mid\eta^{(s)})
 }.
 $$
 
-The random-walk proposal is symmetric:
+Accept when $U<\min(1,r)$ for $U\sim\operatorname{Uniform}(0,1)$; otherwise retain $\eta^{(s)}$. For the symmetric normal random walk, the two $q$ terms cancel. The unknown posterior normalizer also cancels, so the log acceptance ratio is
 
 $$
-q(1.00\mid.20)
+\log r
 =
-q(.20\mid1.00).
+\log\widetilde f(\eta'\mid\mathbf y)
+-
+\log\widetilde f(\eta^{(s)}\mid\mathbf y).
 $$
 
-The proposal terms cancel, leaving
+Rejected current states must remain in the chain. Removing them would change the proportion of time spent in each posterior region.
 
-$$
-\begin{aligned}
-r
-&=
-\frac{\exp(-1^2/2)}
-{\exp(-.2^2/2)}\\
-&=
-\exp\left[-\frac{1^2-.2^2}{2}\right]\\
-&\approx.619.
-\end{aligned}
-$$
+## Fitting the PCT
 
-Moves toward higher target density have $r>1$ and will be accepted. Moves toward lower density can still be accepted, which lets the chain leave a local high-density point and represent target spread.
-
-## Step 3: accept or repeat
-
-Draw $U\sim\operatorname{Uniform}(0,1)$ and accept when
-
-$$
-U<\min(1,r).
-$$
-
-If $u=.40$, the proposal is accepted because $.40<.619$, so
-
-$$
-\delta^{(s+1)}=1.00.
-$$
-
-If $u=.80$, it is rejected, so
-
-$$
-\delta^{(s+1)}=.20.
-$$
-
-The repeated current state must remain in the chain. Deleting rejections would change how much time the chain spends in different target regions.
-
-## Examining why the normalizer cancels
-
-Suppose $f_\Delta(\delta)=\kappa(\delta)/Z$. The target part of the ratio is
-
-$$
-\frac{\kappa(\delta')/Z}
-{\kappa(\delta^{(s)})/Z}
-=
-\frac{\kappa(\delta')}
-{\kappa(\delta^{(s)})}.
-$$
-
-Metropolis-Hastings thus needs relative target density rather than a known normalizing constant. This cancellation helps computation, but it does not by itself guarantee useful exploration. The proposal must still allow the chain to reach every target region needed for the summaries of interest.
-
-## Retaining proposal correction when needed
-
-The proposal terms canceled only because the random walk is symmetric. If a proposal moves upward more readily than downward, then
-
-$$
-q(\delta'\mid\delta^{(s)})
-\neq
-q(\delta^{(s)}\mid\delta').
-$$
-
-The proposal ratio corrects this directional imbalance. Dropping it would generally change the stationary distribution. The full Metropolis-Hastings ratio should be written before symmetry is used to simplify a particular proposal.
-
-## Running the complete sampler
+The complete code below uses the frozen seed and data-scaled proposal from the reference analysis.
 
 ```{r}
-#| label: random-walk-metropolis
-#| echo: true
+#| label: fit-provo-metropolis-hastings
+library(ggplot2)
 
-set.seed(491)
-draw_count <- 50000
-proposal_sd <- .75
-delta <- numeric(draw_count)
-accepted <- logical(draw_count)
-
-for (s in 2:draw_count) {
-  proposal <- rnorm(1, mean = delta[s - 1], sd = proposal_sd)
-  log_ratio <- dnorm(proposal, log = TRUE) -
-    dnorm(delta[s - 1], log = TRUE)
-
-  if (log(runif(1)) < min(0, log_ratio)) {
-    delta[s] <- proposal
-    accepted[s] <- TRUE
-  } else {
-    delta[s] <- delta[s - 1]
-  }
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+y <- provo$noun_minus_verb_log_ffd
+nu <- 4
+prior_scale <- 2 * sd(y)
+log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
+log_target <- function(eta) {
+  mu <- eta[1]; sigma <- exp(eta[2])
+  sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, prior_scale, log = TRUE) +
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
 }
+mode_fit <- optim(c(median(y), log(mad(y))),
+                  function(eta) -log_target(eta), method = "BFGS",
+                  hessian = TRUE,
+                  control = list(reltol = 1e-12, maxit = 1000L))
+local_sd <- sqrt(diag(solve(mode_fit$hessian)))
+grid <- expand.grid(
+  mu = seq(mode_fit$par[1] - 7 * local_sd[1],
+           mode_fit$par[1] + 7 * local_sd[1], length.out = 321L),
+  log_sigma = seq(mode_fit$par[2] - 7 * local_sd[2],
+                  mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
+)
+grid$log_kernel <- apply(grid, 1, log_target)
+grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
+grid_values <- as.matrix(grid[, c("mu", "log_sigma")])
+grid_mean <- colSums(grid_values * grid$weight)
+centered <- sweep(grid_values, 2, grid_mean, "-")
+grid_covariance <- crossprod(centered * sqrt(grid$weight))
+proposal_cholesky <- chol((2.38^2 / 2) * grid_covariance)
+posterior_cholesky <- t(chol(grid_covariance))
+initial_z <- rbind(c(-2, -1), c(-.6, 1), c(.6, -1), c(2, 1))
+initial <- t(vapply(seq_len(4), function(chain) {
+  grid_mean + posterior_cholesky %*% initial_z[chain, ]
+}, numeric(2)))
 
-saved <- delta[1001:draw_count]
-stopifnot(abs(mean(saved)) < .05)
-stopifnot(abs(sd(saved) - 1) < .05)
+set.seed(2026101804)
+iterations <- 6000L
+warmup <- 1000L
+chain_rows <- vector("list", 4L)
+for (chain in seq_len(4L)) {
+  current <- initial[chain, ]
+  current_log_target <- log_target(current)
+  rows <- vector("list", iterations)
+  for (iteration in seq_len(iterations)) {
+    proposal <- current + drop(rnorm(2) %*% proposal_cholesky)
+    log_ratio <- log_target(proposal) - current_log_target
+    accepted <- log(runif(1)) < min(0, log_ratio)
+    previous <- current
+    if (accepted) {
+      current <- proposal
+      current_log_target <- log_target(current)
+    }
+    rows[[iteration]] <- data.frame(
+      chain, iteration, previous_mu = previous[1],
+      proposed_mu = proposal[1], log_acceptance_ratio = log_ratio,
+      accepted, mu = current[1], sigma = exp(current[2])
+    )
+  }
+  chain_rows[[chain]] <- do.call(rbind, rows)
+}
+chains <- do.call(rbind, chain_rows)
+saved <- subset(chains, iteration > warmup)
+mh_summary <- do.call(rbind, lapply(split(saved, saved$chain), function(x) {
+  data.frame(chain = x$chain[1], acceptance = mean(x$accepted),
+             mean_mu = mean(x$mu), mean_sigma = mean(x$sigma))
+}))
 
-c(mean = mean(saved), sd = sd(saved),
-  acceptance_rate = mean(accepted[-1]))
+stopifnot(length(y) == 55L,
+          all(mh_summary$acceptance > .33 & mh_summary$acceptance < .36))
+mh_summary
 ```
 
-## Understanding proposal scale
+```{r}
+#| label: plot-provo-metropolis-traces
+#| fig-cap: "Four post-warmup random-walk MH chains targeting the PCT."
+trace_opacity <- .65
+ggplot(saved, aes(iteration, mu, group = factor(chain), color = factor(chain))) +
+  geom_line(alpha = trace_opacity, linewidth = .3) +
+  scale_color_grey(start = .15, end = .7) +
+  labs(x = "Post-warmup iteration", y = "Passage-level contrast (mu)",
+       color = "Chain") +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-Very small steps are accepted often but move slowly. Very large steps travel farther but are frequently proposed in low-density regions and rejected. Proposal scale changes computational efficiency while a correctly formed acceptance probability preserves the same target.
+The post-warmup acceptance rates lie between `r sprintf("%.3f", min(mh_summary$acceptance))` and `r sprintf("%.3f", max(mh_summary$acceptance))`. Proposal scale changes efficiency: very small moves are accepted often but explore slowly, while very large moves are often rejected. A correctly formed MH ratio preserves the same target across these choices.
 
-A high acceptance rate does not prove that a sampler is effective. A chain that barely moves can accept nearly every proposal and still approximate posterior summaries inefficiently.
-
-The acceptance decision is not a significance test. It does not decide whether a parameter is true or whether a vowel shift exists. It is a randomized computational step designed to allocate time across states according to target density.
+Acceptance is a randomized computational decision, not a significance test. It says nothing by itself about whether noun and verb reading times differ or whether the PCT represents participant-level variation.
 
 ## Check your understanding
 
-1. Starting from zero, what is the target ratio for a proposal of two?
-2. Would that move be accepted when $u=.20$?
-3. Why must rejected states remain in the saved sequence?
-4. What does proposal scale change, and what should it leave unchanged?
+1. Why do the proposal terms cancel here?
+2. Why does the posterior normalizer cancel?
+3. What state is saved after a rejection?
+4. Why can a high acceptance rate accompany inefficient exploration?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The normal random-walk proposal is symmetric, so $q(\eta'\mid\eta)=q(\eta\mid\eta')$. <!-- dqr-allow: empirical-answer -->
+2. The same multiplicative normalizer appears in the target density at the proposed and current states, so it cancels in their ratio. <!-- dqr-allow: empirical-answer -->
+3. The current state is saved again after a rejection. <!-- dqr-allow: empirical-answer -->
+4. Very small proposals are often accepted but move only short distances, producing high autocorrelation and slow exploration. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [HMC page](hamiltonian-monte-carlo.qmd) replaces random-walk proposals with gradient-directed trajectories through this same target.

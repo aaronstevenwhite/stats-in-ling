@@ -1,85 +1,94 @@
 ---
 title: "Expectations of functions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](expected-values.qmd) defined expectation as a probability weighted average. Now suppose the scientific quantity is not word length itself but a cost computed from word length. Should we average first and then transform, or transform each possible value and then average? This page separates those two operations.
+The [preceding page](expected-values.qmd) defined expectation as a probability-weighted average. Now suppose the quantity of interest is a function of pronunciation length rather than length itself. Should we average first and then transform, or transform each possible value and then average? This page separates those two operations using the [CMUdict phone-count distribution](why-random-variables.qmd#the-pronunciation-entry-outcomes).
 
-Let $L$ record the length of a word in phonological units, with this constructed PMF.
+```{r}
+#| label: load-cmudict-transform
+library(ggplot2)
 
-| length $l$ | $p_L(l)$ |
-|---:|---:|
-| 1 | $.50$ |
-| 2 | $.30$ |
-| 3 | $.20$ |
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+phone_pmf <- as.data.frame(table(cmu$phone_count))
+names(phone_pmf) <- c("phone_count", "entries")
+phone_pmf$phone_count <- as.integer(as.character(phone_pmf$phone_count))
+phone_pmf$mass <- phone_pmf$entries / nrow(cmu)
 
-An account of lexical access might propose that processing cost grows with squared length rather than length itself. Define the transformation
+g <- function(x) x^2
+expected_phone_count <- sum(phone_pmf$phone_count * phone_pmf$mass)
+expected_squared_count <- sum(g(phone_pmf$phone_count) * phone_pmf$mass)
+squared_expected_count <- g(expected_phone_count)
+phone_pmf$squared_contribution <-
+  g(phone_pmf$phone_count) * phone_pmf$mass
 
-$$
-g(l)\equiv l^2.
-$$
+stopifnot(
+  nrow(cmu) == 133854L,
+  abs(expected_squared_count - mean(cmu$phone_count^2)) < 1e-12,
+  expected_squared_count > squared_expected_count
+)
 
-The quantity of interest is now the expected transformed value $\mathbb{E}[g(L)]$.
+c(E_X = expected_phone_count,
+  E_X_squared = expected_squared_count,
+  E_X_then_squared = squared_expected_count)
+```
 
 ## Transforming first, then averaging
-
-Apply $g$ to each support value and retain its original probability.
-
-| $l$ | $g(l)=l^2$ | $p_L(l)$ | $g(l)p_L(l)$ |
-|---:|---:|---:|---:|
-| 1 | 1 | $.50$ | $.50$ |
-| 2 | 4 | $.30$ | $1.20$ |
-| 3 | 9 | $.20$ | $1.80$ |
-
-Adding the last column gives
-
-$$
-\begin{aligned}
-\mathbb{E}[g(L)]
-&=1(.50)+4(.30)+9(.20)\\
-&=3.50.
-\end{aligned}
-$$
 
 For a discrete random variable, when
 $\sum_{x\in\operatorname{cod}(X)}|g(x)|p_X(x)<\infty$,
 
 $$
 \mathbb{E}[g(X)]
-\equiv\sum_{x\in\operatorname{cod}(X)}g(x)p_X(x).
+\equiv
+\sum_{x\in\operatorname{cod}(X)}g(x)p_X(x).
 $$
 
-For an absolutely continuous random variable, when $\int|g(x)|f_X(x)\,\mathrm{d}x<\infty$,
+For an absolutely continuous random variable, when
+$\int|g(x)|f_X(x)\,\mathrm dx<\infty$,
 
 $$
 \mathbb{E}[g(X)]
-\equiv\int_{-\infty}^{\infty}g(x)f_X(x)\,\mathrm{d}x.
+\equiv
+\int_{-\infty}^{\infty}g(x)f_X(x)\,\mathrm dx.
 $$
 
 We can use the distribution of $X$ directly. We do not need to derive a separate distribution for $g(X)$ before computing the expectation.
 
+For the transformation $g(x)=x^2$, the empirical expectation is `r sprintf("%.3f", expected_squared_count)` phones squared.
+
+```{r}
+#| label: plot-cmudict-transformed-expectation
+#| fig-cap: "Contribution of each observed phone count to the expectation of squared phone count."
+ggplot(phone_pmf, aes(phone_count, squared_contribution)) +
+  geom_col(fill = "grey65", width = 0.8) +
+  labs(x = "Phones in pronunciation",
+       y = "Contribution to expected squared count") +
+  theme_classic(base_size = 12)
+```
+
+The rare long entries contribute visibly because squaring gives large counts more weight. This is a mathematical summary of the pinned lexicon; it is not a theory of lexical-processing cost.
+
 ## Comparing two orders of operation
 
-The expected word length is
+Squaring the expected phone count gives
 
 $$
-\mathbb{E}[L]
-=1(.50)+2(.30)+3(.20)
-=1.70.
+g(\mathbb{E}[X])=\mathbb{E}[X]^2,
 $$
 
-Squaring this mean gives
+which the displayed code evaluates as `r sprintf("%.3f", squared_expected_count)` phones squared. This differs from `r sprintf("%.3f", expected_squared_count)`, the expectation of the squared counts.
 
-$$
-g(\mathbb{E}[L])=1.70^2=2.89.
-$$
-
-This differs from the expected squared length:
-
-$$
-\mathbb{E}[g(L)]=3.50.
-$$
-
-The two operations answer different questions. $g(\mathbb{E}[L])$ transforms the center of the original values, whereas $\mathbb{E}[g(L)]$ transforms every possible value and then averages the transformed results. Thus, for a nonlinear function $g$,
+The two operations answer different questions. $g(\mathbb{E}[X])$ transforms the center of the original values, whereas $\mathbb{E}[g(X)]$ transforms every possible value and then averages the transformed results. Thus, for a nonlinear function $g$,
 
 $$
 g(\mathbb{E}[X])\neq\mathbb{E}[g(X)]
@@ -87,31 +96,25 @@ $$
 
 in general.
 
-## Checking the calculation in base R
-
-```{r}
-#| eval: false
-word_length <- 1:3
-word_mass <- c(.50, .30, .20)
-cost <- function(length) length^2
-
-expected_cost <- sum(cost(word_length) * word_mass)
-cost_of_expected_length <- sum(word_length * word_mass)^2
-
-c(expected_cost, cost_of_expected_length)
-```
-
-The results are `3.5` and `2.89`.
-
 ## Interpreting the transformed expectation
 
-The value 3.5 is expressed in squared length units because the transformation squares the input. Its scientific interpretation depends on the proposed cost function. If the theory does not motivate $g(l)=l^2$, the calculation remains mathematically valid but does not become a theoretically useful processing summary.
+The transformed expectation is expressed in the units created by $g$. Here those units are phones squared. A substantive interpretation would require a phonological or processing account that motivates the transformation. Mathematical validity does not supply that theory.
 
-This is why the transformation should be stated before the expectation is computed. The function encodes the property being averaged.
+This distinction is the **transformation commitment**: choosing $g$ specifies which property is being averaged. The function should thus be stated before its expectation is interpreted.
 
 ## Check your understanding
 
-1. Using the word length PMF, compute $\mathbb{E}[2L+1]$ from the definition.
-2. Compute $(2\mathbb{E}[L]+1)$ and compare the result with your first answer.
-3. Explain why $\mathbb{E}[L^2]$ differs from $\mathbb{E}[L]^2$ here.
-4. What theoretical claim is encoded by choosing $g(l)=l^2$ as the processing cost?
+1. Use the displayed PMF to compute $\mathbb{E}[2X+1]$.
+2. Compute $2\mathbb{E}[X]+1$ and compare it with your first answer.
+3. Explain why $\mathbb{E}[X^2]$ differs from $\mathbb{E}[X]^2$ in the data.
+4. Replace `g` with `log1p`. Which units and substantive interpretation would the transformed expectation have?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. For the CMUdict total-phone variable $X$, the displayed PMF gives $\mathbb{E}[2X+1]=13.761173$. <!-- dqr-allow: empirical-answer -->
+2. $2\mathbb{E}[X]+1=2(6.380586)+1=13.761173$, exactly matching the direct transformed expectation. <!-- dqr-allow: empirical-answer -->
+3. $\mathbb{E}[X^2]=45.278012$ exceeds $\mathbb{E}[X]^2=40.711882$ by $\operatorname{Var}[X]=4.566130$, because the phone counts vary. <!-- dqr-allow: empirical-answer -->
+4. Using `log1p` gives $\mathbb{E}[\log(1+X)]=1.957686$ in log-count units, interpretable as the mean log-transformed pronunciation length rather than a mean number of phones. <!-- dqr-allow: empirical-answer -->
+
+</details>

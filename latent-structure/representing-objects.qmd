@@ -1,10 +1,61 @@
 ---
 title: "Representing objects for clustering"
+execute:
+  cache: false
 ---
 
-Suppose a hypothetical survey asks how often each participant speaks and reads two languages. A clustering algorithm receives the resulting numbers. It does not receive the interpretation that one row is a participant, that one column is a self-reported language-use rating, or that another column is meant only for later interpretation.
+Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. Their primary report describes the production and separate listener experiments ([Peterson and Barney 1952](https://doi.org/10.1121/1.1906875)); the course uses the production table distributed as [`phonTools::pb52`](https://search.r-project.org/CRAN/refmans/phonTools/html/pb52.html). The [Praat documentation](https://www.fon.hum.uva.nl/praat/manual/Create_formant_table__Peterson___Barney_1952_.html) records the table's subsequent provenance.
 
-The rows of the input matrix define the objects that can be grouped. Its columns define the properties under which those objects can be similar. This is the [unit-of-analysis choice](../foundations/linguistic-data.qmd) from the opening module expressed as a matrix; it is also distinct from the [observation, sampling, and experimental units](../experimental-design/units-of-assignment.qmd) fixed by a study's design. The accompanying index maps connect those rows and columns to linguistic objects and measurements. A clustering cannot recover a distinction removed before this representation was constructed.
+We use this table throughout the latent-structure notes. The label-separation rule (LSR) is fixed at the outset: intended-vowel labels may describe or evaluate a fitted representation, but they may not enter the feature matrix, initial values, component-count choice, or covariance-family choice.
+
+## Loading and auditing the production table
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+expected_columns <- c(
+  "type", "sex", "speaker", "vowel", "repetition",
+  "f0", "f1", "f2", "f3"
+)
+
+stopifnot(
+  as.character(utils::packageVersion("phonTools")) == "0.2.2.2",
+  identical(dim(pb52), c(1520L, 9L)),
+  identical(names(pb52), expected_columns),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L),
+  all(table(pb52$speaker, pb52$vowel) == 2L),
+  all(stats::complete.cases(pb52))
+)
+
+source_file <- system.file("data", "pb52.rda", package = "phonTools")
+source_checksum <- digest::digest(file = source_file, algo = "sha256")
+object_checksum <- digest::digest(pb52, algo = "sha256")
+
+stopifnot(
+  source_checksum ==
+    "0084f2d0cd9882bca0652b011f31b91d5e0006be3fc761a962c95090aad7fa83",
+  object_checksum ==
+    "63e97096d62f0cab8b02d4f77a3d87cc8bf8df26fb5cf8b48acd2dd8561b28f4"
+)
+
+speaker_labels <- c(c = "Children", m = "Men", w = "Women")
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    ),
+    speaker_type = factor(
+      speaker_labels[as.character(type)],
+      levels = c("Men", "Women", "Children")
+    )
+  )
+```
+
+The audited table has `r format(nrow(vowels), big.mark = ",")` token rows from `r dplyr::n_distinct(vowels$speaker)` speakers. Each speaker contributes `r unique(as.integer(table(vowels$speaker)))` rows: two repetitions of each of ten elicitation words. One row is thus a recorded word token, not a speaker, vowel category, or listener judgment. The package table contains no listener-level response, session, or seat variables from the paper's perception experiment.
 
 ## Defining the represented objects
 
@@ -14,9 +65,9 @@ $$
 \mathbf{X}
 =
 \begin{bmatrix}
-x_{11}&\cdots&x_{1p}\\
-\vdots&\ddots&\vdots\\
-x_{N1}&\cdots&x_{Np}
+\mathbf{x}_1^{\mathsf T}\\
+\vdots\\
+\mathbf{x}_N^{\mathsf T}
 \end{bmatrix}
 \in
 \mathbb{R}^{N\times p}.
@@ -29,141 +80,71 @@ $$
 =
 \begin{bmatrix}
 x_{i1}&\cdots&x_{ip}
-\end{bmatrix},
-$$
-
-which contains every property allowed to make object $i$ similar to another object. A learned cluster assignment attaches to this row unit.
-
-If one row is a participant, a cluster describes participants with similar recorded profiles. If survey responses are averaged within households before the matrix is built, one row becomes a household and the learned groups describe households. The algorithm may be identical, but the unit of interpretation has changed.
-
-## Constructing a small speaker representation
-
-Suppose three speakers report English and Spanish speaking frequency on a scale from 1 to 5. These values are self-reports about language use. They are not direct measurements of proficiency, dominance, or linguistic competence. Instruments such as the [Language Experience and Proficiency Questionnaire](https://doi.org/10.1044/1092-4388(2007/067)) keep several such dimensions separate for exactly this reason.
-
-| speaker | English speaking | Spanish speaking |
-|:--|--:|--:|
-| A | 5 | 1 |
-| B | 4 | 2 |
-| C | 1 | 5 |
-
-The clustering matrix is
-
-$$
-\mathbf{X}
-=
-\begin{bmatrix}
-5&1\\
-4&2\\
-1&5
 \end{bmatrix}.
 $$
 
-The first row
-
-$$
-\mathbf{x}_A=
-\begin{bmatrix}5&1\end{bmatrix}
-$$
-
-represents speaker A only in terms of the two selected speaking ratings. It contains no information about reading, age, community, or any other unrecorded or excluded property.
-
-Speakers A and B differ by one rating point on each column. Speakers A and C differ by four points on each. A distance-based method will thus tend to regard A and B as more similar *with respect to these two ratings*. It does not follow that A and B are more similar bilinguals in every relevant sense. The [next page](distance-and-scaling.qmd) makes the narrower comparison numerical.
-
-## Assigning each column a role
-
-A useful representation record states how every available column is used.
-
-1. Features included in the clustering define the learned groups.
-2. Identifiers link rows to other records but do not define similarity.
-3. Metadata withheld during fitting can be inspected afterward.
-4. Sampling and grouping variables determine how rows are separated during evaluation.
-
-These roles are not interchangeable. Suppose age is included as a clustering feature. A later finding that the groups differ in age partly restates how they were constructed. If age is withheld during fitting, its association with the groups is an external descriptive check.
-
-The same issue applies to intended vowel labels. If a mixture is meant to find structure in formant-frequency measurements, the elicitation-word or intended-vowel labels should not enter the measurement matrix. They can be compared with the fitted acoustic components afterward.
-
-## Keeping identifiers out of the geometry
-
-An identifier such as `participant_id` distinguishes records, but its numerical value has no measurement interpretation. Speaker 102 is not two units closer to speaker 104 than to speaker 108 in any linguistically meaningful sense.
-
-Including such a column makes arbitrary differences among record numbers part of the distance calculation. The clustering may then produce groups driven by data-entry order.
-
-The repair is simple: retain identifiers beside the matrix, not inside it. They remain necessary for joining assignments back to metadata and for keeping repeated records from the same sampling unit together during [grouped validation](../model-criticism-and-prediction/grouped-cross-validation.qmd).
-
-## Numerical coding of unordered categories
-
-Suppose a language column is coded
-
-$$
-\text{English}=1,
-\qquad
-\text{Spanish}=2,
-\qquad
-\text{Hindi}=3.
-$$
-
-This coding places Spanish halfway between English and Hindi on a numerical line. The spacing comes from the labels rather than from a linguistic measurement.
-
-If category identity should help define similarity, separate indicator columns may be used. But doing so states that shared category membership is part of the clustering target. If category is meant to interpret the groups, it should remain outside the fitted representation.
-
-Thus, numerical storage does not guarantee numerical meaning.
-
-## Constructing the feature matrix in R
-
-Keep row identifiers and external variables in a data frame.
+For the main analysis, row $i$ is one token and the two columns are F1 and F2. The sampling group remains the speaker because each person contributes `r unique(as.integer(table(vowels$speaker)))` rows. Intended vowel, repetition, speaker type, and sex remain beside the matrix as external metadata.
 
 ```{r}
-#| eval: false
+X_raw <- as.matrix(vowels[, c("f1", "f2")])
+identifiers <- vowels[, c("row_id", "token_id", "speaker")]
+external_metadata <- vowels[, c(
+  "vowel", "repetition", "speaker_type", "sex"
+)]
 
-speaker_data <- data.frame(
-  speaker_id = c("A", "B", "C"),
-  english_speaking = c(5, 4, 1),
-  spanish_speaking = c(1, 2, 5),
-  age = c(26, 41, 33)
+role_table <- data.frame(
+  role = c(
+    "fitted feature", "fitted feature", "row identifier",
+    "sampling group", "post-fit metadata", "post-fit metadata"
+  ),
+  column = c("f1", "f2", "token_id", "speaker", "vowel", "speaker_type")
 )
+
+knitr::kable(role_table)
 ```
 
-Select only the declared clustering features for the numerical matrix.
+This separation matters. Adding the integer `speaker` code to `X_raw` would treat record-number differences as measured acoustic distances. Adding `vowel` would instead make the intended answer part of the fitted representation. Neither operation answers the clustering question posed here.
+
+## The observed acoustic geometry
 
 ```{r}
-#| eval: false
+#| fig-width: 8.2
+#| fig-height: 3.3
+#| fig-alt: "Raw F2 by F1 measurements for Peterson and Barney vowel tokens, separated into panels for men, women, and children."
 
-feature_names <- c(
-  "english_speaking",
-  "spanish_speaking"
-)
-
-X <- as.matrix(speaker_data[, feature_names])
-rownames(X) <- speaker_data$speaker_id
-
-X
+ggplot2::ggplot(vowels, ggplot2::aes(x = f2, y = f1)) +
+  ggplot2::geom_point(color = "grey25", alpha = 0.28, size = 0.7) + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~speaker_type, nrow = 1) +
+  ggplot2::scale_x_reverse() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::labs(x = "F2 (Hz)", y = "F1 (Hz)") +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    strip.background = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(face = "plain")
+  )
 ```
 
-The `age` and `speaker_id` columns remain available, but neither can affect the fitted similarity. After clustering, assignments can be joined back using `speaker_id`.
+The plot shows all observed F1-F2 vectors and retains speaker type only as a panel label. The broad differences across panels suggest why raw hertz can partly organize tokens by anatomy-related speaker groups. But the plot does not supply an intended-vowel label to a fitting algorithm.
 
-## Repeated records change the row target
+## Repeated rows change the target
 
-Suppose each participant completes the survey twice. Treating both surveys as separate rows creates a grouping of survey occasions. Treating their average as one row creates a grouping of participants but discards within-participant change.
+Treating the `r format(nrow(vowels), big.mark = ",")` tokens as rows produces a grouping of productions. Averaging each speaker-vowel pair first would instead produce `r dplyr::n_distinct(interaction(vowels$speaker, vowels$vowel))` speaker-vowel means and remove repetition-level variation. Averaging all `r unique(as.integer(table(vowels$speaker)))` rows for each speaker would produce a grouping of speakers and remove the within-speaker vowel space almost entirely.
 
-Neither choice is universally correct. The representation should follow the intended object. If the goal is to describe stable participant profiles, repeated rows from one person should not be described as independent participant samples merely because the algorithm accepts them as separate rows.
+These are different represented objects. The present analysis keeps token rows, preserves speaker identifiers for grouped validation, and describes the resulting clusters as regions of a production space.
 
-The prose must refer to the same object that each matrix row represents. Otherwise the interpretation and the fitted grouping refer to different units.
+## What the representation omits
 
-## A representation cannot discover what it already contains
+Peterson and Barney also measured F0 and F3. F3 is especially relevant to the rhotic vowel, while a steady-state section cannot capture every dynamic property of an /hVd/ word. Restricting the matrix to F1 and F2 is thus a teaching choice, not a claim that the other measurements are irrelevant.
 
-Excluding an interpretation variable does remove information from the grouping criterion. That exclusion is exactly what makes a later comparison with the variable informative.
+The paper used the measurements to examine experimental control, production variation, and the relation between acoustic patterns and listener classifications. It did not fit K-means or Gaussian mixtures. Our clustering is a descriptive reanalysis of the released production table.
 
-If an age/sex speaker grouping enters a vowel clustering, an observed association between clusters and that grouping may be built into the geometry. If the aim is to ask whether formant-based components align with speaker metadata, the metadata must remain external to the fit.
+## Checking the represented object
 
-This separation does not make the external variable ground truth. It makes the construction and interpretation steps distinguishable.
+1. What does one row of `X_raw` represent?
+2. Why is `speaker` retained outside the feature matrix?
+3. Which variables are allowed to define similarity under the LSR?
+4. How would averaging repetitions change the object represented by one row?
+5. Which part of the original listener experiment cannot be reconstructed from `pb52`?
 
-## Checking the representation
-
-1. What does one row represent in the three-speaker matrix?
-2. How would the interpretation change if rows were households rather than speakers?
-3. Why should `participant_id` remain outside the feature matrix?
-4. What is learned by comparing clusters with age when age was withheld from fitting?
-5. Why does coding three language names as 1, 2, and 3 create an unsupported geometry?
-6. What grouping is obtained if repeated survey occasions, rather than participants, form the rows?
-
-The input matrix fixes the represented object and the feature columns, while the analysis record states how external variables are used. These choices determine what a learned group can describe before an algorithm is selected. The [next page](distance-and-scaling.qmd) defines how the declared feature values make two rows close or far apart.
+The matrix fixes which objects can be grouped and which measurements can make them similar. The [next page](distance-and-scaling.qmd) compares geometries that use the same observed F1-F2 measurements but different scale definitions.

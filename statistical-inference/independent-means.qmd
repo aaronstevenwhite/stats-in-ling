@@ -1,183 +1,120 @@
 ---
 title: "Comparing two independent means"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [paired design page](paired-observations.qmd) used covariance between linked measurements. When two groups contain different independently sampled speakers, that covariance is absent. Suppose one group of speakers produces vowels in dialect A and a different group produces vowels in dialect B. The response is [first-formant frequency](https://www.fon.hum.uva.nl/praat/manual/Sound__To_Formant__burg____.html), written $F_1$ and measured in hertz. It is a vocal-tract resonance commonly interpreted in relation to vowel height, not a measure of pitch.
+When groups contain different sampled speakers, there is no within-speaker covariance to exploit. We compare /I/ duration in *hid* between the adult men and adult women in the Hillenbrand cohort. The estimand is the difference in group means,
 
 $$
-\Delta=\mu_A-\mu_B.
+\Delta=\mu_{\mathrm{man}}-\mu_{\mathrm{woman}},
 $$
 
-The estimator is the difference between the two sample means:
+estimated by
 
 $$
-\widehat{\Delta}=\overline{Y}_A-\overline{Y}_B.
+\widehat\Delta=\overline Y_{\mathrm{man}}-\overline Y_{\mathrm{woman}}.
 $$
 
-Because the groups contain different speakers, there is no within-speaker difference to calculate. The question is how uncertainty from the two mean estimators combines, and under independent sampling, both contributions remain.
+## Welch's standard error
 
-## Adding independent sampling variances
-
-For independent groups, the general variance rule contains a covariance term, but independence makes that term zero. Thus
+For independent groups,
 
 $$
-\begin{aligned}
-\operatorname{Var}(\widehat{\Delta})
-&=\operatorname{Var}(\overline{Y}_A-\overline{Y}_B)\\
-&=\operatorname{Var}(\overline{Y}_A)
-+\operatorname{Var}(\overline{Y}_B).
-\end{aligned}
+\operatorname{Var}[\widehat\Delta]
+=\operatorname{Var}[\overline Y_{\mathrm{man}}]
++\operatorname{Var}[\overline Y_{\mathrm{woman}}],
 $$
 
-The minus sign disappears because multiplying a random variable by $-1$ does not change its variance. Independence makes the covariance term zero.
-
-Estimate each population variance from its group:
+so the estimated standard error is
 
 $$
-\widehat{\operatorname{SE}}(\widehat{\Delta})
-=
-\sqrt{
-\frac{s_A^2}{n_A}
-+
-\frac{s_B^2}{n_B}
-}.
+\widehat{\operatorname{SE}}(\widehat\Delta)
+=\sqrt{\frac{s_m^2}{n_m}+\frac{s_w^2}{n_w}}.
 $$
 
-This is the standard error in [**Welch's two-sample t-test**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/t.test.html), which allows the two variance contributions to differ. The test does not assume that the population variances are equal.
-
-## Calculating an $F_1$ contrast
-
-Suppose the group summaries are
+Welch's approximation uses
 
 $$
-\overline{y}_A=510\text{ Hz},
-\quad
-s_A=60\text{ Hz},
-\quad
-n_A=20
+\nu=
+\frac{(s_m^2/n_m+s_w^2/n_w)^2}
+{(s_m^2/n_m)^2/(n_m-1)+(s_w^2/n_w)^2/(n_w-1)}
 $$
 
-and
-
-$$
-\overline{y}_B=550\text{ Hz},
-\quad
-s_B=90\text{ Hz},
-\quad
-n_B=15.
-$$
-
-The observed estimate is
-
-$$
-\widehat{\delta}=510-550=-40\text{ Hz}.
-$$
-
-The two estimated variance contributions are
-
-$$
-\frac{60^2}{20}=180
-$$
-
-and
-
-$$
-\frac{90^2}{15}=540.
-$$
-
-Thus
-
-$$
-\widehat{\operatorname{SE}}(\widehat{\Delta})
-=\sqrt{180+540}
-=\sqrt{720}
-\approx26.833\text{ Hz}.
-$$
-
-For $H_0:\Delta=0$, the observed statistic is
-
-$$
-t_{\mathrm{obs}}
-=\frac{-40-0}{26.833}
-\approx-1.491.
-$$
-
-## Approximating the degrees of freedom
-
-Welch's two-sample t-test uses
-
-$$
-\nu
-\approx
-\frac{
-\left(s_A^2/n_A+s_B^2/n_B\right)^2
-}{
-\frac{(s_A^2/n_A)^2}{n_A-1}
-+
-\frac{(s_B^2/n_B)^2}{n_B-1}
-}.
-$$
-
-The value need not be an integer. For these data, $\nu\approx23.005$. The two-sided p value is approximately $.150$, and the 95% confidence interval is approximately
-
-$$
-[-95.51,15.51]\text{ Hz}.
-$$
-
-The interval includes contrasts in both directions. These data do not estimate the direction precisely under this procedure.
+degrees of freedom. It does not require equal group variances.
 
 ```{r}
-#| label: verify-welch-summary
-#| echo: true
+#| label: hillenbrand-welch
+library(ggplot2)
 
-mean_a <- 510
-mean_b <- 550
-sd_a <- 60
-sd_b <- 90
-n_a <- 20
-n_b <- 15
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+hid <- subset(vowels, vowel == "I" & speaker_type %in% c("man", "woman"),
+              select = c(speaker_id, speaker_type, duration_ms))
+men <- subset(hid, speaker_type == "man")$duration_ms
+women <- subset(hid, speaker_type == "woman")$duration_ms
 
-estimate <- mean_a - mean_b
-variance_a <- sd_a^2 / n_a
-variance_b <- sd_b^2 / n_b
-se <- sqrt(variance_a + variance_b)
-df <- (variance_a + variance_b)^2 /
-  (variance_a^2 / (n_a - 1) + variance_b^2 / (n_b - 1))
+v_m <- var(men) / length(men)
+v_w <- var(women) / length(women)
+estimate <- mean(men) - mean(women)
+se <- sqrt(v_m + v_w)
+df <- (v_m + v_w)^2 /
+  (v_m^2 / (length(men) - 1L) + v_w^2 / (length(women) - 1L))
 t_observed <- estimate / se
-p_value <- 2 * pt(-abs(t_observed), df = df)
-interval <- estimate + c(-1, 1) * qt(.975, df = df) * se
+p_value <- 2 * pt(-abs(t_observed), df) # dqr-allow: symbolic-derivation
+interval <- estimate + c(-1, 1) * qt(0.975, df) * se
 
-stopifnot(abs(se - 26.832816) < .000001)
-stopifnot(abs(df - 23.005405) < .000001)
-c(estimate = estimate, se = se, df = df, p = p_value,
-  lower = interval[1], upper = interval[2])
+check <- t.test(men, women, var.equal = FALSE)
+stopifnot(
+  abs(unname(check$statistic) - t_observed) < 1e-12,
+  abs(unname(check$parameter) - df) < 1e-10
+)
+
+data.frame(
+  men = length(men), women = length(women),
+  mean_men_ms = mean(men), mean_women_ms = mean(women),
+  difference_ms = estimate, se_ms = se, t = t_observed, df = df,
+  p_value = p_value, lower_ms = interval[1], upper_ms = interval[2]
+)
 ```
 
-For row-level data with variables `f1` and `dialect`, R uses Welch's two-sample t-test by default:
+The estimated man-minus-woman difference is `r sprintf("%.3f", estimate)` ms, with interval [`r sprintf("%.3f", interval[1])`, `r sprintf("%.3f", interval[2])`] ms.
 
-```r
-t.test(f1 ~ dialect, data = vowel_tokens)
+```{r}
+#| label: plot-hillenbrand-welch
+#| fig-cap: "Raw /I/ durations for distinct adult speakers. Red points mark the group means."
+group_means <- aggregate(duration_ms ~ speaker_type, data = hid, mean)
+
+ggplot(hid, aes(speaker_type, duration_ms)) +
+  geom_jitter(color = "grey45", alpha = 0.7, width = 0.08, height = 0, # dqr-allow: algorithm-setting
+              seed = 20261018) +
+  geom_point(data = group_means, color = "#8B1A1A", size = 2.5) +
+  labs(x = "Speaker group", y = "/I/ duration in hid (ms)") +
+  theme_classic(base_size = 12)
 ```
 
-## Unequal variances
-
-Student's two-sample t-test assumes $\sigma_A^2=\sigma_B^2$ and pools the sample variances before calculating a standard error. That equality is an additional model claim. It does not follow from having two groups.
-
-Welch's two-sample t-test remains appropriate when the variances differ and generally sacrifices little precision when they happen to be equal. A preliminary variance test does not supply a linguistic reason to adopt the pooled model.
-
-## Matching the procedure to the design
-
-If the same speakers produced both dialect styles, the observations would be paired, and treating them as independent would discard within-speaker covariance. Conversely, matching unrelated speakers by row number would invent pairing.
-
-The layout of a spreadsheet does not determine whether observations are paired. Recruitment and measurement determine whether observations are paired or independent.
-
-::: {.callout-note title="Problem-set reading"}
-[PS1, *Task 4: diagnose the independence error*](../problem-sets/ps1/ps1.qmd#task-4-diagnose-the-independence-error-20-points) compares an independent-samples analysis with the paired analysis required by the recording design. It is included because the same measurements make the difference between those procedures concrete.
-:::
+The comparison is descriptive for these screened cohorts. It does not isolate a causal effect of gender, and the recruitment design does not make either group a probability sample of a wider speaker population.
 
 ## Check your understanding
 
-1. Why are the two sampling variance contributions added?
-2. Which group contributes more uncertainty in the worked example?
-3. What extra assumption does the pooled procedure make?
-4. How would the data structure change if every speaker produced both conditions?
+1. Why are the variance contributions added?
+2. Which assumption makes the between-group covariance zero?
+3. What additional assumption would the pooled-variance t procedure make?
+4. Why would matching speakers by row number invent pairing?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. For independent groups the covariance is zero, so the variance of the difference is the sum of the two mean variances. <!-- dqr-allow: empirical-answer -->
+2. The assumption that the adult-men and adult-women speaker samples are independent makes the between-group covariance zero. <!-- dqr-allow: empirical-answer -->
+3. A pooled-variance procedure would additionally assume equal population variances in the two groups. <!-- dqr-allow: empirical-answer -->
+4. Row number has no design-based link across the disjoint speaker groups, so matching on it would fabricate within-pair covariance. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](fishers-exact-test.qmd) moves from continuous speaker measurements to a finite morphological resource sampled without replacement.

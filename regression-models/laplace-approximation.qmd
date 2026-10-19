@@ -1,127 +1,256 @@
 ---
 title: "The Laplace approximation"
+execute: {warning: false, message: false}
 ---
 
-A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The model assigns those effects a population distribution, and the response likelihood is conditional on their values. To obtain a likelihood for the observed responses, we must average over every possible value of the random effects. This is the same marginalization operation introduced for [marginal distributions](../random-variables-and-distributions/marginal-distributions.qmd), now applied to a likelihood.
+A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. A likelihood for the observed responses must thus average over every possible random-effect value.
 
-This integral is part of the model definition, but it usually has no simple formula for a logistic or Poisson mixed model. The [**Laplace approximation**](https://bruno.nicenboim.me/bayescogsci/ch-complexstan.html) replaces the difficult integrand with a simpler shape near its highest point.
+This integral usually has no elementary form for a logistic mixed model. The **Laplace approximation** replaces the log integrand with a quadratic near its highest point. We expose that computation with one participant intercept from the SuperTelicity release introduced on the GLMM page.
 
-## Examining why the integral appears
+## Why the integral appears
 
-Suppose a Poisson mixed model gives speaker $j$ a random intercept $b_j$. Conditional on that intercept, the likelihood for the speaker's responses is
-
-$$
-p(\mathbf y_j\mid b_j,\boldsymbol\beta).
-$$
-
-The group model assigns the intercept a density
+For participant $p$, let $\mathbf y_p$ denote the binary preposition choices and $b_p$ the participant intercept. Conditional on $b_p$, the participant likelihood is
 
 $$
-p(b_j\mid\tau).
+p(\mathbf y_p\mid b_p,\boldsymbol\beta).
 $$
 
-The speaker's contribution to the observed data likelihood is thus
+The group model supplies the density $f_B(b_p\mid\tau)$. The observed-data contribution is
 
 $$
-p(\mathbf y_j\mid\boldsymbol\beta,\tau)
-=
-\int
-p(\mathbf y_j\mid b_j,\boldsymbol\beta)
-p(b_j\mid\tau)
-\,db_j.
+p(\mathbf y_p\mid\boldsymbol\beta,\tau)
+=\int_{-\infty}^{\infty}
+p(\mathbf y_p\mid b_p,\boldsymbol\beta)
+f_B(b_p\mid\tau)\,db_p.
 $$
 
-The product inside the integral is large where two conditions coincide. First, the value of $b_j$ must fit that speaker's responses. Second, the value must remain plausible under the population distribution. Integration adds the area over all such values rather than selecting only one intercept.
+Integration adds support over every intercept value. Selecting only the best-fitting intercept would omit uncertainty about that latent value.
 
-## Working on the log scale
+## Expanding the log integrand
 
-Define the log integrand
+Define
 
 $$
 h(b)
-=
-\log p(\mathbf y_j\mid b,\boldsymbol\beta)
-+
-\log p(b\mid\tau).
+=\log p(\mathbf y_p\mid b,\boldsymbol\beta)
++\log f_B(b\mid\tau).
 $$
 
-Let $\widehat b$ be the value at which $h(b)$ is largest. This is the conditional mode of the speaker effect for the current model parameters. At that point,
+Let $\widehat b$ maximize $h(b)$. At the mode,
 
 $$
 h'(\widehat b)=0.
 $$
 
-Near the mode, a second order Taylor approximation gives
+The second-order Taylor expansion is
 
 $$
 h(b)
-\approx
-h(\widehat b)
-+
-\frac{1}{2}h''(\widehat b)(b-\widehat b)^2.
+\approx h(\widehat b)
++h'(\widehat b)(b-\widehat b)
++\frac{1}{2}h''(\widehat b)(b-\widehat b)^2.
 $$
 
-The curvature $h''(\widehat b)$ is negative because $\widehat b$ is a maximum. We can write
+The first-derivative term vanishes at the mode. Writing
 
 $$
-H=-h''(\widehat b),
+H=-h''(\widehat b)>0
 $$
 
-where $H$ is positive. The approximation then becomes
+gives
 
 $$
 h(b)
-\approx
-h(\widehat b)
--
-\frac{H}{2}(b-\widehat b)^2.
+\approx h(\widehat b)-\frac{H}{2}(b-\widehat b)^2.
 $$
 
-This is a quadratic function of $b$. After exponentiation, it has the shape of a normal density centered at $\widehat b$.
-
-## Integrating the simpler shape
-
-The normal-shaped approximation has a known area. In one dimension,
+Exponentiating produces a normal-shaped approximation whose integral is
 
 $$
-\int \exp[h(b)]\,db
+\int \exp\{h(b)\}\,db
 \approx
-\exp[h(\widehat b)]
+\exp\{h(\widehat b)\}
 \sqrt{\frac{2\pi}{H}}.
 $$
 
-Two local quantities determine this area. The height $\exp[h(\widehat b)]$ records how well the best supported random effect fits. The curvature $H$ records how quickly support falls as $b$ moves away from that value. A narrow peak has large curvature and less area than a broad peak of the same height.
+Equivalently,
 
-With several random effects, the same reasoning uses a mode vector and a curvature matrix. The calculation is larger, but the central move is unchanged. The integrand is replaced by a normal-shaped approximation around its joint mode.
+$$
+\log L
+\approx h(\widehat b)
++\frac{1}{2}\log(2\pi)
+-\frac{1}{2}\log H.
+$$
 
-## Keeping computation separate from the model
+The height records support at the conditional mode. The curvature records how quickly support falls away from it.
 
-The Laplace approximation does not add a predictor, change the response family, or alter the grouping structure. It is a way to calculate an approximate likelihood for a model whose likelihood already requires integration. Confusing the approximation used for computation with the model itself would thus be a mistake.
+## Constructing the SuperTelicity integrand
 
-For instance, `lme4::glmer()` uses a Laplace approximation when `nAGQ = 1`:
+The complete teaching GLMM has participant, verb, and sentence intercepts. To make the integral one-dimensional and visible, this page fits a declared computational restriction with only the participant intercept.
 
-```r
-fit <- lme4::glmer(
-  response ~ condition + (1 | participant),
-  family = binomial(link = "logit"),
-  data = trials,
-  nAGQ = 1
+```{r}
+#| label: supertelicity-laplace
+library(lme4)
+library(ggplot2)
+
+supertelicity <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity$participant_id <- factor(supertelicity$participant_id)
+supertelicity$verb_type <- factor(
+  supertelicity$verb_type,
+  levels = c("manner", "result")
 )
+supertelicity$contentfulness <- factor(
+  supertelicity$contentfulness,
+  levels = c("contentful", "bleached", "templatic")
+)
+contrasts(supertelicity$verb_type) <- contr.sum(2)
+contrasts(supertelicity$contentfulness) <- contr.sum(3)
+
+fit <- glmer(
+  prep_in ~ verb_type * contentfulness +
+    (1 | participant_id),
+  data = supertelicity,
+  family = binomial(link = "logit"),
+  nAGQ = 1L,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+participant_sizes <- sort(table(supertelicity$participant_id))
+selected_participant <- names(participant_sizes)[
+  ceiling(length(participant_sizes) / 2)
+]
+participant_data <- supertelicity[
+  supertelicity$participant_id == selected_participant,
+]
+
+fixed_matrix <- model.matrix(
+  delete.response(terms(fit, fixed.only = TRUE)),
+  participant_data
+)
+fixed_location <- drop(fixed_matrix %*% fixef(fit))
+participant_sd <- attr(
+  VarCorr(fit)$participant_id,
+  "stddev"
+)[[1L]]
+
+log1pexp <- function(x) {
+  pmax(x, 0) + log1p(exp(-abs(x)))
+}
+
+log_integrand <- function(b) {
+  bernoulli_part <- sum(
+    participant_data$prep_in * (fixed_location + b) -
+      log1pexp(fixed_location + b)
+  )
+  normal_part <- dnorm(
+    b,
+    sd = participant_sd,
+    log = TRUE
+  )
+  bernoulli_part + normal_part
+}
+
+mode_result <- optimize(
+  function(b) -log_integrand(b),
+  interval = c(-6 * participant_sd, 6 * participant_sd)
+)
+conditional_mode <- mode_result$minimum
+mode_probability <- plogis(fixed_location + conditional_mode)
+curvature <- sum(mode_probability * (1 - mode_probability)) +
+  1 / participant_sd^2
 ```
 
-Changing the approximation can change estimated coefficients or variance components because the likelihood is calculated differently. But it does not repair a missing random slope, an inappropriate link, or an incorrect response distribution. Those are model specification problems.
+The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below come from the release.
 
-## Recognizing when the local shape may be inadequate
+## Comparing the exact integral with its local approximation
 
-The approximation tends to work best when the integrand is concentrated and roughly symmetric near its mode. It may be less accurate when groups contain little information, one response category is rare, variance estimates lie near a boundary, or the integrand is strongly asymmetric.
+Numerical integration is stabilized by subtracting the log integrand at the mode before exponentiation.
 
-For an analysis whose conclusion might depend on small coefficient changes, fit a manageable version with a more accurate numerical integration setting and compare the quantities that support the conclusion. Agreement provides evidence that the local quadratic is adequate for those quantities. Disagreement identifies computational sensitivity. It does not by itself say which scientific model is preferable.
+```{r}
+#| label: supertelicity-laplace-summary
+log_height <- log_integrand(conditional_mode)
 
-::: {.callout-note title="Check the approximation"}
-1. Why must a generalized linear mixed model average over possible random effect values?
-2. Why is the first derivative term absent at the conditional mode?
-3. What do the height and curvature of the log integrand contribute to the approximated area?
-4. Why can the Laplace approximation not repair a missing grouping term?
-:::
+centered_integral <- integrate(
+  function(b) {
+    vapply(
+      b,
+      function(value) {
+        exp(log_integrand(value) - log_height)
+      },
+      numeric(1)
+    )
+  },
+  lower = -Inf,
+  upper = Inf,
+  rel.tol = 1e-11
+)$value
 
-The [next page](poisson-mixed-models.qmd) uses the approximation behind the scenes while assembling a count model from components already introduced.
+exact_log_integral <- log(centered_integral) + log_height
+laplace_log_integral <- log_height +
+  0.5 * log(2 * pi) -
+  0.5 * log(curvature)
+
+laplace_summary <- data.frame(
+  participant_id = selected_participant,
+  trials = nrow(participant_data),
+  conditional_mode = conditional_mode,
+  negative_second_derivative = curvature,
+  exact_log_integral = exact_log_integral,
+  laplace_log_integral = laplace_log_integral,
+  laplace_minus_exact = laplace_log_integral - exact_log_integral
+)
+laplace_summary
+```
+
+The small difference is an empirical computation diagnostic for these observed trials. It is not an invented likelihood example and does not guarantee equal accuracy for every participant or for the higher-dimensional crossed model.
+
+```{r}
+#| label: plot-laplace
+intercept_grid <- data.frame(
+  participant_intercept = seq(
+    conditional_mode - 4 / sqrt(curvature),
+    conditional_mode + 4 / sqrt(curvature),
+    length.out = 240L
+  )
+)
+intercept_grid$exact <- vapply(
+  intercept_grid$participant_intercept,
+  log_integrand,
+  numeric(1)
+) - log_height
+intercept_grid$quadratic <- -0.5 * curvature *
+  (intercept_grid$participant_intercept - conditional_mode)^2
+
+plot_data <- rbind(
+  data.frame(
+    participant_intercept = intercept_grid$participant_intercept,
+    relative_log_integrand = intercept_grid$exact,
+    curve = "Exact log integrand"
+  ),
+  data.frame(
+    participant_intercept = intercept_grid$participant_intercept,
+    relative_log_integrand = intercept_grid$quadratic,
+    curve = "Local quadratic"
+  )
+)
+
+ggplot(
+  plot_data,
+  aes(
+    x = participant_intercept,
+    y = relative_log_integrand,
+    linetype = curve
+  )
+) +
+  geom_line(color = "#1F5A85", linewidth = 0.8) +
+  labs(
+    x = "Participant random intercept",
+    y = "Log integrand relative to its mode",
+    linetype = NULL
+  ) +
+  theme_classic()
+```
+
+The approximation is a computational method, not a new response model. It does not add a predictor, repair a missing random slope, or make an inappropriate link valid. It tends to be most accurate when the integrand is concentrated and roughly symmetric near its mode; sparse groups, rare responses, boundary variances, or strong asymmetry may make the local quadratic less adequate.
+
+The one-intercept restriction exists only to expose the calculation. The crossed participant, verb, and sentence GLMM remains the scientific teaching model for SuperTelicity.

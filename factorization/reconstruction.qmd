@@ -1,299 +1,270 @@
 ---
-title: "Reconstruction from components"
+title: "Reconstruction"
 ---
 
-A low-dimensional representation necessarily omits some details of the original matrix. To determine what it preserves, reconstruct the original columns and inspect the discrepancy in each cell. The linguistic question comes first: are we trying to recover an acoustic measurement for a token, documented segment presence in an inventory record, or an acceptability-profile value for a verb? The same algebra produces different claims for these different cells.
-
-A [**rank-$K$ approximation**](https://online.stat.psu.edu/stat508/Lesson07.html) combines the first $K$ terms of the singular value decomposition to approximate the original matrix. The residual matrix then records exactly what those terms did not represent.
+Scores and loadings rebuild a matrix cell by cell. To make that algebra answer an empirical question, we use the **inventory-record completion target** (IRCT): learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible.
 
 ## Reconstructing with the first $K$ terms
 
-Let
+For centered training data,
 
 $$
-\mathbf{X}
+\widehat{\mathbf Z}^{(K)}
 =
-\mathbf{U}\mathbf{D}\mathbf{V}^{\mathsf T}
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}
 =
-\sum_{k=1}^{r}
-d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}.
+\mathbf T_K\mathbf V_K^{\mathsf T}.
 $$
 
-Retaining the first $K$ terms gives the rank $K$ reconstruction
+The reconstructed centered cell is
 
 $$
-\widehat{\mathbf{X}}_K
+\widehat z_{ij}^{(K)}
 =
-\sum_{k=1}^{K}
-d_k\mathbf{u}_k\mathbf{v}_k^{\mathsf T}.
+\sum_{k=1}^{K}t_{ik}v_{jk}.
 $$
 
-Equivalently, let $\mathbf{U}_K$ and $\mathbf{V}_K$ contain the first $K$ singular vectors, and let $\mathbf{D}_K$ contain the first $K$ singular values. Then
+Returning to the original listing scale adds the training column mean:
 
 $$
-\widehat{\mathbf{X}}_K
+\widehat x_{ij}^{(K)}
 =
-\mathbf{U}_K
-\mathbf{D}_K
-\mathbf{V}_K^{\mathsf T}.
+\widehat\mu_j
++
+\widehat z_{ij}^{(K)}.
 $$
 
-For PCA, the retained score matrix is
+For an observed training matrix, the residual is
 
 $$
-\mathbf{Z}_K
+\mathbf E^{(K)}
 =
-\mathbf{U}_K\mathbf{D}_K.
+\mathbf Z-\widehat{\mathbf Z}^{(K)},
 $$
 
-The same reconstruction can thus be written as
+and the fraction of centered sum of squares represented is
 
 $$
-\widehat{\mathbf{X}}_{c,K}
+R_K
 =
-\mathbf{Z}_K\mathbf{V}_K^{\mathsf T}.
-$$
-
-This version makes the roles visible. Row scores say how strongly each observation expresses a component, and component directions distribute that expression back across the columns.
-
-## Working through a rank one reconstruction
-
-Return to the matrix
-
-$$
-\mathbf{X}
+\frac{\sum_{k=1}^{K}d_k^2}
+     {\sum_{k=1}^{r}d_k^2}
 =
-\begin{bmatrix}
-2&0\\
-0&1
-\end{bmatrix}.
+1-
+\frac{\|\mathbf E^{(K)}\|_F^2}
+     {\|\mathbf Z\|_F^2}.
 $$
 
-Its two SVD terms are
+This descriptive quantity assesses cells used in fitting. It is not held-out performance.
+
+## Reconstructing partially observed inventories
+
+Let $\mathbf x_i^*$ be a held-out inventory row in which hidden cells have been replaced by their training-column means. Their centered values are thus zero. For rank $K$,
 
 $$
-2
-\begin{bmatrix}1\\0\end{bmatrix}
-\begin{bmatrix}1&0\end{bmatrix}
+\widehat{\mathbf t}_i^{(K)}
+=
+(\mathbf x_i^*-\widehat{\boldsymbol\mu})^{\mathsf T}
+\mathbf V_K,
 $$
 
 and
 
 $$
-1
-\begin{bmatrix}0\\1\end{bmatrix}
-\begin{bmatrix}0&1\end{bmatrix}.
-$$
-
-Keeping only the first term gives
-
-$$
-\widehat{\mathbf{X}}_1
+\widehat{\mathbf x}_i^{(K)}
 =
-2
-\begin{bmatrix}1\\0\end{bmatrix}
-\begin{bmatrix}1&0\end{bmatrix}
-=
-\begin{bmatrix}
-2&0\\
-0&0
-\end{bmatrix}.
-$$
-
-The first component reconstructs the upper-left cell exactly. It predicts zero for the lower-right cell because the second pattern has been omitted.
-
-## Calculating the residual matrix
-
-The rank $K$ residual matrix is
-
-$$
-\mathbf{E}_K
-=
-\mathbf{X}-\widehat{\mathbf{X}}_K.
-$$
-
-For the rank one example,
-
-$$
-\begin{aligned}
-\mathbf{E}_1
-&=
-\begin{bmatrix}
-2&0\\
-0&1
-\end{bmatrix}
--
-\begin{bmatrix}
-2&0\\
-0&0
-\end{bmatrix}\\
-&=
-\begin{bmatrix}
-0&0\\
-0&1
-\end{bmatrix}.
-\end{aligned}
-$$
-
-A common summary is the squared Frobenius reconstruction error:
-
-$$
-\lVert\mathbf{E}_K\rVert_F^2
-=
-\sum_i\sum_j e_{ij}^2.
-$$
-
-Here,
-
-$$
-\lVert\mathbf{E}_1\rVert_F^2
-=
-0^2+0^2+0^2+1^2
-=
-1.
-$$
-
-If both components are retained, $\widehat{\mathbf{X}}_2=\mathbf{X}$ and the observed reconstruction error is zero.
-
-## Deriving variance represented
-
-The total squared magnitude of $\mathbf{X}$ is
-
-$$
-\lVert\mathbf{X}\rVert_F^2
-=
-2^2+1^2
-=
-5.
-$$
-
-The retained first component contributes $d_1^2=4$. Its proportion of represented squared variation is
-
-$$
-\frac{d_1^2}{d_1^2+d_2^2}
-=
-\frac{4}{4+1}
-=
-0.8.
-$$
-
-The residual proportion is $1/5=0.2$, which matches the squared error divided by the total squared magnitude. More generally, the proportion represented by component $k$ is
-
-$$
-\frac{d_k^2}{\sum_{j=1}^{r}d_j^2}.
-$$
-
-The cumulative proportion for the first $K$ components is
-
-$$
-\frac{\sum_{k=1}^{K}d_k^2}
-{\sum_{j=1}^{r}d_j^2}.
-$$
-
-For centered data, this is the [**proportion of variance explained**](https://online.stat.psu.edu/stat508/Lesson07.html) by the retained components. It describes the centered matrix used to fit the components, not performance on new observations.
-
-## Returning from transformed to original coordinates
-
-PCA reconstructs the coordinates on which it was fit. If the matrix was only centered, the rank $K$ reconstruction is $\widehat{\mathbf{X}}_{c,K}$. Add the training column means to recover the original origin:
-
-$$
-\widehat{\mathbf{X}}_K
-=
-\widehat{\mathbf{X}}_{c,K}
+\widehat{\boldsymbol\mu}
 +
-\mathbf{1}_n\boldsymbol{\mu}^{\mathsf T}.
+\mathbf V_K\widehat{\mathbf t}_i^{(K)}.
 $$
 
-If the columns were standardized, first restore their units and then restore their means:
+This projection uses the observed cells to estimate a score. It is not a binary generative model, so fitted values may lie outside the unit interval. We clip them only when computing a probability loss.
 
-$$
-\widehat{\mathbf{X}}_K
-=
-\widehat{\mathbf{Z}}_K\mathbf{S}
-+
-\mathbf{1}_n\boldsymbol{\mu}^{\mathsf T}.
-$$
-
-Forgetting either step yields predictions in centered or standardized coordinates rather than in the original measurements. The reconstruction may be algebraically correct and linguistically misreported because its units are wrong.
-
-## Implementing reconstruction in R
-
-The following code mirrors the matrix formula.
+## Building the split and masks
 
 ```{r}
-#| eval: false
+library(ggplot2)
 
-X_scaled <- scale(
-  X,
-  center = TRUE,
-  scale = TRUE
+balanced_brier <- function(truth, prediction) {
+  prediction <- pmin(pmax(prediction, 1e-6), 1 - 1e-6)
+  loss <- (truth - prediction)^2
+  listed <- as.logical(truth)
+  mean(c(mean(loss[listed]), mean(loss[!listed])))
+}
+
+make_mask <- function(X, rows, seed, n_each = 3L) {
+  set.seed(seed)
+  mask <- matrix(FALSE, nrow = length(rows), ncol = ncol(X))
+  for (i in seq_along(rows)) {
+    listed <- which(X[rows[[i]], ] == 1)
+    not_listed <- which(X[rows[[i]], ] == 0)
+    mask[i, c(sample(listed, n_each), sample(not_listed, n_each))] <- TRUE
+  }
+  list(rows = rows, mask = mask)
+}
+
+reconstruct <- function(X, evaluation, mean, loadings, rank) {
+  observed <- X[evaluation$rows, , drop = FALSE]
+  mean_matrix <- matrix(rep(mean, each = nrow(observed)), nrow = nrow(observed))
+  observed[evaluation$mask] <- mean_matrix[evaluation$mask]
+  centered <- sweep(observed, 2, mean, "-")
+  prediction <- mean_matrix
+  if (rank > 0L) {
+    directions <- loadings[, seq_len(rank), drop = FALSE]
+    prediction <- prediction + centered %*% directions %*% t(directions)
+  }
+  pmin(pmax(prediction, 1e-6), 1 - 1e-6)
+}
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+inventories <- phoible$inventories[
+  order(phoible$inventories$glottocode,
+        as.integer(phoible$inventories$inventory_id)),
+]
+groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+RNGkind(sample.kind = "Rejection")
+set.seed(20260827L)
+chosen <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+selected <- inventories[unname(chosen), ]
+
+area <- selected$macroarea
+area[is.na(area) | area == ""] <- "Unclassified"
+selected$split <- NA_character_
+set.seed(20261018L)
+for (name in sort(unique(area))) {
+  index <- sample(which(area == name))
+  n_holdout <- floor(0.15 * length(index))
+  selected$split[index[seq_len(n_holdout)]] <- "validation"
+  selected$split[index[n_holdout + seq_len(n_holdout)]] <- "test"
+  selected$split[index[is.na(selected$split[index])]] <- "training"
+}
+training_rows <- which(selected$split == "training")
+validation_rows <- which(selected$split == "validation")
+test_rows <- which(selected$split == "test")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
 )
-
-fit <- svd(X_scaled)
-K <- 2
-
-U_K <- fit$u[, seq_len(K), drop = FALSE]
-D_K <- diag(fit$d[seq_len(K)], nrow = K)
-V_K <- fit$v[, seq_len(K), drop = FALSE]
-
-X_hat_scaled <- U_K %*% D_K %*% t(V_K)
-E_K <- X_scaled - X_hat_scaled
-
-sum(E_K^2)
-```
-
-The inverse transformation uses the means and scales stored by `scale()`.
-
-```{r}
-#| eval: false
-
-column_means <- attr(X_scaled, "scaled:center")
-column_sds <- attr(X_scaled, "scaled:scale")
-
-X_hat <- sweep(
-  X_hat_scaled,
-  MARGIN = 2,
-  STATS = column_sds,
-  FUN = "*"
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
 )
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
 
-X_hat <- sweep(
-  X_hat,
-  MARGIN = 2,
-  STATS = column_means,
-  FUN = "+"
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+decomposition <- svd(Z, nu = 64L, nv = 64L)
+validation <- make_mask(X, validation_rows, seed = 20261019L)
+test <- make_mask(X, test_rows, seed = 20261020L)
+
+candidate_ranks <- c(0L, 1L, 2L, 3L, 5L, 8L, 12L, 16L,
+                     24L, 32L, 40L, 50L, 64L) # dqr-allow: algorithm-setting
+validation_loss <- vapply(candidate_ranks, function(rank) {
+  prediction <- reconstruct(X, validation, training_mean, decomposition$v, rank)
+  truth <- X[validation$rows, , drop = FALSE][validation$mask]
+  balanced_brier(truth, prediction[validation$mask])
+}, numeric(1))
+selected_rank <- candidate_ranks[[which.min(validation_loss)]]
+
+test_prediction <- reconstruct(
+  X, test, training_mean, decomposition$v, selected_rank
+)
+test_baseline <- reconstruct(X, test, training_mean, decomposition$v, 0L)
+test_truth <- X[test$rows, , drop = FALSE][test$mask]
+
+c(
+  selected_rank = selected_rank,
+  hidden_test_cells = sum(test$mask),
+  baseline_balanced_brier =
+    balanced_brier(test_truth, test_baseline[test$mask]),
+  low_rank_balanced_brier =
+    balanced_brier(test_truth, test_prediction[test$mask])
 )
 ```
 
-Every transformation used for reconstruction should be the one estimated during fitting. Recomputing a new origin or scale changes the representation being evaluated.
+Validation selects rank `r selected_rank`. Only after that choice is fixed do we compute test loss. The segment-prevalence baseline has balanced Brier loss `r round(balanced_brier(test_truth, test_baseline[test$mask]), 4)`, whereas the low-rank reconstruction has loss `r round(balanced_brier(test_truth, test_prediction[test$mask]), 4)`.
 
-## Observed reconstruction is not held-out prediction
+## Showing raw hidden cells and predictions
 
-Adding a component cannot increase squared reconstruction error on the matrix used to fit the SVD. Each added term restores another orthogonal direction of observed variation. If all rank terms are retained, the observed error reaches zero apart from numerical precision.
+```{r}
+#| fig-width: 6.5
+#| fig-height: 4
 
-Choosing the largest possible $K$ will always look best on the fitted cells because observed reconstruction error decreases monotonically. Later terms may nevertheless represent sample-specific irregularities rather than structure that transfers to held-out cells.
+cells <- which(test$mask, arr.ind = TRUE)
+prediction_data <- data.frame(
+  status = factor(test_truth, levels = c(0, 1),
+                  labels = c("Not listed", "Listed")),
+  prediction = test_prediction[test$mask]
+)
 
-To evaluate reconstruction as prediction, some cells or observations must be excluded from fitting and scored afterward under the [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) introduced earlier. Which unit is excluded should follow the [predictive question](../model-criticism-and-prediction/prediction-targets.qmd). Hidden cells test completion for objects partly represented during fitting. Hidden rows test transfer to objects that did not determine the directions. The number of retained components must be chosen without consulting the final evaluation outcomes.
+ggplot(prediction_data, aes(x = status, y = prediction)) +
+  geom_jitter(width = 0.13, height = 0, color = "grey55",
+              alpha = 0.24, size = 0.6) + # dqr-allow: algorithm-setting
+  geom_boxplot(width = 0.34, outlier.shape = NA, fill = "white",
+               color = "#0072B2", linewidth = 0.65) + # dqr-allow: algorithm-setting
+  labs(x = "Hidden database status", y = "Rank-selected prediction") +
+  theme_classic()
+```
 
-For a binary inventory matrix, an SVD reconstruction usually returns real-valued cell scores. Those scores are not automatically probabilities, and a score above zero does not establish that a phone occurs or that a phoneme belongs to an entire language. Evaluation may ask whether the scores rank or reconstruct the database's documented presence values under a declared loss. A probability interpretation would require an additional observation model or calibration step.
+The raw points show all `r sum(test$mask)` hidden test cells. The separated distributions indicate that the observed cells of a new inventory contain information about its hidden listings under this representation.
 
-## Variance represented is not linguistic information
+## Estimating the test gain
 
-A component can account for substantial observed variance because it tracks recording source, sample composition, or a high-variance measurement. A low-variance component can encode a rare but systematic phonological contrast.
+Balanced Brier loss gives listed and not-listed cells equal total weight:
 
-Thus, a statement that the first two components explain 80 percent of observed variance is a statement about squared reconstruction under a particular matrix design and transformation. It is not a statement that they preserve 80 percent of the linguistically relevant information.
+$$
+L_{\mathrm{bal}}
+=
+\frac{1}{2n_1}\sum_{x=1}(x-\widehat x)^2
++
+\frac{1}{2n_0}\sum_{x=0}(x-\widehat x)^2.
+$$
 
-::: {.callout-note title="Problem Set 5 connection"}
-[Problem Set 5, Task 7](../problem-sets/ps5/ps5.qmd#task-7-evaluate-once-on-the-test-cells-10-points) compares low-rank reconstruction with a database-segment prevalence baseline on balanced hidden cells. Observed variance represented and held-out reconstruction gain are different quantities. One describes the fitted matrix, while the other evaluates documented inventory cells excluded from fitting.
-:::
+The following bootstrap resamples complete inventory records, preserving all six masked cells from a record.
+
+```{r}
+test_cells <- which(test$mask, arr.ind = TRUE)
+cell_gain <- split(seq_along(test_truth), test_cells[, "row"])
+gain_by_inventory <- vapply(cell_gain, function(index) {
+  balanced_brier(test_truth[index], test_baseline[test$mask][index]) -
+    balanced_brier(test_truth[index], test_prediction[test$mask][index])
+}, numeric(1))
+
+set.seed(20261021L)
+bootstrap_gain <- replicate(5000L, mean(sample(gain_by_inventory, replace = TRUE)))
+gain_interval <- quantile(bootstrap_gain, c(0.025, 0.975))
+c(
+  mean_gain = mean(gain_by_inventory),
+  interval_low = gain_interval[[1]],
+  interval_high = gain_interval[[2]]
+)
+```
+
+The test loss gain is `r round(mean(gain_by_inventory), 4)`, with an inventory bootstrap interval from `r round(gain_interval[[1]], 4)` to `r round(gain_interval[[2]], 4)`. This interval describes inventory-record variability under the present split. It is not a family-level typological interval.
+
+## What reconstruction establishes
+
+The result supports a narrow conclusion: structure learned from training inventory records helps complete a few hidden database listings when most of a held-out record is observed. It does not reconstruct a wholly unseen inventory, establish phonological absence from a zero, or show that rank `r selected_rank` is a phonological universal.
 
 ## Checking the rebuilt cells
 
-1. Which rank one term is omitted from $\widehat{\mathbf{X}}_1$ in the worked example?
-2. Why is the squared Frobenius residual equal to 1?
-3. How does $d_k^2$ enter the proportion of observed variation represented?
-4. What must be restored after reconstructing standardized data?
-5. Why can observed reconstruction error only decrease as $K$ grows?
-6. What additional separation is required before reconstruction error can support a held-out predictive claim?
+1. Why are hidden cells filled with training-column means before projection?
+2. Which cells estimate a held-out inventory's scores?
+3. Why is observed reconstruction error not held-out prediction error?
+4. Why does balanced Brier loss weight the two cell statuses equally?
+5. What is the unit resampled by the bootstrap?
 
-Reconstruction maps retained scores and directions back to matrix cells, while the residual matrix shows what was discarded. Observed error measures compression of the fitted matrix and cannot select complexity without optimism. The [next page](choosing-components.qmd) uses held-out reconstruction to choose $K$ before a separate final evaluation.
+The [next page](choosing-components.qmd) isolates the validation step that selected the retained rank without inspecting test loss.

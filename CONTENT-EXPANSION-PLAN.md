@@ -370,7 +370,7 @@ The registry below proposes a no-reuse allocation. It does not establish analysi
 | Distributional prediction and factorization | VALEX + MegaAcceptability v1 | Corpus subcategorization profiles predicting predicate-frame acceptability | Week 13, Meeting 2 |
 | Custom models | UDS | Raw semantic annotations | Week 14 |
 | PS1 dataset | Hillenbrand | American English vowel acoustics | PS1 only |
-| PS3 transfer dataset | Provo Corpus | Eye tracking with predictability norms | PS3 only |
+| PS2 transfer dataset | Provo Corpus | Eye tracking with predictability norms | PS2 only |
 | PS4 transfer dataset | CommitmentBank | Projection judgments in discourse | PS4 only |
 | PS5 transfer dataset | PHOIBLE 2.0 | Cross-linguistic segment inventories | PS5 only |
 
@@ -382,9 +382,9 @@ These sets are not mutually exclusive: CORAAL is both a corpus and a sociophonet
 
 The no-reuse rule requires changing some material that already exists, not merely assigning new datasets to new pages.
 
-- Keep MALD only in the residual-criticism unit. Replace its current mixed-effects example with the English Lexicon Project, PS3 with Provo, and PS4 with CommitmentBank.
+- Keep MALD only in the residual-criticism unit. Replace its current mixed-effects example with the English Lexicon Project, reserve Provo for PS2, and use CommitmentBank for PS4.
 - Keep Hillenbrand only in PS1. Use Peterson and Barney for mixture models, VTR for acoustic-measure validation, and Wieling for dynamic phonetics.
-- Keep the German UniMorph data only in PS1. Use WALS Feature 81A for the new multinomial page.
+- Use German UniMorph in PS1 for Fisher and chi-squared inference. Reduce the genitive forms to one row per lexeme before sampling, and retain the one-row-per-lexeme plural table. Use WALS Feature 81A for the separate multinomial page.
 - Reserve VALEX for the MegaAcceptability analysis. If it currently anchors a Poisson or mixed-effects analysis, replace those uses; the English Lexicon Project supplies the mixed-effects replacement, and CHILDES supplies the count-model case.
 - Treat brief references to an earlier result as callbacks, not analyses: no code, data reload, or second worked model.
 
@@ -500,19 +500,23 @@ Stop there. MALD does not reappear in cross-validation, mixed effects, or the as
 
 ## 6. Assessment changes
 
-The assessments should implement a **transfer-first assessment (TFA)** rule: students apply a method to a dataset that did not appear in the worked notes. The existing Hillenbrand analysis remains confined to PS1; no instructional page reuses it.
+The assessments should implement a **transfer-first assessment (TFA)** rule. Students apply a method to a dataset that did not appear in the worked notes. The existing Hillenbrand analysis remains confined to PS1. No instructional page reuses it.
 
-### PS3: predictive evaluation with the Provo Corpus
+### PS1–PS2: matched frequentist and Bayesian inference
 
-The [Provo Corpus](https://pubmed.ncbi.nlm.nih.gov/28523601/) combines eye-tracking data with word-level predictability norms, including orthographic, morphosyntactic, and semantic predictability measures. Students should:
+PS1 uses paired Hillenbrand F1 measurements and German UniMorph lexeme tables. PS2 uses passage-level Provo log first-fixation contrasts and selected Universal Dependencies English EWT annotations. The assignments share an inferential sequence while using distinct datasets for each framework. Students should:
 
-1. state whether the target is a new participant, word, sentence, or passage;
-2. construct at least two matching validation schemes;
-3. compare models with lexical and predictability covariates;
-4. diagnose one distributional failure;
-5. report predictive uncertainty.
+1. identify the pair and construct one contrast per independent unit
+2. distinguish the population mean contrast from the probability that a contrast has the predicted direction
+3. use a paired t procedure and exact binomial sign procedure in PS1
+4. derive the paired t statistic and its null tail event step by step in PS1
+5. apply Fisher's exact test and the chi-squared test to German morphology in PS1
+6. inspect empirical sampling distributions of Fisher statistics across small random lexeme samples in PS1
+7. use a Bayesian normal model, derive its one-dimensional conditional normal–normal posterior step by step, and apply the previously derived beta–Bernoulli update to the corresponding directional target in PS2
+8. use scalar beta–binomial models and a scalar posterior predictive independence model for the categorical analogues in PS2
+9. compare the probability statements licensed by p values, confidence intervals, credible intervals, posterior event probabilities, and posterior predictive tail areas.
 
-This tests transfer from MALD and Natural Stories without repeating either.
+This pairing holds the response type and inferential targets approximately constant while changing the linguistic domain, sampling unit, dataset, and inferential framework.
 
 ### PS4: Bayesian model criticism with CommitmentBank
 
@@ -644,7 +648,7 @@ These recurring prompts provide conceptual continuity while the datasets change.
 ### Phase 5: align the assessment datasets
 
 1. Keep Hillenbrand confined to PS1 and remove it from any instructional page.
-2. Rebuild PS3 around Provo.
+2. Rebuild PS2 around Provo.
 3. Rebuild PS4 around CommitmentBank.
 4. Rebuild PS5 around PHOIBLE.
 5. Add the LING 414 design, response, generalization, and criticism audits.

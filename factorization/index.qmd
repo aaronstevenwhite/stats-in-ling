@@ -2,22 +2,53 @@
 title: "Factorization"
 ---
 
-Some linguistic datasets record many measurements for each object. A vowel token may have estimates of several formant frequencies, a verb entry may have corpus counts for many subcategorization frames, and a documented phonological inventory may record whether each database segment is contrastive in that source. We can arrange such data in a matrix whose rows are objects and whose columns are measurements.
+Moran and McCloy's [PHOIBLE 2.0 release](https://doi.org/10.5281/zenodo.2593234) collects phonological inventory records contributed by many descriptive sources. The [download and license page](https://phoible.org/download) distributes the release as a CLDF StructureDataset under CC BY-SA 3.0. An inventory record generally describes a doculect, but multiple records may share a Glottocode and some source collections aggregate several varieties. Thus one row in the course matrix is an inventory record selected within a Glottocode, not an unqualified language.
 
-The columns may share structure. If several acoustic measurements vary together, or if sets of segments tend to recur across inventories, a smaller number of numerical patterns may approximate the matrix. Matrix factorization represents those patterns as products or sums of smaller matrices.
+```{r}
+#| label: factorization-index-data
 
-The factorization depends on the original representation. The [unit of analysis](../foundations/linguistic-data.qmd) determines what one row represents, while the columns determine which differences among rows can be expressed. We use **representation constraint (RC)** for this dependence: a factorization can reorganize distinctions encoded in the matrix, but it cannot decide that a token is a phoneme, that a documented inventory is a whole language, or that a corpus frame is a grammatical category. A component does not acquire a linguistic interpretation from the decomposition alone.
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
 
-## From the matrix to a low-rank approximation
+factorization_inventory <- data.frame(
+  object = c(
+    "source CLDF value rows",
+    "source inventory records",
+    "source Glottocodes",
+    "retained consonant and vowel memberships",
+    "retained segment records"
+  ),
+  count = c(
+    phoible$provenance$original_value_rows,
+    phoible$provenance$original_inventories,
+    phoible$provenance$original_glottocodes,
+    nrow(phoible$memberships),
+    nrow(phoible$segments)
+  )
+)
 
-We begin by defining [linguistic data matrices](data-matrices.qmd), including the meanings and units of the rows and columns. [Centering and scaling](centering-and-scaling.qmd) then set the origin and relative scale of each column.
+factorization_inventory
+```
 
-A [rank one matrix](rank-one-structure.qmd) is the outer product of one row vector and one column vector. [Singular value decomposition](singular-value-decomposition.qmd) expresses a matrix as a sum of ordered rank one terms. [Principal component analysis](principal-component-analysis.qmd) applies the decomposition to variation around the column means.
+The prepared memberships exclude tone entries and rows explicitly marked as marginal. A matrix cell equal to one means that a retained PHOIBLE value row links an inventory record to a segment. A zero means that no such row is listed under this preparation; it is not direct evidence that a language lacks the segment.
 
-## Interpretation and reconstruction
+This qualification creates the **inventory-record completion target (IRCT)**. The first eight pages ask whether structure learned from training records helps reconstruct a small set of hidden database cells in a held-out record whose other cells remain visible. The target is database completion under a declared preparation rule, not recovery of a complete phonological system from no observations.
 
-[Scores and loadings](scores-and-loadings.qmd) distinguish coordinates for rows from directions defined over columns. [Reconstruction](reconstruction.qmd) maps retained components back to the original cells, where the difference between an observed and reconstructed value can be calculated in the units of the matrix.
+## Constructing and decomposing the matrix
 
-[Choosing components](choosing-components.qmd) treats the retained rank as a model choice. The rank is selected on validation outcomes, and a separate test set is reserved for final evaluation. The final [VALEX--MegaAcceptability application](valex-megaacceptability.qmd) then asks whether corpus subcategorization distributions predict held-out verbs' acceptability profiles, and whether PCA compression improves that prediction.
+[Linguistic data matrices](data-matrices.qmd) define the row, column, and cell units, reproduce the Glottocode-level row selection, and retain segment columns using training records only. [Centering and scaling](centering-and-scaling.qmd) then compare two transformations of the empirical binary columns. The primary analysis centers without variance standardization because standardization would give relatively greater weight to rare listings.
 
-A low reconstruction error indicates recurring numerical structure under the stated row representation, column measurements, transformations, and held-out task. It does not by itself show that a component is a psychological variable, a universal phonological dimension, or a causal process. Those interpretations require additional linguistic evidence.
+[Rank-one structure](rank-one-structure.qmd) fits the first singular triplet and places the observed centered cells beside their rank-one reconstruction. [Singular value decomposition](singular-value-decomposition.qmd) extends that fit to ordered orthogonal terms. [Principal component analysis](principal-component-analysis.qmd) derives the covariance identity from the same decomposition and adds macroarea only after fitting for descriptive interpretation.
+
+## Interpreting and evaluating components
+
+[Scores and loadings](scores-and-loadings.qmd) distinguish coordinates for inventory rows from directions over segment columns. A loading pattern may suggest a linguistic hypothesis, but the decomposition does not turn a component into a natural class, universal, or causal mechanism.
+
+[Reconstruction](reconstruction.qmd) hides listed and not-listed cells in each held-out record, estimates scores from the remaining cells, and returns predictions to the original cell scale. [Choosing components](choosing-components.qmd) selects rank on validation inventories with balanced reconstruction loss and reserves test inventories for one final comparison. Because families are not the split unit, the result does not establish transfer to unseen language families.
+
+## From decomposition to supervised prediction
+
+The final application changes both the dataset and the target. [VALEX](https://ilexir.co.uk/valex/) contains GPL-licensed, automatically acquired English verb subcategorization counts described by [Korhonen, Krymolowski, and Briscoe (2006)](https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf). The official [MegaAcceptability archive](https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip) is CC BY-SA 4.0; its internal README identifies the release as v1.2. It contains ordinal judgments of English clause-embedding verbs in experimentally controlled frames, and [White and Rawlins (2020)](https://doi.org/10.5334/gjgl.1001) analyze how corpus distributions relate to those profiles.
+
+The [VALEX--MegaAcceptability page](valex-megaacceptability.qmd) defines the **distribution-to-selection mapping (DSM)** and compares direct VALEX proportions with a PCA-compressed representation for verbs absent during fitting. Participant normalization, response aggregation, predictor centering, PCA, and tuning all occur inside their training splits. The application asks whether this shallow compression helps the held-out-verb target. It does not treat automatically acquired counts as grammatical labels or test abstract linguistic representations in general.
+
+The sequence thus moves from a declared empirical matrix, through its exact algebra, to two held-out targets on the original data scales. Begin with [linguistic data matrices](data-matrices.qmd).

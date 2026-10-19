@@ -4,73 +4,131 @@ title: "What must be new at prediction time"
 
 The earlier page on [populations and samples](../statistical-inference/populations-and-samples.qmd) required an inferential claim to specify the population represented by a sample. Predictive evaluation requires a related decision. We must say which responses were unavailable during fitting and what information is available when those responses are predicted. This is the [prediction-unit problem](index.qmd) in operational form.
 
-[**Out-of-sample prediction**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) predicts responses that did not contribute to fitting the model. This definition leaves an important question open. Does the held-out response come from an observed participant and item, or does it come from a participant or item absent from the training data?
+[**Out-of-sample prediction**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) predicts responses that did not contribute to fitting the model. This definition leaves an important question open: is the held-out response new only as a row, or is its reader or text also absent from training?
 
-## Specifying the held-out observations
+## Natural Stories
 
-Suppose an acceptability experiment crosses participants with sentence items. The observed response is a participant's reported acceptability, not grammaticality itself: [acceptability may supply evidence about grammatical knowledge, but processing, interpretation, and task factors may also affect the report](https://drum.lib.umd.edu/items/d7a9ef6c-4827-446b-bd5f-12b5bdd04191). Several data separations are possible.
+We use the corrected [Natural Stories release](https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612), introduced and validated by [Futrell et al. (2021)](https://doi.org/10.1007/s10579-020-09503-7), throughout the first six pages of this unit. The corpus contains English stories enriched for low-frequency syntactic constructions, self-paced reading times, and aligned lexical annotations. The corrected release fixes a one-position displacement in the reading-time records. Its preprocessing excludes reader-story passes with fewer than five correct comprehension answers and reading times outside the release's 100-to-3,000-ms window.
 
-| predictive question | participant during fitting | sentence during fitting |
+The code below constructs the prediction table from the tracked release. One row is one retained button latency for one reader at one word position. It is a self-paced reading time, not an eye fixation.
+
+```{r}
+#| label: natural-targets
+#| message: false
+#| warning: false
+
+natural_all <- readRDS(
+  "data/natural-stories/natural-stories-corrected.rds"
+)
+natural_all$row_id <- seq_len(nrow(natural_all))
+
+complete_prediction_row <- with(
+  natural_all,
+  is.finite(log_rt) & is.finite(word_length) &
+    is.finite(log_unigram_frequency) & is.finite(gpt3_surprisal)
+)
+
+natural <- natural_all[complete_prediction_row, c(
+  "row_id", "participant_id", "story_id", "sentence_id",
+  "word_position", "word", "word_length", "log_rt",
+  "log_unigram_frequency", "gpt3_surprisal"
+)]
+natural$position_id <- paste(
+  natural$story_id, natural$word_position, sep = ":"
+)
+
+target_inventory <- data.frame(
+  object = c(
+    "retained response row", "participant", "story", "sentence",
+    "story-position", "participant-story pass"
+  ),
+  count = c(
+    nrow(natural),
+    length(unique(natural$participant_id)),
+    length(unique(natural$story_id)),
+    length(unique(natural$sentence_id)),
+    length(unique(natural$position_id)),
+    length(unique(paste(
+      natural$participant_id, natural$story_id, sep = ":"
+    )))
+  )
+)
+
+participant_means <- aggregate(
+  log_rt ~ participant_id, data = natural, FUN = mean
+)
+names(participant_means) <- c("group_id", "mean_log_rt")
+participant_means$unit <- "Participant"
+
+story_means <- aggregate(
+  log_rt ~ story_id, data = natural, FUN = mean
+)
+names(story_means) <- c("group_id", "mean_log_rt")
+story_means$unit <- "Story"
+
+target_variation <- rbind(participant_means, story_means)
+target_variation$rank_within_unit <- ave(
+  target_variation$mean_log_rt,
+  target_variation$unit,
+  FUN = function(x) rank(x, ties.method = "first")
+)
+
+target_inventory
+
+ggplot2::ggplot(
+  target_variation,
+  ggplot2::aes(rank_within_unit, mean_log_rt)
+) +
+  ggplot2::geom_point(size = 1.2, alpha = 0.7, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~ unit, scales = "free_x") +
+  ggplot2::labs(
+    x = "Group rank by mean response",
+    y = "Mean log reading time"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The prepared release has `r format(nrow(natural_all), big.mark = ",")` response rows from `r length(unique(natural_all$participant_id))` participants and `r length(unique(natural_all$story_id))` stories. Requiring finite word length, log unigram frequency, and GPT-3 surprisal retains `r format(nrow(natural), big.mark = ",")` rows at `r format(length(unique(natural$position_id)), big.mark = ",")` contextual word positions. The figure shows why a response row, participant, and story are not interchangeable units: the participant and story means vary, but there are only `r nrow(story_means)` story-level values.
+
+## Three prediction targets
+
+All three procedures used later fit the population regression
+
+$$
+\log RT_i
+=
+\beta_0+\beta_1z(L_i)+\beta_2z(F_i)+\beta_3z(S_i)+\epsilon_i,
+$$
+
+where $L_i$ is word length, $F_i$ is log unigram frequency, and $S_i$ is released GPT-3 surprisal. What changes is the **prediction unit**, the object excluded from training.
+
+| target | absent from fitting | still represented in fitting |
 |:--|:--|:--|
-| another response from an observed participant to an observed sentence | observed | observed |
-| a response to a new sentence from an observed participant | observed | absent |
-| a response from a new participant to an observed sentence | absent | observed |
-| a response from a new participant to a new sentence | absent | absent |
+| new response row | that latency | the reader and story |
+| new participant | every latency from that reader | the ten stories |
+| omitted enriched story | every latency from that story | the reader population represented by the other stories |
 
-Every row concerns a response excluded from fitting. The rows nevertheless ask different scientific questions. A model can predict another response from represented participants and sentences while failing for a participant or sentence absent from the training data.
+These separations ask different questions. A random row split evaluates another response from the represented collection of readers and stories. A participant split evaluates a reader absent from fitting. A story split evaluates one omitted member of these deliberately enriched texts.
 
-This is why the phrase *new observation* is incomplete. A new word might be a new token of an observed word type, a word type absent from fitting, or a word in a passage absent from fitting. The object removed from training is the **prediction unit**. The data split must make that unit, and thus the intended meaning of *new*, explicit.
+The story target needs especially narrow wording. The corpus supplies `r nrow(story_means)` opportunities to inspect an omitted story, not `r format(nrow(natural), big.mark = ",")` independent story transfers. Leave-one-story-out results consequently describe these ten omissions; they do not estimate performance for an unrestricted population of English texts.
 
-## Stating what information is available
+## The prediction information set
 
-Holding out a participant does not by itself determine which information about that participant may be used. Imagine a model with a participant-specific baseline. If five calibration trials are available before the sixth response is predicted, the baseline may be estimated from those five trials. If the intended use is prediction for the participant's first trial, it may not.
+Holding out a group does not by itself determine which information about it may be used. In these analyses, a held-out row keeps its word length, frequency, and surprisal because those predictors are available at prediction time. A held-out participant contributes no reading-time response to fitting. A held-out story contributes its lexical predictors but no response from any of its positions.
 
-Both procedures predict a response from a participant who was absent when the population-level model was fitted. They differ in the **prediction information set**: the observations and predictors permitted when the prediction is made. A report must state whether calibration responses were allowed. For a mixed model, it should also state whether the prediction conditions on an estimated participant effect or integrates over the population distribution for a [previously unobserved grouping level](../regression-models/ordinal-mixed-models.qmd#stating-which-groups-are-represented-in-a-prediction).
-
-The same issue arises with linguistic annotations. A model predicting an unseen verb's acceptability profile may use corpus counts for that verb while withholding all of its acceptability judgments. A model predicting a documented lect's segment inventory may use genealogical and geographic metadata while withholding the inventory. The term *doculect* is deliberate: [PHOIBLE explains that an inventory generally represents a particular documented variety at a particular time and place](https://phoible.org/faq), rather than an error-free inventory of an entire language. These predictors are permissible only if the corresponding information would be available in the intended use setting.
-
-## Matching the split to the question
-
-Suppose reading times are observed from readers $s$, word positions $w$, and passages $p$. A random row split can leave one reading-time response out while retaining other responses from the same reader and passage. This evaluates another response from the represented collection of readers and passages.
-
-A new-reader question instead requires every response from one reader to be held out together. A new-passage question requires every word position from one passage to be held out together. The [grouped cross-validation page](grouped-cross-validation.qmd) develops these separations.
-
-The held-out group also determines the replication relevant to the claim. Fifty-five passages provide 55 opportunities to examine prediction for an omitted passage. They do not provide thousands of independent omitted passages merely because the passages contain thousands of word positions.
+The preprocessing rule is part of the information set. Each predictor mean and standard deviation is estimated from training rows and then applied to test rows. A full-data center would let held-out predictor values affect the training representation. A separately estimated test center would place the test observations in a different coordinate system.
 
 ## Theory determines what should be held out
 
-The data separation should follow the theoretical contrast. In the [Provo analyses](https://doi.org/10.1016/j.cogpsych.2016.06.002), the substantive contrast concerns relatively specific lexical prediction versus graded availability of semantic and morphosyntactic information from context. Holding out word positions within observed passages asks whether those predictors help with other positions in the same collection of texts. Holding out complete passages asks whether the fitted relation generalizes to passages absent during fitting.
+The most demanding split is not automatically the right one. A reading model used for an already represented reader may reasonably target another response row. A claim about transfer across readers requires participant folds. A claim about connected text requires story folds and enough story-level replication to support it.
 
-The second question may be scientifically preferable when the claim concerns connected texts. It also requires passage-level replication. But even successful passage-held-out prediction would show a transferable association with an eye-movement response; it would not, by itself, establish that readers implement the preactivation mechanism used to motivate the predictor. The choice should be made from the claim and design, not from whichever split later produces the most favorable score.
+Successful prediction also does not establish a processing mechanism. Word surprisal can improve a held-out score without showing that readers internally represent the fitted language model's probabilities. Predictive evaluation establishes performance for a stated response, information set, split, and population; the mechanism requires additional evidence.
 
-## Writing the predictive question in plain language
+## Checking the target
 
-A complete statement answers four questions.
+1. Which Natural Stories target keeps the same reader and story represented during fitting?
+2. What must move together when the target is a reader absent during fitting?
+3. Why do the retained response rows not provide that many independent evaluations of an omitted story?
+4. Which predictor transformations must be estimated without the held-out responses?
 
-1. What response is predicted?
-2. Which observations or groups are excluded from fitting?
-3. What predictors are available for the held-out observations?
-4. To which population or use setting should the result generalize?
-
-For instance:
-
-> The model predicts the mean log first-fixation duration of each fixated content-word position in a passage omitted during fitting. Word length, word class, and independently collected predictability norms are available. No eye-movement response from the held-out passage is used to fit the model. The score concerns omitted passages from this corpus, conditional on the word receiving a first-pass fixation and on the observed reader sample.
-
-This statement is narrower than “predict natural reading.” It identifies the response, the held-out group, the permitted predictors, and the scope of the result.
-
-## More than one predictive question may be useful
-
-A study may evaluate more than one data separation. For instance, it may report predictions for new responses from observed readers and predictions for readers absent during fitting. Each result needs its own split and interpretation.
-
-The results should not be pooled into one score. They estimate performance under different information conditions. A secondary analysis should also not replace the analysis that motivated the study after the results are known.
-
-The number of groups matters. A corpus with ten stories can use each story as a held-out group, but the resulting ten story-level scores may be unstable. Showing those scores makes the available replication visible.
-
-## Matching the question and the split
-
-1. State the required data separation for predicting another response from an observed participant and item.
-2. State the required data separation for predicting an observed item for a participant absent during fitting.
-3. A lexical model estimates a word-specific baseline using all corpus occurrences, then reports prediction for word types omitted during model fitting. What information leaked into the fitted procedure?
-4. Why do 100,000 word observations from ten stories not provide 100,000 independent opportunities to evaluate prediction for an omitted story?
-
-Out-of-sample prediction requires a response excluded from fitting. A complete predictive question also states which groups are held out, which predictors remain available, and where the result should generalize. The [next page](predictive-loss.qmd) defines the numerical consequence assigned to each prediction error.
+Out-of-sample prediction requires a response excluded from fitting. A complete predictive question also states which groups are held out, which predictors remain available, and where the result should generalize. The [previous page](index.qmd) introduces this sequence; the [next page](training-and-test-data.qmd) implements one participant-held-out split and makes its training-only preprocessing visible.
