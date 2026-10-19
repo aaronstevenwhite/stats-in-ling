@@ -1,8 +1,13 @@
 ---
 title: "Central moments"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The preceding pages introduced [variance](variance-and-covariance.qmd) and [standard deviation](standard-deviation.qmd). Variance summarizes squared deviations from the mean. But what if a psycholinguistic response distribution is asymmetric, with occasional values much farther above the mean than below it? Changing the exponent on the centered deviation gives a family of summaries sensitive to different aspects of that shape.
+The preceding pages introduced [variance](variance-and-covariance.qmd) and [standard deviation](standard-deviation.qmd). Variance summarizes squared deviations from the mean. But the empirical CMUdict phone-count distribution is asymmetric, with a small number of entries much farther above the mean than below it. Changing the exponent on the centered deviation gives a family of summaries sensitive to different aspects of that shape.
 
 Basically, every member of this family centers first and then changes the power applied to the deviation. More specifically, the [**$k$th central moment**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/04%3A_Expected_Value/4.01%3A_Definitions_and_Basic_Properties) of $X$ is
 
@@ -13,71 +18,102 @@ $$
 
 when this expectation exists. The word *central* indicates that each value is centered by subtracting the mean before the power is applied.
 
-## Working through a constructed response distribution
+```{r}
+#| label: load-cmudict-moments
+library(ggplot2)
 
-Suppose a response variable $J$ has this PMF.
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+phone_pmf <- as.data.frame(table(cmu$phone_count))
+names(phone_pmf) <- c("phone_count", "entries")
+phone_pmf$phone_count <- as.integer(as.character(phone_pmf$phone_count))
+phone_pmf$mass <- phone_pmf$entries / nrow(cmu)
 
-| response $j$ | $p_J(j)$ |
-|---:|---:|
-| 1 | $.25$ |
-| 2 | $.50$ |
-| 5 | $.25$ |
+phone_mean <- sum(phone_pmf$phone_count * phone_pmf$mass)
+central_moment <- function(order) {
+  sum((phone_pmf$phone_count - phone_mean)^order * phone_pmf$mass)
+}
+moment_values <- vapply(1:4, central_moment, numeric(1))
+phone_sd <- sqrt(moment_values[2])
+phone_skewness <- moment_values[3] / phone_sd^3
+phone_kurtosis <- moment_values[4] / phone_sd^4
 
-Its mean is
+phone_pmf$third_moment_contribution <-
+  (phone_pmf$phone_count - phone_mean)^3 * phone_pmf$mass
+phone_pmf$direction <- ifelse(
+  phone_pmf$phone_count < phone_mean,
+  "Below mean",
+  "Above mean"
+)
 
-$$
-\mathbb{E}[J]
-=1(.25)+2(.50)+5(.25)
-=2.50.
-$$
+stopifnot(
+  nrow(cmu) == 133854L,
+  abs(moment_values[1]) < 1e-10,
+  abs(moment_values[2] -
+        mean((cmu$phone_count - mean(cmu$phone_count))^2)) < 1e-12,
+  all(is.finite(moment_values))
+)
 
-The centered values are $-1.5$, $-.5$, and $2.5$.
+data.frame(
+  order = 1:4,
+  central_moment = moment_values
+)
+```
 
-## The first central moment
+## The first and second central moments
 
 For $k=1$,
 
 $$
-\begin{aligned}
 \mu_1
-&=(-1.5)(.25)+(-.5)(.50)+(2.5)(.25)\\
-&=0.
-\end{aligned}
+=\mathbb{E}[X-\mathbb{E}[X]]
+=0.
 $$
 
-The first central moment is zero because signed deviations from the mean cancel in expectation.
-
-## The second central moment
+The computed first central moment is `r format(moment_values[1], scientific = TRUE, digits = 3)`, which differs from zero only through floating-point arithmetic.
 
 For $k=2$,
 
 $$
-\begin{aligned}
 \mu_2
-&=(-1.5)^2(.25)+(-.5)^2(.50)+(2.5)^2(.25)\\
-&=2.25.
-\end{aligned}
+=\mathbb{E}\!\left[(X-\mathbb{E}[X])^2\right]
+=\operatorname{Var}[X].
 $$
 
-The second central moment is the variance. Its square root is the standard deviation, $\sqrt{2.25}=1.5$.
+The empirical second central moment is `r sprintf("%.3f", moment_values[2])` phones squared, and its square root is the standard deviation reported on the preceding page.
 
 ## The third central moment
 
-For $k=3$, the sign of each centered value remains:
+For $k=3$, the sign of each centered value remains. The empirical third central moment is `r sprintf("%.3f", moment_values[3])` phones cubed. Its positive sign reflects the greater cubed contribution of counts above the mean.
+
+```{r}
+#| label: plot-cmudict-third-moment
+#| fig-cap: "Contribution of each observed phone count to the third central moment. Color only distinguishes direction relative to the empirical mean."
+ggplot(phone_pmf,
+       aes(phone_count, third_moment_contribution, fill = direction)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(
+    values = c("Below mean" = "grey", "Above mean" = "steelblue"),
+    name = NULL
+  ) +
+  labs(x = "Phones in pronunciation",
+       y = "Contribution to third central moment") +
+  theme_classic(base_size = 12)
+```
+
+A standardized third central moment divides by $\sigma_X^3$ so that the units cancel:
 
 $$
-\begin{aligned}
-\mu_3
-&=(-1.5)^3(.25)+(-.5)^3(.50)+(2.5)^3(.25)\\
-&=3.
-\end{aligned}
+\frac{\mu_3}{\sigma_X^3}.
 $$
 
-The positive result reflects the larger positive departure at 5. A standardized third central moment divides by $\sigma_J^3$ so that the units cancel. This unitless summary is often called skewness.
+This unitless summary is often called skewness. Its empirical value is `r sprintf("%.3f", phone_skewness)`.
 
-## Higher orders
-
-An even power makes departures on both sides positive, while an odd power preserves direction. Increasing the power gives progressively more weight to values far from the mean.
+## The fourth central moment
 
 The fourth central moment is
 
@@ -86,36 +122,35 @@ $$
 =\mathbb{E}\!\left[(X-\mathbb{E}[X])^4\right].
 $$
 
-Dividing $\mu_4$ by the fourth power of the standard deviation gives a unitless summary often called kurtosis. This quantity is sensitive to probability placed far from the mean, but one value does not reveal where that probability lies.
+Dividing $\mu_4$ by $\sigma_X^4$ gives a unitless summary often called kurtosis:
 
-## Computing several moments in base R
+$$
+\frac{\mu_4}{\sigma_X^4}.
+$$
 
-```{r}
-#| eval: false
-response <- c(1, 2, 5)
-response_mass <- c(.25, .50, .25)
-response_mean <- sum(response * response_mass)
-
-central_moment <- function(order) {
-  sum((response - response_mean)^order * response_mass)
-}
-
-sapply(1:4, central_moment)
-```
-
-The first four central moments are 0, 2.25, 3, and 11.0625.
+The empirical fourth central moment is `r sprintf("%.3f", moment_values[4])` phones to the fourth power, and the standardized value is `r sprintf("%.3f", phone_kurtosis)`. This summary is sensitive to probability far from the mean, but one value does not reveal where that probability lies.
 
 ## A moment does not determine a distribution
 
-One central moment does not provide a complete account of distribution shape. A positive third central moment indicates an imbalance in cubed deviations, but it does not identify the observation process that produced the imbalance. Different distributions can share the same first several moments.
+An even power makes departures on both sides positive, while an odd power preserves direction. Increasing the power gives progressively more weight to values far from the mean. But a central moment does not provide a complete account of distribution shape, and different distributions can share the same first several moments.
 
-Moments provide compact summaries. Plots and later model checks are needed to locate which values or regions create a difference.
+Plots locate which values create a summary. That is why the empirical contribution plot accompanies the algebra.
 
 ## Check your understanding
 
-1. Why is the first central moment zero whenever the mean exists?
-2. Which previously introduced summary equals the second central moment?
-3. Why do odd central moments retain information about direction while even moments do not?
-4. Explain why two distributions with the same first three central moments need not have the same shape.
+1. Recompute the first four central moments for `phone_count`.
+2. Why is the first central moment zero whenever the mean exists?
+3. Why do odd central moments retain direction while even moments do not?
+4. Remove the pronunciation entries at the observed maximum `phone_count` and recompute skewness. Which tail contribution changed?
 
-This completes the shared representation and summary sequence. The [next page](bernoulli-and-categorical-distributions.qmd) begins the distribution family pages using only objects already introduced here.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. For total `phone_count`, the first four empirical central moments are approximately $0$, $4.566130$, $7.452172$, and $85.066716$. <!-- dqr-allow: empirical-answer -->
+2. The first central moment is zero because $\mathbb{E}[X-\mathbb{E}[X]]=\mathbb{E}[X]-\mathbb{E}[X]=0$. <!-- dqr-allow: empirical-answer -->
+3. Odd powers preserve the sign of a centered deviation, whereas even powers make deviations on both sides nonnegative. <!-- dqr-allow: empirical-answer -->
+4. Removing the single 32-phone entry reduces skewness from $0.763766$ to $0.752368$ by removing an extreme upper-tail contribution. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+This completes the shared representation and summary sequence. The [next page](bernoulli-and-categorical-distributions.qmd) begins the distribution-family pages using only objects already introduced here.

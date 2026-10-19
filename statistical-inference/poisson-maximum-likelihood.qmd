@@ -1,212 +1,145 @@
 ---
-title: "Maximum likelihood for a Poisson mean"
+title: "Poisson maximum likelihood"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [maximum-likelihood page](maximum-likelihood.qmd) introduced estimation with
-a Bernoulli response. We now repeat the same reasoning with the [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd) for a count response. The question is whether maximizing a count likelihood leads to a familiar sample summary. Deriving the answer will also show which steps depend specifically on the Poisson model.
+The Bernoulli likelihood represented one case label per token. A different question asks how many annotated personal pronouns occur in one BOUN sentence. The response is now a nonnegative count, including sentences with no qualifying pronoun.
 
-## Starting with a linguistic count
+## Constructing the sentence counts
 
-The Universal Dependencies English Web Treebank contains annotated dependency
-relations. Consider a legacy teaching extract of 2,594 candidate wh-form tokens
-and the linear distance from each selected token to its annotated head. A
-relative pronoun such as *who* may be near its head, as in *the officer who was
-working*, or separated from it by several intervening tokens.
-
-::: {.callout-note title="Data source"}
-The extract comes from the [Universal Dependencies English Web
-Treebank](https://universaldependencies.org/treebanks/en_ewt/index.html), derived
-from the English Web Treebank described by [Silveira et al.
-(2014)](https://aclanthology.org/L14-1067/). The variable used here is the
-absolute difference between a selected token's index and its head's index in the
-basic dependency annotation. The stored file retains legacy column names such
-as `gap_position`, but that position is the annotated head token, not a silent
-gap. The selection heuristic also admitted some tokens without a UD `PronType`
-value, including instances of *however*. Thus the rows are candidate wh-form
-tokens, not a gold-standard set of wh dependencies. The distance is linear and
-annotation-dependent; it is not a filler-gap distance or a measure of syntactic
-depth.
-:::
-
-Let $X_i$ be this selected-token-to-head distance for observation $i$. The observed distances are
-positive integers, but the Poisson family also assigns probability to zero. We
-will temporarily ignore that mismatch so that we can isolate the estimation
-step. Our working model is
-
-$$
-X_i\mathrel{\overset{\text{IID}}{\sim}}\operatorname{Poisson}(\lambda).
-$$
-
-The model says that every observation shares one Poisson mean $\lambda$ and that the
-observations are independent after we condition on that mean. Those claims are
-strong. We will check one of their consequences after finding the estimate.
-
-## Writing the likelihood one observation at a time
-
-For one observed distance $x_i$, the Poisson probability mass is
-
-$$
-p(x_i\mid\lambda)
-=\frac{e^{-\lambda}\lambda^{x_i}}{x_i!}.
-$$
-
-For $n$ independent observations, multiplication gives the joint probability
-
-$$
-p(\mathbf{x}\mid\lambda)
-=\prod_{i=1}^{n}\frac{e^{-\lambda}\lambda^{x_i}}{x_i!}.
-$$
-
-Once the distances are observed, we hold $\mathbf{x}$ fixed and view the same
-expression as a function of $\lambda$:
-
-$$
-L(\lambda;\mathbf{x})
-=\prod_{i=1}^{n}\frac{e^{-\lambda}\lambda^{x_i}}{x_i!}.
-$$
-
-This is the likelihood function. It compares candidate values of the mean by
-asking how much probability each candidate assigns to the observed collection
-of distances.
-
-## Taking logs before differentiating
-
-The product contains one small probability for each observation. Taking a log
-turns that product into a sum:
-
-$$
-\begin{aligned}
-\ell(\lambda;\mathbf{x})
-&=\log L(\lambda;\mathbf{x})\\
-&=\sum_{i=1}^{n}
-\left[x_i\log\lambda-\lambda-\log(x_i!)\right]\\
-&=\left(\sum_{i=1}^{n}x_i\right)\log\lambda
-  -n\lambda
-  -\sum_{i=1}^{n}\log(x_i!).
-\end{aligned}
-$$
-
-The final term depends on the observations but not on $\lambda$. It changes the
-height of the log-likelihood curve, but it cannot change where that curve is
-maximized.
-
-## Finding the maximizing mean
-
-Differentiate with respect to $\lambda$:
-
-$$
-\frac{\mathrm{d}}{\mathrm{d}\lambda}
-\ell(\lambda;\mathbf{x})
-=\frac{\sum_{i=1}^{n}x_i}{\lambda}-n.
-$$
-
-At an interior maximum, this derivative is zero. We now isolate $\widehat{\lambda}$ one algebraic move at a time:
-
-$$
-\begin{aligned}
-\frac{\sum_{i=1}^{n}x_i}{\widehat{\lambda}}-n&=0,\\
-\sum_{i=1}^{n}x_i&=n\widehat{\lambda},\\
-\widehat{\lambda}_{\mathrm{MLE}}
-&=\frac{1}{n}\sum_{i=1}^{n}x_i\\
-&=\bar{x}.
-\end{aligned}
-$$
-
-The maximum-likelihood estimate of a shared Poisson mean is the sample mean. This
-equality is a consequence of the Poisson model and its likelihood. It is not a
-general definition of maximum likelihood.
-
-## Verifying the result on the dependency distances
-
-The data are available in
-[`wh_filler_gap.csv`](../problem-sets/ps1-2/data/wh_filler_gap.csv). We can compute
-the analytic estimate and compare it with a numerical optimizer.
+The full UD Turkish BOUN 2.18 release defines the sentence total used below. The pronoun extract identifies every sentence with at least one selected token; subtracting those distinct identifiers from the release total reconstructs the zero count exactly. The zero rows lack recoverable document or register identifiers, so the analysis cannot model those sources of structure.
 
 ```{r}
-#| label: poisson-mle-wh-distance
-#| echo: true
-wh <- read.csv("../problem-sets/ps1-2/data/wh_filler_gap.csv")
-x <- wh$linear_distance
+#| label: build-ud-sentence-counts
+library(ggplot2)
 
-analytic_mle <- mean(x)
-
-negative_log_likelihood <- function(lambda, observations) {
-  -sum(dpois(observations, lambda = lambda, log = TRUE))
-}
-
-numerical_fit <- optimize(
-  negative_log_likelihood,
-  interval = c(.01, 20),
-  observations = x
+pronouns <- read.csv(
+  "data/ud-turkish-boun/personal-pronoun-cases.csv",
+  stringsAsFactors = FALSE
 )
+release_sentence_total <- 9761L
+positive_counts <- as.integer(table(pronouns$sentence_id))
+zero_count <- release_sentence_total - length(positive_counts)
+sentence_counts <- c(positive_counts, rep.int(0L, zero_count))
 
-c(
-  analytic = analytic_mle,
-  numerical = numerical_fit$minimum
+stopifnot(
+  length(sentence_counts) == release_sentence_total,
+  sum(sentence_counts) == nrow(pronouns),
+  zero_count == 8034L
 )
 ```
 
-Both calculations return approximately $3.007$ tokens. The agreement is not a second
-piece of evidence about the linguistic phenomenon. It is a check that the code
-and the algebra solve the same optimization problem.
+## Deriving the Poisson estimator
 
-We can also inspect the log-likelihood near the maximum.
+Suppose, as a working model, that
+
+$$
+Y_i\mathrel{\overset{\mathrm{IID}}{\sim}}\operatorname{Poisson}(\lambda).
+$$
+
+For one sentence,
+
+$$
+p(y_i\mid\lambda)=\frac{\lambda^{y_i}e^{-\lambda}}{y_i!}.
+$$
+
+The likelihood and log likelihood are
+
+$$
+L(\lambda;\mathbf y)
+=\prod_{i=1}^n\frac{\lambda^{y_i}e^{-\lambda}}{y_i!}
+$$
+
+and
+
+$$
+\ell(\lambda)
+=\left(\sum_{i=1}^n y_i\right)\log\lambda
+-n\lambda
+-\sum_{i=1}^n\log(y_i!).
+$$
+
+Thus
+
+$$
+\frac{\partial\ell}{\partial\lambda}
+=\frac{\sum_i y_i}{\lambda}-n,
+$$
+
+and setting the score to zero gives
+
+$$
+\widehat\lambda_{\mathrm{MLE}}
+=\frac{1}{n}\sum_{i=1}^n y_i
+=\overline y.
+$$
+
+## Fit and model check
 
 ```{r}
-#| label: poisson-log-likelihood-curve
-#| echo: true
-lambda_grid <- seq(2.5, 3.5, length.out = 300)
-log_likelihood <- vapply(
-  lambda_grid,
-  function(lambda) sum(dpois(x, lambda = lambda, log = TRUE)),
-  numeric(1)
-)
+#| label: fit-ud-sentence-poisson
+lambda_hat <- mean(sentence_counts)
+empirical_variance <- mean((sentence_counts - lambda_hat)^2)
+variance_to_mean <- empirical_variance / lambda_hat
 
-plot(
-  lambda_grid, log_likelihood,
-  type = "l",
-  xlab = expression(lambda),
-  ylab = "log-likelihood"
+count_grid <- data.frame(count = 0:max(sentence_counts))
+observed_table <- table(factor(sentence_counts, levels = count_grid$count))
+count_grid$observed_probability <- as.numeric(observed_table) / length(sentence_counts)
+count_grid$fitted_probability <- dpois(count_grid$count, lambda_hat)
+
+observed_zero <- mean(sentence_counts == 0) # dqr-allow: scale-boundary
+fitted_zero <- dpois(0, lambda_hat)
+observed_two_or_more <- mean(sentence_counts >= 2) # dqr-allow: scale-boundary
+fitted_two_or_more <- ppois(1, lambda_hat, lower.tail = FALSE)
+
+stopifnot(abs(lambda_hat - nrow(pronouns) / release_sentence_total) < 1e-12)
+
+data.frame(
+  lambda_mle = lambda_hat,
+  empirical_variance = empirical_variance,
+  variance_to_mean = variance_to_mean,
+  observed_zero = observed_zero,
+  fitted_zero = fitted_zero,
+  observed_two_or_more = observed_two_or_more,
+  fitted_two_or_more = fitted_two_or_more
 )
-abline(v = analytic_mle, lty = 2)
 ```
 
-The curve is highest at the sample mean. Values near the maximum have similar
-support from the observed data, while more distant values assign lower joint
-probability to those observations.
+The fitted mean is `r sprintf("%.4f", lambda_hat)` pronouns per sentence. But the empirical variance is `r sprintf("%.4f", empirical_variance)`, producing a variance-to-mean ratio of `r sprintf("%.3f", variance_to_mean)` rather than the Poisson value of one.
 
-## Separating estimation from model adequacy
+```{r}
+#| label: plot-ud-sentence-poisson
+#| fig-cap: "Observed sentence-count probabilities and probabilities under the fitted Poisson model."
+ggplot(count_grid, aes(count)) +
+  geom_point(aes(y = observed_probability), color = "grey25", size = 2.1) +
+  geom_line(aes(y = fitted_probability), color = "#8B1A1A", linewidth = 0.8) +
+  geom_point(aes(y = fitted_probability), color = "#8B1A1A", size = 1.5) +
+  scale_x_continuous(breaks = count_grid$count) +
+  labs(x = "Annotated personal pronouns per sentence", y = "Proportion of BOUN sentences") +
+  theme_classic(base_size = 12)
+```
 
-The estimate answers a conditional question: if the distances were independent
-draws from one Poisson distribution, which value of $\lambda$ would fit them
-best? It does not establish that the Poisson family is a good description.
+The observed zero proportion is `r sprintf("%.4f", observed_zero)`, compared with `r sprintf("%.4f", fitted_zero)` under the fitted model. The mismatch shows that maximizing a likelihood does not guarantee adequate fit. It does not, by itself, identify register, document, or syntactic structure as the source of extra variation.
 
-For this extract,
+## Check your understanding
 
-$$
-\bar{x}\approx3.01
-\qquad\text{and}\qquad
-s^2\approx10.46.
-$$
+1. Why must zero-pronoun sentences enter the likelihood?
+2. Show how the Poisson score equation yields the sample mean.
+3. Which visible feature of the fitted distribution misses the data?
+4. Why can we not diagnose document clustering from this prepared count vector?
 
-A Poisson variable has equal mean and variance. The fitted model must thus have
-both mean and variance near 3.01, while the empirical variance is more than
-three times as large. The distances also cannot be zero in this particular
-extract, even though the fitted distribution assigns positive probability to
-zero.
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-These discrepancies identify two distinct model failures: the support mismatch
-concerns which values can occur, while the variance mismatch concerns how probability
-is distributed over the values that can occur. Maximum likelihood finds the
-best parameter within the chosen family. It cannot repair a family whose
-structural assumptions miss the response.
+1. Zero-count sentences are part of the sentence population and contribute the factor $e^{-\lambda}$; excluding them would condition on observing at least one pronoun and inflate the fitted mean. <!-- dqr-allow: empirical-answer -->
+2. Setting $\partial\ell/\partial\lambda=(\sum_i y_i)/\lambda-n$ to zero gives $\widehat\lambda=(\sum_i y_i)/n=\overline y$. <!-- dqr-allow: empirical-answer -->
+3. The fitted Poisson probabilities miss the observed count shape, including the observed mass at zero and the heavier occurrence of multiple-pronoun sentences. <!-- dqr-allow: empirical-answer -->
+4. The reconstructed zero rows have no document identifiers, so the prepared vector cannot show which sentences share documents. <!-- dqr-allow: empirical-answer -->
 
-::: {.callout-note title="Work through the estimate"}
-1. For the distances $1,2,2,3,7$, calculate
-   $\widehat{\lambda}_{\mathrm{MLE}}$.
-2. Explain why $\sum_i\log(x_i!)$ disappears when we differentiate with respect
-   to $\lambda$.
-3. State the conditional question answered by the estimate.
-4. Give one reason that selected-token-to-head distances from the same document might
-   not be independent.
-:::
+</details>
+
+The [next page](properties-of-estimators.qmd) treats an estimator as a random variable across repeated samples.

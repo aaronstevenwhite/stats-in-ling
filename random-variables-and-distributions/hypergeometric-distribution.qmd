@@ -1,141 +1,130 @@
 ---
 title: "The hypergeometric distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [binomial model](binomial-distribution.qmd) used independent draws with a shared target probability. Suppose instead that an annotation archive contains 30 distinct clauses, nine passive and 21 active, and we choose five distinct clauses without replacement. What changes when selecting one clause changes which clauses remain available?
+The binomial distribution describes independent draws. A fixed sample drawn **without replacement** from a finite linguistic resource has less variation because each selected entry changes the composition of the remaining population. The **hypergeometric distribution** represents that design.
 
-The clauses are sampled [**without replacement**](https://openstax.org/books/introductory-statistics-2e/pages/4-5-hypergeometric-distribution). Once a passive clause is selected, only eight passive clauses remain in the archive. The target probability thus changes across draws.
+## A finite Turkish morphology population
 
-The archive counts are constructed, and *passive* stands for the output of a declared syntactic annotation scheme. The distribution models sampling those annotations; it does not turn an annotation into theory-neutral ground truth.
+We use the Turkish UniMorph release pinned at commit [6c179ac](https://github.com/unimorph/tur/tree/6c179ace7d2f3d7f3484020e5304c1544d07bb6b). Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) describe the morphological-reinflection task and Turkish expansion; Batsuren et al. ([2022](https://aclanthology.org/2022.lrec-1.89/)) describe the type-level UniMorph representation. The data are CC BY-SA 3.0.
 
-Let
-
-$$
-K\equiv\text{the number of passive clauses among the five selected clauses}.
-$$
-
-Basically, we must count samples from the finite archive rather than multiply one unchanged target probability across independent draws. More specifically, this count has a [**hypergeometric distribution**](https://openstax.org/books/introductory-statistics-2e/pages/4-5-hypergeometric-distribution).
-
-## Specifying the finite population
-
-We need three collection sizes.
-
-1. The archive contains $N=30$ clauses.
-2. The target set contains $M=9$ passive clauses.
-3. The audit draws $n=5$ clauses.
-
-The remaining $N-M=21$ clauses are active. The support of $K$ contains counts that are compatible with these finite totals. Here
-
-$$
-K\in\{0,1,2,3,4,5\}.
-$$
-
-## Counting samples rather than ordered sequences
-
-To obtain exactly $k$ passive clauses, choose $k$ of the 9 passives and $5-k$ of the 21 active clauses. The number of favorable samples is
-
-$$
-{9\choose k}{21\choose5-k}.
-$$
-
-The total number of five clause samples is
-
-$$
-{30\choose5}.
-$$
-
-Every five clause subset is equally likely under simple random sampling without replacement. The PMF is thus defined by
-
-$$
-p_K(k)
-\equiv\mathbb{P}(K=k)
-=\frac{{9\choose k}{21\choose5-k}}
-       {{30\choose5}}.
-$$
-
-## Calculating the probability of two passives
-
-Set $k=2$:
-
-$$
-p_K(2)
-=\frac{{9\choose2}{21\choose3}}
-       {{30\choose5}}.
-$$
-
-The combinations are
-
-$$
-{9\choose2}=36,
-\qquad
-{21\choose3}=1330,
-\qquad
-{30\choose5}=142506.
-$$
-
-Thus
-
-$$
-p_K(2)
-=\frac{36\times1330}{142506}
-\approx.336.
-$$
-
-R computes the same mass with
+The course population retains the distinct Turkish verb lemmas with one form in the feature cell `V;IND;PST;3;SG;POS;DECL`. The pinned README says that verbs were generated semi-automatically and partially checked by a native speaker; unverified noun and adjective material is excluded. The two-character `past_suffix` is a course-derived orthographic ending, not a UniMorph morpheme boundary.
 
 ```{r}
-#| eval: false
-dhyper(2, m = 9, n = 21, k = 5)
+#| label: load-unimorph-hypergeometric
+library(ggplot2)
+
+population <- read.csv(
+  "data/unimorph-turkish/verb-past-population.csv",
+  stringsAsFactors = FALSE
+)
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
+)
+
+N <- nrow(population)
+K <- sum(population$t_initial)
+n <- nrow(sample_120)
+x_observed <- sum(sample_120$t_initial)
+p_population <- K / N
+finite_population_correction <- (N - n) / (N - 1)
+
+support <- max(0L, n - (N - K)):min(n, K)
+reference <- data.frame(t_initial_count = support)
+reference$without_replacement <- dhyper(support, m = K, n = N - K, k = n)
+reference$independent_draw <- dbinom(support, size = n, prob = p_population)
+
+hyper_mean <- n * p_population
+hyper_variance <- n * p_population * (1 - p_population) * finite_population_correction
+binomial_variance <- n * p_population * (1 - p_population)
+
+stopifnot(
+  N == 588L, K == 200L, n == 120L, x_observed == 42L,
+  !anyDuplicated(population$lemma),
+  all(sample_120$lemma %in% population$lemma),
+  abs(sum(reference$without_replacement) - 1) < 1e-12
+)
+
+data.frame(N, K, n, x_observed, hyper_mean, hyper_variance,
+           binomial_variance, finite_population_correction)
 ```
 
-Here `m` is the number of target objects, `n` is the number of other objects, and `k` is the sample size. The first argument is the observed target count.
+## Mass, mean, and variance
 
-## Reading the mean and finite population correction
-
-The target proportion in the archive is
+If a population contains $N$ entries, $K$ carry a focal property, and $n$ entries are sampled without replacement, then the focal count $X$ has mass
 
 $$
-\frac{M}{N}=\frac{9}{30}=.30.
+\mathbb{P}(X=x)
+=\frac{\binom Kx\binom{N-K}{n-x}}{\binom Nn}.
 $$
 
-The expected target count in five draws is
+The support respects both finite stocks:
 
 $$
-\mathbb{E}[K]
-=n\frac{M}{N}
-=5(.30)
-=1.5.
+\max\{0,n-(N-K)\}
+\leq x\leq
+\min\{n,K\}.
 $$
 
-The variance is
+The numerator counts samples containing $x$ focal entries and $n-x$ other entries; the denominator counts all size-$n$ samples.
+
+Its expectation is the same as that of a binomial count with $p=K/N$, but its variance contains the **finite-population correction**:
 
 $$
-\operatorname{Var}(K)
-=n\frac{M}{N}\left(1-\frac{M}{N}\right)
- \frac{N-n}{N-1}.
+\mathbb{E}[X]=n\frac KN,
 $$
 
-The final factor is the [**finite population correction**](https://openstax.org/books/introductory-business-statistics-2e/pages/7-4-finite-population-correction-factor). Here it is $25/29$, which reduces the variance because removing one clause constrains later draws.
+$$
+\operatorname{Var}[X]
+=n\frac KN\left(1-\frac KN\right)\frac{N-n}{N-1}.
+$$
 
-## Comparing with independent sampling
+For the fixed sample, the expected number of *t*-initial endings is `r sprintf("%.3f", hyper_mean)`. The without-replacement variance is `r sprintf("%.3f", hyper_variance)`, smaller than the independent-draw variance of `r sprintf("%.3f", binomial_variance)`.
 
-If each draw instead came independently from a very large population with passive probability $.30$, the target count would be binomial. Both models would have mean 1.5, but the without replacement model has smaller variance.
+```{r}
+#| label: plot-unimorph-hypergeometric
+#| fig-cap: "Without-replacement and independent-draw reference masses for the Turkish UniMorph sample. The vertical line marks the fixed sample count."
+reference_long <- rbind(
+  data.frame(count = support, probability = reference$without_replacement,
+             design = "without replacement"),
+  data.frame(count = support, probability = reference$independent_draw,
+             design = "independent draws")
+)
 
-The distinction is not about which curve looks better. It follows from whether the same finite clauses remain available after each draw.
+ggplot(reference_long, aes(count, probability, color = design, linetype = design)) +
+  geom_line(linewidth = 0.85) +
+  geom_vline(xintercept = x_observed, color = "grey25", linewidth = 0.6) +
+  scale_color_manual(values = c("without replacement" = "#8B1A1A",
+                                "independent draws" = "grey45")) +
+  labs(x = "t-initial forms in the fixed sample", y = "Probability",
+       color = NULL, linetype = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-## Sampling without replacement changes later probabilities
-
-Draws are not independent after sampled objects have been removed. The passive probability on the second draw depends on what happened on the first draw.
-
-Specify the finite population and sampling rule. If every selected clause is unavailable to later draws, the hypergeometric calculation represents that dependence directly.
-
-The same finite sampling calculation appears when margins of a contingency table are fixed. The [Fisher's exact test page](../statistical-inference/fishers-exact-test.qmd) later uses this connection for inference.
+The finite population is the pinned lexicon cell, not Turkish usage. The distribution describes repeated samples of lemmas from that resource.
 
 ## Check your understanding
 
-1. In the PMF, what does ${21\choose5-k}$ count?
-2. Compute the expected passive count when 8 clauses are drawn from the same archive.
-3. Why is the variance smaller than under independent sampling with probability $.30$?
-4. When would the binomial model become a close approximation to this sampling process?
+1. Compute the probability of the observed count with `dhyper()`.
+2. Explain why the two models have the same expectation but different variances.
+3. What happens to the correction as $n/N$ approaches one?
+4. Why would a corpus-token claim be unsupported by this population?
 
-Sampling without replacement changes probability after each draw. The [next page](geometric-distribution.qmd) returns to repeated comparable draws and models the wait to the first target outcome.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The probability of the observed count is `dhyper(42, 200, 388, 120) = 0.082787`. <!-- dqr-allow: empirical-answer -->
+2. Both models have $\mathbb{E}[X]=nK/N=40.816327$, but sampling without replacement multiplies the binomial variance by the finite-population correction 0.797274. <!-- dqr-allow: empirical-answer -->
+3. As $n/N$ approaches one, $(N-n)/(N-1)$ approaches zero and the sampling variance collapses because nearly the whole finite population is observed. <!-- dqr-allow: empirical-answer -->
+4. The population consists of 588 distinct UniMorph verb lemmas in one feature cell, not tokens sampled from Turkish usage, so it cannot support a corpus-token claim. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The next two pages return to CMUdict to model waiting counts.

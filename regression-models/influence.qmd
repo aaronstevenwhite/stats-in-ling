@@ -1,10 +1,118 @@
 ---
 title: "Influence"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+Leverage measures unusual predictor position. **Influence** asks how much the fitted result changes when an observation, or a scientifically meaningful group of observations, is removed.
 
-**Available Wednesday, October 7, 2026.**
+## Cook's distance and grouped deletion
+
+For a Gaussian linear model with $p$ coefficients and residual variance estimate $s^2$, Cook's distance for position $i$ is
+
+$$
+D_i
+=
+\frac{e_i^2}{ps^2}
+\frac{h_{ii}}{(1-h_{ii})^2}.
+$$
+
+Large residuals and high leverage can jointly produce a large $D_i$. But the PRS retains passages as a grouping unit, so deleting one position is not the only relevant perturbation. We also refit after deleting each whole passage.
+
+```{r}
+#| label: compute-provo-influence
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+provo$cooks_distance <- cooks.distance(fit)
+
+full_slope <- coef(fit)[["cloze_surprisal_c"]]
+passage_deletion <- do.call(rbind, lapply(
+  sort(unique(provo$Text_ID)),
+  function(current_passage) {
+    reduced_fit <- lm(
+      mean_log_ffd ~ cloze_surprisal_c,
+      data = subset(provo, Text_ID != current_passage)
+    )
+    reduced_slope <- coef(reduced_fit)[["cloze_surprisal_c"]]
+    data.frame(
+      deleted_passage = current_passage,
+      deleted_positions = sum(provo$Text_ID == current_passage),
+      slope_without_passage = reduced_slope,
+      slope_change = reduced_slope - full_slope
+    )
+  }
+))
+passage_deletion$absolute_change <- abs(passage_deletion$slope_change)
+most_influential_passage <- passage_deletion$deleted_passage[
+  which.max(passage_deletion$absolute_change)
+]
+fit_without_passage <- lm(
+  mean_log_ffd ~ cloze_surprisal_c,
+  data = subset(provo, Text_ID != most_influential_passage)
+)
+
+stopifnot(nrow(passage_deletion) == length(unique(provo$Text_ID)))
+
+passage_deletion[order(-passage_deletion$absolute_change), ][1:6, ]
+```
+
+The largest whole-passage deletion changes the slope by `r sprintf("%.6f", passage_deletion$slope_change[which.max(passage_deletion$absolute_change)])` log milliseconds per bit. This change is computed by removing passage `r most_influential_passage`, not by inventing a perturbation.
+
+```{r}
+#| label: plot-provo-influence
+#| fig-cap: "Observed Provo positions with the full fit in blue and the fit after deleting the most slope-influential passage in black."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+grid$full_fit <- predict(fit, newdata = grid)
+grid$deleted_fit <- predict(fit_without_passage, newdata = grid)
+
+point_opacity <- 0.18
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey70", alpha = point_opacity, size = 0.8) +
+  geom_line(data = grid, aes(y = full_fit), color = "#2C6E9B", linewidth = 0.85) +
+  geom_line(data = grid, aes(y = deleted_fit), color = "black", linetype = 2) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The two lines remain close. That stability is specific to the fitted PRS slope under these passage deletions. It does not show that the missing reader-level grouping is unimportant.
+
+## Check your understanding
+
+1. Why does Cook's distance combine residual size and leverage?
+2. Which deletion unit matches the remaining PRS grouping structure?
+3. What would a large passage-level slope change imply?
+4. Why is influence a diagnostic rather than a deletion command?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Residual size measures disagreement with the fitted line, while leverage measures capacity to move it; Cook's distance is large when those features act together. <!-- dqr-allow: empirical-answer -->
+2. Deleting a whole passage matches the remaining grouping structure marked by `Text_ID`. <!-- dqr-allow: empirical-answer -->
+3. A large passage-level slope change would show that the fitted surprisal slope is sensitive to evidence concentrated in that passage. <!-- dqr-allow: empirical-answer -->
+4. Influence identifies consequential observations or groups for investigation; deletion requires a separate measurement or design justification. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](bayesian-linear-regression.qmd) places a posterior distribution over the same line.

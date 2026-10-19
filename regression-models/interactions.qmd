@@ -1,10 +1,139 @@
 ---
-title: "Interaction terms"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+title: "Interaction contrasts"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+An **interaction** states that one contrast changes across the levels of another variable. We introduce that idea with paired raw judgments, without fitting a linear model to an ordinal response.
 
-**Available Wednesday, October 7, 2026.**
+## MegaOrientation and temporal interpretation
+
+Moon and White ([2020](https://ling.auf.net/lingbuzz/005282/current.pdf)) study whether the temporal orientation of English nonfinite complements is associated with clause-embedding predicates, complement structures, or both. The corrected [MegaOrientation v1.1 release](https://megaattitude.io/projects/mega-orientation/) is available under CC BY-SA 4.0. Version 1.1 filters and reruns lists containing incorrectly inflected irregular verbs; the paper reports counts for version 1, while every number below comes from the corrected release.
+
+One row is one native-speaker rating on the documented 1--7 acceptability scale. Each represented predicate--frame pair has a forced-past and a forced-future sentence item, with repeated judgments from participants. The pairs were selected upstream using acceptability evidence from MegaAcceptability, so this is an acceptability-selected portion of the clause-embedding lexicon.
+
+```{r}
+#| label: load-megaorientation-pairs
+library(ggplot2)
+
+orientation <- read.delim(
+  "data/megaorientation/megaorientation-v1.1.tsv",
+  stringsAsFactors = FALSE
+)
+
+pair_orientation_means <- aggregate(
+  response ~ verb + frame_code + orientation,
+  data = orientation,
+  FUN = mean
+)
+paired <- reshape(
+  pair_orientation_means,
+  idvar = c("verb", "frame_code"),
+  timevar = "orientation",
+  direction = "wide"
+)
+paired <- subset(
+  paired,
+  !is.na(response.past) & !is.na(response.future)
+)
+paired$future_minus_past <-
+  paired$response.future - paired$response.past
+
+stopifnot(
+  nrow(orientation) == 44160L,
+  length(unique(orientation$participant_id)) == 862L,
+  nrow(paired) == 2208L,
+  all(orientation$response %in% seq_len(7L))
+)
+
+c(
+  judgments = nrow(orientation),
+  participants = length(unique(orientation$participant_id)),
+  verbs = length(unique(orientation$verb)),
+  predicate_frame_pairs = nrow(paired)
+)
+```
+
+The corrected release contains `r nrow(orientation)` judgments from `r length(unique(orientation$participant_id))` participant identifiers. The paired table contains `r nrow(paired)` predicate--frame pairs.
+
+## A difference in orientation shifts
+
+For frame $f$, define the observed orientation shift
+
+$$
+\Delta_f
+=
+\overline Y_{f,\text{future}}
+-
+\overline Y_{f,\text{past}}.
+$$
+
+An additive restriction would require the same $\Delta_f$ for every frame. The interaction contrast between frames $f$ and $g$ is the difference in differences
+
+$$
+\Delta_f-\Delta_g
+=
+(\overline Y_{f,\text{future}}-\overline Y_{f,\text{past}})
+-
+(\overline Y_{g,\text{future}}-\overline Y_{g,\text{past}}).
+$$
+
+```{r}
+#| label: compute-megaorientation-shifts
+frame_shifts <- aggregate(
+  future_minus_past ~ frame_code,
+  data = paired,
+  FUN = mean
+)
+names(frame_shifts)[[2]] <- "mean_orientation_shift"
+reference_shift <- frame_shifts$mean_orientation_shift[
+  frame_shifts$frame_code == "active_gerund"
+]
+frame_shifts$difference_from_active_gerund <-
+  frame_shifts$mean_orientation_shift - reference_shift
+
+frame_shifts
+```
+
+The observed future-minus-past shift ranges from `r sprintf("%.3f", min(frame_shifts$mean_orientation_shift))` to `r sprintf("%.3f", max(frame_shifts$mean_orientation_shift))` rating points across frames. The corresponding difference in shifts is `r sprintf("%.3f", diff(range(frame_shifts$mean_orientation_shift)))` points.
+
+```{r}
+#| label: plot-megaorientation-paired-means
+#| fig-cap: "Past- and future-oriented mean ratings for each predicate--frame pair. The diagonal marks equal paired means."
+point_opacity <- 0.22
+ggplot(paired, aes(response.past, response.future)) +
+  geom_abline(slope = 1, intercept = 0, color = "grey55", linewidth = 0.4) +
+  geom_point(color = "grey45", alpha = point_opacity, size = 0.7) +
+  facet_wrap(~ frame_code, ncol = 3) +
+  coord_equal(xlim = c(1, 7), ylim = c(1, 7)) +
+  labs(
+    x = "Mean rating: forced-past item",
+    y = "Mean rating: forced-future item"
+  ) +
+  theme_classic(base_size = 11) +
+  theme(strip.background = element_blank())
+```
+
+The response is ordinal, and participant and item dependence is repeated. Thus we do not fit `lm(response ~ orientation * frame_code)`. A later page, after cumulative-logit models and grouped prediction have been introduced, will fit the approved ordinal interaction and compare it on unseen verbs. This page licenses only the raw paired interaction contrast; it does not reproduce Moon and White's latent-type analysis or distinguish lexical from structural sources by itself.
+
+## Check your understanding
+
+1. What is paired when $\Delta_f$ is computed?
+2. What equality would an additive restriction impose?
+3. Why is a difference in shifts an interaction contrast?
+4. Why is ordinary linear regression not fitted to these ratings here?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The forced-future and forced-past mean ratings are paired within the same predicate--frame combination. <!-- dqr-allow: empirical-answer -->
+2. An additive restriction requires $\Delta_f=\Delta_g$ for every pair of frames, that is, the same future-minus-past shift in every frame. <!-- dqr-allow: empirical-answer -->
+3. A difference in shifts compares one orientation effect with another: $(\text{future}-\text{past})_f-(\text{future}-\text{past})_g$. <!-- dqr-allow: empirical-answer -->
+4. The 1--7 response is ordinal, with repeated participant and item dependence; an ordinary linear model of raw ratings would ignore both features. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](correlated-predictors.qmd) returns to MALD and examines overlap among its item predictors.

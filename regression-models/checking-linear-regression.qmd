@@ -1,10 +1,150 @@
 ---
 title: "Checking a linear regression"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+A **regression check** compares a model prediction with an observable pattern. The aim is not to certify the model as true. It is to locate failures that matter for the linguistic comparison.
 
-**Available Wednesday, October 7, 2026.**
+For the PRS, we check three restrictions: (i) a straight conditional mean, (ii) stable residual location across passages, and (iii) an approximately normal residual shape for conventional finite-sample inference.
+
+## Linear form and passage structure
+
+```{r}
+#| label: fit-provo-diagnostic-models
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+
+linear_fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_c + I(cloze_surprisal_c^2),
+  data = provo
+)
+provo$linear_fitted <- fitted(linear_fit)
+provo$linear_residual <- residuals(linear_fit)
+
+passage_residuals <- aggregate(
+  linear_residual ~ Text_ID,
+  data = provo,
+  FUN = mean
+)
+
+data.frame(
+  model = c("linear", "quadratic diagnostic"),
+  r_squared = c(
+    summary(linear_fit)$r.squared,
+    summary(quadratic_fit)$r.squared
+  ),
+  residual_sd = c(
+    summary(linear_fit)$sigma,
+    summary(quadratic_fit)$sigma
+  )
+)
+```
+
+Adding the squared observed predictor changes $R^2$ from `r sprintf("%.4f", summary(linear_fit)$r.squared)` to `r sprintf("%.4f", summary(quadratic_fit)$r.squared)`. This is a diagnostic sensitivity, not automatic evidence for a quadratic processing mechanism.
+
+```{r}
+#| label: plot-provo-linear-quadratic-check
+#| fig-cap: "Provo positions with the linear fit in blue and the quadratic diagnostic in black."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+grid$linear <- predict(linear_fit, newdata = grid)
+grid$quadratic <- predict(quadratic_fit, newdata = grid)
+
+point_opacity <- 0.18
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(data = grid, aes(y = linear), color = "#2C6E9B", linewidth = 0.8) +
+  geom_line(data = grid, aes(y = quadratic), color = "black", linetype = 2) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+```{r}
+#| label: plot-provo-passage-residual-locations
+#| fig-cap: "Mean residual for each Provo passage, ordered from lowest to highest."
+passage_residuals <- passage_residuals[
+  order(passage_residuals$linear_residual),
+]
+passage_residuals$ordered_passage <- seq_len(nrow(passage_residuals))
+
+ggplot(passage_residuals, aes(ordered_passage, linear_residual)) +
+  geom_hline(yintercept = 0, color = "grey55", linewidth = 0.4) +
+  geom_point(color = "#2C6E9B", size = 1.5) +
+  labs(x = "Passage, ordered by mean residual", y = "Passage mean residual") +
+  theme_classic(base_size = 12)
+```
+
+The passage means show location differences that the single line does not represent. Their ordering is descriptive; the plot does not treat adjacent ranks as linguistically adjacent passages.
+
+## Residual shape
+
+If the normal working model were exact, ordered standardized residuals would track normal quantiles. A quantile plot makes tail departures visible without reducing the check to one test statistic.
+
+```{r}
+#| label: plot-provo-normal-quantiles
+#| fig-cap: "Normal quantiles against ordered PRS residuals. The line passes through the empirical quartiles."
+n <- nrow(provo)
+qq_data <- data.frame(
+  normal_quantile = qnorm((seq_len(n) - 0.5) / n),
+  ordered_residual = sort(provo$linear_residual)
+)
+sample_quartiles <- quantile(provo$linear_residual, c(.25, .75))
+normal_quartiles <- qnorm(c(.25, .75))
+qq_slope <- diff(sample_quartiles) / diff(normal_quartiles)
+qq_intercept <- sample_quartiles[[1]] - qq_slope * normal_quartiles[[1]]
+
+qq_opacity <- 0.45
+ggplot(qq_data, aes(normal_quantile, ordered_residual)) +
+  geom_point(color = "grey50", alpha = qq_opacity, size = 0.8) +
+  geom_abline(
+    slope = qq_slope,
+    intercept = qq_intercept,
+    color = "#2C6E9B",
+    linewidth = 0.7
+  ) +
+  labs(x = "Normal quantile", y = "Ordered residual") +
+  theme_classic(base_size = 12)
+```
+
+The checks point to modest curvature and some tail departure. They do not repair passage or reader dependence. This limit matters: changing the mean function cannot recreate a missing sampling unit.
+
+## Check your understanding
+
+1. Which restriction does the quadratic diagnostic probe?
+2. Why is a better in-sample $R^2$ not enough to select the quadratic model?
+3. What pattern would an exact normal residual model predict in the quantile plot?
+4. Which dependence problem survives both checks?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The quadratic diagnostic probes the straight-line restriction on the conditional mean by allowing a squared surprisal term. <!-- dqr-allow: empirical-answer -->
+2. Adding a parameter cannot by itself establish a processing mechanism, and in-sample fit does not measure new-passage performance or account for complexity. <!-- dqr-allow: empirical-answer -->
+3. The ordered residuals would track the reference line across the center and tails, apart from ordinary sampling fluctuation. <!-- dqr-allow: empirical-answer -->
+4. Passage dependence remains, and missing reader-level dependence cannot be checked or repaired from the aggregated table. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](leverage-and-influence.qmd) asks which observed predictor positions have unusual capacity to affect the line.

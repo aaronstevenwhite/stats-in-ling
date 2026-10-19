@@ -1,99 +1,127 @@
 ---
 title: "Generating derived quantities in Stan"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [Stan page](stan.qmd) showed how the `model` block adds log probability contributions that determine a posterior, but an analysis may also require a condition contrast, a replicated response, or an observation-level log-likelihood. The question is how to calculate these quantities without changing the posterior target. The [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) executes after the sampler has produced each retained parameter draw.
+Stan's **generated quantities block** runs after each retained parameter draw. It can transform a joint draw, simulate replicated responses, and evaluate pointwise log likelihoods without changing the posterior target.
 
-## Distinguishing three operations
+## Three PCT outputs
 
-Suppose a normal model has condition means `mu_a` and `mu_b` and response standard deviation `sigma`. A generated-quantities block can contain
+The exact PCT program contains
 
 ```stan
 generated quantities {
-  real mean_difference;
+  real geometric_duration_ratio = exp(mu);
   array[N] real y_rep;
   vector[N] log_lik;
 
-  mean_difference = mu_a - mu_b;
-
   for (n in 1:N) {
-    real mu_n = condition[n] == 1 ? mu_a : mu_b;
-    y_rep[n] = normal_rng(mu_n, sigma);
-    log_lik[n] = normal_lpdf(y[n] | mu_n, sigma);
+    y_rep[n] = student_t_rng(nu, mu, sigma);
+    log_lik[n] = student_t_lpdf(y[n] | nu, mu, sigma);
   }
 }
 ```
 
-In this example, `mean_difference` transforms the joint parameter draw. The values in `y_rep` are simulated responses, while the values in `log_lik` are log densities evaluated at the observed responses.
-
-## Computing a contrast within each draw
-
-The derived quantity is
+The transformed quantity is
 
 $$
-D=M_A-M_B.
+R=\exp(\mu).
 $$
 
-Here $M_A$ and $M_B$ denote the posterior random quantities corresponding to the two condition means. Their realized values within draw $s$ are $\mu_A^{(s)}$ and $\mu_B^{(s)}$, so $d^{(s)}=\mu_A^{(s)}-\mu_B^{(s)}$.
+Within draw $s$, $r^{(s)}=\exp(\mu^{(s)})$. It is a central geometric-scale noun-to-verb ratio for the passage contrast, not a participant-level raw-duration ratio.
 
-Calculating it draw by draw preserves posterior dependence between the condition means. Combining marginal standard deviations as if the means were independent can give the wrong uncertainty.
+For passage $j$, the replication and log-likelihood contribution are
+
+$$
+Y_j^{\mathrm{rep},(s)}
+\sim t_4(\mu^{(s)},\sigma^{(s)}),
+$$
+
+$$
+\ell_j^{(s)}
+=
+\log t_4(y_j\mid\mu^{(s)},\sigma^{(s)}).
+$$
+
+The `_rng` function simulates; the `_lpdf` function evaluates the observed response.
+
+## Inspecting actual generated quantities
 
 ```{r}
-#| label: generated-mean-difference
-#| echo: true
+#| label: summarize-provo-generated-quantities
+library(posterior)
 
-set.seed(248)
-draw_count <- 10000
-shared_location <- rnorm(draw_count, mean = 180, sd = 10)
-condition_difference <- rnorm(draw_count, mean = -12, sd = 4)
-mu_a <- shared_location + condition_difference / 2
-mu_b <- shared_location - condition_difference / 2
-generated_difference <- mu_a - mu_b
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
+)
+draws <- as.data.frame(as_draws_df(cache$production_draws))
+y_rep_names <- grep("^y_rep\\[", names(draws), value = TRUE)
+log_lik_names <- grep("^log_lik\\[", names(draws), value = TRUE)
+y_rep <- as.matrix(draws[, y_rep_names, drop = FALSE])
+log_lik <- as.matrix(draws[, log_lik_names, drop = FALSE])
 
-naive_independent_sd <- sqrt(var(mu_a) + var(mu_b))
-joint_draw_sd <- sd(generated_difference)
+generated_summary <- data.frame(
+  posterior_draws = nrow(draws),
+  replicated_values_per_draw = ncol(y_rep),
+  log_likelihood_values_per_draw = ncol(log_lik),
+  mean_geometric_duration_ratio = mean(draws$geometric_duration_ratio),
+  median_geometric_duration_ratio = median(draws$geometric_duration_ratio),
+  mean_total_log_likelihood = mean(rowSums(log_lik))
+)
 
-stopifnot(abs(mean(generated_difference) + 12) < .1)
-stopifnot(joint_draw_sd < naive_independent_sd)
-c(mean = mean(generated_difference),
-  joint_draw_sd = joint_draw_sd,
-  naive_independent_sd = naive_independent_sd,
-  quantile(generated_difference, c(.025, .975)))
+stopifnot(nrow(provo) == 55L, ncol(y_rep) == 55L,
+          ncol(log_lik) == 55L)
+generated_summary
 ```
 
-The generated vector is a posterior sample for the mean difference, whose spread represents model-based uncertainty. The finite accuracy of its summaries also depends on Monte Carlo error in the underlying parameter draws.
+Every retained draw has one replicated value and one log-likelihood contribution for each of the 55 passages. Preserving this index is necessary for passage-level predictive checks and pointwise model-comparison calculations.
 
-## Simulating rather than evaluating
+```{r}
+#| label: plot-provo-generated-replicates
+#| fig-cap: "Observed passage contrasts and one evenly spaced subset of complete posterior-replicated datasets."
+library(ggplot2)
+selected <- round(seq(1, nrow(y_rep), length.out = 40L))
+replicate_means <- rowMeans(y_rep[selected, , drop = FALSE])
+display <- rbind(
+  data.frame(value = provo$noun_minus_verb_log_ffd, source = "observed passages"),
+  data.frame(value = as.vector(y_rep[selected, , drop = FALSE]),
+             source = "posterior replications")
+)
 
-The function
-
-```stan
-normal_rng(mu_n, sigma)
+histogram_opacity <- .45
+ggplot(display, aes(value, fill = source)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 24,
+                 position = "identity", alpha = histogram_opacity, color = "white") +
+  scale_fill_manual(values = c("observed passages" = "#8B1A1A",
+                               "posterior replications" = "grey65")) +
+  labs(x = "Passage noun-minus-verb mean log first-fixation duration",
+       y = "Density", fill = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
 ```
 
-generates a new response, as indicated by the `_rng` suffix. In contrast,
-
-```stan
-normal_lpdf(y[n] | mu_n, sigma)
-```
-
-evaluates the log density of the observed response without generating a value.
-
-Use the replicated responses for [posterior predictive checking](posterior-predictive-checks.qmd). Pointwise log-likelihoods can support predictive scoring and model comparison when the intended prediction unit and model factorization match the scoring procedure.
-
-## Preserving the observation index
-
-Each `log_lik[n]` must correspond to `y[n]`. If trials are nested within speakers and items, retaining one contribution per modeled row preserves the observation-level factorization. But summing those values by speaker does not automatically turn observation-level leave-one-out evaluation into leave-one-speaker-out evaluation. The analyst must declare the prediction unit and verify that the scoring method integrates or conditions on group-level quantities appropriately.
-
-## Recognizing what cannot happen here
-
-Generated quantities are evaluated after sampling a parameter draw, so assignments in this block cannot contribute to `target` or change the posterior. Moving a prior or likelihood calculation from the `model` block into generated quantities removes that contribution from inference.
-
-Use this block to calculate quantities from saved draws, not to add a prior or likelihood contribution.
+Assignments in generated quantities cannot contribute to Stan's `target`. Moving a prior or likelihood there would remove it from inference. And grouping pointwise log likelihoods after fitting does not automatically change a passage-level prediction task into leave-one-reader-out evaluation; the reader rows are unavailable in this teaching table.
 
 ## Check your understanding
 
-1. Which line generates a future response?
-2. Which line evaluates an observed response?
-3. Why should a contrast be calculated within each joint draw?
-4. Can a generated quantity repair a missing likelihood term?
+1. Which line simulates a replicated passage contrast?
+2. Which line evaluates an observed contrast?
+3. Why is $\exp(\mu)$ computed within every joint draw?
+4. Can generated quantities repair a missing likelihood term?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. `y_rep[n] = student_t_rng(nu, mu, sigma);` simulates a replicated passage contrast. <!-- dqr-allow: empirical-answer -->
+2. `log_lik[n] = student_t_lpdf(y[n] | nu, mu, sigma);` evaluates the observed passage contrast. <!-- dqr-allow: empirical-answer -->
+3. Computing it within each draw preserves its joint uncertainty with all other parameters before the transformed quantity is summarized. <!-- dqr-allow: empirical-answer -->
+4. No. Generated quantities run after sampling and cannot add a prior or likelihood contribution to `target`. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [posterior-predictive-check page](posterior-predictive-checks.qmd) compares these replicated passage data with the observations.

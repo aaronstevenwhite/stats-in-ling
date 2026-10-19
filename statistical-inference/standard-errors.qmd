@@ -1,133 +1,105 @@
 ---
 title: "Standard errors"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](properties-of-estimators.qmd) defined the sampling distribution of an estimator, and we now ask how spread out that distribution is. Its [**standard error**](https://online.stat.psu.edu/stat200/Lesson04) is the standard deviation of that sampling distribution:
-
-$$
-\operatorname{SE}(\widehat{\Theta})
-=\sqrt{\operatorname{Var}(\widehat{\Theta})}.
-$$
-
-This definition concerns an estimator, not an individual response. We must keep those two objects separate.
-
-## Beginning with response variation
-
-Suppose vowel duration in a population has mean $\mu$ and standard deviation
-
-$$
-\sigma=30\text{ ms}.
-$$
-
-The standard deviation is the root mean squared distance of individual vowel durations from $\mu$. If we draw another vowel, its duration may differ substantially from the first one. This is variation among responses.
-
-Now suppose that we repeatedly draw independent samples of 25 vowels and calculate the sample mean in every sample. Those sample means also vary, but they vary less than the individual durations. This is variation among estimates across samples.
-
-| quantity | object that varies | question answered |
-|---|---|---|
-| response standard deviation | individual vowel duration $X_i$ | How dispersed are durations? |
-| standard error | sample mean $\overline{X}$ | How dispersed are mean estimates? |
-
-Both quantities have units of milliseconds. Their shared units do not make them interchangeable.
+The **standard error** of an estimator is the standard deviation of its sampling distribution. We continue with the Hillenbrand empirical sampling reference introduced on the [preceding page](properties-of-estimators.qmd).
 
 ## Deriving the standard error of a mean
 
-The estimator of the population mean is
+If $X_1,\ldots,X_n$ are independent with common variance $\sigma^2$, then
 
 $$
-\overline{X}=\frac{1}{n}\sum_{i=1}^nX_i.
+\begin{aligned}
+\operatorname{Var}[\overline X]
+&=\operatorname{Var}[\frac{1}{n}\sum_{i=1}^nX_i]\\
+&=\frac{1}{n^2}\sum_{i=1}^n\operatorname{Var}[X_i]\\
+&=\frac{\sigma^2}{n}.
+\end{aligned}
 $$
 
-We first move the constant $1/n$ outside the variance. The square appears because [multiplying a random variable by a constant multiplies its variance by the constant squared](../random-variables-and-distributions/variance-and-covariance.qmd):
+Thus
 
 $$
-\operatorname{Var}(\overline{X})
-=\frac{1}{n^2}\operatorname{Var}\left(\sum_{i=1}^nX_i\right).
+\operatorname{SE}(\overline X)=\frac{\sigma}{\sqrt n}.
 $$
 
-If the observations are independent, their variances add. If they also have a common variance $\sigma^2$, then
+The second equality uses independence. With covariance among observations, the omitted covariance terms may change the result.
 
-$$
-\operatorname{Var}\left(\sum_{i=1}^nX_i\right)
-=\sum_{i=1}^n\operatorname{Var}(X_i)
-=n\sigma^2.
-$$
+## Checking the relation in vowel durations
 
-Substitution gives
-
-$$
-\operatorname{Var}(\overline{X})
-=\frac{n\sigma^2}{n^2}
-=\frac{\sigma^2}{n}.
-$$
-
-Taking the square root yields the standard error:
-
-$$
-\operatorname{SE}(\overline{X})
-=\frac{\sigma}{\sqrt{n}}.
-$$
-
-For 25 vowels with $\sigma=30$ ms, the calculation is
-
-$$
-\operatorname{SE}(\overline{X})
-=\frac{30}{\sqrt{25}}
-=6\text{ ms}.
-$$
-
-The individual durations have a standard deviation of 30 ms, while means based on 25 independent durations have a standard error of 6 ms.
-
-## Changing the sample size
-
-The square root in the denominator determines how precision changes with sample size.
-
-| $n$ | calculation | standard error |
-|---:|---:|---:|
-| 25 | $30/\sqrt{25}$ | $6$ ms |
-| 100 | $30/\sqrt{100}$ | $3$ ms |
-| 400 | $30/\sqrt{400}$ | $1.5$ ms |
-
-Multiplying the sample size by four divides the standard error by two. Merely doubling the sample size does not halve it.
+The four sample sizes below are not arbitrary: they are the observed counts of girls, boys, men, and women in Hillenbrand et al.'s speaker cohort. The duration distribution remains the adult-women /I/ distribution so that only $n$ changes.
 
 ```{r}
-#| label: verify-se-sample-size
-#| echo: true
+#| label: hillenbrand-standard-errors
+library(ggplot2)
 
-sigma <- 30
-n <- c(25, 100, 400)
-se <- sigma / sqrt(n)
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+women_hid <- subset(vowels, speaker_type == "woman" & vowel == "I")
+x <- women_hid$duration_ms
+sigma <- sqrt(mean((x - mean(x))^2))
 
-stopifnot(isTRUE(all.equal(se, c(6, 3, 1.5))))
-data.frame(n, se)
+speaker_rows <- unique(vowels[c("speaker_id", "speaker_type")])
+sample_sizes <- sort(as.integer(table(speaker_rows$speaker_type)))
+
+set.seed(20261018)
+replicates <- 20000L
+se_table <- do.call(rbind, lapply(sample_sizes, function(n) {
+  estimates <- replicate(replicates, mean(sample(x, n, replace = TRUE)))
+  data.frame(
+    sample_size = n,
+    simulated_se_ms = sd(estimates),
+    analytic_se_ms = sigma / sqrt(n)
+  )
+}))
+
+stopifnot(max(abs(se_table$simulated_se_ms - se_table$analytic_se_ms)) < 0.15)
+se_table
 ```
 
-## Estimating an unknown standard error
+```{r}
+#| label: plot-hillenbrand-standard-errors
+#| fig-cap: "Simulated standard errors (points) and the analytic empirical-reference values (line)."
+ggplot(se_table, aes(sample_size, analytic_se_ms)) +
+  geom_line(color = "#8B1A1A", linewidth = 0.8) +
+  geom_point(aes(y = simulated_se_ms), color = "grey25", size = 2.2) +
+  scale_x_continuous(breaks = sample_sizes) +
+  labs(x = "Resampled speakers", y = "Standard error of mean duration (ms)") +
+  theme_classic(base_size = 12)
+```
 
-Because the population standard deviation $\sigma$ is usually unknown, let $S$ be the sample-standard-deviation estimator. The corresponding estimated-standard-error rule is
+At the observed adult-women size, the simulation gives `r sprintf("%.3f", se_table$simulated_se_ms[se_table$sample_size == nrow(women_hid)])` ms, compared with the analytic ESR value `r sprintf("%.3f", se_table$analytic_se_ms[se_table$sample_size == nrow(women_hid)])` ms.
+
+When $\sigma$ is unknown, ordinary data analysis substitutes the sample standard deviation $s$:
 
 $$
-\widehat{\operatorname{SE}}(\overline{X})
-=\frac{S}{\sqrt{n}}.
+\widehat{\operatorname{SE}}(\overline X)=\frac{s}{\sqrt n}.
 $$
 
-After a sample is observed, $S$ produces a realized sample standard deviation $s$. Suppose 25 observed vowels have $s=32$ ms. The realized estimated standard error is
-
-$$
-\frac{32}{\sqrt{25}}=6.4\text{ ms}.
-$$
-
-This number is an estimate of estimator spread rather than a revised estimate of response spread. The observed response standard deviation remains 32 ms.
-
-## Recognizing the independence failure
-
-The derivation used independence when it added $n$ separate variances. Repeated tokens from one speaker may be correlated. Counting 400 such tokens as 400 independent observations can thus produce an estimated standard error that is much too small.
-
-The calculation treats the number of rows as the amount of independent information. The relevant $n$ is instead determined by the sampling design and the dependence structure. A large file can contain little independent information.
+The square-root relation means that precision improves more slowly than the row count. But adding dependent rows need not follow this relation at all.
 
 ## Check your understanding
 
-1. If $\sigma=40$ ms and $n=16$, what is $\operatorname{SE}(\overline{X})$?
-2. What sample size gives a standard error of 5 ms when $\sigma=40$ ms?
-3. Why can response standard deviation and standard error have the same units but different interpretations?
-4. Which step of the derivation fails when observations are positively correlated?
+1. Which line in the derivation requires independence?
+2. Why are the plotted sample sizes data-derived?
+3. How would positive within-speaker covariance affect a naive row-level standard error?
+4. Distinguish the response standard deviation from the standard error of the mean.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The step from the variance of a sum to the sum of variances omits covariance terms and thus requires independence. <!-- dqr-allow: empirical-answer -->
+2. The plotted sample sizes are the observed Hillenbrand cohort sizes: 19 girls, 27 boys, 45 men, and 48 women. <!-- dqr-allow: empirical-answer -->
+3. Positive covariance would add positive terms to the variance of the mean, so a row-independent standard error would tend to be too small. <!-- dqr-allow: empirical-answer -->
+4. The response standard deviation describes variation among individual durations; the standard error describes variation of the sample mean across samples. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [bias page](estimator-bias.qmd) turns from spread to the location of a sampling distribution.

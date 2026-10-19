@@ -1,191 +1,175 @@
 ---
-title: "The chain rule"
+title: "Probability factorization"
 ---
 
-Suppose half of the represented pronoun tokens are plural and $80\%$ of the plural tokens are accusative. What proportion of all represented tokens are both plural and accusative? The chain rule recovers that joint probability from the marginal and conditional probabilities.
+What proportion of all retained tokens are both *ne* and `obj`? If we know the proportion whose lemma is *ne* and the object proportion within those tokens, the **chain rule** reconstructs the joint probability.
 
-Because $\mathbb{P}(P_4)=.50>0$, begin with the [definition of conditional probability](conditional-probability.qmd):
-
-$$
-\mathbb{P}(A_4\mid P_4)
-\equiv\frac{\mathbb{P}(A_4,P_4)}{\mathbb{P}(P_4)}.
-$$
-
-Here $P_4$ is the plural event and $A_4$ is the accusative event. The notation on the right expands the conditional probability into a ratio. Since $\mathbb{P}(P_4)>0$, we may multiply both sides by $\mathbb{P}(P_4)$:
+Because $\mathbb{P}(N)>0$, begin with conditional probability:
 
 $$
-\mathbb{P}(A_4\mid P_4)\mathbb{P}(P_4)
-=\mathbb{P}(A_4,P_4).
+\mathbb{P}(O\mid N)
+=
+\frac{\mathbb{P}(O,N)}{\mathbb{P}(N)}.
 $$
 
-This multiplication cancels the denominator on the right. Writing the joint probability first gives
+Multiply both sides by $\mathbb{P}(N)$:
 
 $$
-\mathbb{P}(A_4,P_4)
-=\mathbb{P}(A_4\mid P_4)\mathbb{P}(P_4).
+\mathbb{P}(O,N)
+=
+\mathbb{P}(O\mid N)\mathbb{P}(N).
 $$
 
-This identity is the two-event chain rule, also called the [**multiplication rule**](https://online.stat.psu.edu/stat414/Lesson04). The move from a joint probability to a product is a [**factorization**](https://online.stat.psu.edu/stat414/Lesson04). Repeated application gives the general chain rule.
-
-## Reconstructing the joint probability
-
-The pronoun measure gives
+More generally, for events $B$ and $C$ with $\mathbb{P}(B)>0$,
 
 $$
-\mathbb{P}(P_4)=.50
+\mathbb{P}(B,C)
+=
+\mathbb{P}(B)\mathbb{P}(C\mid B).
 $$
-
-and
-
-$$
-\mathbb{P}(A_4\mid P_4)=.80.
-$$
-
-Substitute these two values into the two-event chain rule:
-
-$$
-\begin{aligned}
-\mathbb{P}(A_4,P_4)
-&=\mathbb{P}(A_4\mid P_4)\mathbb{P}(P_4)\\
-&=.80\times.50\\
-&=.40.
-\end{aligned}
-$$
-
-The conditioning event $P_4$ has probability $.50$, and within that event, the target event $A_4$ has conditional probability $.80$. Their product is the probability that both events occur.
-
-We can check the same logic with counts. Imagine 100 pronoun tokens.
-
-1. $\mathbb{P}(P_4)=.50$ corresponds to 50 plural tokens.
-2. $\mathbb{P}(A_4\mid P_4)=.80$ corresponds to 40 accusative tokens among those 50 plural tokens.
-3. Hence $\mathbb{P}(A_4,P_4)=.40$ corresponds to 40 tokens among all 100 tokens.
-
-The two-event chain rule expresses the same calculation in probabilities rather than counts.
 
 ```{r}
-#| eval: false
-p_plural <- .50
-p_acc_given_plural <- .80
+#| label: load-factorization-data
+library(ggplot2)
 
-p_plural_and_acc <- p_acc_given_plural * p_plural
-p_plural_and_acc
+wh <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8"
+)
+
+stopifnot(nrow(wh) == 167L)
+
+is_ne <- as.logical(wh$ne_lemma)
+is_object <- as.logical(wh$object)
+p_ne <- mean(is_ne)
+p_object_given_ne <- mean(is_object[is_ne])
+p_ne_object_direct <- mean(is_ne & is_object)
+p_ne_object_factored <- p_ne * p_object_given_ne
+
+stopifnot(isTRUE(all.equal(
+  p_ne_object_direct,
+  p_ne_object_factored
+)))
+
+c(marginal_ne = p_ne,
+  conditional_object_given_ne = p_object_given_ne,
+  joint_direct = p_ne_object_direct,
+  joint_factored = p_ne_object_factored)
 ```
 
-The result is `.4`.
+The empirical factors produce a joint probability of `r round(p_ne_object_factored, 3)`, exactly matching the directly counted intersection. This agreement is an algebraic identity, not evidence for independence.
+
+```{r}
+#| label: plot-factorization
+#| fig-cap: "The marginal *ne* mass is partitioned into its observed `nsubj` and `obj` joint masses."
+factor_plot <- data.frame(
+  relation = c("nsubj", "obj"),
+  probability = c(
+    mean(is_ne & !is_object),
+    mean(is_ne & is_object)
+  )
+)
+
+ggplot(factor_plot, aes(relation, probability, fill = relation)) +
+  geom_col(color = "white", width = 0.65) +
+  scale_fill_manual(values = c(nsubj = "grey", obj = "steelblue"),
+                    guide = "none") +
+  labs(x = "UD relation within *ne*", y = "Joint probability") +
+  theme_classic(base_size = 12)
+```
 
 ## Reversing the order
 
-An intersection is symmetric:
+The same joint probability can be factored in the other order:
 
 $$
-A_4\cap P_4=P_4\cap A_4.
+\mathbb{P}(N,O)
+=
+\mathbb{P}(O)\mathbb{P}(N\mid O).
 $$
 
-We can thus begin from the opposite conditional probability:
+```{r}
+#| label: reverse-factorization
+p_object <- mean(is_object)
+p_ne_given_object <- mean(is_ne[is_object])
+p_reverse <- p_object * p_ne_given_object
+
+stopifnot(isTRUE(all.equal(p_reverse, p_ne_object_direct)))
+c(forward = p_ne_object_factored, reverse = p_reverse)
+```
+
+Thus
 
 $$
-\mathbb{P}(A_4,P_4)
-=\mathbb{P}(P_4\mid A_4)\mathbb{P}(A_4).
+\mathbb{P}(O\mid N)\mathbb{P}(N)
+=
+\mathbb{P}(N\mid O)\mathbb{P}(O).
 $$
 
-In the toy measure,
+We use this identity to derive [Bayes' rule](bayes-rule.qmd).
 
-$$
-\mathbb{P}(P_4\mid A_4)=\frac{.40}{.70}
-$$
+## Three-event and general chain rules
 
-and $\mathbb{P}(A_4)=.70$. The reversed product is
-
-$$
-\begin{aligned}
-\mathbb{P}(P_4\mid A_4)\mathbb{P}(A_4)
-&=\frac{.40}{.70}\times.70\\
-&=.40.
-\end{aligned}
-$$
-
-The two products have different factors because they use different conditioning events. Both equal the same joint probability.
-
-This gives the identity
-
-$$
-\mathbb{P}(A_4\mid P_4)\mathbb{P}(P_4)
-=\mathbb{P}(P_4\mid A_4)\mathbb{P}(A_4).
-$$
-
-We will use this equality to derive [Bayes' rule](bayes-rule.qmd). No independence assumption is involved.
-
-## Three-event chain rule
-
-Now, you might wonder how the same move works for more than two events. For events $B,C,D\in\mathcal F$, suppose $\mathbb{P}(B)>0$ and $\mathbb{P}(B,C)>0$. Begin by separating the final event from the first two:
+For events $B,C,D\in\mathcal F$, with the displayed conditioning events having positive probability, first write
 
 $$
 \mathbb{P}(B,C,D)
-=\mathbb{P}(D\mid B,C)\mathbb{P}(B,C).
+=
+\mathbb{P}(D\mid B,C)\mathbb{P}(B,C),
 $$
 
-Factor the remaining joint probability:
+then factor the remaining joint probability:
 
 $$
-\mathbb{P}(B,C)=\mathbb{P}(C\mid B)\mathbb{P}(B).
+\mathbb{P}(B,C)
+=
+\mathbb{P}(C\mid B)\mathbb{P}(B).
 $$
 
-Substitute the second factorization for $\mathbb P(B,C)$ in the first:
+Substitution yields
 
 $$
 \mathbb{P}(B,C,D)
-=\mathbb{P}(B)\mathbb{P}(C\mid B)\mathbb{P}(D\mid B,C).
+=
+\mathbb{P}(B)
+\mathbb{P}(C\mid B)
+\mathbb{P}(D\mid B,C).
 $$
 
-Every equality above follows from the two-event rule. Nothing new is assumed at the three-event step.
-
-## General chain rule
-
-Suppose every conditioning event displayed below has positive probability. Applying the same step repeatedly gives
+Repeating the same move gives the general chain rule:
 
 $$
-\mathbb{P}(E_1,\ldots,E_N)
-=\mathbb{P}(E_1)
- \prod_{i=2}^{N}
- \mathbb{P}(E_i\mid E_1,\ldots,E_{i-1}).
+\mathbb{P}(E_1,\ldots,E_M)
+=
+\mathbb{P}(E_1)
+\prod_{i=2}^{M}
+\mathbb{P}(E_i\mid E_1,\ldots,E_{i-1}).
 $$
 
-The ordering is arbitrary, but it must remain consistent across the factors. Each factor conditions on every event that precedes it in the chosen order.
+The ordering is arbitrary, but every factor must condition on all preceding events in the chosen order.
 
 ## Factorization and dependence
 
-The chain rule is derived from conditional probability and does not assert independence. The factor $\mathbb{P}(A_4\mid P_4)$ allows the probability of $A_4$ to differ inside and outside $P_4$.
+The conditional term retains any dependence between the events. Replacing $\mathbb{P}(O\mid N)$ with $\mathbb{P}(O)$ requires an additional independence assumption; the multiplication sign alone supplies no such assumption.
 
-For instance, corpus research finds that [contextual predictability is associated with word duration in conversational English](https://web.stanford.edu/~jurafsky/bell09.pdf). Suppose the two events are that a word has short duration and that it is highly predictable in context. We can still factor the joint event as
+The factorization describes the finite annotated extract. It does not show that lemma choice causes dependency relation, nor that the token rows are independent across sentences or registers.
 
-$$
-\mathbb{P}(\text{short duration},\text{high predictability})
-=\mathbb{P}(\text{short duration}\mid\text{high predictability})
- \mathbb{P}(\text{high predictability}).
-$$
-
-This factorization represents an association in the chosen population. It does not by itself show that predictability caused the shorter duration.
-
-Any dependence between $A_4$ and $P_4$ remains in the conditional term. The multiplication sign does not justify replacing
-
-$$
-\mathbb{P}(A_4\mid P_4)
-$$
-
-with
-
-$$
-\mathbb{P}(A_4).
-$$
-
-That substitution requires [independence](independence.qmd). The chain rule requires only that each displayed conditional probability be defined.
-
-The exact upshot is that the chain rule expands a joint probability into ordered conditional factors without assuming independence. The [next page](bayes-rule.qmd) factors one joint probability in two orders and solves for a reversed conditional probability.
+The chain rule expands a joint probability into ordered conditional factors without assuming independence. The [next page](bayes-rule.qmd) solves the two factorizations for a reversed conditional.
 
 ## Check your understanding
 
-1. Starting from the definition of $\mathbb{P}(P_4\mid A_4)$, derive $\mathbb{P}(A_4,P_4)=\mathbb{P}(P_4\mid A_4)\mathbb{P}(A_4)$.
-2. Suppose $\mathbb{P}(P_4)=.30$ and $\mathbb{P}(A_4\mid P_4)=.60$. Compute $\mathbb{P}(A_4,P_4)$ and interpret the result among 100 tokens.
+1. Reconstruct $\mathbb{P}(L=\textit{kim},O)$ from $\mathbb{P}(L=\textit{kim})$ and $\mathbb{P}(O\mid L=\textit{kim})$.
+2. Factor the same joint probability in the reverse order and verify equality in R.
 3. Derive the three-event chain rule by applying the two-event rule twice.
-4. Write the chain rule for $\mathbb{P}(E_1,E_2,E_3,E_4)$ in the order $E_1,E_2,E_3,E_4$.
-5. Identify the independence assumption required to replace $\mathbb{P}(A_4\mid P_4)$ with $\mathbb{P}(A_4)$.
+4. Name the extra assumption needed to replace a conditional factor with its marginal counterpart.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $\mathbb{P}(L=\textit{kim},O)=(17/167)(3/17)=3/167=0.017964$. <!-- dqr-allow: empirical-answer -->
+2. The reverse factorization is $\mathbb{P}(O)\mathbb{P}(L=\textit{kim}\mid O)=(116/167)(3/116)=3/167$, equal to the same joint probability. <!-- dqr-allow: empirical-answer -->
+3. Applying the two-event rule twice gives $\mathbb{P}(B,C,D)=\mathbb{P}(B\mid C,D)\mathbb{P}(C\mid D)\mathbb{P}(D)$ when the conditioning events have positive probability. <!-- dqr-allow: empirical-answer -->
+4. Replacing $\mathbb{P}(O\mid N)$ with $\mathbb{P}(O)$ requires the additional assumption that $O$ and $N$ are independent. <!-- dqr-allow: empirical-answer -->
+
+</details>

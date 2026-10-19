@@ -1,10 +1,170 @@
 ---
 title: "Residualizing a predictor"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+**Residualizing a predictor** subtracts the part linearly predicted by declared controls. The resulting residual is sample- and model-dependent; it is not a purified linguistic measurement.
 
-**Available Wednesday, October 7, 2026.**
+## The MALD phone-count coefficient
+
+First regress phone count on syllable count, log duration, and log frequency:
+
+$$
+P_i
+=
+\alpha_0+\alpha_sS_i+\alpha_dD_i+\alpha_fF_i+R_{Pi}.
+$$
+
+Then retain the same controls in the response model:
+
+$$
+Y_i
+=
+\gamma_0+\gamma_pR_{Pi}
++\gamma_sS_i+\gamma_dD_i+\gamma_fF_i+\varepsilon_i.
+$$
+
+The Frisch--Waugh--Lovell result implies that $\widehat\gamma_p$ equals the phone-count coefficient in the original multiple regression containing $P_i$ and the same controls.
+
+```{r}
+#| label: residualize-mald-phone-count
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+phone_residualizer <- lm(
+  n_phones ~ n_syllables + log_duration + log_frequency_subtlex,
+  data = mald
+)
+mald$residual_n_phones <- residuals(phone_residualizer)
+
+original_fit <- lm(
+  mean_log_rt ~ n_phones + n_syllables +
+    log_duration + log_frequency_subtlex,
+  data = mald
+)
+residualized_fit <- lm(
+  mean_log_rt ~ residual_n_phones + n_syllables +
+    log_duration + log_frequency_subtlex,
+  data = mald
+)
+
+response_residualizer <- lm(
+  mean_log_rt ~ n_syllables + log_duration + log_frequency_subtlex,
+  data = mald
+)
+mald$residual_mean_log_rt <- residuals(response_residualizer)
+partial_fit <- lm(residual_mean_log_rt ~ residual_n_phones, data = mald)
+
+slope_difference <-
+  coef(original_fit)[["n_phones"]] -
+  coef(residualized_fit)[["residual_n_phones"]]
+
+stopifnot(
+  abs(slope_difference) < 1e-10,
+  abs(
+    coef(original_fit)[["n_phones"]] -
+      coef(partial_fit)[["residual_n_phones"]]
+  ) < 1e-10
+)
+
+data.frame(
+  representation = c("original", "predictor residual", "both residuals"),
+  phone_slope = c(
+    coef(original_fit)[["n_phones"]],
+    coef(residualized_fit)[["residual_n_phones"]],
+    coef(partial_fit)[["residual_n_phones"]]
+  )
+)
+```
+
+```{r}
+#| label: plot-mald-residualization
+#| fig-cap: "MALD response residuals against phone-count residuals. The line represents the same partial phone coefficient as the original multiple regression."
+point_opacity <- 0.07
+ggplot(mald, aes(residual_n_phones, residual_mean_log_rt)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.55) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ x,
+    se = FALSE,
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(x = "Phone-count residual", y = "Mean log-RT residual") +
+  theme_classic(base_size = 12)
+```
+
+## Residualization inside validation folds
+
+If residualized predictors are used for prediction, the residualizer must be fitted on training items only. Otherwise held-out predictor information leaks into preprocessing.
+
+```{r}
+#| label: validate-mald-foldwise-residualization
+n_folds <- 10L
+set.seed(20261020)
+fold_id <- sample(rep(seq_len(n_folds), length.out = nrow(mald)))
+fold_checks <- vector("list", n_folds)
+
+for (fold in seq_len(n_folds)) {
+  training <- fold_id != fold
+  testing <- !training
+
+  fold_residualizer <- lm(
+    n_phones ~ n_syllables + log_duration + log_frequency_subtlex,
+    data = mald[training, ]
+  )
+  train <- mald[training, ]
+  test <- mald[testing, ]
+  train$phone_residual <- residuals(fold_residualizer)
+  test$phone_residual <- test$n_phones -
+    predict(fold_residualizer, newdata = test)
+
+  fold_original <- lm(
+    mean_log_rt ~ n_phones + n_syllables +
+      log_duration + log_frequency_subtlex,
+    data = train
+  )
+  fold_residualized <- lm(
+    mean_log_rt ~ phone_residual + n_syllables +
+      log_duration + log_frequency_subtlex,
+    data = train
+  )
+
+  fold_checks[[fold]] <- data.frame(
+    fold = fold,
+    maximum_prediction_difference = max(abs(
+      predict(fold_original, newdata = test) -
+        predict(fold_residualized, newdata = test)
+    ))
+  )
+}
+fold_checks <- do.call(rbind, fold_checks)
+stopifnot(max(fold_checks$maximum_prediction_difference) < 1e-10)
+
+fold_checks
+```
+
+The maximum foldwise prediction difference is `r format(max(fold_checks$maximum_prediction_difference), scientific = TRUE, digits = 2)`. This equality depends on retaining the same controls. Dropping them after residualization generally changes the fitted subspace and the estimand.
+
+## Check your understanding
+
+1. Why is the phone residual not a directly observed phonological property?
+2. Which controls must be retained for the coefficient equivalence?
+3. Why is full-data residualization leakage during validation?
+4. What exactly agrees across the two foldwise models?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The phone residual is the remainder from a sample-fitted linear model using syllables, duration, and frequency, so it depends on those controls and this MALD sample. <!-- dqr-allow: empirical-answer -->
+2. The response model must retain syllable count, log duration, and log frequency, the same controls used in the phone residualizer. <!-- dqr-allow: empirical-answer -->
+3. The full-data residualizer uses held-out predictor values to define the preprocessing transformation before prediction. <!-- dqr-allow: empirical-answer -->
+4. The two models produce the same held-out fitted predictions within each fold, and their corresponding partial phone coefficients agree when the same controls are retained. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](heteroscedasticity.qmd) examines changing residual spread across MALD frequency.

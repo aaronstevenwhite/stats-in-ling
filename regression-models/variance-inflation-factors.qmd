@@ -1,10 +1,109 @@
 ---
 title: "Variance inflation from correlated predictors"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+A **variance inflation factor (VIF)** compares coefficient uncertainty in the observed multivariable design with uncertainty under an orthogonal reference design.
 
-**Available Wednesday, October 7, 2026.**
+## Auxiliary regressions
+
+For predictor $X_j$, regress it on all other model predictors and record the auxiliary $R_j^2$. Then
+
+$$
+\operatorname{VIF}_j
+=
+\frac{1}{1-R_j^2}.
+$$
+
+The corresponding standard-error multiplier is
+
+$$
+\sqrt{\operatorname{VIF}_j}.
+$$
+
+If the other columns explain none of $X_j$, then $R_j^2=0$ and the multiplier is one. As the auxiliary $R_j^2$ approaches one, the design supplies less independent information about coefficient $j$.
+
+```{r}
+#| label: compute-mald-vifs
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+predictor_names <- c(
+  "log_frequency_subtlex", "log_duration", "n_phones", "n_syllables"
+)
+
+vif_table <- do.call(rbind, lapply(
+  predictor_names,
+  function(response) {
+    predictors <- setdiff(predictor_names, response)
+    auxiliary <- lm(
+      reformulate(predictors, response = response),
+      data = mald
+    )
+    auxiliary_r_squared <- summary(auxiliary)$r.squared
+    data.frame(
+      predictor = response,
+      auxiliary_r_squared = auxiliary_r_squared,
+      vif = 1 / (1 - auxiliary_r_squared),
+      se_multiplier = sqrt(1 / (1 - auxiliary_r_squared))
+    )
+  }
+))
+row.names(vif_table) <- NULL
+
+stopifnot(all(vif_table$vif >= 1))
+
+vif_table
+```
+
+Phone count has the largest VIF, `r sprintf("%.2f", max(vif_table$vif))`, and its conventional standard error is multiplied by `r sprintf("%.2f", vif_table$se_multiplier[which.max(vif_table$vif)])` relative to the orthogonal reference with the same residual variance and column sum of squares.
+
+```{r}
+#| label: plot-mald-vifs
+#| fig-cap: "Variance inflation factors computed from the observed MALD item-predictor matrix."
+predictor_labels <- c(
+  log_frequency_subtlex = "Log frequency",
+  log_duration = "Log duration",
+  n_phones = "Phones",
+  n_syllables = "Syllables"
+)
+vif_table$predictor_label <- factor(
+  unname(predictor_labels[vif_table$predictor]),
+  levels = unname(predictor_labels[vif_table$predictor[order(vif_table$vif)]])
+)
+
+ggplot(vif_table, aes(vif, predictor_label)) +
+  geom_segment(
+    aes(x = 1, xend = vif, yend = predictor_label),
+    color = "grey70",
+    linewidth = 0.6
+  ) +
+  geom_point(color = "#2C6E9B", size = 2) +
+  labs(x = "Variance inflation factor", y = NULL) +
+  theme_classic(base_size = 12)
+```
+
+No universal threshold turns a VIF into a scientific verdict. The relevant question is whether the design estimates the comparison that the coefficient is claimed to represent. The phone and syllable columns overlap substantially, so their separate slopes should be interpreted as partial item-property associations supported by the exceptions to that relation.
+
+## Check your understanding
+
+1. What does the auxiliary regression predict?
+2. Why can a VIF never be below one in this calculation?
+3. How does VIF relate to a standard-error multiplier?
+4. Why is a threshold not a substitute for inspecting the design?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The auxiliary regression for $X_j$ predicts that predictor from all the other predictors in the fitted design. <!-- dqr-allow: empirical-answer -->
+2. Because $0\le R_j^2\le1$, $1/(1-R_j^2)\ge1$ whenever the auxiliary regression is well defined. <!-- dqr-allow: empirical-answer -->
+3. Holding residual variance and the predictor's total variation fixed, its coefficient standard error is multiplied by $\sqrt{\operatorname{VIF}_j}$. <!-- dqr-allow: empirical-answer -->
+4. A threshold does not show which item comparisons identify the coefficient or whether that partial contrast answers the linguistic question. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](ridge-regression.qmd) changes the estimation rule by shrinking overlapping coefficients.

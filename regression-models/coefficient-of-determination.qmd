@@ -1,10 +1,130 @@
 ---
 title: "The coefficient of determination"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+The OLS line minimizes squared error. The **coefficient of determination**, $R^2$, compares that error with the error from predicting every Provo position by the same sample mean.
 
-**Available Wednesday, October 7, 2026.**
+## Two sums of squares
+
+The total sum of squares is
+
+$$
+\operatorname{SST}
+=
+\sum_{i=1}^n(y_i-\overline y)^2.
+$$
+
+The fitted model leaves the error sum of squares
+
+$$
+\operatorname{SSE}
+=
+\sum_{i=1}^n(y_i-\widehat y_i)^2.
+$$
+
+Their proportional reduction is
+
+$$
+R^2
+=
+1-\frac{\operatorname{SSE}}{\operatorname{SST}}.
+$$
+
+## Computing $R^2$ for the PRS
+
+```{r}
+#| label: compute-provo-r-squared
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+y <- provo$mean_log_ffd
+y_hat <- fitted(fit)
+sst <- sum((y - mean(y))^2)
+sse <- sum((y - y_hat)^2)
+r_squared <- 1 - sse / sst
+
+stopifnot(abs(r_squared - summary(fit)$r.squared) < 1e-12)
+
+data.frame(sst = sst, sse = sse, r_squared = r_squared)
+```
+
+The straight line reduces squared error by `r sprintf("%.2f", 100 * r_squared)` percent relative to the mean-only predictor for these retained position summaries. The remaining proportion, `r sprintf("%.2f", 100 * (1 - r_squared))` percent, is not automatically measurement error. It includes lexical, contextual, passage, reader-aggregation, and functional-form variation that this one-predictor line does not represent.
+
+For an OLS model with an intercept,
+
+$$
+\operatorname{SST}
+=
+\operatorname{SSR}+\operatorname{SSE},
+$$
+
+where $\operatorname{SSR}=\sum_i(\widehat y_i-\overline y)^2$. This decomposition yields the equivalent expression
+
+$$
+R^2=\frac{\operatorname{SSR}}{\operatorname{SST}}.
+$$
+
+```{r}
+#| label: plot-provo-r-squared
+#| fig-cap: "Provo positions, the mean-only baseline, and the fitted PRS line."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+grid$fitted <- predict(fit, newdata = grid)
+
+point_opacity <- 0.2
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_hline(yintercept = mean(y), color = "grey35", linetype = 2) +
+  geom_line(
+    data = grid,
+    aes(y = fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+$R^2$ is a within-sample descriptive comparison on the modeled response scale. It is not a predictive evaluation on new passages, and a larger $R^2$ does not by itself license a stronger linguistic explanation.
+
+## Check your understanding
+
+1. What is the baseline model in the $R^2$ calculation?
+2. Why is $R^2$ tied to the response scale?
+3. What does the unexplained proportion contain?
+4. Why is this not a new-passage prediction score?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The baseline predicts every retained Provo position by the same sample mean response. <!-- dqr-allow: empirical-answer -->
+2. Both SSE and SST are computed after choosing a response transformation; changing that scale changes squared distances and their ratio. <!-- dqr-allow: empirical-answer -->
+3. The unexplained proportion contains lexical, contextual, passage, reader-aggregation, functional-form, and other variation omitted by the one-predictor line. <!-- dqr-allow: empirical-answer -->
+4. The reported $R^2$ is calculated on the same positions used to fit the model, with no held-out passages or other out-of-sample prediction target. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](residuals.qmd) inspects the observation-level discrepancies that make up SSE.

@@ -1,10 +1,176 @@
 ---
 title: "Uncertainty in a fitted slope"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+The fitted PRS slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a repeated-sampling model.
 
-**Available Wednesday, October 7, 2026.**
+## Conventional OLS uncertainty
+
+Write the linear model in matrix form:
+
+$$
+\mathbf Y=\mathbf X\boldsymbol\beta+\boldsymbol\varepsilon,
+\qquad
+\boldsymbol\varepsilon\sim\mathcal N(\mathbf 0,\sigma^2\mathbf I).
+$$
+
+The OLS estimator is
+
+$$
+\widehat{\boldsymbol\beta}
+=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf Y.
+$$
+
+Because a linear transformation of a normal vector is normal,
+
+$$
+\operatorname{Var}[\widehat{\boldsymbol\beta}\mid\mathbf X]
+=
+\sigma^2(\mathbf X^\top\mathbf X)^{-1}.
+$$
+
+Replacing $\sigma^2$ with
+
+$$
+s^2=\frac{\sum_i e_i^2}{n-p}
+$$
+
+gives the conventional covariance estimate. Here $p$ is the number of fitted coefficients, including the intercept.
+
+```{r}
+#| label: compute-provo-regression-uncertainty
+library(ggplot2)
+library(sandwich)
+library(lmtest)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+X <- model.matrix(fit)
+s_squared <- sum(residuals(fit)^2) / df.residual(fit)
+covariance_by_hand <- s_squared * solve(crossprod(X))
+conventional_se <- sqrt(diag(covariance_by_hand))
+
+cluster_covariance <- vcovCL(
+  fit,
+  cluster = provo$Text_ID,
+  type = "HC1"
+)
+cluster_se <- sqrt(diag(cluster_covariance))
+
+stopifnot(
+  max(abs(covariance_by_hand - vcov(fit))) < 1e-12,
+  length(unique(provo$Text_ID)) == 55L
+)
+
+data.frame(
+  term = names(coef(fit)),
+  estimate = coef(fit),
+  conventional_se = conventional_se,
+  passage_clustered_se = cluster_se
+)
+```
+
+The conventional slope standard error is `r sprintf("%.6f", conventional_se[["cloze_surprisal_c"]])`; the passage-clustered HC1 sensitivity estimate is `r sprintf("%.6f", cluster_se[["cloze_surprisal_c"]])`. The latter allows arbitrary residual dependence within the observed passages while treating passages as independent clusters.
+
+This sensitivity calculation does not recover reader variation. The raw readers were removed by aggregation, so neither uncertainty estimate substitutes for a participant-by-item model.
+
+## Mean and response uncertainty
+
+At predictor row $\mathbf x_0$, uncertainty in the fitted conditional mean is
+
+$$
+\widehat{\operatorname{Var}}(\widehat\mu_0)
+=
+s^2\mathbf x_0^\top(\mathbf X^\top\mathbf X)^{-1}\mathbf x_0.
+$$
+
+A new response includes additional observation variance:
+
+$$
+\widehat{\operatorname{Var}}(Y_0-\widehat\mu_0)
+=
+s^2\left\{1+\mathbf x_0^\top(\mathbf X^\top\mathbf X)^{-1}\mathbf x_0\right\}.
+$$
+
+Thus a prediction interval is wider than a confidence interval for the mean.
+
+```{r}
+#| label: plot-provo-regression-uncertainty
+#| fig-cap: "Provo positions, the OLS mean, its confidence band, and the wider response prediction limits."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+mean_interval <- predict(fit, newdata = grid, interval = "confidence")
+response_interval <- predict(fit, newdata = grid, interval = "prediction")
+grid$fit <- mean_interval[, "fit"]
+grid$mean_low <- mean_interval[, "lwr"]
+grid$mean_high <- mean_interval[, "upr"]
+grid$response_low <- response_interval[, "lwr"]
+grid$response_high <- response_interval[, "upr"]
+
+point_opacity <- 0.2
+interval_opacity <- 0.22
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_ribbon(
+    data = grid,
+    aes(x = cloze_surprisal_bits, ymin = response_low, ymax = response_high),
+    inherit.aes = FALSE,
+    fill = "grey85"
+  ) +
+  geom_ribbon(
+    data = grid,
+    aes(x = cloze_surprisal_bits, ymin = mean_low, ymax = mean_high),
+    inherit.aes = FALSE,
+    fill = "#2C6E9B",
+    alpha = interval_opacity
+  ) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(
+    data = grid,
+    aes(y = fit),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+## Check your understanding
+
+1. Which assumption yields the factor $\sigma^2\mathbf I$?
+2. Why does the response prediction variance contain an extra $1$?
+3. Which grouping unit does the clustered sensitivity analysis retain?
+4. Why can it not represent reader-level uncertainty?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Independent, homoscedastic errors with common variance $\sigma^2$ yield $\operatorname{Var}[\boldsymbol\varepsilon\mid\mathbf X]=\sigma^2\mathbf I$. <!-- dqr-allow: empirical-answer -->
+2. A new response contains both uncertainty in the fitted mean and a new observation error with variance $\sigma^2$, represented by the extra $1$. <!-- dqr-allow: empirical-answer -->
+3. The passage-clustered HC1 sensitivity analysis retains the Provo passage as the clustering unit through `Text_ID`. <!-- dqr-allow: empirical-answer -->
+4. The item-position table has already aggregated away reader identities and trial-level responses, so reader covariance cannot be estimated. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](coefficient-of-determination.qmd) measures the reduction in squared error relative to a mean-only baseline.

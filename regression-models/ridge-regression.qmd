@@ -1,10 +1,152 @@
 ---
 title: "Shrinking correlated coefficients"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+**Ridge regression** adds a squared-coefficient penalty to the least-squares objective:
 
-**Available Wednesday, October 7, 2026.**
+$$
+\widehat{\boldsymbol\beta}^{\,\text{ridge}}(\lambda)
+=
+\arg\min_{\beta_0,\boldsymbol\beta}
+\left[
+\sum_i
+\left(y_i-\beta_0-\mathbf x_i^\top\boldsymbol\beta\right)^2
++\lambda\sum_j\beta_j^2
+\right].
+$$
+
+The intercept is left unpenalized. When predictors are on different scales, standardization must be estimated from the training data so that the penalty is comparable across columns.
+
+## New-item validation in MALD
+
+We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning folds by item is also a row split. `glmnet` estimates standardization separately inside each training-fold fit.
+
+```{r}
+#| label: validate-mald-ridge
+library(ggplot2)
+library(glmnet)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+X <- model.matrix(
+  ~ log_frequency_subtlex + log_duration + n_phones + n_syllables,
+  data = mald
+)[, -1, drop = FALSE]
+y <- mald$mean_log_rt
+
+n_folds <- 10L
+set.seed(20261020)
+fold_id <- sample(rep(seq_len(n_folds), length.out = nrow(mald)))
+penalty_grid <- 10^seq(-5, 1, length.out = 80L)
+ridge_mixing <- 0
+fold_mse <- matrix(NA_real_, nrow = n_folds, ncol = length(penalty_grid))
+ridge_predictions <- matrix(
+  NA_real_,
+  nrow = nrow(mald),
+  ncol = length(penalty_grid)
+)
+ols_predictions <- rep(NA_real_, nrow(mald))
+
+for (fold in seq_len(n_folds)) {
+  training <- fold_id != fold
+  testing <- !training
+
+  ridge_fit <- glmnet(
+    x = X[training, , drop = FALSE],
+    y = y[training],
+    alpha = ridge_mixing,
+    lambda = penalty_grid,
+    standardize = TRUE,
+    intercept = TRUE
+  )
+  current_predictions <- predict(
+    ridge_fit,
+    newx = X[testing, , drop = FALSE],
+    s = penalty_grid
+  )
+  ridge_predictions[testing, ] <- current_predictions
+  fold_mse[fold, ] <- colMeans((y[testing] - current_predictions)^2)
+
+  ols_fit <- lm(
+    mean_log_rt ~ log_frequency_subtlex + log_duration +
+      n_phones + n_syllables,
+    data = mald[training, ]
+  )
+  ols_predictions[testing] <- predict(ols_fit, newdata = mald[testing, ])
+}
+
+mean_mse <- colMeans(fold_mse)
+se_mse <- apply(fold_mse, 2, sd) / sqrt(n_folds)
+minimum_index <- which.min(mean_mse)
+one_se_candidates <- which(
+  mean_mse <= mean_mse[minimum_index] + se_mse[minimum_index]
+)
+one_se_index <- max(one_se_candidates)
+lambda_min <- penalty_grid[minimum_index]
+lambda_one_se <- penalty_grid[one_se_index]
+ridge_one_se_prediction <- ridge_predictions[, one_se_index]
+
+ridge_rmse <- sqrt(mean((y - ridge_one_se_prediction)^2))
+ols_rmse <- sqrt(mean((y - ols_predictions)^2))
+
+stopifnot(
+  nrow(mald) == length(unique(mald$item)),
+  all(is.finite(ridge_one_se_prediction)),
+  all(is.finite(ols_predictions)),
+  lambda_one_se >= lambda_min
+)
+
+data.frame(
+  method = c("ridge: one-SE rule", "ordinary least squares"),
+  held_out_rmse = c(ridge_rmse, ols_rmse)
+)
+```
+
+The minimum-error penalty is `r format(lambda_min, digits = 4)`, while the one-standard-error penalty is `r format(lambda_one_se, digits = 4)`. The new-item RMSE is `r sprintf("%.6f", ridge_rmse)` for the one-SE ridge fit and `r sprintf("%.6f", ols_rmse)` for OLS.
+
+```{r}
+#| label: plot-mald-ridge-validation
+#| fig-cap: "New-item validation error across the ridge penalty grid. The solid and dashed lines mark the minimum-error and one-standard-error choices."
+validation_curve <- data.frame(
+  lambda = penalty_grid,
+  rmse = sqrt(mean_mse)
+)
+
+ggplot(validation_curve, aes(lambda, rmse)) +
+  geom_line(color = "#2C6E9B", linewidth = 0.8) +
+  geom_vline(xintercept = lambda_min, color = "grey35", linewidth = 0.5) +
+  geom_vline(
+    xintercept = lambda_one_se,
+    color = "black",
+    linetype = 2,
+    linewidth = 0.5
+  ) +
+  scale_x_log10() +
+  labs(x = "Ridge penalty", y = "New-item cross-validated RMSE") +
+  theme_classic(base_size = 12)
+```
+
+Ridge does not beat OLS in this comparison. That outcome is part of the lesson: shrinkage changes the bias--variance tradeoff, but it does not guarantee lower predictive loss in a particular dataset.
+
+## Check your understanding
+
+1. Which coefficients are penalized?
+2. Why must standardization be learned inside each training fold?
+3. What is the held-out unit?
+4. What does the observed OLS--ridge comparison show?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. All non-intercept predictor coefficients are penalized; the intercept is left unpenalized. <!-- dqr-allow: empirical-answer -->
+2. Full-data standardization uses held-out predictor values to set the penalty scale, so validation no longer evaluates a purely training-fitted new-item procedure and its error estimate may be biased. <!-- dqr-allow: empirical-answer -->
+3. One MALD word item is held out; because every item appears once, the item split is also a row split. <!-- dqr-allow: empirical-answer -->
+4. In these fixed folds, one-SE ridge has higher new-item RMSE than OLS, so shrinkage does not improve this observed prediction comparison. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](residualizing-a-predictor.qmd) gives another representation of a partial coefficient.

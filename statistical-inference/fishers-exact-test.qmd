@@ -1,111 +1,111 @@
 ---
 title: "Fisher's exact test"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [hypergeometric distribution page](../random-variables-and-distributions/hypergeometric-distribution.qmd) assigned probabilities when sampling without replacement from a finite population. Fisher's exact test uses the same distribution after conditioning on the margins of a contingency table. A [**contingency table**](https://online.stat.psu.edu/stat504/Lesson02) records joint counts for two categorical variables, and its [**margins**](https://online.stat.psu.edu/stat504/Lesson02) are the row and column totals.
+Fisher's exact test assigns probabilities to contingency tables conditional on their margins. Its reference distribution is hypergeometric, so it is especially natural for a fixed sample drawn without replacement from a finite resource.
 
-Consider a constructed sample of noun lexemes classified by the syllable count of the singular lemma and by plural-pattern class. A [**lexeme**](https://doi.org/10.1093/obo/9780199772810-0232) is an abstract vocabulary item. Here, we use [**lemma**](https://doi.org/10.1075/ijcl.9.1.04kno) for the singular citation form used to represent it. The [plural classes](https://www.sciencedirect.com/science/article/abs/pii/S038800011930258X) are a productive *-(e)s* realization and other realizations, such as stem change or [**suppletion**](https://doi.org/10.1075/sl.18.2.03mel), in which a different stem expresses the contrast. These classes do not refer to the phonetic variants of the regular suffix.
+## A Turkish morphology sample
 
-| | productive *-(e)s* plural | other plural realization | total |
-|---|---:|---:|---:|
-| monosyllabic | 18 | 12 | 30 |
-| polysyllabic | 26 | 4 | 30 |
-| total | 44 | 16 | 60 |
+We use the [Turkish UniMorph release](https://github.com/unimorph/tur) pinned at commit `6c179ace7d2f3d7f3484020e5304c1544d07bb6b` and licensed CC BY-SA 3.0. Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) use the resource for morphological reinflection: predicting an inflected form from a lemma and feature bundle. The release describes its Turkish verb paradigms as semi-automatically generated and partially checked by a native speaker; unverified noun and adjective material is excluded from the teaching data.
 
-The statistical question is whether lemma syllable count and plural-pattern class are independent in the population represented by the sampling process. [**Fisher's exact test**](https://stat.ethz.ch/R-manual/R-devel/library/stats/html/fisher.test.html) constructs a conditional null distribution over possible tables while holding the observed row and column totals fixed. We first determine which tables remain possible under those margins, then assign each table a null probability, and finally decide which probabilities enter the tail calculation.
+One row is one of 588 distinct verb lemmas paired with `V;IND;PST;3;SG;POS;DECL`. It is a lexeme--paradigm-cell row, not a corpus token. The table retains the whole UniMorph form and derives the last stem-vowel class and final two orthographic characters. Those characters are teaching measurements, not source-supplied morpheme boundaries; the release's [pinned README](https://github.com/unimorph/tur/blob/6c179ace7d2f3d7f3484020e5304c1544d07bb6b/README.md) documents the source data and verification status.
 
-## Finding the one free cell
-
-Once all four margins are fixed, choosing the upper-left count, which we denote by $A$, determines the remaining cells. The observed value is $A=18$.
-
-If $A=20$, the first row must still total 30, so its other-realization count is 10; the productive-pattern column must still total 44, so the lower-left count is 24; and the final cell must then be 6.
-
-| | productive *-(e)s* plural | other plural realization | total |
-|---|---:|---:|---:|
-| monosyllabic | 20 | 10 | 30 |
-| polysyllabic | 24 | 6 | 30 |
-| total | 44 | 16 | 60 |
-
-The smallest possible $A$ is 14 because the lower-left cell cannot exceed its row total of 30. The largest possible $A$ is 30 because the first row contains only 30 nouns. Thus the reference set under the null hypothesis contains tables with $A=14,15,\ldots,30$.
-
-## Assigning null probabilities
-
-Under independence with fixed margins, $A$ follows a hypergeometric distribution. There are ${60\choose30}$ ways to select the 30 noun lexemes assigned to the monosyllabic row. The observed table places 18 of the 44 productive-pattern lexemes and 12 of the 16 other-pattern lexemes in that row. Its probability is
-
-$$
-\mathbb{P}_{H_0}(A=18)
-=
-\frac{{44\choose18}{16\choose12}}
-{{60\choose30}}
-\approx.01584.
-$$
-
-This is the probability of the observed table under the conditional null model. It is not yet a p value because the p value must also include other tables judged at least as incompatible with the null.
-
-## Forming the two-sided p value
-
-A one-sided alternative supplies a direction and lets us sum one tail. A two-sided alternative needs a rule for identifying tables at least as discrepant as the observed table.
-
-R's `fisher.test()` includes every table whose null probability is no greater than the probability of the observed table. This is a probability-ordering definition of the two-sided p value.
+The Fisher analysis uses the fixed 120-lemma simple random sample drawn without replacement with seed 414. It crosses last stem-vowel backness with whether the final orthographic sequence begins in *d* or *t*.
 
 ```{r}
-#| label: fisher-exact-plurals
-#| echo: true
+#| label: load-unimorph-fisher
+library(ggplot2)
 
-plural_table <- matrix(
-  c(18, 12,
-    26,  4),
-  nrow = 2,
-  byrow = TRUE
+population <- read.csv(
+  "data/unimorph-turkish/verb-past-population.csv",
+  stringsAsFactors = FALSE
 )
-
-observed_probability <- dhyper(18, m = 44, n = 16, k = 30)
-fisher_result <- fisher.test(plural_table)
-sample_odds_ratio <- (18 * 4) / (12 * 26)
-
-stopifnot(abs(observed_probability - 0.01584368) < 0.00000001)
-stopifnot(abs(fisher_result$p.value - 0.03909714) < 0.00000001)
-
-c(
-  observed_table_probability = observed_probability,
-  two_sided_p_value = fisher_result$p.value,
-  sample_odds_ratio = sample_odds_ratio
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
 )
+sample_120$front_vowel <- grepl("^front", sample_120$vowel_class)
+
+tab <- table(
+  front_vowel = sample_120$front_vowel,
+  t_initial = sample_120$t_initial
+)
+stopifnot(nrow(population) == 588L, nrow(sample_120) == 120L)
+tab
 ```
 
-The two-sided p value is approximately $.0391$. This tail probability is larger than the probability of the observed table because it sums multiple sufficiently improbable tables.
+## The conditional probability
 
-## Describing the association
-
-The [**sample odds ratio**](https://online.stat.psu.edu/stat504/Lesson02) for the displayed orientation is
+With row and column margins fixed, one cell determines the remaining cells. If $A$ is the front-vowel/*t*-initial count, then under the conditional independence model
 
 $$
-\widehat{\operatorname{OR}}
-=\frac{18\times4}{12\times26}
-\approx.231.
+\mathbb{P}(A=a)
+=\frac{{K\choose a}{N-K\choose n-a}}{{N\choose n}},
 $$
 
-The estimated odds of the productive *-(e)s* pattern are lower for monosyllabic lexemes than for polysyllabic lexemes. Reversing the rows or columns takes the reciprocal, so the orientation must be stated.
+where $K$ is the *t*-initial column total, $N-K$ is the *d*-initial total, and $n$ is the front-vowel row total.
 
-The odds ratio describes the sample association, while the exact test evaluates the conditional null distribution. Neither object by itself identifies why the association arises.
+```{r}
+#| label: fit-unimorph-fisher
+observed_a <- tab["TRUE", "1"]
+t_total <- sum(tab[, "1"])
+d_total <- sum(tab[, "0"])
+front_total <- sum(tab["TRUE", ])
+observed_probability <- dhyper(observed_a, t_total, d_total, front_total)
+result <- fisher.test(tab, alternative = "two.sided")
 
-## Stating what is conditioned on
+summary <- data.frame(
+  sample_size = nrow(sample_120),
+  population_size = nrow(population),
+  sampling_fraction = nrow(sample_120) / nrow(population),
+  observed_table_probability = observed_probability,
+  conditional_odds_ratio = unname(result$estimate),
+  confidence_lower = result$conf.int[1],
+  confidence_upper = result$conf.int[2],
+  two_sided_p_value = result$p.value
+)
+summary
+```
 
-The calculation is exact conditional on the margins: in an experiment, some margins may be fixed by design, while in a corpus sample, both margins may instead be random outcomes of the sampling process.
+The observed table has conditional probability `r sprintf("%.5f", observed_probability)`. R's two-sided p value sums all fixed-margin tables whose null probability is no greater than the observed table's probability; it is `r sprintf("%.4f", result$p.value)`.
 
-Fisher's calculation conditions on the fixed margins, and that conditioning must be stated. The test can support a conditional comparison, but its reference distribution is not a complete generative account of the table.
+```{r}
+#| label: plot-unimorph-fisher
+#| fig-cap: "Observed lexeme counts in the fixed UniMorph sample."
+cells <- as.data.frame(tab, responseName = "lexemes")
+cells$stem_vowel <- ifelse(cells$front_vowel == "TRUE", "Front", "Back")
+cells$past_initial <- ifelse(cells$t_initial == "1", "t", "d")
 
-Independence among observations also remains necessary. Sixty noun lexemes sampled from one lexical family are not equivalent to sixty independently sampled lexical types.
+ggplot(cells, aes(past_initial, stem_vowel, fill = lexemes)) +
+  geom_tile(color = "white", linewidth = 0.8) +
+  geom_text(aes(label = lexemes), size = 4) +
+  scale_fill_gradient(low = "grey90", high = "grey45", guide = "none") +
+  labs(x = "Past sequence initial", y = "Last stem-vowel class") +
+  theme_classic(base_size = 12)
+```
 
-## Association and explanation
-
-A small p value supplies evidence against the specified independence model, but it does not establish that syllable count causes plural-pattern choice. Phonotactics, lexical frequency, etymological class, and sampling restrictions could produce the table. Distinguishing those accounts requires theoretically motivated predictors or a design that separates them.
+The calculation conditions on the sample and margins. Its finite sampling fraction is `r sprintf("%.3f", summary$sampling_fraction)`, so treating these without-replacement rows as independent Bernoulli draws would discard part of the design. The result concerns the resource-defined lexeme population, not Turkish token use.
 
 ## Check your understanding
 
-1. Why does the upper-left count determine the other three counts when the margins are fixed?
-2. What distribution assigns probabilities to possible upper-left counts?
-3. Why is the observed-table probability not the two-sided p value?
-4. What linguistic claim remains unsupported after rejecting independence?
+1. Which margins remain fixed in the Fisher reference distribution?
+2. Why is the observed-table probability not the two-sided p value?
+3. What does one UniMorph row represent?
+4. Why can this table not estimate suffix frequency in running Turkish text?
 
-When a large-sample approximation is appropriate, the [chi-squared test](chi-squared-test.qmd) uses an approximate reference distribution rather than enumerating conditional table probabilities.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The front/back row totals, the *t*/*d* column totals, and therefore the grand total remain fixed. <!-- dqr-allow: empirical-answer -->
+2. The two-sided p value sums the probabilities of all fixed-margin tables no more probable under the null than the observed table. <!-- dqr-allow: empirical-answer -->
+3. One row is one distinct verb lemma paired with the `V;IND;PST;3;SG;POS;DECL` paradigm cell. <!-- dqr-allow: empirical-answer -->
+4. UniMorph rows are lexeme--paradigm types without corpus token frequencies, so the table cannot estimate how often suffixes occur in running text. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [chi-squared page](chi-squared-test.qmd) uses the complete 588-lemma resource to construct the corresponding large-sample reference calculation.

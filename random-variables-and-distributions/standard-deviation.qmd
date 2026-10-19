@@ -1,83 +1,110 @@
 ---
 title: "Standard deviation"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](variance-and-covariance.qmd) defined variance as an expected squared deviation from the mean. That squaring prevents cancellation, but it also changes the measurement units. How do we retain the spread information while returning to the original scale? Suppose the modeled voice onset time variable $V$ has variance
+The [preceding page](variance-and-covariance.qmd) defined variance as an expected squared deviation from the mean. That squaring prevents cancellation, but it also changes the measurement units. How do we retain the spread information while returning to the original scale? We answer with the [CMUdict total phone counts](why-random-variables.qmd#the-pronunciation-entry-outcomes).
 
-$$
-\operatorname{Var}(V)=625\text{ ms}^2.
-$$
+```{r}
+#| label: load-cmudict-sd
+library(ggplot2)
 
-The value 625 is measured in squared milliseconds. A phonetician cannot compare it directly with a 10 ms difference between two category means because the units differ.
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+phone_pmf <- as.data.frame(table(cmu$phone_count))
+names(phone_pmf) <- c("phone_count", "entries")
+phone_pmf$phone_count <- as.integer(as.character(phone_pmf$phone_count))
+phone_pmf$mass <- phone_pmf$entries / nrow(cmu)
 
-The [**standard deviation**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) answers this question by taking the nonnegative square root of the variance:
+phone_mean <- mean(cmu$phone_count)
+phone_variance <- mean((cmu$phone_count - phone_mean)^2)
+phone_sd <- sqrt(phone_variance)
+lower_one_sd <- phone_mean - phone_sd
+upper_one_sd <- phone_mean + phone_sd
+coverage_one_sd <- mean(
+  cmu$phone_count >= lower_one_sd & cmu$phone_count <= upper_one_sd
+)
+
+stopifnot(
+  nrow(cmu) == 133854L,
+  phone_sd >= 0,
+  abs(phone_sd^2 - phone_variance) < 1e-12,
+  coverage_one_sd >= 0,
+  coverage_one_sd <= 1
+)
+
+c(mean_phones = phone_mean,
+  variance_phones_squared = phone_variance,
+  standard_deviation_phones = phone_sd,
+  empirical_coverage_within_one_sd = coverage_one_sd)
+```
+
+The [**standard deviation**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is the nonnegative square root of the variance:
 
 $$
 \sigma_X
-\equiv\sqrt{\operatorname{Var}(X)}.
+\equiv
+\sqrt{\operatorname{Var}[X]}.
 $$
 
-For the voice onset time variable,
+For the empirical pronunciation-entry distribution,
 
 $$
-\begin{aligned}
-\sigma_V
-&=\sqrt{625\text{ ms}^2}\\
-&=25\text{ ms}.
-\end{aligned}
+\widehat\sigma_X
+=\sqrt{\widehat{\operatorname{Var}}(X)}.
 $$
 
-Taking the square root returns the spread summary to the measurement units of $V$.
-
-## Comparing two category spreads
-
-Suppose a second stop category has variance
-
-$$
-900\text{ ms}^2.
-$$
-
-Its standard deviation is
-
-$$
-\sqrt{900\text{ ms}^2}=30\text{ ms}.
-$$
-
-The second variable has greater spread whether we compare variance or standard deviation. The square root preserves the ordering of nonnegative values.
-
-The difference between 25 ms and 30 ms is easier to interpret than the difference between 625 and 900 squared milliseconds because it is on the original voice onset time scale.
-
-## Computing and reporting in base R
+The variance is `r sprintf("%.3f", phone_variance)` phones squared, and its square root is `r sprintf("%.3f", phone_sd)` phones. Taking the square root returns the spread summary to the measurement units of $X$.
 
 ```{r}
-#| eval: false
-vot_variance <- c(category_a = 625, category_b = 900)
-vot_sd <- sqrt(vot_variance)
-
-vot_sd
+#| label: plot-cmudict-sd
+#| fig-cap: "Empirical phone-count PMF. The blue line marks the mean; dashed lines mark one standard deviation on either side."
+ggplot(phone_pmf, aes(phone_count, mass)) +
+  geom_col(fill = "lightgrey", width = 0.8) +
+  geom_vline(xintercept = phone_mean, color = "steelblue") +
+  geom_vline(
+    xintercept = c(lower_one_sd, upper_one_sd),
+    color = "grey", linetype = "dashed"
+  ) +
+  labs(x = "Phones in pronunciation", y = "Empirical probability") +
+  theme_classic(base_size = 12)
 ```
-
-The results are 25 and 30. The code assumes that the input variances have already been computed on the millisecond scale.
 
 ## What standard deviation summarizes
 
-Standard deviation is the square root of the expected squared distance from the mean. It is not the average absolute distance from the mean.
-
-Squaring gives greater weight to large deviations. Two distributions may thus have the same average absolute distance and different standard deviations if one places more probability far from its center.
+Standard deviation is the square root of the expected squared distance from the mean. It is not the average absolute distance from the mean. Squaring gives greater weight to large deviations, so the two summaries need not agree.
 
 Standard deviation is also not a complete description of distribution shape. Equal means and standard deviations do not guarantee equal tails, symmetry, or modality.
 
 ## Standard deviation does not determine coverage
 
-A fixed proportion of observations need not fall within one standard deviation of the mean. A mean and standard deviation alone do not determine that proportion.
+A fixed proportion of observations need not fall within one standard deviation of the mean. In this empirical PMF, `r sprintf("%.1f%%", 100 * coverage_one_sd)` of pronunciation entries fall between `r sprintf("%.2f", lower_one_sd)` and `r sprintf("%.2f", upper_one_sd)` phones. The percentage is computed from CMUdict, not supplied by the definition of standard deviation.
 
-Coverage statements require additional information about the distribution's shape. Until a particular shape has been justified, standard deviation should be interpreted as a root mean squared distance, not as a guaranteed interval containing a fixed percentage of outcomes.
+Coverage statements require information about distribution shape. Until a particular family has been justified, standard deviation should be interpreted as a root mean squared distance, not as a guaranteed interval containing a fixed percentage of outcomes.
 
 ## Check your understanding
 
-1. A duration variable has variance $144\text{ ms}^2$. What is its standard deviation?
-2. If a log duration variable has variance $.16$ in squared log units, what is its standard deviation and in which units should it be reported?
+1. Compute the population standard deviation of `vowel_phone_count` and report its units.
+2. Compare the empirical coverage within one standard deviation for total and vowel-phone counts.
 3. Why do variance and standard deviation order two distributions by spread in the same way?
-4. What additional information would be needed before interpreting one standard deviation as a particular coverage interval?
+4. Which additional assumption would license a familiar normal-distribution coverage statement?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The population standard deviation of `vowel_phone_count` is $\sqrt{0.975784}=0.987818$ vowel phones. <!-- dqr-allow: empirical-answer -->
+2. Coverage within one standard deviation is 0.667615 for total phone count and 0.736609 for vowel-phone count. <!-- dqr-allow: empirical-answer -->
+3. Standard deviation is the strictly increasing square root of nonnegative variance, so comparing either summary gives the same ordering by spread. <!-- dqr-allow: empirical-answer -->
+4. A normal-distribution assumption would license the familiar reference that about 68.27% of probability lies within one standard deviation of the mean. <!-- dqr-allow: empirical-answer -->
+
+</details>
 
 Standard deviation rescales the second central moment. The [next page](central-moments.qmd) shows how changing the exponent summarizes other features of deviations from the mean.

@@ -1,162 +1,174 @@
 ---
 title: "Importance sampling"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](monte-carlo-integration.qmd) approximated an expectation using draws from the target distribution itself. Importance sampling instead uses draws from a proposal distribution. Consider a constructed production study in which a token is coded one when the constituent bearing contrastive focus is produced with a pitch accent. This coding treats contrastive focus as an information-structural category and pitch accent as one possible prosodic realization, not as equivalent notions. Suppose the posterior target for the token probability is
+[Monte Carlo integration](monte-carlo-integration.qmd) used draws from the normalized PCT grid. **Importance sampling** instead draws from a proposal distribution and corrects its mismatch with the unnormalized PCT posterior through weights.
 
-$$
-\Theta
-\sim
-\operatorname{Beta}(8,4).
-$$
+## Reweighting a proposal
 
-Write $f(\theta)$ for the corresponding beta density. We want the posterior probability that $\Theta>.70$, but suppose direct target draws are unavailable. The question is whether draws from another distribution can still recover a target expectation. We can draw $\Theta^{(s)}$ from a proposal distribution $Q$ with density $q(\theta)$ and correct the mismatch between proposal and target with weights.
-
-## Rewriting the target expectation
-
-For a function $g$, the target expectation is
-
-$$
-\mathbb{E}_f[g(\Theta)]
-=
-\int g(\theta)f(\theta)\,\mathrm{d}\theta.
-$$
-
-Multiply and divide by a proposal density $q(\theta)$:
+For target density $f$, proposal density $g$, and integrand $h$,
 
 $$
 \begin{aligned}
-\mathbb{E}_p[g(\Theta)]
+\mathbb{E}_f[h(\eta)]
 &=
-\int
-g(\theta)
-\frac{f(\theta)}{q(\theta)}
-q(\theta)
-\,\mathrm{d}\theta\\
+\int h(\eta)\frac{f(\eta)}{g(\eta)}g(\eta)\,\mathrm d\eta\\
 &=
-\mathbb{E}_q
-\left[
-g(\Theta)w(\Theta)
-\right],
+\mathbb{E}_g[h(\eta)w(\eta)],
 \end{aligned}
 $$
 
-where
+where $w(\eta)=f(\eta)/g(\eta)$. If the target is known only as $\widetilde f(\eta)=Zf(\eta)$, normalized weights
 
 $$
-w(\theta)=\frac{f(\theta)}{q(\theta)}
-$$
-
-is the [**importance weight**](https://www.cambridge.org/core/books/inverse-problems-and-data-assimilation/monte-carlo-sampling-and-importance-sampling/AEE4AC4E63548DC6A732013B571841D8). A proposal draw receives a large weight when it falls in a region that is relatively common under the target.
-
-## Using a uniform proposal
-
-Choose the proposal distribution
-
-$$
-Q=\operatorname{Uniform}(0,1),
-\qquad
-q(\theta)=\mathbf{1}\{0<\theta<1\}.
-$$
-
-Since its density is one on the unit interval, the raw weights are beta densities evaluated at the uniform draws. When the target density is normalized, an ordinary importance sampling estimate is
-
-$$
-\widehat{I}_S
-=\frac{1}{S}\sum_{s=1}^S w^{(s)}g(\theta^{(s)}).
-$$
-
-We will use the self-normalized form, which divides the weighted sum by the sum of the weights. Define normalized weights
-
-$$
-\widetilde{w}^{(s)}
+\widetilde w^{(s)}
 =
-\frac{w^{(s)}}{\sum_{r=1}^Sw^{(r)}}.
+\frac{\widetilde f(\eta^{(s)})/g(\eta^{(s)})}
+{\sum_{r=1}^S\widetilde f(\eta^{(r)})/g(\eta^{(r)})}
 $$
 
-The self-normalized estimate is
+remove the shared unknown constant. The self-normalized estimator is
 
 $$
-\widehat{I}_S
+\widehat I_S
 =
-\sum_{s=1}^S
-\widetilde{w}^{(s)}g(\theta^{(s)}).
+\sum_{s=1}^S\widetilde w^{(s)}h(\eta^{(s)}).
 $$
 
-For the tail probability, $g(\theta)=\mathbf{1}\{\theta>.70\}$.
+It is generally biased at finite $S$, but consistent under the required support and integrability conditions.
 
-Self-normalization generally introduces bias when $S$ is finite. Under the proposal-support condition described below and the required integrability conditions, however, the estimate approaches the target expectation as $S$ grows. This limiting property is called [**consistency**](https://www.cambridge.org/core/books/inverse-problems-and-data-assimilation/monte-carlo-sampling-and-importance-sampling/AEE4AC4E63548DC6A732013B571841D8). The method also works when the target is known only up to a constant. If
+## A proposal scaled to the observed PCT
 
-$$
-f(\theta)=\frac{\kappa(\theta)}{Z},
-$$
-
-form raw weights as
-
-$$
-w^{(s)}
-=
-\frac{\kappa(\theta^{(s)})}
-{q(\theta^{(s)})}.
-$$
-
-The shared factor $1/Z$ disappears when these weights are divided by their sum. The calculation can thus approximate a normalized target expectation without evaluating $Z$.
+The code reconstructs the same PCT grid used on the preceding page. It then draws 30,000 values from a bivariate $t_5$ proposal centered at the grid mean with scale $1.5\widehat\Sigma$. The proposal is calibrated to this computation target, not interpreted as a linguistic distribution.
 
 ```{r}
-#| label: importance-focus-tail
-#| echo: true
+#| label: provo-importance-sampling
+library(ggplot2)
 
-set.seed(964)
-draw_count <- 50000
-theta_proposal <- runif(draw_count)
-raw_weight <- dbeta(theta_proposal, 8, 4) /
-  dunif(theta_proposal)
-weight <- raw_weight / sum(raw_weight)
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+y <- provo$noun_minus_verb_log_ffd
+nu <- 4
+prior_scale <- 2 * sd(y)
 
-importance_estimate <- sum(weight * (theta_proposal > .70))
-exact_value <- 1 - pbeta(.70, 8, 4)
+log_sum_exp <- function(x) {
+  maximum <- max(x)
+  maximum + log(sum(exp(x - maximum)))
+}
+log_posterior_eta <- function(eta) {
+  mu <- eta[1]; sigma <- exp(eta[2])
+  sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, prior_scale, log = TRUE) +
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+}
+mode_fit <- optim(c(median(y), log(mad(y))),
+                  function(eta) -log_posterior_eta(eta),
+                  method = "BFGS", hessian = TRUE,
+                  control = list(reltol = 1e-12, maxit = 1000L))
+local_sd <- sqrt(diag(solve(mode_fit$hessian)))
+grid <- expand.grid(
+  mu = seq(mode_fit$par[1] - 7 * local_sd[1],
+           mode_fit$par[1] + 7 * local_sd[1], length.out = 321L),
+  log_sigma = seq(mode_fit$par[2] - 7 * local_sd[2],
+                  mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
+)
+grid$log_kernel <- apply(grid, 1, log_posterior_eta)
+grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
+grid_mean <- colSums(grid[, c("mu", "log_sigma")] * grid$weight)
+centered <- sweep(as.matrix(grid[, c("mu", "log_sigma")]),
+                  2, grid_mean, "-")
+grid_covariance <- crossprod(centered * sqrt(grid$weight))
 
-stopifnot(abs(sum(weight) - 1) < 1e-12)
-stopifnot(abs(importance_estimate - exact_value) < .01)
+rmvt <- function(n, location, scale, df) {
+  dimension <- length(location)
+  normal <- matrix(rnorm(n * dimension), nrow = n)
+  standard <- sqrt(rchisq(n, df = df) / df)
+  sweep(normal %*% chol(scale), 1, standard, "/") +
+    matrix(location, nrow = n, ncol = dimension, byrow = TRUE)
+}
+dmvt_log <- function(x, location, scale, df) {
+  dimension <- length(location)
+  centered <- sweep(x, 2, location, "-")
+  inverse <- solve(scale)
+  quadratic <- rowSums((centered %*% inverse) * centered)
+  log_determinant <- determinant(scale, logarithm = TRUE)$modulus[1]
+  lgamma((df + dimension) / 2) - lgamma(df / 2) -
+    .5 * (dimension * log(df * pi) + log_determinant) -
+    .5 * (df + dimension) * log1p(quadratic / df)
+}
 
-c(importance = importance_estimate, exact = exact_value)
+set.seed(2026101803)
+S <- 30000L
+proposal_df <- 5
+proposal_scale <- 1.5 * grid_covariance
+eta <- rmvt(S, grid_mean, proposal_scale, proposal_df)
+log_weight <- apply(eta, 1, log_posterior_eta) -
+  dmvt_log(eta, grid_mean, proposal_scale, proposal_df)
+weight <- exp(log_weight - log_sum_exp(log_weight))
+
+importance_ess <- 1 / sum(weight^2)
+summary <- data.frame(
+  mean_mu = sum(weight * eta[, 1]),
+  probability_mu_positive = sum(weight * (eta[, 1] > 0)),
+  mean_exp_mu = sum(weight * exp(eta[, 1])),
+  raw_weight_ess = importance_ess,
+  largest_weight = max(weight),
+  top_100_weight_share = sum(sort(weight, decreasing = TRUE)[1:100])
+)
+stopifnot(length(y) == 55L, abs(sum(weight) - 1) < 1e-12)
+summary
 ```
 
-The normalized weights change an unweighted average under the uniform proposal into a weighted average approximating the beta target.
+The raw-weight effective sample size,
 
-## Inspecting weight concentration
+$$
+\operatorname{ESS}_w
+=
+\frac{1}{\sum_{s=1}^S(\widetilde w^{(s)})^2},
+$$
 
-Coverage is necessary. More precisely, the target must assign zero probability to every region that the proposal assigns zero probability. If $f(\theta)>0$ on a region of positive target probability where $q(\theta)=0$, no proposal draw can represent that region, and no weight can repair the omission.
-
-Shared support is not sufficient for an efficient calculation. A proposal that puts very little probability in an important target region may produce a few enormous weights and many negligible weights. The estimate then depends on a small number of proposal draws.
-
-One direct summary is the largest normalized weight:
+is `r format(round(importance_ess), big.mark = ",")` from 30,000 proposal draws. It summarizes weight concentration, not Markov-chain dependence and not the number of Provo passages.
 
 ```{r}
-#| label: inspect-importance-weights
-#| echo: true
+#| label: plot-provo-importance-weights
+#| fig-cap: "Proposal draws for the PCT. The accent marks the one percent with the largest normalized weights."
+proposal_draws <- data.frame(
+  mu = eta[, 1], sigma = exp(eta[, 2]), weight = weight
+)
+weight_cutoff <- quantile(weight, .99)
 
-largest_weight <- max(weight)
-weight_share_top_100 <- sum(sort(weight, decreasing = TRUE)[1:100])
-
-stopifnot(largest_weight < .01)
-c(largest_weight = largest_weight,
-  share_in_largest_100 = weight_share_top_100)
+proposal_opacity <- .16
+weighted_opacity <- .65
+ggplot(proposal_draws, aes(mu, sigma)) +
+  geom_point(color = "grey70", alpha = proposal_opacity, size = .55) +
+  geom_point(data = subset(proposal_draws, weight >= weight_cutoff),
+             color = "#8B1A1A", alpha = weighted_opacity, size = .8) +
+  labs(x = "Passage-level contrast (mu)",
+       y = "Passage contrast scale (sigma)") +
+  theme_classic(base_size = 12)
 ```
 
-These values do not prove that the estimate is accurate, but they reveal whether a very small part of the simulation dominates it.
+The proposal must cover every target region of positive probability. Shared support is not sufficient for efficiency: if $q$ places little mass in an important target region, a few weights dominate. The largest weight and the mass in the largest 100 weights diagnose that realized concentration but cannot prove that an unseen tail was covered.
 
-## Avoiding the proposal-frequency reading
-
-The proposal distribution is a computational device, not a representation of prior beliefs, posterior uncertainty, or a linguistic data-generating process. Frequent proposal draws do not by themselves indicate posterior support. Only the weighted draws approximate the target.
-
-Monte Carlo error also remains. More proposal draws may stabilize the estimate, while a better-matched proposal may improve it more efficiently. Neither change narrows the posterior target or repairs a poor linguistic model.
-
-A realized set of moderate weights does not prove that every important target tail has been represented. Proposal choice should be justified from support and tail behavior, not only from one weight histogram.
+The proposal distribution is a computational device. Its unweighted draw frequency is neither a prior nor a statement about passage contrasts. Only the weighted empirical distribution approximates the PCT.
 
 ## Check your understanding
 
-1. Why does the ratio $f(\theta)/q(\theta)$ correct proposal draws?
-2. What fails if the proposal has zero density in a target region?
-3. Why can a proposal with full support still be inefficient?
-4. Which distribution determines the unweighted draw frequency, and which determines the weighted target estimate?
+1. Why does self-normalization remove the target normalizer?
+2. What fails when $g(\eta)=0$ in a target region?
+3. Why can full support still yield poor efficiency?
+4. What does $\operatorname{ESS}_w$ count in this calculation?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Every raw weight contains the same unknown multiplicative target constant, which cancels when weights are divided by their sum. <!-- dqr-allow: empirical-answer -->
+2. The weight ratio is undefined there, and proposal draws can never represent that positive-probability part of the target. <!-- dqr-allow: empirical-answer -->
+3. A proposal may have full support but place very little mass in an important target region, causing a few extreme weights to dominate. <!-- dqr-allow: empirical-answer -->
+4. $\operatorname{ESS}_w$ is the number of equally weighted proposal draws with roughly comparable weight information; it is not a passage count or a Markov-chain ESS. <!-- dqr-allow: empirical-answer -->
+
+</details>

@@ -1,10 +1,151 @@
 ---
 title: "Fitting a linear regression"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+The PRS specifies a straight-line conditional mean. We now need an estimation rule. **Ordinary least squares (OLS)** chooses the coefficients whose fitted values minimize the residual sum of squares.
 
-**Available Wednesday, October 7, 2026.**
+## From discrepancies to an objective
+
+For position $i$,
+
+$$
+\widehat y_i=\beta_0+\beta_1x_i
+$$
+
+and
+
+$$
+e_i=y_i-\widehat y_i.
+$$
+
+The OLS objective is
+
+$$
+\operatorname{SSE}(\beta_0,\beta_1)
+=
+\sum_{i=1}^n
+\left(y_i-\beta_0-\beta_1x_i\right)^2.
+$$
+
+Differentiating with respect to the coefficients and setting both derivatives to zero gives
+
+$$
+\widehat\beta_1
+=
+\frac{\sum_i(x_i-\overline x)(y_i-\overline y)}
+{\sum_i(x_i-\overline x)^2}
+$$
+
+and
+
+$$
+\widehat\beta_0=\overline y-\widehat\beta_1\overline x.
+$$
+
+## Computing the PRS estimate
+
+```{r}
+#| label: fit-provo-ols-by-hand
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+x <- -log2(provo$OrthoMatchModel)
+y <- provo$mean_log_ffd
+x_bar <- mean(x)
+y_bar <- mean(y)
+
+slope_by_hand <-
+  sum((x - x_bar) * (y - y_bar)) /
+  sum((x - x_bar)^2)
+intercept_by_hand <- y_bar - slope_by_hand * x_bar
+
+fit <- lm(y ~ x)
+
+stopifnot(
+  abs(slope_by_hand - coef(fit)[["x"]]) < 1e-12,
+  abs(intercept_by_hand - coef(fit)[["(Intercept)"]]) < 1e-12
+)
+
+data.frame(
+  term = c("intercept", "modeled cloze surprisal"),
+  estimate_by_hand = c(intercept_by_hand, slope_by_hand),
+  estimate_from_lm = unname(coef(fit))
+)
+```
+
+The fitted slope is `r sprintf("%.6f", slope_by_hand)` log milliseconds per bit. Squaring makes large vertical discrepancies count more heavily, which is one reason a few unusual responses may affect the fit.
+
+If
+
+$$
+Y_i\mid x_i,\beta_0,\beta_1,\sigma
+\sim
+\mathcal N(\beta_0+\beta_1x_i,\sigma^2),
+$$
+
+then the log likelihood is
+
+$$
+\ell(\beta_0,\beta_1,\sigma)
+=
+-n\log\sigma
+-\frac{1}{2\sigma^2}
+\sum_i(y_i-\beta_0-\beta_1x_i)^2
++C.
+$$
+
+For fixed $\sigma$, maximizing this likelihood is equivalent to minimizing SSE. OLS and Gaussian maximum likelihood thus select the same coefficient estimates.
+
+```{r}
+#| label: plot-provo-ols-fit
+#| fig-cap: "Reader-aggregated Provo positions and the OLS conditional mean."
+plot_data <- transform(provo, cloze_surprisal_bits = x)
+grid <- data.frame(
+  cloze_surprisal_bits = seq(min(x), max(x), length.out = 160L)
+)
+grid$fitted <- predict(fit, newdata = data.frame(x = grid$cloze_surprisal_bits))
+
+point_opacity <- 0.22
+ggplot(plot_data, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.9) +
+  geom_line(
+    data = grid,
+    aes(y = fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+OLS estimates the best line under its squared-error criterion. It does not establish that the line is an adequate description, nor does it account for the passage grouping. Those questions require uncertainty calculations and diagnostics.
+
+## Check your understanding
+
+1. Which quantity does OLS minimize?
+2. Why does the slope contain cross-products of centered $x$ and $y$?
+3. Under which response model does OLS coincide with maximum likelihood?
+4. What feature of squared error makes influence worth checking later?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. OLS minimizes the residual sum of squares, $\sum_i(y_i-\beta_0-\beta_1x_i)^2$. <!-- dqr-allow: empirical-answer -->
+2. The centered cross-products measure whether deviations in $x$ and $y$ have the same direction; dividing by centered $x$ variation converts that co-movement into change in $y$ per unit $x$. <!-- dqr-allow: empirical-answer -->
+3. OLS coefficient estimates coincide with maximum likelihood under independent normal responses with linear means and a common variance. <!-- dqr-allow: empirical-answer -->
+4. Squaring gives unusually large residuals disproportionate weight, so a few observations can strongly affect the fitted coefficients. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](linear-regression-uncertainty.qmd) derives uncertainty in the fitted slope.

@@ -1,140 +1,240 @@
 ---
 title: "When the posterior will not normalize by hand"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [conjugate prior page](conjugate-priors.qmd) identified a normalized posterior by matching its algebraic form to a known distribution, but many useful prior and likelihood combinations do not supply that match. What, then, remains calculable?
+Conjugacy identifies a normalized posterior by matching a familiar density. Many useful likelihood--prior combinations do not provide that match. We now fix one empirical posterior that every remaining computation page will target.
 
-Let the nonnegative product of likelihood and prior have normalizing integral $Z$. A [**proper posterior**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is one that can be normalized to integrate to one, which occurs when $0<Z<\infty$. The product need not be positive at every parameter value, and a proper posterior can exist even when $Z$ has no closed-form expression.
+## The passage-contrast target
 
-## Constructing a nonconjugate model
+The [Provo Corpus](https://osf.io/sjefs/) contains eye-tracking measurements and predictability norms for 55 English passages. Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) describe the resource and its original measurements. The release is CC BY 4.0.
 
-Suppose each of four speakers produces stops in two matched conditions. [Closure duration](https://www.cambridge.org/core/journals/language/article/abs/closure-duration-and-the-intervocalic-voicedvoiceless-distinction-in-english/397A7F377475B5423A000782430B755B) is the interval from the formation of a stop closure to its release, a measure used in phonetic work on distinctions among stops since at least Lisker (1957). Let $Y_i$ be speaker $i$'s difference between the two condition means, divided by a declared standardizing scale. Thus positive values indicate longer closure in the first condition.
-
-For this constructed example, treat the four speaker contrasts as independent and their response standard deviation as known to be one:
+The course table contains one summary per passage, derived from 1,593 retained content-word positions. Each position was already aggregated across readers, so these rows are not participant trials. For passage $j$, let $\mathcal N_j$ and $\mathcal V_j$ be its retained noun and verb positions and let $d_{ji}$ be the position-level mean log first-fixation duration. We define
 
 $$
-Y_i\mid\Theta=\theta
-\sim
-\operatorname{Normal}(\theta,1).
+y_j=
+\frac{1}{|\mathcal N_j|}\sum_{i\in\mathcal N_j}d_{ji}
+-
+\frac{1}{|\mathcal V_j|}\sum_{i\in\mathcal V_j}d_{ji}.
 $$
 
-Let the sample mean be $\overline{y}=.50$. Terms not involving $\theta$ can be removed from the normal likelihood, leaving
+We call the resulting 55-observation analysis the **passage-contrast target** (PCT). It describes the unweighted distribution of passage summaries; it is not participant-level inference or a probability sample of English texts.
+
+```{r}
+#| label: load-provo-passage-target
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/passage-summaries.csv",
+  stringsAsFactors = FALSE
+)
+y <- provo$noun_minus_verb_log_ffd
+N <- length(y)
+nu <- 4
+response_scale <- sd(y)
+prior_mu_sd <- 2 * response_scale
+prior_sigma_sd <- 2 * response_scale
+
+stopifnot(
+  N == 55L,
+  !anyDuplicated(provo$Text_ID),
+  all(provo$n_nouns >= 4L),
+  all(provo$n_verbs >= 4L),
+  all(is.finite(y))
+)
+
+data.frame(
+  passages = N,
+  retained_position_summaries = sum(provo$n_positions),
+  mean = mean(y), sd = response_scale, median = median(y),
+  minimum = min(y), maximum = max(y),
+  proportion_positive = mean(y > 0)
+)
+```
+
+## A robust location--scale model
+
+The PCT uses
 
 $$
-f_{\mathbf Y\mid\Theta}(\mathbf{y}\mid\theta)
-\propto
-\exp\left[-\frac{4}{2}(\theta-.50)^2\right].
+Y_j\mid\mu,\sigma
+\sim t_4(\mu,\sigma),
 $$
 
-Choose a Student t prior with three degrees of freedom, location zero, and scale one:
+with
 
 $$
-\Theta\sim t_3(0,1).
+\mu\sim\mathcal N(0,(2s_y)^2),
+\qquad
+\sigma\sim\operatorname{HalfNormal}(0,2s_y),
 $$
 
-Its density [**kernel**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) is the part that varies with $\theta$ after constant factors have been omitted:
+where $s_y$ is the observed standard deviation of the 55 contrasts. Thus both prior scales are computed as `r sprintf("%.6f", prior_mu_sd)`. This is an empirically calibrated teaching prior, not a confirmatory analysis. The fixed four degrees of freedom make the observation model less sensitive to an extreme passage than a normal likelihood would be.
+
+Let $\eta=(\mu,\log\sigma)$. The unnormalized log posterior on this unconstrained scale is
 
 $$
-f_\Theta(\theta)
-\propto
-\left(1+\frac{\theta^2}{3}\right)^{-2}.
+\begin{aligned}
+\log\widetilde f(\eta\mid\mathbf y)
+={}&\sum_{j=1}^{N}
+\left[
+\log t_4\!\left(\frac{y_j-\mu}{\sigma}\right)
+-\log\sigma
+\right]\\
+&+\log\phi(\mu;0,2s_y)
++\log 2+\log\phi(\sigma;0,2s_y)
++\log\sigma.
+\end{aligned}
 $$
 
-Multiplication gives the posterior kernel $\kappa$, a nonnegative function proportional to the posterior density:
+The final term is the Jacobian for $\sigma=\exp(\eta_2)$. The Stan program later samples $\sigma$ directly and lets Stan handle its internal transform, so it does not add this term manually.
 
-$$
-\kappa(\theta;\mathbf{y})
-=
-\exp\left[-2(\theta-.50)^2\right]
-\left(1+\frac{\theta^2}{3}\right)^{-2}.
-$$
+```{r}
+#| label: fit-provo-grid-posterior
+log_sum_exp <- function(x) {
+  maximum <- max(x)
+  maximum + log(sum(exp(x - maximum)))
+}
 
-This expression is not the kernel of a familiar named family: the Student t prior is not conjugate to this normal likelihood, but that result changes the calculation rather than the definition of the posterior.
+weighted_quantile <- function(x, weights, probabilities) {
+  ordering <- order(x)
+  x <- x[ordering]
+  weights <- weights[ordering] / sum(weights)
+  cumulative <- cumsum(weights)
+  vapply(probabilities, function(probability) {
+    x[which(cumulative >= probability)[1]]
+  }, numeric(1))
+}
 
-## Identifying the missing quantity
+log_posterior_eta <- function(eta) {
+  mu <- eta[1]
+  sigma <- exp(eta[2])
+  sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, prior_mu_sd, log = TRUE) +
+    log(2) + dnorm(sigma, 0, prior_sigma_sd, log = TRUE) + eta[2]
+}
+
+mode_fit <- optim(
+  c(median(y), log(mad(y))),
+  function(eta) -log_posterior_eta(eta),
+  method = "BFGS", hessian = TRUE,
+  control = list(reltol = 1e-12, maxit = 1000L)
+)
+mode_eta <- unname(mode_fit$par)
+mode_covariance <- solve(mode_fit$hessian)
+grid_sd <- sqrt(diag(mode_covariance))
+
+mu_grid <- seq(mode_eta[1] - 7 * grid_sd[1],
+               mode_eta[1] + 7 * grid_sd[1], length.out = 321L)
+log_sigma_grid <- seq(mode_eta[2] - 7 * grid_sd[2],
+                      mode_eta[2] + 7 * grid_sd[2], length.out = 321L)
+posterior_grid <- expand.grid(mu = mu_grid, log_sigma = log_sigma_grid)
+posterior_grid$log_kernel <- apply(
+  posterior_grid[, c("mu", "log_sigma")], 1, log_posterior_eta
+)
+posterior_grid$weight <- exp(
+  posterior_grid$log_kernel - log_sum_exp(posterior_grid$log_kernel)
+)
+posterior_grid$sigma <- exp(posterior_grid$log_sigma)
+
+mu_mean <- sum(posterior_grid$mu * posterior_grid$weight)
+sigma_mean <- sum(posterior_grid$sigma * posterior_grid$weight)
+interval_probs <- seq(.025, .975, length.out = 3L)
+mu_interval <- weighted_quantile(
+  posterior_grid$mu, posterior_grid$weight, interval_probs
+)
+sigma_interval <- weighted_quantile(
+  posterior_grid$sigma, posterior_grid$weight, interval_probs
+)
+probability_positive <- sum(
+  posterior_grid$weight[posterior_grid$mu > 0]
+)
+boundary_mass <- sum(posterior_grid$weight[
+  posterior_grid$mu %in% range(mu_grid) |
+    posterior_grid$log_sigma %in% range(log_sigma_grid)
+])
+
+stopifnot(
+  mode_fit$convergence == 0L,
+  abs(sum(posterior_grid$weight) - 1) < 1e-12,
+  boundary_mass < 1e-5
+)
+
+rbind(
+  data.frame(parameter = "mu", mean = mu_mean,
+             q025 = mu_interval[1], median = mu_interval[2],
+             q975 = mu_interval[3]),
+  data.frame(parameter = "sigma", mean = sigma_mean,
+             q025 = sigma_interval[1], median = sigma_interval[2],
+             q975 = sigma_interval[3])
+)
+```
+
+The grid gives $\mathbb{P}(\mu>0\mid\mathbf y)=$ `r sprintf("%.3f", probability_positive)`, though the 95% interval for $\mu$, [`r sprintf("%.4f", mu_interval[1])`, `r sprintf("%.4f", mu_interval[3])`], includes zero. This measured result concerns the PCT only.
+
+```{r}
+#| label: plot-provo-raw-and-grid-fit
+#| fig-cap: "Observed passage contrasts with the fitted Student-t density at the grid-posterior means."
+density_grid <- data.frame(
+  contrast = seq(min(y) - .04, max(y) + .04, length.out = 400L)
+)
+density_grid$density <- dt(
+  (density_grid$contrast - mu_mean) / sigma_mean, df = nu
+) / sigma_mean
+
+ggplot(data.frame(contrast = y), aes(contrast)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 14,
+                 fill = "grey78", color = "white") +
+  geom_rug(color = "grey30") +
+  geom_line(data = density_grid, aes(contrast, density),
+            color = "#8B1A1A", linewidth = 0.85,
+            inherit.aes = FALSE) +
+  labs(x = "Passage noun-minus-verb mean log first-fixation duration",
+       y = "Density") +
+  theme_classic(base_size = 12)
+```
+
+## The missing normalizer
 
 The normalized posterior is
 
 $$
-f_{\Theta\mid\mathbf Y}(\theta\mid\mathbf{y})
+f(\eta\mid\mathbf y)
 =
-\frac{\kappa(\theta;\mathbf{y})}{Z},
+\frac{\widetilde f(\eta\mid\mathbf y)}{Z},
+\qquad
+Z=\int_{\mathbb R^2}\widetilde f(\eta'\mid\mathbf y)\,\mathrm d\eta'.
 $$
 
-where
+The grid approximates $Z$ numerically, but later algorithms need only relative density or its gradient. For two parameter values,
 
 $$
-Z
+\frac{f(\eta_b\mid\mathbf y)}{f(\eta_a\mid\mathbf y)}
 =
-\int_{-\infty}^{\infty}
-\kappa(\theta';\mathbf{y})
-\,\mathrm{d}\theta'.
+\frac{\widetilde f(\eta_b\mid\mathbf y)}{\widetilde f(\eta_a\mid\mathbf y)},
 $$
 
-The value $Z$ is the [**normalizing constant**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html). It does not vary with the particular $\theta$ in the numerator, but it depends on the model and observed sample. Dividing by $Z$ makes the posterior density integrate to one.
-
-## Comparing parameter values without $Z$
-
-For two values $\theta_a$ and $\theta_b$,
-
-$$
-\frac{f_{\Theta\mid\mathbf Y}(\theta_b\mid\mathbf{y})}
-{f_{\Theta\mid\mathbf Y}(\theta_a\mid\mathbf{y})}
-=
-\frac{\kappa(\theta_b;\mathbf{y})}
-{\kappa(\theta_a;\mathbf{y})}.
-$$
-
-The unknown constant cancels. The Monte Carlo methods introduced on later pages can use relative posterior density, or its gradient, without first obtaining a formula for $Z$. The [Stan documentation](https://mc-stan.org/docs/stan-users-guide/how-stan-works.html#target-log-density) describes this computation as evaluation of a target log density up to an additive constant.
-
-```{r}
-#| label: nonconjugate-duration-posterior
-#| echo: true
-
-log_unnormalized <- function(theta) {
-  -2 * (theta - .50)^2 + dt(theta, df = 3, log = TRUE)
-}
-
-relative_density <- exp(
-  log_unnormalized(.50) - log_unnormalized(0)
-)
-normalizer <- integrate(
-  function(theta) exp(log_unnormalized(theta)),
-  lower = -Inf,
-  upper = Inf
-)$value
-
-stopifnot(relative_density > 1)
-stopifnot(normalizer > 0)
-c(relative_density_at_half_vs_zero = relative_density,
-  normalizer = normalizer)
-```
-
-Numerical integration works here because the target is one dimensional. In a model with many parameters, direct numerical integration may require an impractical number of evaluations.
-
-## Evaluating on the log scale
-
-Likelihood products can become numerically tiny. Computation thus usually evaluates
-
-$$
-\log\kappa(\theta;\mathbf{y})
-$$
-
-and forms density ratios by subtracting log densities. This representation changes neither the posterior target nor $Z$.
-
-## Separating computational difficulty from uncertainty
-
-An unavailable closed-form expression for $Z$ is a computational difficulty, but it does not make the posterior undefined when $0<Z<\infty$. Under the model, $f_{\Theta\mid\mathbf Y}(\theta\mid\mathbf{y})$ remains the target.
-
-The normalizing constant $Z$ is a fixed mathematical consequence of the observed data and model. Numerical or Monte Carlo methods approximate posterior summaries and add computational error, which remains distinct from posterior spread and model adequacy.
-
-A small Monte Carlo error still does not narrow the posterior or establish that the model fits the data.
+because $Z$ cancels. A missing closed-form normalizer is thus a computational problem, not an undefined posterior, provided $0<Z<\infty$.
 
 ## Check your understanding
 
-1. Which factor in the unnormalized posterior comes from the likelihood?
-2. Why does $Z$ cancel from a posterior density ratio?
-3. Why is a missing closed-form normalizer not a missing posterior?
-4. Why is the log scale useful for computation?
+1. What does one $y_j$ summarize?
+2. Why does the PCT not support participant-level inference?
+3. Which term is the Jacobian in the log target?
+4. Why can later algorithms use the unnormalized target?
 
-The computation sequence begins with [Monte Carlo integration](monte-carlo-integration.qmd), where direct target draws are available.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. One $y_j$ is a passage's mean noun log-FFD minus its mean verb log-FFD, computed from the retained position summaries in that passage. <!-- dqr-allow: empirical-answer -->
+2. Reader trials were already aggregated into position and passage summaries, so participant identities and participant-level variation cannot be recovered. <!-- dqr-allow: empirical-answer -->
+3. The final $+\log\sigma$ term is the Jacobian for the transformation $\sigma=\exp(\eta_2)$. <!-- dqr-allow: empirical-answer -->
+4. Density ratios and gradients do not require the common normalizing constant $Z$; it cancels or differentiates away. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [Monte Carlo page](monte-carlo-integration.qmd) first approximates PCT expectations using independent draws from this normalized grid.

@@ -1,179 +1,158 @@
 ---
 title: "Defining random variables"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
 The [preceding page](why-random-variables.qmd) introduced a random variable as a function from complete outcomes to values. But not every function between arbitrary measurable spaces automatically supports probability statements. What property must the mapping have? We now add the measurability condition that answers this question.
 
-Suppose the outcomes in a syntax study are fully annotated sentence trees. The analysis concerns embedding depth, so we define
+We continue with the [pinned CMUdict pronunciation table introduced on the preceding page](why-random-variables.qmd#the-pronunciation-entry-outcomes). Let $V$ map each pronunciation entry to its number of vowel phones.
 
-$$
-H(\omega)\equiv\text{maximum embedding depth in tree }\omega.
-$$
+```{r}
+#| label: load-cmudict-definition
+library(ggplot2)
 
-The function takes a complex outcome and returns a value. To use that value in probability statements, every measurable set of values must lead back to an event that the original model can measure.
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+cmu$outcome_id <- seq_len(nrow(cmu))
 
-This measurability requirement completes the formal definition of the [random variable introduced on the preceding page](why-random-variables.qmd).
+stopifnot(
+  nrow(cmu) == 133854L,
+  !anyDuplicated(cmu$entry),
+  all(cmu$vowel_phone_count >= 1L),
+  !anyNA(cmu$vowel_phone_count)
+)
+```
 
 ## Distinguishing the two spaces
 
-Let $\langle\Omega,\mathcal{F}\rangle$ be the measurable space of sentence tree outcomes, using the [event space introduced earlier](../foundations/event-spaces.qmd#sample-spaces-and-event-spaces). Let $\langle\mathcal X,\mathcal{G}\rangle$ be the measurable space of depth values. The function has the form
+Let $\langle\Omega,\mathcal F\rangle$ be the measurable space of pronunciation-entry outcomes, using the [event space introduced earlier](../foundations/event-spaces.qmd). Let $\langle\mathcal X,\mathcal G\rangle$ be the measurable space of nonnegative integer counts. The function has the form
 
 $$
-H:\Omega\longrightarrow\mathcal X.
+V:\Omega\longrightarrow\mathcal X.
 $$
 
-The set $\mathcal X$ is the declared codomain of $H$, written
-$\operatorname{cod}(H)$. A statement such as $x\in\operatorname{cod}(X)$ refers to
-the declared value space. It does not mean that $x$ appeared in the observed sample,
-and it does not require that $x$ have positive probability.
+The set $\mathcal X$ is the declared codomain of $V$, written $\operatorname{cod}(V)$. A statement such as $v\in\operatorname{cod}(V)$ refers to the declared value space. It does not mean that $v$ appeared in the observed resource, and it does not require that $v$ have positive probability.
 
-For a small finite study, the value set might be
+For current purposes, we take
 
 $$
-\mathcal X\equiv\{0,1,2,3\}.
+\mathcal X\equiv\mathbb Z_{\geq0}
 $$
 
-The sigma-algebra $\mathcal{G}$ contains the measurable sets of depth values. If every subset is measurable, then $\{2\}$ and $\{2,3\}$ both belong to $\mathcal{G}$.
+and let $\mathcal G$ contain all subsets of $\mathcal X$. This codomain includes counts absent from the pinned lexicon.
 
 ## Working backward with a preimage
 
-For this illustration, let $\Omega\equiv\{\omega_1,\omega_2,\omega_3\}$. The outcomes receive these values.
+We use the observed median vowel-phone count to define a set in the value space.
 
-| sentence tree outcome | $H(\omega)$ |
-|---|---:|
-| $\omega_1$ | 1 |
-| $\omega_2$ | 2 |
-| $\omega_3$ | 2 |
+```{r}
+#| label: cmudict-preimage
+median_vowels <- unname(quantile(cmu$vowel_phone_count, 0.5, type = 1))
+median_preimage <- subset(
+  cmu,
+  vowel_phone_count == median_vowels,
+  select = c(outcome_id, entry, phones, vowel_phone_count)
+)
+at_most_median_preimage <- subset(
+  cmu,
+  vowel_phone_count <= median_vowels,
+  select = c(outcome_id, entry, phones, vowel_phone_count)
+)
 
-Select the value set $\{2\}$. Before writing notation, we can state the operation in words: collect every sentence tree whose depth value is 2. The outcomes mapped into that set are
+stopifnot(
+  nrow(median_preimage) == sum(cmu$vowel_phone_count == median_vowels),
+  nrow(at_most_median_preimage) ==
+    sum(cmu$vowel_phone_count <= median_vowels)
+)
+
+head(median_preimage)
+```
+
+Before writing notation, state the operation in words: collect every pronunciation entry whose vowel-phone count equals the empirical median. The result is
 
 $$
-H^{-1}(\{2\})
-\equiv\{\omega\in\Omega\mid H(\omega)\in\{2\}\}
-=\{\omega_2,\omega_3\}.
+V^{-1}(\{q_{.5}\})
+\equiv
+\{\omega\in\Omega\mid V(\omega)\in\{q_{.5}\}\}.
 $$
 
-This set is the [**preimage**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/02%3A_Probability_Spaces/2.09%3A_Probability_Spaces_Revisited) of $\{2\}$ under $H$.
+This set is the [**preimage**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/02%3A_Probability_Spaces/2.09%3A_Probability_Spaces_Revisited) of $\{q_{.5}\}$ under $V$. Here $q_{.5}$ is `r median_vowels`, and the preimage contains `r format(nrow(median_preimage), big.mark = ",")` entries.
 
-The superscript $-1$ does not say that $H$ has an inverse function. Both $\omega_2$ and $\omega_3$ map to 2, so the depth value does not recover one unique tree. The preimage collects every outcome whose mapped value belongs to the selected set.
+The superscript $-1$ does not say that $V$ has an inverse function. Many pronunciation entries map to the same vowel count, so the count cannot recover one unique entry. The preimage collects all of them.
 
-For the set $\{1,2\}$,
+```{r}
+#| label: plot-cmudict-preimage
+#| fig-cap: "Empirical vowel-phone counts. The accent bar marks the value whose preimage is inspected above."
+vowel_counts <- as.data.frame(table(cmu$vowel_phone_count))
+names(vowel_counts) <- c("vowel_phone_count", "entries")
+vowel_counts$vowel_phone_count <- as.integer(as.character(vowel_counts$vowel_phone_count))
+vowel_counts$selected <- vowel_counts$vowel_phone_count == median_vowels
 
-$$
-H^{-1}(\{1,2\})=\{\omega_1,\omega_2,\omega_3\}.
-$$
-
-The operation always moves from a set of values back to a set of outcomes. This backward move is what lets the original probability measure answer a question stated in the value space.
+ggplot(vowel_counts, aes(vowel_phone_count, entries, fill = selected)) +
+  geom_col(width = 0.8) +
+  scale_fill_manual(values = c(`FALSE` = "grey", `TRUE` = "steelblue"),
+                    guide = "none") +
+  labs(x = "Vowel phones in pronunciation", y = "Pronunciation entries") +
+  theme_classic(base_size = 12)
+```
 
 ## Stating measurability
 
-The function $H$ is a random variable when
+The function $V$ is a random variable when
 
 $$
-E\in\mathcal{G}
+E\in\mathcal G
 \quad\Longrightarrow\quad
-H^{-1}(E)\in\mathcal{F}.
+V^{-1}(E)\in\mathcal F.
 $$
 
 This condition is called [**measurability**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/02%3A_Probability_Spaces/2.09%3A_Probability_Spaces_Revisited). It says that every measurable question about the value corresponds to a measurable event in the original outcome space.
 
-If $\{2\}\in\mathcal{G}$, then the event $\{\omega_2,\omega_3\}$ must belong to $\mathcal{F}$. Otherwise the expression “the probability that embedding depth is 2” would refer to an event to which the model assigns no probability.
+If $\{q_{.5}\}\in\mathcal G$, then the set of pronunciation entries in its preimage must belong to $\mathcal F$. Otherwise the expression “the probability that a pronunciation has the median vowel count” would refer to an event to which the model assigns no probability.
 
-In a finite model with $\mathcal{F}\equiv2^\Omega$, every preimage is measurable because every subset of outcomes belongs to $\mathcal{F}$. The requirement becomes more substantive for larger outcome spaces, but its interpretation remains the same.
-
-## A case-coded pronoun enumeration
-
-Use the case-coded pronoun outcomes
-
-$$
-\begin{aligned}
-\Omega\equiv\{&\textit{I},\textit{me},
-\textit{you}_{[+\mathrm{acc}]},\textit{you}_{[-\mathrm{acc}]},
-\textit{they},\textit{them},
-\textit{it}_{[+\mathrm{acc}]},\textit{it}_{[-\mathrm{acc}]},\\
-&\textit{she},\textit{her},\textit{he},\textit{him},
-\textit{we},\textit{us}\}.
-\end{aligned}
-$$
-
-Define $V:\Omega\to\{1,\ldots,14\}$ by
-
-$$
-\begin{aligned}
-V(\textit{I})&\equiv1,
-&V(\textit{me})&\equiv2,
-&V(\textit{you}_{[+\mathrm{acc}]})&\equiv3,
-&V(\textit{you}_{[-\mathrm{acc}]})&\equiv4,\\
-V(\textit{they})&\equiv5,
-&V(\textit{them})&\equiv6,
-&V(\textit{it}_{[+\mathrm{acc}]})&\equiv7,
-&V(\textit{it}_{[-\mathrm{acc}]})&\equiv8,\\
-V(\textit{she})&\equiv9,
-&V(\textit{her})&\equiv10,
-&V(\textit{he})&\equiv11,
-&V(\textit{him})&\equiv12,\\
-V(\textit{we})&\equiv13,
-&V(\textit{us})&\equiv14.
-\end{aligned}
-$$
-
-For instance,
-
-$$
-V^{-1}(\{1,2,3\})
-=\{\textit{I},\textit{me},\textit{you}_{[+\mathrm{acc}]}\}
-$$
-
-and
-
-$$
-V^{-1}(\{12,13,14\})
-=\{\textit{him},\textit{we},\textit{us}\}.
-$$
-
-The enumeration is arbitrary. Its purpose is to demonstrate that a random variable maps individual outcomes to values, while a preimage maps a set of values back to an event.
+In this finite empirical model, $\mathcal F\equiv2^\Omega$, so every preimage is measurable because every subset of pronunciation entries belongs to $\mathcal F$. The requirement becomes more substantive for larger outcome spaces, but its interpretation remains the same.
 
 ## Reading probability notation through the preimage
 
-Once $H$ is defined, define probability notation for its values by
+Once $V$ is defined, probability notation for its values is shorthand:
 
 $$
-\mathbb{P}(H=2)
-\equiv\mathbb{P}\bigl(H^{-1}(\{2\})\bigr)
-=\mathbb{P}(\{\omega_2,\omega_3\}).
+\mathbb{P}(V=q_{.5})
+\equiv
+\mathbb{P}\bigl(V^{-1}(\{q_{.5}\})\bigr).
 $$
 
 Similarly,
 
 $$
-\mathbb{P}(H\leq2)
+\mathbb{P}(V\leq q_{.5})
 $$
 
-means the probability of the preimage of all depth values at or below 2. The notation is compact, but the probability measure still acts on an event of outcomes.
-
-## Checking the preimage in base R
-
-```{r}
-#| eval: false
-depth <- c(omega1 = 1, omega2 = 2, omega3 = 2)
-
-names(depth)[depth == 2]
-names(depth)[depth <= 2]
-```
-
-The first result encodes $H^{-1}(\{2\})$. The second encodes the preimage of the set of values at or below 2.
-
-## A many to one mapping has no inverse function
-
-One outcome cannot be recovered from a many to one mapping. The value 2 does not determine whether $\omega_2$ or $\omega_3$ occurred. The notation $H^{-1}(\{2\})$ denotes the preimage containing both outcomes rather than selecting one.
-
-A duration, rating, or word count rarely identifies the full linguistic record from which it was extracted. Many outcomes can map to the same random-variable value.
+means the probability of the preimage of all values at or below the median. The probability measure still acts on an event of outcomes.
 
 ## Check your understanding
 
-1. Using the table, compute $H^{-1}(\{1\})$ and $H^{-1}(\{1,2\})$.
-2. Why is a preimage a set of sentence tree outcomes rather than a set of depth values?
+1. Use `cmu` to compute $V^{-1}(\{1\})$. How many pronunciation entries does it contain?
+2. Why is a preimage a set of pronunciation entries rather than a set of vowel counts?
 3. State the measurability condition in words.
-4. If $\{\omega_2,\omega_3\}\notin\mathcal{F}$, which probability statement about $H$ becomes unavailable?
+4. Use `at_most_median_preimage` to compute the empirical probability $\mathbb{P}(V\leq q_{.5})$.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $V^{-1}(\{1\})$ contains the 16,935 pronunciation-entry outcomes with exactly one vowel phone. <!-- dqr-allow: empirical-answer -->
+2. A preimage is a subset of the domain, so its members are pronunciation entries mapped to one rather than the output value one itself. <!-- dqr-allow: empirical-answer -->
+3. Measurability requires the preimage of every measurable set of output values to be a measurable event in the pronunciation-entry space. <!-- dqr-allow: empirical-answer -->
+4. The empirical probability is $\mathbb{P}(V\leq q_{.5})=(16{,}935+61{,}493)/133{,}854=0.585922$. <!-- dqr-allow: empirical-answer -->
+
+</details>
 
 We now know what a random variable must preserve. The [next page](discrete-random-variables.qmd) considers variables whose possible values can be listed.

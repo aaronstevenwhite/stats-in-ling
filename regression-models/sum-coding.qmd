@@ -1,10 +1,131 @@
 ---
 title: "Sum coding"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+Treatment coding makes one observed category the reference. **Sum coding** instead makes the intercept the unweighted mean of the fitted category means at the numeric predictor reference values.
 
-**Available Wednesday, October 7, 2026.**
+## A different basis for the same MALD means
+
+For three levels, R's sum-coding matrix is
+
+$$
+\begin{array}{c|rr}
+&S_1&S_2\\\hline
+\text{noun}&1&0\\
+\text{verb}&0&1\\
+\text{adjective}&-1&-1
+\end{array}.
+$$
+
+The category-specific fitted means at centered numeric predictors are
+
+$$
+\mu_N=\beta_0+\beta_1,
+\qquad
+\mu_V=\beta_0+\beta_2,
+\qquad
+\mu_A=\beta_0-\beta_1-\beta_2.
+$$
+
+Averaging them gives
+
+$$
+\frac{\mu_N+\mu_V+\mu_A}{3}=\beta_0.
+$$
+
+## Verifying fitted-value invariance
+
+```{r}
+#| label: compare-mald-treatment-and-sum-coding
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+mald$n_phones_c <- mald$n_phones - mean(mald$n_phones)
+major_pos <- subset(
+  mald,
+  part_of_speech %in% c("Noun", "Verb", "Adjective")
+)
+
+treatment_data <- major_pos
+treatment_data$part_of_speech <- factor(
+  treatment_data$part_of_speech,
+  levels = c("Noun", "Verb", "Adjective")
+)
+contrasts(treatment_data$part_of_speech) <- contr.treatment(3)
+
+sum_data <- major_pos
+sum_data$part_of_speech <- factor(
+  sum_data$part_of_speech,
+  levels = c("Noun", "Verb", "Adjective")
+)
+contrasts(sum_data$part_of_speech) <- contr.sum(3)
+
+formula <- mean_log_rt ~ part_of_speech + log_frequency_c +
+  log_duration_c + n_phones_c
+fit_treatment <- lm(formula, data = treatment_data)
+fit_sum <- lm(formula, data = sum_data)
+maximum_fit_difference <- max(abs(
+  fitted(fit_treatment) - fitted(fit_sum)
+))
+
+stopifnot(maximum_fit_difference < 1e-10)
+
+contrasts(sum_data$part_of_speech)
+rbind(treatment = coef(fit_treatment), sum = coef(fit_sum))
+```
+
+The largest fitted-value difference is `r format(maximum_fit_difference, scientific = TRUE, digits = 2)`. The coefficients differ because the bases differ, but the column spaces and fitted item means are the same.
+
+```{r}
+#| label: plot-mald-sum-coding-means
+#| fig-cap: "Observed MALD item summaries and fitted category means. Recoding changes coefficients, not these fitted means."
+library(ggplot2)
+
+prediction_data <- data.frame(
+  part_of_speech = factor(
+    levels(treatment_data$part_of_speech),
+    levels = levels(treatment_data$part_of_speech)
+  ),
+  log_frequency_c = 0,
+  log_duration_c = 0,
+  n_phones_c = 0
+)
+prediction_data$fit <- predict(fit_treatment, newdata = prediction_data)
+
+point_opacity <- 0.08
+ggplot(treatment_data, aes(part_of_speech, mean_log_rt)) +
+  geom_jitter(color = "grey70", alpha = point_opacity, width = 0.16, height = 0, size = 0.6) +
+  geom_point(data = prediction_data, aes(y = fit), color = "#2C6E9B", size = 2) +
+  labs(
+    x = "Frequency-dominant part of speech",
+    y = "Mean log lexical-decision time"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The sum-coded intercept gives equal weight to the three fitted category means, not to the unequal numbers of noun, verb, and adjective items. That distinction should be named whenever the categories are unbalanced.
+
+## Check your understanding
+
+1. Why does the sum-coded intercept equal an unweighted category mean?
+2. Why can coefficients change while fitted values do not?
+3. Does the intercept weight categories by their observed sample sizes?
+4. What property of the design matrix is invariant under a full-rank recoding?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The three coded category deviations cancel, leaving the intercept equal to $(\mu_N+\mu_V+\mu_A)/3$. <!-- dqr-allow: empirical-answer -->
+2. A full-rank recoding changes the basis used to name coefficients while preserving the same design-matrix column space. <!-- dqr-allow: empirical-answer -->
+3. No. The sum-coded intercept gives each fitted category mean weight one third, regardless of the observed number of items in that category. <!-- dqr-allow: empirical-answer -->
+4. The column space, and thus the projection onto fitted values, is invariant. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](helmert-coding.qmd) uses ordered syllable bands to define successive comparisons.

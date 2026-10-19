@@ -1,183 +1,127 @@
 ---
 title: "The chi-squared test of independence"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [Fisher's exact test page](fishers-exact-test.qmd) constructed a finite conditional reference distribution for a two by two table. The chi-squared test of independence instead uses a large-sample reference approximation. Consider a constructed corpus table that classifies 300 nominal-expression tokens by grammatical role and expression type. Here, *lexical noun phrase* means a noun-headed phrase rather than a personal pronoun; it does not mean an orthographic word form. The table assumes that nonreferential uses, such as expletive *it*, have been excluded. The form labels alone would not establish that exclusion in a real corpus.
+The chi-squared test compares observed contingency-table counts with counts implied by independence. We continue with the complete Turkish UniMorph verb population introduced on the [preceding page](fishers-exact-test.qmd), now retaining four last stem-vowel classes.
 
-| | personal pronoun | lexical noun phrase | total |
-|---|---:|---:|---:|
-| subject | 120 | 30 | 150 |
-| object | 80 | 70 | 150 |
-| total | 200 | 100 | 300 |
+## Expected counts under independence
 
-The [**chi-squared test of independence**](https://openstax.org/books/introductory-business-statistics-2e/pages/11-4-test-of-independence) compares each observed cell count with the count expected if grammatical role and referring-expression type satisfied the [independence condition introduced earlier](../foundations/independence.qmd). The calculation thus begins by constructing the complete table implied by that condition.
-
-## Constructing one expected count
-
-Under independence,
+For row $i$, column $j$, and grand total $N$, the fitted independence probability is
 
 $$
-\mathbb{P}(\text{subject and pronoun})
-=
-\mathbb{P}(\text{subject})
-\mathbb{P}(\text{pronoun}).
+\widehat p_{ij}
+=\widehat p_{i+}\widehat p_{+j},
 $$
 
-The marginal probabilities estimated from the table are
-
-$$
-\widehat{\mathbb{P}}(\text{subject})
-=\frac{150}{300}=.5
-$$
-
-and
-
-$$
-\widehat{\mathbb{P}}(\text{pronoun})
-=\frac{200}{300}=\frac{2}{3}.
-$$
-
-Multiplying this joint probability by the grand total converts a probability for one sampled expression into the expected count among 300 expressions:
-
-$$
-E_{11}
-=300(.5)\left(\frac{2}{3}\right)
-=100.
-$$
-
-The same calculation can be written directly from the margins:
+so the expected count is
 
 $$
 E_{ij}
-=
-\frac{
-(\text{row }i\text{ total})
-\times
-(\text{column }j\text{ total})
-}{
-\text{grand total}
-}.
+=N\widehat p_{ij}
+=\frac{O_{i+}O_{+j}}{N}.
 $$
 
-The expected table under independence is
-
-| | personal pronoun | lexical noun phrase | total |
-|---|---:|---:|---:|
-| subject | 100 | 50 | 150 |
-| object | 100 | 50 | 150 |
-| total | 200 | 100 | 300 |
-
-The expected table has the same margins as the observed table. Only the allocation within rows differs.
-
-## Adding the cell discrepancies
-
-Pearson's statistic is
+Pearson's statistic aggregates standardized cell discrepancies:
 
 $$
-\chi^2
-=
-\sum_i\sum_j
-\frac{(O_{ij}-E_{ij})^2}{E_{ij}}.
+X^2
+=\sum_i\sum_j\frac{(O_{ij}-E_{ij})^2}{E_{ij}}.
 $$
 
-Every cell contributes a nonnegative quantity. For the subject-pronoun cell,
-
-$$
-\frac{(120-100)^2}{100}=4.
-$$
-
-For the subject-lexical-noun-phrase cell,
-
-$$
-\frac{(30-50)^2}{50}=8.
-$$
-
-The object row contributes the same two values:
-
-$$
-\frac{(80-100)^2}{100}=4
-$$
-
-and
-
-$$
-\frac{(70-50)^2}{50}=8.
-$$
-
-Thus
-
-$$
-\chi^2=4+8+4+8=24.
-$$
-
-Larger values record larger aggregate discrepancies from the independence table.
-
-## Determining the reference distribution
-
-For a table with $r$ rows and $c$ columns, the chi-squared reference distribution has
+For $r$ rows and $c$ columns, the reference distribution has
 
 $$
 \nu=(r-1)(c-1)
 $$
 
-degrees of freedom. Here,
+degrees of freedom. The signed Pearson residual
 
 $$
-\nu=(2-1)(2-1)=1.
+r_{ij}=\frac{O_{ij}-E_{ij}}{\sqrt{E_{ij}}}
 $$
 
-Once the margins are fixed, only one cell can vary freely. Its value determines the other three counts, which gives the same one degree of freedom seen in the formula.
+retains the direction that disappears after squaring.
 
-The upper-tail probability is
+## The resource census
 
 ```{r}
-#| label: chi-squared-reference-table
-#| echo: true
+#| label: fit-unimorph-chi-squared
+library(ggplot2)
 
-reference_table <- matrix(
-  c(120, 30,
-     80, 70),
-  nrow = 2,
-  byrow = TRUE
+population <- read.csv(
+  "data/unimorph-turkish/verb-past-population.csv",
+  stringsAsFactors = FALSE
+)
+tab <- table(
+  vowel_class = population$vowel_class,
+  t_initial = population$t_initial
+)
+result <- chisq.test(tab, correct = FALSE)
+
+cells <- as.data.frame(tab, responseName = "observed")
+cells$expected <- as.numeric(result$expected)
+cells$pearson_residual <- as.numeric(result$residuals)
+cells$past_initial <- ifelse(cells$t_initial == "1", "t", "d")
+
+cramers_v <- sqrt(
+  unname(result$statistic) /
+    (sum(tab) * min(nrow(tab) - 1L, ncol(tab) - 1L))
 )
 
-result <- chisq.test(reference_table, correct = FALSE)
-expected <- result$expected
-contributions <- (reference_table - expected)^2 / expected
-p_value <- pchisq(24, df = 1, lower.tail = FALSE)
+stopifnot(nrow(population) == 588L, min(result$expected) > 5)
 
-stopifnot(isTRUE(all.equal(as.numeric(expected), c(100, 100, 50, 50))))
-stopifnot(isTRUE(all.equal(sum(contributions), 24)))
-stopifnot(abs(p_value - 9.63357e-07) < 0.000000000001)
-
-expected
-contributions
-c(chisq = unname(result$statistic), p = p_value)
+data.frame(
+  lexemes = sum(tab),
+  chi_squared = unname(result$statistic),
+  df = unname(result$parameter),
+  reference_p_value = result$p.value,
+  minimum_expected = min(result$expected),
+  cramers_v = cramers_v
+)
 ```
 
-The p value is approximately $9.63\times10^{-7}$. The observed allocation would be highly unusual under the approximate independence reference model.
+The code yields $X^2=$ `r sprintf("%.4f", unname(result$statistic))` with `r unname(result$parameter)` degrees of freedom. The minimum expected count is `r sprintf("%.3f", min(result$expected))`, so sparse expected cells are not the main approximation concern.
 
-## Localizing the discrepancy
+```{r}
+#| label: plot-unimorph-chi-squared
+#| fig-cap: "Observed lexeme counts (filled points) and independence-expected counts (open points)."
+cells$vowel_class <- factor(
+  cells$vowel_class,
+  levels = c("back_unrounded", "back_rounded", "front_unrounded", "front_rounded")
+)
 
-The total statistic is omnibus. It shows that the complete table departs from independence, but it does not say that every imaginable comparison differs.
+ggplot(cells, aes(y = vowel_class)) +
+  geom_segment(aes(x = expected, xend = observed, yend = vowel_class),
+               color = "grey65", linewidth = 0.6) +
+  geom_point(aes(x = expected), shape = 1, color = "#8B1A1A", size = 2.3) +
+  geom_point(aes(x = observed), color = "grey25", size = 2.1) +
+  facet_wrap(~past_initial, ncol = 2, scales = "free_x") +
+  labs(x = "Lexeme count", y = "Last stem-vowel class") +
+  theme_classic(base_size = 12)
+```
 
-The signed differences reveal the pattern: subjects have 20 more personal pronouns and 20 fewer lexical noun phrases than expected, while objects show the reverse. Because each deviation is squared in $\chi^2$, the total statistic itself discards direction.
-
-An omnibus rejection does not identify which cells produce the association. Inspect observed counts, expected counts, and signed residuals to state where the association lies.
-
-## Checking the approximation and independence
-
-The chi-squared reference distribution is a large-sample approximation. It tends to work better when expected cell counts are not sparse. Every expected count here is at least 50, so sparsity is not the main concern.
-
-Observation independence is separate. Repeated expressions from the same speaker or document can be dependent even when all expected counts are large. Large counts do not repair clustered sampling.
-
-For a sparse two-by-two table, [Fisher's exact test](fishers-exact-test.qmd) supplies a finite-sample conditional calculation. If multiple predictors, interactions, or repeated units matter, a regression model can represent more of the linguistic structure than either table test.
+The reference p value is `r sprintf("%.4f", result$p.value)` and Cramer's $V$ is `r sprintf("%.4f", cramers_v)`. But the 588 rows are a census of the pinned resource-defined population. A reference p value is pedagogically useful for showing the chi-squared calculation; it is not needed to learn whether these rows differ from themselves and does not create an inference to Turkish token use.
 
 ## Check your understanding
 
-1. Calculate the expected object-pronoun count from the margins.
-2. Why does a two-by-two table have one degree of freedom once its margins are fixed?
-3. Which cells contribute most to $\chi^2$, and why?
-4. Why can document clustering invalidate the test even when every expected count is large?
+1. Derive one expected count from its row and column margins using `tab`.
+2. Why are residuals signed while cell contributions to $X^2$ are not?
+3. How are the degrees of freedom determined?
+4. Why is Cramer's $V$ more interpretable here than the reference p value alone?
 
-The next section develops [posterior distributions](posterior-distributions.qmd), which represent uncertainty about parameter values using a different inferential framework.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. For the back-rounded/*d*-initial cell, $E=(78\times388)/588=51.469$ lexemes; the same row-total times column-total over grand-total rule gives every other expected count. <!-- dqr-allow: empirical-answer -->
+2. A Pearson residual retains the sign of $O_{ij}-E_{ij}$, whereas each $X^2$ contribution squares that discrepancy and is nonnegative. <!-- dqr-allow: empirical-answer -->
+3. With four vowel-class rows and two ending-initial columns, $\nu=(4-1)(2-1)=3$. <!-- dqr-allow: empirical-answer -->
+4. Cramer's $V$ describes association magnitude in the complete pinned resource, whereas the reference p value mainly reflects a model-based repeated-sampling calculation that the census does not need. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The next section begins with [posterior distributions](posterior-distributions.qmd), which represent parameter uncertainty under a different inferential framework.

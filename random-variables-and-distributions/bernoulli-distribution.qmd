@@ -7,122 +7,89 @@ execute:
   message: false
 ---
 
-The [categorical distribution](bernoulli-and-categorical-distributions.qmd) permits any finite support. What changes when the scientific question divides those outcomes into just two classes, target and nontarget? The Bernoulli family represents that binary case.
-
-Return to the case-coded pronoun sample space and define the accusative event
-
-$$
-A_{14}\equiv\{\textit{me},\textit{you}_{[+\mathrm{acc}]},\textit{them},
-\textit{her},\textit{him},\textit{it}_{[+\mathrm{acc}]},\textit{us}\}.
-$$
-
-Define the indicator random variable
-
-$$
-X(\omega)
-\equiv
-\begin{cases}
-1,&\omega\in A_{14},\\
-0,&\omega\notin A_{14}.
-\end{cases}
-$$
-
-The range of $X$ is $\{0,1\}$ even though the sample space contains fourteen pronoun outcomes. This is the decisive compression: the Bernoulli restriction concerns the random variable's range, not the size of $\Omega$.
-
-The binary code presupposes a case annotation for syncretic surface forms such as *you* and *it*. The [Universal Dependencies English guidelines](https://universaldependencies.org/docsv1/en/feat/Case.html) use syntactic context for that annotation; the surface string alone does not supply it.
-
-## Definition
-
-Basically, one parameter records the probability of the event coded as 1, and the remaining probability goes to 0. More specifically, the [**Bernoulli distribution**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) assigns probability to a binary random variable. For $\pi\in[0,1]$, we write
-
-$$
-X\sim\operatorname{Bernoulli}(\pi)
-$$
-
-when
-
-$$
-p_X(x)
-\equiv\mathbb P(X=x)
-=\pi^x(1-\pi)^{1-x},
-\qquad x\in\{0,1\}.
-$$
-
-Substituting the two support values gives
-
-$$
-p_X(1)=\pi
-\qquad\text{and}\qquad
-p_X(0)=1-\pi.
-$$
-
-Thus $\pi$ is the probability of the event coded as one. The definition of $X$ makes that event explicit.
-
-## The pronoun-case example
-
-Set $\pi=.27$. Then
-
-$$
-p_X(1)=.27
-\qquad\text{and}\qquad
-p_X(0)=.73.
-$$
+The [preceding page](bernoulli-and-categorical-distributions.qmd) mapped each interrogative argument in the Turkish BOUN extract to an object indicator. The **Bernoulli distribution** describes that single binary measurement.
 
 ```{r}
-case_code <- 0:1
-case_mass <- dbinom(case_code, size = 1, prob = .27)
+#| label: load-ud-bernoulli
+library(ggplot2)
 
-plot(case_code, case_mass, type = "h", lwd = 5, lend = 1,
-     col = "#B2182B", xaxt = "n", xlab = "Case", ylab = "Probability",
-     main = "PMF for the Bernoulli distribution on pronoun case",
-     ylim = c(0, .8), bty = "l")
-axis(1, at = case_code, labels = c("[-acc]", "[+acc]"))
-points(case_code, case_mass, pch = 19, col = "#B2182B")
+questions <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE
+)
+O <- questions$object
+p_hat <- mean(O)
+bernoulli_pmf <- data.frame(
+  object = 0:1,
+  count = c(sum(O == 0), sum(O == 1)),
+  probability = c(mean(O == 0), mean(O == 1)) # dqr-allow: scale-boundary
+)
+
+stopifnot(
+  length(O) == 167L,
+  all(O %in% 0:1),
+  abs(sum(bernoulli_pmf$probability) - 1) < 1e-12,
+  abs(mean((O - p_hat)^2) - p_hat * (1 - p_hat)) < 1e-12
+)
+
+bernoulli_pmf
 ```
 
-## Mean and variance
+## Mass, expectation, and variance
 
-The expected value is
+For $O\in\{0,1\}$,
+
+$$
+\mathbb{P}(O=o)=p^o(1-p)^{1-o}.
+$$
+
+Because $O^2=O$, its expectation and variance follow directly:
+
+$$
+\mathbb{E}[O]=0(1-p)+1p=p,
+$$
 
 $$
 \begin{aligned}
-\mathbb E[X]
-&=0(1-\pi)+1(\pi)\\
-&=\pi.
+\operatorname{Var}[O]
+&=\mathbb{E}[O^2]-\mathbb{E}[O]^2\\
+&=p-p^2\\
+&=p(1-p).
 \end{aligned}
 $$
 
-The variance is
+Substituting the corpus-fitted value gives an expectation of `r sprintf("%.3f", p_hat)` and a variance of `r sprintf("%.3f", p_hat * (1 - p_hat))`. The expectation has an immediate interpretation: it is the empirical proportion of retained interrogative arguments annotated `obj`.
 
-$$
-\begin{aligned}
-\operatorname{Var}(X)
-&=(0-\pi)^2(1-\pi)+(1-\pi)^2\pi\\
-&=\pi(1-\pi).
-\end{aligned}
-$$
+```{r}
+#| label: plot-ud-bernoulli
+#| fig-cap: "Observed Bernoulli mass for subject and object relations in the Turkish BOUN extract."
+bernoulli_pmf$relation <- ifelse(bernoulli_pmf$object == 1, "obj", "nsubj")
 
-For $\pi=.27$, $\operatorname{Var}(X)=.27(.73)=.1971$.
+ggplot(bernoulli_pmf, aes(relation, probability)) +
+  geom_col(fill = "grey45", width = 0.65) +
+  labs(x = "Annotated dependency relation", y = "Empirical probability") +
+  theme_classic(base_size = 12)
+```
 
-## Why the case coding matters
+## What the model does not say
 
-If the surface forms *you* and *it* are not split into case-coded outcomes, a binary case variable is not defined for them without an additional annotation rule. Let $A_{12}$ and $N_{12}$ be the overlapping accusative and nonaccusative events in the twelve-form space. One option is a three-valued variable:
-
-$$
-C(\omega)
-\equiv
-\begin{cases}
-2,&\omega\in A_{12}\cap N_{12},\\
-1,&\omega\in A_{12}\setminus N_{12},\\
-0,&\omega\in N_{12}\setminus A_{12},
-\end{cases}
-$$
-
-This variable is categorical, not Bernoulli. Alternatively, a pair of indicators can record membership in $A_{12}$ and $N_{12}$ separately.
+The fitted $p$ summarizes the retained token table. It does not say that every sentence has the same object probability, nor does it describe repeated independent sampling from Turkish. Sentence and register identifiers remain available because discourse context and sampling structure may matter.
 
 ## Check your understanding
 
-1. Explain why fourteen pronoun outcomes can induce a two-valued Bernoulli variable.
-2. Reverse the coding so that nonaccusative case receives one. State the new Bernoulli parameter.
-3. Derive $\mathbb E[X]$ and $\operatorname{Var}(X)$ from the two PMF values.
-4. Explain why the unsplit surface forms *you* and *it* require a nonbinary representation or an additional case annotation.
+1. Verify the identity $\widehat{\operatorname{Var}}(O)=\widehat p(1-\widehat p)$ from the individual rows.
+2. Compute the empirical Bernoulli PMF for the indicator `lemma == "ne"`.
+3. What linguistic distinction does the current zero value encode?
+4. Why is $\mathbb{E}[O]$ both a mean and a proportion?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The row-level indicator variance is $\widehat{\operatorname{Var}}[O]=0.212127$, equal to $\widehat p(1-\widehat p)=0.694611(0.305389)$. <!-- dqr-allow: empirical-answer -->
+2. For the *ne* indicator, $p(0)=20/167=0.119760$ and $p(1)=147/167=0.880240$. <!-- dqr-allow: empirical-answer -->
+3. For the object indicator $O$, zero encodes the linguistic alternative `nsubj` rather than an absence of data. <!-- dqr-allow: empirical-answer -->
+4. $\mathbb{E}[O]=0\,p_O(0)+1\,p_O(1)=p_O(1)$, which is both the sample mean of the zero-one values and the proportion of object tokens. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [binomial distribution](binomial-distribution.qmd) describes the count obtained by summing independent Bernoulli variables.

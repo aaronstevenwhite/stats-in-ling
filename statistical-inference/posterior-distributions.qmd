@@ -1,170 +1,179 @@
 ---
 title: "Posterior distributions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The foundations chapter derived [Bayes' rule](../foundations/bayes-rule.qmd), and the frequentist sequence distinguished a [likelihood from a probability distribution over observations](maximum-likelihood.qmd). We now use both distinctions to construct a posterior distribution.
+The foundations chapter derived [Bayes' rule](../foundations/bayes-rule.qmd), and the frequentist sequence distinguished a [likelihood from a probability distribution over observations](maximum-likelihood.qmd). We now combine the two to construct a posterior distribution from an observed linguistic resource.
 
-Suppose a participant hears *The boys carried a piano up the stairs* and chooses between a picture in which the boys act together and one in which each boy acts separately. These are the [collective and distributive readings of a plural predication](https://pmc.ncbi.nlm.nih.gov/articles/PMC2864947/). They are not reciprocal readings: a reciprocal would express a relation that the boys bear to one another. Let $X_i=1$ mark a collective response on trial $i$, and let $\Theta$ be the probability of that response in the declared population and task.
+## A finite-resource bridge
 
-Bayesian inference represents uncertainty about $\Theta$ with a probability distribution, whose form before observing the present responses is the [**prior distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html). The question is how the response data redistribute that probability. This redistributed probability forms the [**posterior distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html).
+We use the Turkish table from the [UniMorph release pinned at commit `6c179ac`](https://github.com/unimorph/tur/tree/6c179ace7d2f3d7f3484020e5304c1544d07bb6b). Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) describe its use in a morphological-reinflection task, and Batsuren et al. ([2022](https://aclanthology.org/2022.lrec-1.89/)) describe UniMorph as a type-level resource of lemma--form--feature triples. The data are CC BY-SA 3.0.
 
-## Beginning with a finite parameter space
-
-To make the update visible by hand, suppose the model initially permits three possible response probabilities:
-
-$$
-\Theta\in\{.25,.50,.75\}.
-$$
-
-Assign prior probabilities
-
-| $\theta$ | $\mathbb{P}(\Theta=\theta)$ |
-|---:|---:|
-| $.25$ | $.20$ |
-| $.50$ | $.50$ |
-| $.75$ | $.30$ |
-
-These numbers describe uncertainty about the parameter before the present sample; they do not say that a response is 20%, 50%, or 30% likely to be collective. Conditional on $\Theta=\theta$, the Bernoulli model supplies the response probability $\theta$.
-
-Now observe the ordered response vector $\mathbf{x}=(1,1,1,0)$. Conditional on $\Theta=\theta$, assume the four responses are independent Bernoulli variables with a shared response probability. The probability mass of this particular vector is
-
-$$
-\mathbb{P}(\mathbf{X}=\mathbf{x}\mid\Theta=\theta)
-=
-\theta^3(1-\theta).
-$$
-
-For fixed $\theta$, this expression is one value in the probability distribution over possible response vectors. Once $\mathbf{x}$ is observed, the same expression viewed as a function of $\theta$ is the likelihood. It is not a probability distribution over the three parameter values.
-
-## Multiplying prior support by data support
-
-Bayes' rule is
-
-$$
-\mathbb{P}(\Theta=\theta\mid\mathbf{X}=\mathbf{x})
-=
-\frac{
-\mathbb{P}(\mathbf{X}=\mathbf{x}\mid\Theta=\theta)
-\mathbb{P}(\Theta=\theta)
-}{
-\mathbb{P}(\mathbf{X}=\mathbf{x})
-}.
-$$
-
-For the finite parameter space, we can update in three steps: first, evaluate the likelihood at each value; second, multiply by the corresponding prior probability; and third, divide each product by the sum of all three products.
-
-| $\theta$ | data probability, viewed as likelihood | prior probability | unnormalized posterior |
-|---:|---:|---:|---:|
-| $.25$ | $.01171875$ | $.20$ | $.00234375$ |
-| $.50$ | $.0625$ | $.50$ | $.03125$ |
-| $.75$ | $.10546875$ | $.30$ | $.031640625$ |
-
-The normalizing constant is
-
-$$
-Z
-=.00234375+.03125+.031640625
-=.065234375.
-$$
-
-Dividing each product by $Z$ gives posterior probabilities of approximately $.0359$, $.4791$, and $.4850$.
+The course table retains 588 distinct verb lexemes with one form in the feature cell `V;IND;PST;3;SG;POS;DECL`. A row is a lexeme--paradigm cell, not a usage token. The binary variable $Z_i$ marks whether the course-derived two-character ending begins with *t*. This ending is an orthographic measurement, not a UniMorph morpheme boundary.
 
 ```{r}
-#| label: discrete-posterior-update
-#| echo: true
+#| label: load-unimorph-posterior
+library(ggplot2)
 
-theta <- c(.25, .50, .75)
-prior <- c(.20, .50, .30)
-likelihood_kernel <- theta^3 * (1 - theta)
-unnormalized <- prior * likelihood_kernel
-posterior <- unnormalized / sum(unnormalized)
+population <- read.csv(
+  "data/unimorph-turkish/verb-past-population.csv",
+  stringsAsFactors = FALSE
+)
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
+)
 
-stopifnot(abs(sum(posterior) - 1) < 1e-12)
-stopifnot(isTRUE(all.equal(
-  posterior,
-  c(0.03592814, 0.47904192, 0.48502994),
-  tolerance = 1e-7
-)))
+N <- nrow(population)
+K <- sum(population$t_initial)
+n <- nrow(sample_120)
+k <- sum(sample_120$t_initial)
+resource_share <- K / N
 
-data.frame(theta, prior, likelihood_kernel, posterior)
+stopifnot(
+  N == 588L, K == 200L, n == 120L, k == 42L,
+  !anyDuplicated(population$lemma),
+  all(sample_120$lemma %in% population$lemma)
+)
+
+data.frame(N, K, n, k, resource_share, sample_share = k / n)
 ```
 
-The data favor larger values because three of four responses were collective. The prior gives substantial mass to $.50$, so the posterior probabilities for $.50$ and $.75$ are nearly equal. This result is an update from a particular prior through a particular likelihood.
+The value $K/N=$ `r sprintf("%.6f", resource_share)` is known because the complete pinned resource is available. There is no posterior uncertainty about that finite-resource proportion.
 
-## Understanding the normalizer
+To introduce Bayesian updating, we state a different model. We call it the **finite-resource bridge** (FRB): posit an exchangeable superpopulation from which lexeme cells are independently drawn,
+
+$$
+Z_i\mid\Theta=\theta
+\overset{\mathrm{iid}}{\sim}
+\operatorname{Bernoulli}(\theta),
+\qquad
+\Theta\sim\operatorname{Beta}(1,1).
+$$
+
+The FRB is a counterfactual teaching model, not the actual design. The committed 120-row sample was drawn without replacement from the known 588-row resource, so the independent Bernoulli design does not describe that sampling procedure.
+
+## Updating a continuous parameter
+
+Bayes' rule for a continuous parameter is
+
+$$
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)
+=
+\frac{
+p_{\mathbf Z\mid\Theta}(\mathbf z\mid\theta)f_\Theta(\theta)
+}{
+p_{\mathbf Z}(\mathbf z)
+}.
+$$
 
 The denominator
 
 $$
-\mathbb{P}(\mathbf{X}=\mathbf{x})
+p_{\mathbf Z}(\mathbf z)
 =
-\sum_{\theta\in\operatorname{cod}(\Theta)}
-\mathbb{P}(\mathbf{X}=\mathbf{x}\mid\Theta=\theta)
-\mathbb{P}(\Theta=\theta)
+\int_0^1
+p_{\mathbf Z\mid\Theta}(\mathbf z\mid\theta)
+f_\Theta(\theta)\,\mathrm d\theta
 $$
 
-is the prior predictive probability of the particular observed vector. It does not depend on which $\theta$ is being evaluated. In the current calculation it equals $Z=.065234375$, and dividing by it makes the posterior probabilities sum to one.
-
-For a continuous parameter, prior and posterior uncertainty are represented by densities. With the same discrete response vector, the normalizer becomes
+normalizes the numerator. For $k$ focal cells among $n$ exchangeable Bernoulli observations, the likelihood kernel is
 
 $$
-\mathbb{P}(\mathbf{X}=\mathbf{x})
-=
-\int
-\mathbb{P}(\mathbf{X}=\mathbf{x}\mid\Theta=\theta)
-f_\Theta(\theta)
-\,\mathrm{d}\theta.
-$$
-
-The posterior density is thus
-
-$$
-f_{\Theta\mid\mathbf{X}}(\theta\mid\mathbf{x})
-=
-\frac{
-\mathbb{P}(\mathbf{X}=\mathbf{x}\mid\Theta=\theta)
-f_\Theta(\theta)
-}{
-\mathbb{P}(\mathbf{X}=\mathbf{x})
-}.
-$$
-
-We retain the distinction between the observation PMF and the parameter density. The shorter proportionality is
-
-$$
-f_{\Theta\mid\mathbf X}(\theta\mid\mathbf{x})
+p_{\mathbf Z\mid\Theta}(\mathbf z\mid\theta)
 \propto
-p_{\mathbf X\mid\Theta}(\mathbf{x}\mid\theta)f_\Theta(\theta)
+\theta^k(1-\theta)^{n-k}.
 $$
 
-when we first care about posterior shape. Here $p_{\mathbf X\mid\Theta}$ is a PMF over the discrete response vector and $f_\Theta$ is a density over the continuous parameter. A normalized posterior density is still required before assigning posterior probabilities or calculating expectations.
-
-## Interpreting a continuous density
-
-For a continuous parameter, $f_{\Theta\mid\mathbf{X}}(\theta\mid\mathbf{x})$ is a density rather than the probability that $\Theta$ equals exactly $\theta$. The probability of any single point is zero. Posterior probability is assigned to an interval by integrating:
+Multiplying by the $\operatorname{Beta}(1,1)$ prior gives
 
 $$
-\mathbb{P}(a<\Theta<b\mid\mathbf{X}=\mathbf{x})
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)
+\propto
+\theta^{1+k-1}(1-\theta)^{1+n-k-1},
+$$
+
+so the FRB posterior is
+
+$$
+\Theta\mid\mathbf z
+\sim
+\operatorname{Beta}(1+k,1+n-k).
+$$
+
+```{r}
+#| label: compute-unimorph-posterior
+prior_alpha <- 1
+prior_beta <- 1
+posterior_alpha <- prior_alpha + k
+posterior_beta <- prior_beta + n - k
+
+theta_grid <- seq(0, 1, length.out = 1001L)
+posterior_density <- data.frame(
+  theta = theta_grid,
+  prior = dbeta(theta_grid, prior_alpha, prior_beta),
+  posterior = dbeta(theta_grid, posterior_alpha, posterior_beta)
+)
+
+stopifnot(posterior_alpha == 43L, posterior_beta == 79L)
+data.frame(posterior_alpha, posterior_beta)
+```
+
+The 42 observed *t*-initial cells and 78 other cells update the prior to a beta distribution with shape parameters `r posterior_alpha` and `r posterior_beta`.
+
+```{r}
+#| label: plot-unimorph-posterior
+#| fig-cap: "Prior and FRB posterior densities. The vertical line is the known proportion in the pinned resource, not an uncertain parameter estimate."
+posterior_long <- rbind(
+  data.frame(theta = theta_grid, density = posterior_density$prior,
+             distribution = "prior"),
+  data.frame(theta = theta_grid, density = posterior_density$posterior,
+             distribution = "posterior")
+)
+
+ggplot(posterior_long, aes(theta, density, linetype = distribution)) +
+  geom_line(color = "#8B1A1A", linewidth = 0.85) +
+  geom_vline(xintercept = resource_share, color = "grey35", linewidth = 0.6) +
+  labs(x = "Modeled share of lexeme cells with a t-initial ending",
+       y = "Density", linetype = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
+
+For a continuous parameter, the density at one point is not a point probability. Posterior probabilities are integrals over intervals:
+
+$$
+\mathbb{P}(a<\Theta<b\mid\mathbf z)
 =
 \int_a^b
-f_{\Theta\mid\mathbf{X}}(\theta\mid\mathbf{x})
-\,\mathrm{d}\theta.
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)\,\mathrm d\theta.
 $$
 
-A higher density at $.75$ than at $.50$ says that a small neighborhood around $.75$ receives more posterior mass per unit width. It does not assign positive probability to the exact point $.75$ in a continuous model.
+The shorter statement $f(\theta\mid\mathbf z)\propto p(\mathbf z\mid\theta)f(\theta)$ identifies posterior shape, but a normalized density is required before we assign such probabilities.
 
-## Keeping the conditioning direction visible
+## What the posterior does not say
 
-The [error of transposing a conditional probability](../foundations/bayes-rule.qmd#the-order-of-the-events) also applies here. The likelihood evaluates the observed data as a function of a candidate parameter, whereas the posterior distributes uncertainty over parameter values after conditioning on those data. Bayes' rule connects the two quantities, but it does not make them interchangeable.
-
-Posterior uncertainty is also not computational error. In the hand calculation, the posterior probabilities are exact under the model. Later simulation methods will approximate posterior summaries and add Monte Carlo error, but that error is not part of the posterior itself.
+The likelihood evaluates the fixed sample as a function of $\theta$; the posterior distributes model-based uncertainty over $\theta$ after conditioning on that sample. Neither quantity changes the known resource proportion. And because UniMorph supplies types rather than token frequencies, the FRB posterior does not estimate how often *t*-initial past endings occur in Turkish use.
 
 ## Check your understanding
 
-1. Which quantity is fixed when evaluating $p_{\mathbf X\mid\Theta}(\mathbf{x}\mid\theta)$?
-2. Why do the unnormalized posterior values not sum to one?
-3. What role does $p_{\mathbf X}(\mathbf{x})$ play in Bayes' rule?
-4. If the prior put all its probability on $\theta=.25$, could these data create posterior support at $.75$ under this model?
-5. Why is a continuous posterior density at one point not a point probability?
+1. Which quantity is fixed when the likelihood is evaluated?
+2. Why is $200/588$ not uncertain in this analysis?
+3. Which assumption makes the FRB a counterfactual superpopulation model rather than a description of the committed sample?
+4. Why is a posterior density at one value not a point probability?
 
-The [posterior-summaries page](posterior-summaries.qmd) shows how a posterior distribution supports probability statements, expectations, and intervals.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The observed sample $\mathbf z$, including $n=120$ and $k=42$, is fixed while the likelihood varies over $\theta$. <!-- dqr-allow: empirical-answer -->
+2. The complete pinned resource is observed, so its 200 focal rows and 588 total rows are fixed counts rather than uncertain parameters. <!-- dqr-allow: empirical-answer -->
+3. The FRB assumes independent, exchangeable Bernoulli draws from a superpopulation, while the committed sample was drawn without replacement from the known finite resource. <!-- dqr-allow: empirical-answer -->
+4. For a continuous parameter, probability is an integral over an interval; a density value at one point is not probability mass at that point. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [posterior-summaries page](posterior-summaries.qmd) extracts several distinct claims from this posterior.

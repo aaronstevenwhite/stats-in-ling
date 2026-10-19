@@ -2,103 +2,135 @@
 title: "Turning a question into a comparison"
 ---
 
-Suppose we want to know whether [complement coercion](https://pubmed.ncbi.nlm.nih.gov/10380662/) adds processing cost. In a coercion condition, an aspectual verb combines with an entity-denoting complement, as in *began the book*, and the reader must recover an eventive interpretation such as beginning to read it. What comparison would bear on that question? Imagine that a self-paced reading study produced the following hypothetical averages over a predefined complement-plus-spillover region:
+How much higher is F1 in *hid* /ɪ/ than in *heed* /i/ for the speakers in the Hillenbrand study? A numerical subtraction is interpretable only after we align its unit, response, linguistic contrast, comparison, and target. We call failures of this alignment the **comparison-alignment problem**.
 
-| condition | average reading time |
-|---|---:|
-| noncoercing control | 410 ms |
-| coercion condition | 455 ms |
+We continue with the [Hillenbrand vowel table introduced on the preceding page](linguistic-data.qmd). One row is one /hVd/ token nested within a speaker. Hillenbrand et al. (1995) used the measurements to compare vowel acoustics and identification; the smaller analysis here isolates one paired acoustic contrast without attempting to reproduce their discriminant analyses.
 
-The coercion condition is 45 ms slower, but the numbers are illustrative rather than reported results. Complement coercion may have increased processing time, though the item sets might instead differ in lexical frequency or a small subset of participants might account for most of the difference. Prior studies also differ in whether and where a coercion cost appears, including [reading-time work on complement coercion](https://pubmed.ncbi.nlm.nih.gov/11062325/). The subtraction alone cannot distinguish these possibilities or identify the mechanism that produced a reading-time difference.
+```{r}
+#| label: load-paired-vowels
+library(ggplot2)
 
-This gap between a numerical difference and the claim it is meant to support is the **comparison-alignment problem**. We can interpret the 45 millisecond difference only after specifying the response, the linguistic contrast, the observations being compared, and the population quantity to be estimated.
+vowels <- read.csv("data/hillenbrand/vowels-complete.csv")
+pair_long <- subset(vowels, vowel %in% c("i", "I"),
+                    select = c(speaker_id, speaker_type, vowel, f1_hz))
 
-## Step 1: identify the response
+heed <- subset(pair_long, vowel == "i",
+               select = c(speaker_id, speaker_type, f1_hz))
+hid <- subset(pair_long, vowel == "I",
+              select = c(speaker_id, f1_hz))
+names(heed)[names(heed) == "f1_hz"] <- "heed_f1_hz"
+names(hid)[names(hid) == "f1_hz"] <- "hid_f1_hz"
 
-Begin with what was measured. The [**response**](https://openstax.org/books/introductory-statistics-2e/pages/1-1-definitions-of-statistics-probability-and-key-terms) is the measurement whose variation we want to understand, here reading time over a declared analysis region.
+pairs <- merge(heed, hid, by = "speaker_id", all = FALSE)
+pairs$difference_hz <- pairs$hid_f1_hz - pairs$heed_f1_hz
 
-Calling the response *reading time* does not tell us enough. We must say which reading-time measure was used, whether it was transformed, what its units are, and where in the sentence it was measured.
+stopifnot(
+  nrow(pairs) == length(unique(vowels$speaker_id)),
+  !anyDuplicated(pairs$speaker_id),
+  all(pairs$difference_hz == pairs$hid_f1_hz - pairs$heed_f1_hz)
+)
+```
 
-A complete response specification is:
+## Response and linguistic contrast
 
-> The response is total self-paced reading time in milliseconds over the predefined complement-plus-spillover region on one participant and sentence trial.
+The **response** is steady-state F1 in hertz. The predictor is vowel category, restricted to the intended vowels /i/ and /ɪ/. Because each of the `r nrow(pairs)` speakers produced both vowels, the comparison is within speaker.
 
-## Step 2: identify the linguistic contrast
+A response specification should name what was measured, its units, and the token at which it was measured:
 
-Now state what separates the observations. The main [**predictor**](https://openstax.org/books/introductory-statistics-2e/pages/1-1-definitions-of-statistics-probability-and-key-terms) distinguishes the observations that the theory says should differ, here by recording whether a trial contains a coercion configuration or a noncoercing control.
+> The response is steady-state first-formant frequency in hertz for one /hVd/ vowel token.
 
-The values must correspond to an actual design contrast. If all coercion sentences contain one set of verbs and all control sentences contain another, the predictor does not isolate complement coercion. It also separates the two verb sets.
+The release's F1 values were measured at a time judged maximally steady. They are not trajectories over the full vowel.
 
-A predictor is not theoretically interesting merely because it appears as a column in the dataset. Its values should encode a linguistic distinction that some account relates to the response.
+## Observations being compared
 
-For a corpus study of the [English dative alternation](https://stanford.edu/~bresnan/CFI04.pdf), predictors might encode the recipient's pronominality, the discourse accessibility of the recipient and theme, and their relative length. These properties are associated with speakers' choice between the double-object and prepositional-dative constructions, but a corpus association does not by itself establish a categorical grammatical constraint or a production mechanism. Trial number or recording channel may also predict the response, but those predictors describe the design or measurement process rather than the proposed linguistic explanation.
+The paired difference for speaker $s$ is
 
-## Step 3: say which observations are being compared
+$$
+d_s
+\equiv
+F1_{s,\text{/ɪ/}}-F1_{s,\text{/i/}}.
+$$
 
-Knowing the response and predictor is not yet enough, since we must also ask which observations supply the contrast. Imagine that every participant sees both conditions and every sentence frame appears in both conditions across participants. The comparison then occurs within participants and within sentence items.
+This subtraction holds the speaker fixed. Comparing two unpaired vowel means would produce the same difference of sample means in this complete balanced table, but it would discard the design fact that the two measurements came from the same vocal tract.
 
-Because every participant and every sentence occurs in both conditions, neither participant group nor sentence set is confounded with condition. If different participants received the two conditions, a condition difference could instead reflect a preexisting difference between the groups. If different sentences appeared in the two conditions, it could reflect lexical differences between the item sets.
+```{r}
+#| label: summarize-paired-vowels
+mean_difference <- mean(pairs$difference_hz)
+median_difference <- median(pairs$difference_hz)
+positive_proportion <- mean(pairs$difference_hz > 0)
 
-We are thus comparing coercion and noncoercing trials within participants and within sentence items.
+stopifnot(
+  isTRUE(all.equal(
+    mean_difference,
+    mean(pairs$hid_f1_hz) - mean(pairs$heed_f1_hz)
+  )),
+  positive_proportion >= 0,
+  positive_proportion <= 1
+)
 
-## Step 4: state the estimand
+c(mean_difference_hz = mean_difference,
+  median_difference_hz = median_difference,
+  proportion_positive = positive_proportion)
+```
 
-Finally, compress the comparison into a population quantity. The [**estimand**](https://database.ich.org/sites/default/files/E9-R1_Step4_Guideline_2019_1203.pdf) is the population quantity we want to learn about. Let $\mu_{\mathrm{coercion}}$ be the mean reading time for coercion trials in the target population, and let $\mu_{\mathrm{control}}$ be the corresponding mean for control trials. One possible estimand is
+The observed mean paired difference is `r round(mean_difference, 1)` Hz, and `r scales::percent(positive_proportion, accuracy = 0.1)` of speakers have a positive difference. Both summaries are computed from speaker-level contrasts, but they answer different questions about magnitude and directional consistency.
+
+```{r}
+#| label: plot-paired-vowels
+#| fig-cap: "Speaker-level F1 differences for /ɪ/ minus /i/. The blue line marks the observed mean paired difference."
+ggplot(pairs, aes(difference_hz)) +
+  geom_histogram(binwidth = 20, boundary = 0,
+                 fill = "grey78", color = "white") +
+  geom_vline(xintercept = 0, color = "grey35", linewidth = 0.45) +
+  geom_vline(xintercept = mean_difference,
+             color = "#2C7FB8", linewidth = 0.9) +
+  labs(x = "F1 difference: /ɪ/ minus /i/ (Hz)", y = "Speakers") +
+  theme_classic(base_size = 12)
+```
+
+## State the estimand
+
+Let $\mu_d$ be the population mean of the within-speaker difference under the elicitation and measurement protocol. The target is
 
 $$
 \tau
-\equiv\mu_{\mathrm{coercion}}
--\mu_{\mathrm{control}}.
+\equiv
+\mu_d
+=
+\mathbb{E}\!\left[
+F1_{s,\text{/ɪ/}}-F1_{s,\text{/i/}}
+\right].
 $$
 
-In words, $\tau$ is the difference in mean reading time between the coercion and control conditions over the declared analysis region.
+The sample mean $\bar d$ estimates this target:
 
-The population still needs to be specified. Do we mean only these participants and sentences, or new readers and new sentence items from populations represented by the experiment? The design must contain the relevant replication if the broader target is to be plausible.
+$$
+\bar d
+\equiv
+\frac{1}{S}\sum_{s=1}^{S}d_s.
+$$
 
-The complete analysis specification is:
+The displayed difference describes the study's sampled speakers. Generalizing it to new speakers requires an account of how the sampled talkers represent a target population; the original study reports that most were raised in Michigan's Lower Peninsula.
 
-> One observation is a participant's reading of the declared complement-plus-spillover region in one sentence. The response is total self-paced reading time in milliseconds. The comparison is the within-participant and within-item contrast between coercion and noncoercing contexts. The target is the difference in mean reading time for readers and items from the populations represented by the design.
+## The same records, a different question
 
-A model coefficient can target this contrast only when its coding, likelihood, and treatment of participants and items match the stated estimand. It does not automatically license a claim about unrepresented readers, sentences, or processing measures.
+The same rows can support at least three distinct questions: (i) how F1 differs between /i/ and /ɪ/, (ii) how duration differs between those vowels, and (iii) whether speakers with larger F1 contrasts also have larger duration contrasts. The first two have acoustic measurements as responses, while the third concerns an association between two speaker-level contrasts. Thus shared records do not imply a shared estimand.
 
-## The same records can answer a different question
+Three alignment failures recur in linguistic analysis. First, a token-level dataset may be interpreted as if it contained independent speakers. Second, a predictor may confound the intended contrast with different lexical items or talker groups. Third, evaluation on already observed speakers may be described as prediction for new speakers. None of these failures can be repaired merely by changing the estimator.
 
-Suppose the experiment also asks participants to choose an interpretation after each sentence. We can now ask at least three questions:
-
-1. Does coercion change reading time?
-2. Does coercion change the probability of choosing one interpretation?
-3. Do participants with larger reading-time differences also show larger interpretation differences?
-
-These questions draw on overlapping records, but they do not ask for the same quantity. The first concerns a time response, the second a categorical response, and the third an association between two participant-level contrasts.
-
-The three questions thus require three analyses, even though the responses came from the same experimental trials.
-
-## Failures of alignment
-
-### The unit does not match the claim
-
-Suppose a corpus contains thousands of tokens from one speaker. Those data may describe that speaker's production precisely. They do not show how speakers vary because only one speaker was observed.
-
-### The predictor does not isolate the contrast
-
-Suppose every coercion sentence uses one set of verbs and every control sentence uses another. The condition difference combines coercion status and lexical identity. Collecting more observations will estimate that combined difference more precisely, but it will not separate the two sources.
-
-### The evaluation answers a different question
-
-Suppose a model is meant to predict responses for new readers, but its training and test sets contain trials from the same readers. The evaluation measures prediction of additional trials from observed readers. It does not measure transfer to new readers.
-
-Changing the estimator would not add speakers to the one-speaker corpus, put the same verbs in both conditions, or create an evaluation set containing new readers. Each failure arises before estimation.
-
-## Exploration can change the question
-
-Exploratory analysis may show that the original target was poorly chosen. For instance, a slider response may contain many observations at both endpoints, in which case a target concerned only with average slider position may miss a theoretically important distinction between endpoint and interior responses.
-
-In that case, revise the question and estimand before continuing. If the analysis distinguishes endpoint from interior responses, report the quantity associated with that distinction rather than presenting it as the originally proposed difference in mean slider position.
-
-The exact upshot is that a difference becomes interpretable only when the unit, response, predictor, comparison, and estimand align. The [Zipf's-law example](zipfs-law.qmd) now applies this sequence to a concrete corpus pattern.
+The mean difference becomes interpretable because the unit, response, within-speaker comparison, and target have been stated. The [Zipf page](zipfs-law.qmd) next applies the same discipline to a corpus-level pattern.
 
 ## Test the distinction
 
-1. A corpus study asks whether discourse-new themes favor the prepositional dative. State the unit, response, predictor, comparison, and target.
-2. A study averages acceptability judgments by sentence before analysis but interprets its result as variation among participants. Which variation has already been removed?
-3. A word-recognition model is evaluated by randomly splitting trials, but the intended target is performance on new word types. How should the split change?
+1. Use `pairs` to compute the mean F1 for each vowel and verify the displayed identity for $\bar d$.
+2. Replace F1 with `duration_ms`, construct the paired differences, and state the resulting response and estimand.
+3. Compute the mean F1 difference separately for each `speaker_type`. Why do those descriptive values not by themselves identify age or sex as a cause?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Mean F1 is 411.568 Hz for /i/ and 476.072 Hz for /ɪ/, so the mean of the 139 within-speaker differences is $476.072-411.568=64.504$ Hz. <!-- dqr-allow: empirical-answer -->
+2. With duration as the response, the estimand is the mean within-speaker duration difference, /ɪ/ minus /i/, which is $-55.734$ ms in these data. <!-- dqr-allow: empirical-answer -->
+3. Mean F1 differences are 74.741 Hz for boys, 41.526 Hz for girls, 86.667 Hz for men, and 47.063 Hz for women; these observational summaries do not isolate age or sex. <!-- dqr-allow: empirical-answer -->
+
+</details>

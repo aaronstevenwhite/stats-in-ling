@@ -2,92 +2,123 @@
 title: "Sample spaces"
 ---
 
-Suppose that we want to describe one English personal pronoun token and eventually ask whether it is nominative, accusative, singular, or plural. What, exactly, are the possible results? A recording may contain an utterance of *them*. A transcript represents that utterance with the string `them`, while an annotation might represent it with the label `third person plural accusative`. A particular probability model must choose which of these representations defines its outcomes. This choice is the **outcome-representation problem**.
+We sample one annotated interrogative-pronoun token from a finite corpus extract. What, exactly, can happen? The **outcome-representation problem** is the need to decide whether an outcome is a token, a surface form, a lemma, or an annotated lemma–relation combination before assigning probabilities.
 
-::: {.callout-note title="Assumed background"}
-We assume familiarity with the basic set theory reviewed in [*Languages as formal objects*](https://aaronstevenwhite.io/intro-to-cl/languages-as-formal-objects/), including sets, membership, subsets, power sets, union, intersection, difference, and complement. We use those concepts here to define probability spaces.
-:::
+We use the [UD Turkish BOUN source introduced on the Zipf page](zipfs-law.qmd). The teaching extract retains tokens whose annotated lemma is *hangi* ‘which’, *kim* ‘who’, or *ne* ‘what’ and whose Universal Dependencies relation is [`nsubj`](https://universaldependencies.org/u/dep/nsubj.html) or [`obj`](https://universaldependencies.org/u/dep/obj.html). One row is one annotated token nested in a sentence. The preparation filters source annotations and adds binary indicators; it does not infer filler–gap dependencies or recode relations. This finite extract contains `r nrow(read.csv("data/ud-turkish-boun/question-core-arguments.csv"))` tokens.
 
-Begin with surface form as the represented result. Before introducing notation, the setup is this: one pronoun token is selected, and its surface form must be one of twelve strings. We collect those strings in the set
+```{r}
+#| label: load-question-tokens
+library(ggplot2)
+
+wh <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8"
+)
+wh$outcome_id <- paste(wh$split, wh$sentence_id, wh$token_id, sep = ":")
+
+stopifnot(
+  nrow(wh) == 167L,
+  !anyDuplicated(wh$outcome_id),
+  setequal(unique(wh$lemma), c("hangi", "kim", "ne")),
+  setequal(unique(wh$dependency_relation), c("nsubj", "obj")),
+  all(wh$object == (wh$dependency_relation == "obj")),
+  all(wh$ne_lemma == (wh$lemma == "ne"))
+)
+
+head(wh[c("outcome_id", "form", "lemma", "dependency_relation")])
+```
+
+## Outcomes and the sample space
+
+Basically, an outcome is one represented result, and a sample space collects every result the probability experiment allows. More specifically, an [**outcome**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is one possible result represented by a probability model. The **sample space** $\Omega$ is the set of all such outcomes.
+
+Our experiment is uniform sampling of one row from the finite extract. If $N$ is the number of retained rows, then
 
 $$
 \Omega
-\equiv\{\textit{I},\textit{me},\textit{you},\textit{it},\textit{he},\textit{him},
-\textit{she},\textit{her},\textit{we},\textit{us},\textit{they},\textit{them}\}.
+\equiv
+\{\omega_1,\ldots,\omega_N\},
 $$
 
-Basically, an outcome is one represented result, and the sample space is the collection of all results the model allows. More specifically, an [**outcome**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is one possible result represented by a probability model. The [**sample space**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) $\Omega$ is the set of all such outcomes.
-
-Each member of $\Omega$ is one outcome. If the recorded form is *her*, then *her* is the realized outcome.
-
-The sample space contains twelve represented surface strings, not an inventory of every English pronoun use. Some strings are syncretic: the surface forms *you* and *it*, for instance, do not by themselves determine syntactic case. Thus an analysis of case must add an annotation to the outcome or use a deliberately restricted case-coded sample space.
-
-## Membership in the sample space
-
-At this stage, we have not assigned probabilities. We can only ask whether a proposed outcome belongs to the sample space. The notation $x\in\Omega$ says that $x$ is a member of $\Omega$, while $x\notin\Omega$ says that it is not.
-
-For the space above,
+where $\omega_i$ is the token identified by its split, sentence ID, and token ID. The category map
 
 $$
-\textit{him}\in\Omega
-\qquad\text{and}\qquad
-\textit{herself}\notin\Omega.
+c(\omega_i)
+\equiv
+\langle L_i,R_i\rangle
 $$
 
-The first statement says that the model has an outcome corresponding to *him*. The second says that the model has no outcome corresponding to *herself*, not that speakers cannot produce that form.
-
-A minimal base R representation makes the same membership check.
+records lemma $L_i\in\{\textit{hangi},\textit{kim},\textit{ne}\}$ and dependency relation $R_i\in\{\texttt{nsubj},\texttt{obj}\}$. Every one of the six lemma–relation combinations is attested.
 
 ```{r}
-#| eval: false
-omega <- c("I", "me", "you", "it", "he", "him", "she", "her",
-           "we", "us", "they", "them")
+#| label: inspect-question-outcomes
+category_counts <- as.data.frame(
+  xtabs(~ lemma + dependency_relation, data = wh)
+)
+names(category_counts)[3] <- "tokens"
 
-"him" %in% omega
-"herself" %in% omega
+stopifnot(
+  nrow(category_counts) ==
+    length(unique(wh$lemma)) * length(unique(wh$dependency_relation)),
+  all(category_counts$tokens > 0),
+  sum(category_counts$tokens) == nrow(wh)
+)
+
+category_counts
 ```
 
-The first expression returns `TRUE`; the second returns `FALSE`. The code is only a finite encoding of the set written above. It does not yet define which outcomes are common.
+```{r}
+#| label: plot-question-outcomes
+#| fig-cap: "Observed token counts in the six lemma–relation categories of the finite extract."
+ggplot(category_counts,
+       aes(lemma, tokens, fill = dependency_relation)) +
+  geom_col(position = "dodge", color = "white") +
+  scale_fill_manual(values = c(nsubj = "grey", obj = "steelblue")) +
+  labs(x = "Annotated lemma", y = "Tokens", fill = "UD relation") +
+  theme_classic(base_size = 12)
+```
 
-## Outcome granularity
+## Membership and granularity
 
-Now consider a vowel production study. At least three sample spaces are possible.
+The notation $x\in\Omega$ says that $x$ is a member of the sample space. A row key observed in the extract belongs to $\Omega$; a new string not present as a retained token does not.
 
-1. One outcome is an entire recording.
-2. One outcome is a segmented vowel token.
-3. One outcome is an acoustic measurement taken at a specified point in a vowel.
+```{r}
+#| label: check-outcome-membership
+observed_key <- wh$outcome_id[[1]]
+unobserved_key <- "test:not-a-sentence:1"
 
-Under the first representation, one outcome is an entire recording. Under the second, it is a vowel token. Under the third, it is one acoustic value.
+c(
+  observed = observed_key %in% wh$outcome_id,
+  unobserved = unobserved_key %in% wh$outcome_id
+)
+```
 
-Suppose a speaker produces *heed* twice and we estimate F1 at the vowel midpoint. Under the second representation, the two vowel tokens are two possible observed units. Under the third representation, values such as 285 Hz and 301 Hz are possible observed results. A question about how midpoint F1 differs across tokens belongs naturally to the measurement representation. The estimate does not by itself establish that a token belongs to /i/ or to any other phonological category; that claim requires a category definition and additional evidence.
+The statement that the second key is outside $\Omega$ concerns this finite probability experiment. It does not claim that Turkish cannot contain another interrogative-pronoun token.
 
-What counts as one outcome also determines which identifiers must accompany the observed value. In a judgment experiment, the response value `6` alone may not identify the trial that matters for analysis. We may instead represent an outcome as the pair
-
-$$
-\langle\text{participant and sentence trial},\ 6\rangle.
-$$
-
-If the analysis will compare responses across participants and sentences, the outcome must retain the participant and sentence identifiers.
+Changing granularity changes the sample space. If outcomes were lemma types, the space would contain the three observed lemmas. If outcomes were lemma–relation categories, it would contain six observed categories. Neither space preserves sentence-level identity. We keep token outcomes because the empirical measure on later pages counts rows while retaining the sentence and register identifiers that reveal dependence.
 
 ## Omission and impossibility
 
-An omitted outcome is not an impossible result. A space may appear complete because every listed outcome is assigned a place, even though the list omits results that the observation process can produce.
+An omitted outcome is not an impossible linguistic result. The extract excludes interrogatives in relations other than `nsubj` and `obj`, and it excludes other interrogative lemmas. Thus its sample space describes a restricted annotated population. It is not an inventory of every interrogative expression in Turkish.
 
-For instance, a forced choice experiment may offer the responses *agent* and *patient*. If participants can also skip the trial, then
+This restriction has a useful consequence and a serious limit. It gives a transparent finite experiment for probability calculations, but it licenses only statements about uniform sampling from the retained extract. Sentences, not isolated tokens, were sampled from five registers, and the treebank is not a probability sample of Turkish usage.
 
-$$
-\Omega\equiv\{\text{agent},\text{patient}\}
-$$
-
-does not represent the recorded process unless skipped trials are removed by an explicit rule. A model using this space cannot distinguish a skipped response from missing data created later in processing.
-
-The sample space need not contain every conceivable linguistic object. It must contain every result that the stated observation process can produce, including a skipped response when skipping is recorded as a possible response.
-
-This is the exact upshot: $\Omega$ records the model's answer to “what could happen?” It does not yet say how outcomes should be grouped or how probable they are. The [next page](events.qmd) groups outcomes into events that answer questions such as “was the pronoun plural?”
+$\Omega$ records the model's answer to “what could happen?” The [next page](events.qmd) groups these token outcomes into events that answer linguistic questions.
 
 ## Check your understanding
 
-1. A study records a seven point judgment for each participant and sentence. Give one sample space whose outcomes are response values. Then give a different sample space whose outcomes retain trial identity.
-2. In the pronoun space above, what does $\textit{herself}\notin\Omega$ claim about the model? What does it not claim about English?
-3. A corpus annotation distinguishes nouns, verbs, and adjectives but labels every other token `OTHER`. Is `OTHER` an outcome? Explain your answer from the stored annotation process.
-4. A vowel study stores one F1 trajectory with eleven time points for each token. What question would make one trajectory a suitable outcome? What different question would make one time point a suitable outcome?
+1. Use `wh` to give the observation key for the first token. Which three columns form it?
+2. Use `category_counts` to identify the least frequent lemma–relation category. Does its low count make it absent from $\Omega$?
+3. Construct the sample space of observed lemma types. Which information in the token outcome space does this coarser space discard?
+4. Why would adding all Turkish interrogative forms to the list, without adding observations, define a different probability experiment?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The first observation key is `train:ess_1258:2`, formed from `split`, `sentence_id`, and `token_id`. <!-- dqr-allow: empirical-answer -->
+2. The least frequent category is *hangi*–`obj`, with one token; its low count does not remove that observed token from $\Omega$. <!-- dqr-allow: empirical-answer -->
+3. The coarser sample space is $\{\textit{hangi},\textit{kim},\textit{ne}\}$, which discards token identity, sentence and register information, and dependency relation. <!-- dqr-allow: empirical-answer -->
+4. Adding unobserved Turkish interrogative forms would enlarge the declared sample space beyond the 167 retained token outcomes and thus define a different probability experiment. <!-- dqr-allow: empirical-answer -->
+
+</details>

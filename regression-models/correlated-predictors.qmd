@@ -1,10 +1,93 @@
 ---
 title: "Correlated predictors"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+We now return to the [MALD Regression Sequence](multiple-regression.qmd#the-mald-regression-sequence). A partial coefficient compares items that differ in one predictor while holding the others fixed. **Predictor collinearity** arises when the observed design contains relatively few such comparisons because predictor columns move together.
 
-**Available Wednesday, October 7, 2026.**
+## Overlap in the MALD item design
+
+Longer spoken words tend to contain more phones and syllables. That empirical relation makes it harder to separate their partial associations with item-mean lexical-decision time.
+
+```{r}
+#| label: compute-mald-predictor-correlations
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+predictor_names <- c(
+  "log_frequency_subtlex", "log_duration", "n_phones", "n_syllables"
+)
+correlation_matrix <- cor(mald[, predictor_names])
+
+stopifnot(
+  nrow(mald) == length(unique(mald$item)),
+  all(is.finite(correlation_matrix))
+)
+
+round(correlation_matrix, 3)
+```
+
+For centered predictor columns $\mathbf x_j$ and $\mathbf x_k$, the sample correlation is
+
+$$
+r_{jk}
+=
+\frac{\mathbf x_j^\top\mathbf x_k}
+{\sqrt{(\mathbf x_j^\top\mathbf x_j)
+(\mathbf x_k^\top\mathbf x_k)}}.
+$$
+
+This normalized inner product is computed from observed MALD item properties. The phone--syllable correlation is `r sprintf("%.3f", correlation_matrix["n_phones", "n_syllables"])`.
+
+```{r}
+#| label: plot-mald-correlated-predictors
+#| fig-cap: "Observed MALD phone and syllable counts with their fitted item-level relation."
+phone_fit <- lm(n_phones ~ n_syllables, data = mald)
+grid <- data.frame(n_syllables = sort(unique(mald$n_syllables)))
+grid$fitted_phones <- predict(phone_fit, newdata = grid)
+
+point_opacity <- 0.06
+ggplot(mald, aes(n_syllables, n_phones)) +
+  geom_jitter(
+    color = "grey65",
+    alpha = point_opacity,
+    width = 0.08,
+    height = 0.08,
+    size = 0.55
+  ) +
+  geom_line(
+    data = grid,
+    aes(y = fitted_phones),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(x = "Syllables", y = "Phones") +
+  theme_classic(base_size = 12)
+```
+
+If two design columns were exact multiples, $\mathbf X^\top\mathbf X$ would be singular and their separate coefficients would be unidentified. Here the relation is strong but not exact. OLS still returns unique coefficients, though their sampling variances may be inflated.
+
+A potential worry is that correlation makes multiple regression invalid. Correlation alone does not do that. It changes which partial comparisons the design supports and how precisely they can be estimated. The scientific response is to inspect the overlap and align interpretation with it.
+
+## Check your understanding
+
+1. Which observed item properties overlap most strongly?
+2. Why does predictor overlap weaken a partial comparison?
+3. What happens under exact linear dependence?
+4. Why is a correlated design not automatically unusable?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Phone count and syllable count overlap most strongly in the observed MALD items. <!-- dqr-allow: empirical-answer -->
+2. When predictors move together, few observed items vary in one while holding the other fixed, so the partial coefficient relies on limited comparisons and becomes less precise. <!-- dqr-allow: empirical-answer -->
+3. The design loses rank, $\mathbf X^\mathsf T\mathbf X$ becomes singular, and the separate coefficients are unidentified. <!-- dqr-allow: empirical-answer -->
+4. Imperfect correlation can still leave enough independent variation for unique, scientifically interpretable partial comparisons, though uncertainty may increase. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](variance-inflation-factors.qmd) quantifies the coefficient-variance cost of this overlap.

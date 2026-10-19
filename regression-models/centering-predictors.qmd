@@ -1,10 +1,124 @@
 ---
 title: "Centering a predictor"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+The intercept of a regression is the fitted conditional mean where every predictor equals zero. **Centering** changes that reference value while preserving all fitted comparisons.
 
-**Available Wednesday, October 7, 2026.**
+## Reparameterizing the PRS
+
+Let $X_i$ be modeled cloze surprisal and let $c$ be its observed sample mean. Define
+
+$$
+X_i^c=X_i-c.
+$$
+
+The uncentered line can be rewritten as
+
+$$
+\begin{aligned}
+m(X_i)
+&=\beta_0+\beta_1X_i\\
+&=\beta_0+\beta_1(X_i^c+c)\\
+&=(\beta_0+\beta_1c)+\beta_1X_i^c.
+\end{aligned}
+$$
+
+Thus centering changes the intercept from $\beta_0$ to $\beta_0+\beta_1c$. It leaves the slope and every fitted value unchanged.
+
+```{r}
+#| label: center-provo-surprisal
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+surprisal_center <- mean(provo$cloze_surprisal_bits)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - surprisal_center
+
+fit_uncentered <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+fit_centered <- lm(
+  mean_log_ffd ~ cloze_surprisal_c,
+  data = provo
+)
+
+maximum_fit_difference <- max(abs(
+  fitted(fit_uncentered) - fitted(fit_centered)
+))
+slope_difference <- unname(
+  coef(fit_uncentered)[["cloze_surprisal_bits"]] -
+    coef(fit_centered)[["cloze_surprisal_c"]]
+)
+
+stopifnot(
+  maximum_fit_difference < 1e-12,
+  abs(slope_difference) < 1e-12
+)
+
+rbind(
+  uncentered = coef(fit_uncentered),
+  centered = coef(fit_centered)
+)
+```
+
+The observed center is `r sprintf("%.3f", surprisal_center)` bits. After centering, the intercept is `r sprintf("%.4f", coef(fit_centered)[["(Intercept)"]])`, the fitted mean at that observed predictor average. The two slopes differ by only `r format(abs(slope_difference), scientific = TRUE, digits = 2)`, and the largest fitted-value difference is `r format(maximum_fit_difference, scientific = TRUE, digits = 2)`.
+
+```{r}
+#| label: plot-provo-centered-line
+#| fig-cap: "The PRS on the centered predictor scale. The vertical reference marks observed mean modeled cloze surprisal."
+grid <- data.frame(
+  cloze_surprisal_c = seq(
+    min(provo$cloze_surprisal_c),
+    max(provo$cloze_surprisal_c),
+    length.out = 160L
+  )
+)
+grid$fitted <- predict(fit_centered, newdata = grid)
+
+point_opacity <- 0.22
+ggplot(provo, aes(cloze_surprisal_c, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.9) +
+  geom_vline(xintercept = 0, color = "grey55", linewidth = 0.35) +
+  geom_line(
+    data = grid,
+    aes(cloze_surprisal_c, fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal minus its observed mean (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+Centering does not make the slope more causal, remove passage dependence, or change the data. It changes the coordinate system used to describe the same fitted line.
+
+## Check your understanding
+
+1. Which original surprisal value receives centered value zero?
+2. Why is the centered intercept more directly supported by the observations?
+3. Which fitted quantities must remain invariant under centering?
+4. Would dividing by a standard deviation still be centering alone?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The observed sample mean of modeled cloze surprisal receives centered value zero. <!-- dqr-allow: empirical-answer -->
+2. The centered intercept represents the fitted response at the observed mean surprisal, rather than at zero surprisal, which may be poorly supported by the data. <!-- dqr-allow: empirical-answer -->
+3. The slope, every fitted value, every residual, and predictions expressed at the same original predictor values must remain unchanged. <!-- dqr-allow: empirical-answer -->
+4. No. Dividing by a standard deviation also rescales the predictor and changes the coefficient's unit. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](response-transformations.qmd) changes the response scale rather than the predictor reference.

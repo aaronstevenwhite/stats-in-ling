@@ -2,104 +2,107 @@
 title: "Probability measures"
 ---
 
-The [sample space](possibilities-and-events.qmd) $\Omega$ specifies which outcomes the model represents, and the [sigma-algebra](event-spaces.qmd) $\mathcal{F}$ specifies which events are measurable. We now have the objects we want to measure. How do we assign numbers to them without producing contradictions?
+The sample space $\Omega$ specifies token outcomes, and the sigma-algebra $\mathcal F$ specifies measurable groupings. We now need a numerical assignment that does not contradict those objects. We call this requirement the **coherence problem**.
 
 Basically, a probability measure assigns a number between zero and one to every measurable event. More specifically, a [**probability measure**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/02%3A_Probability_Spaces/2.09%3A_Probability_Spaces_Revisited) is a function
 
 $$
-\mathbb{P}:\mathcal{F}\rightarrow[0,1]
+\mathbb{P}:\mathcal F\rightarrow[0,1]
 $$
 
-that satisfies the three probability axioms stated below. Its arguments are events in $\mathcal F$, not unstructured labels or raw numerical values.
-
-The sample space, sigma-algebra, and probability measure must be specified together. The triple
+that satisfies the probability axioms below. The triple
 
 $$
-\langle\Omega,\mathcal{F},\mathbb{P}\rangle
+\langle\Omega,\mathcal F,\mathbb{P}\rangle
 $$
 
-is a [**probability space**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html).
+is a **probability space**.
 
-## A uniform measure on the case-coded space
+```{r}
+#| label: load-probability-measure-data
+library(ggplot2)
 
-The fourteen-outcome example on the [generating-event-spaces page](generating-event-spaces.qmd) uses the event space $\sigma(T_{14},A_{14})$. For every $E\in\sigma(T_{14},A_{14})$, define
+wh <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8"
+)
+wh$outcome_id <- paste(wh$split, wh$sentence_id, wh$token_id, sep = ":")
+
+stopifnot(nrow(wh) == 167L, !anyDuplicated(wh$outcome_id))
+
+N_total <- nrow(wh)
+category_mass <- as.data.frame(
+  xtabs(~ lemma + dependency_relation, data = wh)
+)
+names(category_mass)[3] <- "tokens"
+category_mass$probability <- category_mass$tokens / N_total
+```
+
+## The empirical measure
+
+The declared probability experiment samples one token uniformly from the finite extract. For every measurable token event $E$,
 
 $$
-\mathbb P(E)
+\widehat{\mathbb{P}}(E)
 \equiv
-\frac{|E|}{|\Omega_{14}|}
-=\frac{|E|}{14}.
+\frac{|E|}{|\Omega|}.
 $$
 
-The formula gives every outcome equal weight when it counts the members of a measurable event. Note, though, that $\sigma(T_{14},A_{14})$ need not contain every singleton event. We may use singleton weights to compute $\mathbb P(E)$ without claiming that every singleton is itself in the domain $\mathcal F$.
-
-For instance, the third-person accusative event is
+Thus every token singleton has mass $1/|\Omega|$, and a linguistic event receives the sum of the masses of its member tokens. For the *ne* event $N$,
 
 $$
-T_{14}\cap A_{14}
-=\{\textit{them},\textit{it}_{[+\mathrm{acc}]},
-\textit{her},\textit{him}\}.
+\widehat{\mathbb{P}}(N)
+=
+\frac{1}{|\Omega|}
+\sum_{\omega\in\Omega}\mathbf 1\{L(\omega)=\textit{ne}\}.
 $$
 
-Thus
+```{r}
+#| label: compute-empirical-measure
+p_ne <- mean(wh$lemma == "ne")
+p_object <- mean(wh$dependency_relation == "obj")
+p_ne_object <- mean(
+  wh$lemma == "ne" & wh$dependency_relation == "obj"
+)
 
-$$
-\mathbb P(T_{14}\cap A_{14})
-=\frac{4}{14}
-=\frac{2}{7}.
-$$
+stopifnot(
+  isTRUE(all.equal(sum(category_mass$probability), 1)),
+  all(category_mass$probability >= 0), # dqr-allow: symbolic-derivation
+  isTRUE(all.equal(
+    p_ne,
+    sum(category_mass$probability[category_mass$lemma == "ne"])
+  ))
+)
 
-The uniform assignment is one probability measure on the measurable space. It is not forced by the sample space or sigma-algebra. This distinction matters: $\mathcal F$ says which questions can receive probabilities, while $\mathbb P$ supplies their numerical answers.
+c(ne = p_ne, object = p_object, ne_and_object = p_ne_object)
+```
 
-## Probabilities of individual outcomes
+```{r}
+#| label: plot-empirical-measure
+#| fig-cap: "Empirical probability mass assigned to each observed lemma–relation category."
+category_mass$category <- paste(
+  category_mass$lemma,
+  category_mass$dependency_relation,
+  sep = " × "
+)
 
-Return to the four pronoun forms
-
-$$
-\Omega_4
-\equiv\{\textit{he},\textit{him},\textit{they},\textit{them}\}.
-$$
-
-For this finite example, define $\mathcal{F}\equiv2^{\Omega_4}$ so that every subset is measurable. Suppose a toy corpus motivates these assignments.
-
-| outcome | assigned probability |
-|---|---:|
-| *he* | $.20$ |
-| *him* | $.30$ |
-| *they* | $.10$ |
-| *them* | $.40$ |
-
-The table assigns probabilities to singleton events. The probability of a larger event is the sum of the probabilities assigned to its constituent outcomes.
-
-Let
-
-$$
-A_4\equiv\{\textit{him},\textit{them}\}
-$$
-
-be the accusative event. Its probability is
-
-$$
-\begin{aligned}
-\mathbb{P}(A_4)
-&=\mathbb{P}(\{\textit{him}\})
- +\mathbb{P}(\{\textit{them}\})\\
-&=.30+.40\\
-&=.70.
-\end{aligned}
-$$
-
-This probability measure assigns $.70$ to $A_4$. A different measure on the same measurable space may assign a different value.
+ggplot(category_mass,
+       aes(reorder(category, probability), probability)) +
+  geom_col(fill = "grey65") +
+  geom_point(color = "#2C7FB8", size = 2) +
+  coord_flip() +
+  labs(x = NULL, y = "Empirical probability") +
+  theme_classic(base_size = 12)
+```
 
 ## The three requirements
-
-Not every numerical assignment is a probability measure. Three requirements solve what we might call the **coherence problem**: they keep event probabilities nonnegative, normalized, and additive across disjoint alternatives.
 
 First, every event has nonnegative probability:
 
 $$
 \mathbb{P}(B)\geq 0
-\qquad\text{for every }B\in\mathcal{F}.
+\qquad\text{for every }B\in\mathcal F.
 $$
 
 Second, the full sample space has probability one:
@@ -108,86 +111,74 @@ $$
 \mathbb{P}(\Omega)=1.
 $$
 
-Third, probabilities add across a countable collection of events that share no outcomes. If $B_1,B_2,\ldots$ are pairwise disjoint, then
+Third, probabilities add across a countable collection of pairwise disjoint events:
 
 $$
-\mathbb{P}\!\left(\bigcup_i B_i\right)
-=\sum_i\mathbb{P}(B_i).
+\mathbb{P}\!\left(\bigcup_iB_i\right)
+=
+\sum_i\mathbb{P}(B_i).
 $$
 
-## Verification of the toy measure
+The six lemma–relation atoms are nonnegative, disjoint, and exhaustive in this extract. Their empirical masses thus sum to one, as the code verifies.
 
-Each value in the table is nonnegative, so the first requirement holds for the singleton events. The singleton events divide $\Omega_4$ into nonoverlapping parts. Their values sum to
+## Consequences of the axioms
 
-$$
-.20+.30+.10+.40=1,
-$$
-
-so the probability of $\Omega_4$ is one.
-
-Now combine *he* and *him*. Since the two singleton events share no outcomes,
-
-$$
-\mathbb{P}(\{\textit{he},\textit{him}\})
-=.20+.30
-=.50.
-$$
-
-By countable additivity, the singleton probabilities determine the probability of the larger event. We do not need another estimate for $\{\textit{he},\textit{him}\}$.
-
-A few base R checks reproduce the arithmetic.
-
-```{r}
-#| eval: false
-pronoun_mass <- c(he = .20, him = .30, they = .10, them = .40)
-
-all(pronoun_mass >= 0)
-sum(pronoun_mass)
-sum(pronoun_mass[c("him", "them")])
-```
-
-The three results are `TRUE`, `1`, and `.7`.
-
-## Two consequences of the axioms
-
-The impossible event has probability zero. This is not a fourth assumption; it follows from the three requirements. Since $\Omega$ and $\varnothing$ are disjoint and $\Omega\cup\varnothing=\Omega$,
+The impossible event has probability zero. Since $\Omega$ and $\varnothing$ are disjoint and $\Omega\cup\varnothing=\Omega$,
 
 $$
 \mathbb{P}(\Omega)
-=\mathbb{P}(\Omega)+\mathbb{P}(\varnothing).
+=
+\mathbb{P}(\Omega)+\mathbb{P}(\varnothing),
 $$
 
-Subtracting $\mathbb{P}(\Omega)$ from both sides gives
+so
 
 $$
 \mathbb{P}(\varnothing)=0.
 $$
 
-The probability of a complement also follows from the requirements rather than being assumed separately. Since $B$ and $B^c$ are disjoint and their union is $\Omega$,
+Likewise, $B$ and $B^c$ are disjoint and exhaustive:
 
 $$
-\mathbb{P}(B)+\mathbb{P}(B^c)=1.
+\mathbb{P}(B)+\mathbb{P}(B^c)=1,
 $$
 
-Thus
+and thus
 
 $$
 \mathbb{P}(B^c)=1-\mathbb{P}(B).
 $$
 
-For the accusative event, this gives $\mathbb{P}(A_4^c)=1-.70=.30$, which agrees with the mass assigned to *he* and *they*.
+```{r}
+#| label: verify-complement
+p_not_ne_direct <- mean(wh$lemma != "ne")
+p_not_ne_complement <- 1 - p_ne
 
-## Assignments that violate the probability axioms
+stopifnot(isTRUE(all.equal(p_not_ne_direct, p_not_ne_complement)))
+c(direct = p_not_ne_direct, complement = p_not_ne_complement)
+```
 
-An assignment that violates any of the three requirements is not a probability measure. Suppose the four pronoun values were $.20$, $.30$, $.10$, and $.50$. Though each value lies between zero and one, their sum is $1.10$, so the assignment violates normalization.
+## Counts are not probabilities
 
-Renormalizing the values might produce a probability measure, but it changes every numerical claim. Before doing so, we should ask why the original values did not sum to one. They may be raw corpus counts, percentages computed from different denominators, or model scores that were never intended as probabilities.
+The six raw category counts are data-derived nonnegative values, but assigning them directly as event probabilities violates normalization because their sum is the number of tokens rather than one. Dividing every count by the common total produces the empirical mass shown above. This transformation changes the scale while preserving relative mass.
 
-The exact upshot is that a probability measure is a coherent numerical assignment to measurable events. The [next page](probability-concepts.qmd) uses additivity to ask when two event probabilities can be added without counting any outcome twice.
+The measure is empirical and conditional on the represented extract. Uniform sampling of its rows does not imply that the original sentences were independently and uniformly sampled from Turkish, nor does it turn annotation decisions into error-free linguistic facts.
+
+A probability measure is a coherent numerical assignment to measurable events. The [next page](probability-concepts.qmd) uses additivity to distinguish mutually exclusive from overlapping linguistic events.
 
 ## Check your understanding
 
-1. Using the toy measure, compute the probability of the plural event $P_4=\{\textit{they},\textit{them}\}$.
-2. Compute $\mathbb{P}(P_4^c)$ in two ways: by adding singleton probabilities and by using the complement rule.
-3. Explain why four nonnegative values that sum to one define a coherent assignment to the singleton events in this finite space.
-4. A table reports values $.40$, $.35$, $.20$, and $.10$ for four exhaustive outcomes. Which requirement fails?
+1. Use the visible code to compute $\widehat{\mathbb{P}}(L=\textit{kim})$.
+2. Compute its complement both by filtering rows and with the complement rule.
+3. Verify that the three lemma events are pairwise disjoint and exhaustive.
+4. Explain why the raw count of *ne* tokens is not itself a probability even though it determines the empirical probability after normalization.
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $\widehat{\mathbb{P}}(L=\textit{kim})=17/167=0.101796$. <!-- dqr-allow: empirical-answer -->
+2. The complement of the *kim* event contains 150 rows, so filtering and the complement rule both give $150/167=1-17/167=0.898204$. <!-- dqr-allow: empirical-answer -->
+3. The three lemma events have pairwise empty intersections, and their counts sum to $3+17+147=167$, so they are disjoint and exhaustive. <!-- dqr-allow: empirical-answer -->
+4. The raw *ne* count is 147, which is not normalized to $[0,1]$; division by the common total gives the empirical probability $147/167=0.880240$. <!-- dqr-allow: empirical-answer -->
+
+</details>

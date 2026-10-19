@@ -2,203 +2,180 @@
 title: "Independence"
 ---
 
-Suppose that we learn a pronoun is plural. We can ask whether that information changes the probability that the pronoun has accusative form by making the comparison
+Does learning that a retained token has lemma *ne* change the probability that it is annotated as an object? The **conditional-invariance question** compares
 
 $$
-\mathbb{P}(A_4\mid P_4)\stackrel{?}{=}\mathbb{P}(A_4).
+\mathbb{P}(O)
 $$
 
-In the toy pronoun measure,
+with
 
 $$
-\mathbb{P}(A_4)=.70
+\mathbb{P}(O\mid N).
 $$
 
-but
+Events $B$ and $C$ are [**independent**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) exactly when
 
 $$
-\mathbb{P}(A_4\mid P_4)=.80.
+\mathbb{P}(B,C)
+=
+\mathbb{P}(B)\mathbb{P}(C).
 $$
 
-Conditioning on plurality changes the probability of accusative form, so the two events are not independent under this measure. This comparison is the **invariance test**: compare the probability before and after conditioning.
-
-Suppose $\mathbb{P}(C)>0$. Conditioning on $C$ leaves the probability of $B$ unchanged exactly when
+If $\mathbb{P}(C)>0$, this condition is equivalent to
 
 $$
 \mathbb{P}(B\mid C)=\mathbb{P}(B).
 $$
-
-Basically, independence means that conditioning on one event leaves the probability of the other unchanged. This is the conditional characterization of independence: learning that $C$ occurred does not change the probability of $B$.
-
-The characterization requires $\mathbb P(C)>0$ because conditional probability is a ratio. The unrestricted definition avoids that restriction. Events $B$ and $C$ are [**independent**](https://online.stat.psu.edu/stat414/Lesson05) by definition exactly when
-
-$$
-B\perp\!\!\!\perp C
-\quad\equiv\quad
-\bigl[\mathbb P(B,C)=\mathbb P(B)\mathbb P(C)\bigr].
-$$
-
-## Independence in the original uniform example
-
-In the fourteen-outcome case-coded space,
-
-$$
-\mathbb P(T_{14})=\frac{8}{14}=\frac47
-$$
-
-and, as derived on the [conditional-probability page](conditional-probability.qmd),
-
-$$
-\mathbb P(T_{14}\mid A_{14})=\frac47.
-$$
-
-Thus third person and accusative case are independent under the uniform measure on this refined sample space. Equivalently,
-
-$$
-\mathbb P(T_{14},A_{14})
-=\frac{4}{14}
-=\frac{8}{14}\frac{7}{14}
-=\mathbb P(T_{14})\mathbb P(A_{14}).
-$$
-
-Thus $T_{14}$ and $A_{14}$ are independent under the stated uniform measure.
-
-## The pronoun measure
-
-The marginal probabilities are
-
-$$
-\mathbb{P}(P_4)=.50
-\qquad\text{and}\qquad
-\mathbb{P}(A_4)=.70.
-$$
-
-Their product is
-
-$$
-\mathbb{P}(P_4)\mathbb{P}(A_4)
-=.50\times.70
-=.35.
-$$
-
-The joint probability is
-
-$$
-\mathbb{P}(P_4,A_4)=.40.
-$$
-
-Since $.40\neq.35$, the events are not independent under this measure.
-
-The conditional characterization gives the same answer: the probability of $A_4$ changes from $.70$ in the full space to $.80$ given $P_4$.
-
-## Equivalence with conditional invariance
-
-The [chain rule](probability-factorization.qmd) gives
-
-$$
-\mathbb{P}(B,C)
-=\mathbb{P}(B\mid C)\mathbb{P}(C).
-$$
-
-If $\mathbb P(B\mid C)=\mathbb P(B)$, substitute $\mathbb{P}(B)$ for $\mathbb{P}(B\mid C)$:
-
-$$
-\mathbb{P}(B,C)
-=\mathbb{P}(B)\mathbb{P}(C).
-$$
-
-Conversely, if this factorization holds and $\mathbb{P}(C)>0$, divide both sides by $\mathbb{P}(C)$:
-
-$$
-\mathbb{P}(B\mid C)=\mathbb{P}(B).
-$$
-
-Each direction uses one licensed move: substitution in the first direction and division by a positive probability in the second. Thus the conditional characterization and product definition are equivalent whenever $\mathbb P(C)>0$.
-
-## An independent comparison measure
-
-Keep the same outcome labels and margins, but change how the mass is arranged inside the table.
-
-| | accusative $A_4$ | nominative $A_4^c$ | total |
-|---|---:|---:|---:|
-| plural $P_4$ | $.35$ | $.15$ | $.50$ |
-| singular $P_4^c$ | $.35$ | $.15$ | $.50$ |
-| total | $.70$ | $.30$ | $1$ |
-
-Now the upper left cell equals the product of its margins:
-
-$$
-\mathbb{P}(P_4,A_4)
-=.35
-=.50\times.70.
-$$
-
-Conditioning gives the same result:
-
-$$
-\mathbb{P}(A_4\mid P_4)
-=\frac{.35}{.50}
-=.70
-=\mathbb{P}(A_4).
-$$
-
-The accusative probability is also $.70$ in the singular row. Under this measure, knowing whether the form is singular or plural does not change the probability that it is accusative.
 
 ```{r}
-#| eval: false
-joint_independent <- matrix(
-  c(.35, .35, .15, .15),
-  nrow = 2,
-  dimnames = list(
-    number = c("plural", "singular"),
-    case = c("accusative", "nominative")
-  )
+#| label: load-independence-data
+library(ggplot2)
+
+wh <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE,
+  fileEncoding = "UTF-8"
 )
 
-p_joint <- joint_independent["plural", "accusative"]
-p_plural <- sum(joint_independent["plural", ])
-p_acc <- sum(joint_independent[, "accusative"])
+stopifnot(nrow(wh) == 167L)
 
-c(observed = p_joint, product = p_plural * p_acc)
+is_ne <- as.logical(wh$ne_lemma)
+is_object <- as.logical(wh$object)
+p_ne <- mean(is_ne)
+p_object <- mean(is_object)
+p_ne_object <- mean(is_ne & is_object)
+p_product <- p_ne * p_object
+p_object_given_ne <- mean(is_object[is_ne])
+
+stopifnot(
+  p_ne > 0,
+  isTRUE(all.equal(p_ne_object / p_ne, p_object_given_ne))
+)
+
+c(observed_joint = p_ne_object,
+  product_of_marginals = p_product,
+  object_marginal = p_object,
+  object_given_ne = p_object_given_ne)
 ```
 
-Both returned values are `.35`.
+## The observed comparison
 
-## The same events under different measures
+Under the empirical measure,
 
-The two tables use the same outcome labels and the same events, but $P_4$ and $A_4$ are dependent in the original table and independent in the comparison table. Independence is a property of the events together with the probability measure.
+$$
+\widehat{\mathbb{P}}(N,O)
+\neq
+\widehat{\mathbb{P}}(N)\widehat{\mathbb{P}}(O).
+$$
 
-For the same reason, a construction choice and an animacy feature may be independent in one corpus genre but associated in another. We can use the same sample space and event definitions for both populations while assigning different probabilities to their intersections.
+The observed joint mass is `r round(p_ne_object, 3)`, while the product-of-marginals model assigns `r round(p_product, 3)`. Equivalently, the overall object probability is `r round(p_object, 3)`, whereas the object probability among *ne* tokens is `r round(p_object_given_ne, 3)`. Thus the two events are not independent in this finite extract.
+
+## Why the characterizations are equivalent
+
+Suppose $\mathbb{P}(C)>0$. If
+
+$$
+\mathbb{P}(B,C)=\mathbb{P}(B)\mathbb{P}(C),
+$$
+
+then
+
+$$
+\begin{aligned}
+\mathbb{P}(B\mid C)
+&=\frac{\mathbb{P}(B,C)}{\mathbb{P}(C)}\\
+&=\frac{\mathbb{P}(B)\mathbb{P}(C)}{\mathbb{P}(C)}\\
+&=\mathbb{P}(B).
+\end{aligned}
+$$
+
+Conversely, if $\mathbb{P}(B\mid C)=\mathbb{P}(B)$, the chain rule gives
+
+$$
+\begin{aligned}
+\mathbb{P}(B,C)
+&=\mathbb{P}(B\mid C)\mathbb{P}(C)\\
+&=\mathbb{P}(B)\mathbb{P}(C).
+\end{aligned}
+$$
+
+## Observed mass and the independence model
+
+The product of the empirical margins defines a comparison model:
+
+$$
+\widehat{\mathbb{P}}_{\mathrm{ind}}(b,c)
+\equiv
+\widehat{\mathbb{P}}(b)\widehat{\mathbb{P}}(c).
+$$
+
+It preserves the observed margins while removing their association. It is a model derived from the linguistic data, not a second invented dataset.
+
+```{r}
+#| label: plot-independence-comparison
+#| fig-cap: "Observed joint probabilities and probabilities under the product-of-observed-marginals independence model."
+observed <- as.data.frame(
+  xtabs(~ ne_lemma + object, data = wh) / nrow(wh)
+)
+names(observed)[3] <- "probability"
+observed$source <- "observed"
+
+ne_margin <- prop.table(table(wh$ne_lemma))
+object_margin <- prop.table(table(wh$object))
+independent <- expand.grid(
+  ne_lemma = names(ne_margin),
+  object = names(object_margin),
+  stringsAsFactors = FALSE
+)
+independent$probability <-
+  as.numeric(ne_margin[independent$ne_lemma]) *
+  as.numeric(object_margin[independent$object])
+independent$source <- "independence model"
+
+comparison <- rbind(observed, independent)
+comparison$cell <- paste(
+  ifelse(comparison$ne_lemma == 1, "ne", "other"),
+  ifelse(comparison$object == 1, "obj", "nsubj"),
+  sep = " × "
+)
+
+stopifnot(isTRUE(all.equal(
+  sum(independent$probability),
+  1
+)))
+
+ggplot(comparison,
+       aes(cell, probability, shape = source, color = source)) +
+  geom_point(size = 2.4, position = position_dodge(width = 0.35)) +
+  scale_color_manual(values = c(observed = "grey30",
+                                `independence model` = "#2C7FB8")) +
+  labs(x = NULL, y = "Joint probability",
+       color = NULL, shape = NULL) +
+  theme_classic(base_size = 12)
+```
 
 ## Independence is not mutual exclusivity
 
-Mutually exclusive events cannot occur together. If two mutually exclusive events $B$ and $C$ both have positive probability, then
+If two positive-probability events are mutually exclusive, then their joint probability is the impossible-event probability while their marginal product is positive. They are thus dependent. Independence means that conditioning does not change probability; mutual exclusivity means that co-occurrence is impossible.
 
-$$
-\mathbb{P}(B,C)=0
-$$
+Observed dependence also does not identify a causal relation. The association between lemma and dependency relation may reflect the syntactic and semantic distribution of the lemmas, the selected registers, sentence clustering, and annotation choices. The empirical table shows dependence in the represented extract and nothing stronger.
 
-while
-
-$$
-\mathbb{P}(B)\mathbb{P}(C)>0.
-$$
-
-They are not independent. Observing $C$ tells us that $B$ did not occur, which is strong information.
-
-Mutual exclusivity concerns whether the intersection is empty. Independence concerns whether the intersection receives the product of the marginal probabilities.
-
-## Sample estimates and independence
-
-Independence is an exact property of a probability measure, but sample proportions are estimates. They will rarely be exactly equal in a finite sample, even when the represented events are independent. They may also be equal by chance when the events are dependent.
-
-Later chapters introduce statistical models for uncertainty about such claims. At this stage, we can determine only whether a fully specified probability measure satisfies the independence equation.
-
-The exact upshot is that independence means product factorization, or equivalently conditional invariance when the conditioning event has positive probability. The [random-variables module](../random-variables-and-distributions/index.qmd) will reuse this event-level definition when it defines independence among random variables.
+Independence is a property of events under a particular probability measure. Changing the corpus population or observation process may change that property.
 
 ## Check your understanding
 
-1. Verify independence in the comparison table using both the product definition and the conditional interpretation.
-2. Change the upper left cell from $.35$ to $.40$ and the lower left cell from $.35$ to $.30$, leaving the margins fixed. Does independence still hold?
-3. Explain why two mutually exclusive events with positive probability cannot be independent.
-4. Give a linguistic setting in which the same two event labels might be independent in one represented population but dependent in another.
+1. Compute the observed and independence-model probabilities for the *kim*–`obj` cell.
+2. Verify conditional invariance for each row of `independent` and its failure for the observed *ne* row.
+3. Explain why the mutually exclusive *hangi* and *kim* events are not independent when both have positive probability.
+4. Which source identifiers in `wh` would you retain in a later model of dependence beyond this descriptive table, and why?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The observed *kim*–`obj` probability is $3/167=0.017964$, whereas the product-of-marginals model assigns $(17/167)(116/167)=0.070709$. <!-- dqr-allow: empirical-answer -->
+2. Under independence, both object conditionals equal 0.694611; observed *ne* tokens give $\mathbb{P}(O\mid N)=112/147=0.761905$, so conditional invariance fails. <!-- dqr-allow: empirical-answer -->
+3. The mutually exclusive *hangi* and *kim* events have joint probability zero but a positive product of marginals, so they are dependent. <!-- dqr-allow: empirical-answer -->
+4. A later dependence model should retain `sentence_id` for sentence clustering, `register` and `split` for corpus structure, and the full observation key including `token_id` for token identity. <!-- dqr-allow: empirical-answer -->
+
+</details>

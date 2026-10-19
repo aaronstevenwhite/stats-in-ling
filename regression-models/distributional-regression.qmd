@@ -1,10 +1,215 @@
 ---
 title: "Modeling conditional scale"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+**Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use
 
-**Available Wednesday, October 7, 2026.**
+$$
+Y_{ij}\sim\mathcal N(\mu_i,\sigma_i^2),
+$$
+
+with
+
+$$
+\mu_i
+=
+\beta_0+\beta_fF_i^c+\beta_dD_i^c+\beta_pP_i^c
+$$
+
+and
+
+$$
+\log\sigma_i
+=
+\gamma_0+\gamma_fF_i^c.
+$$
+
+The log link keeps every fitted standard deviation positive.
+
+## A likelihood for grouped item summaries
+
+The course table does not retain the individual correct trials used in this sequence. For item $i$, it retains their count $n_i$, mean $\overline y_i$, and variance $s_i^2$. The identity
+
+$$
+\sum_{j=1}^{n_i}(y_{ij}-\mu_i)^2
+=
+(n_i-1)s_i^2+n_i(\overline y_i-\mu_i)^2
+$$
+
+allows the Gaussian likelihood to be evaluated exactly from these sufficient summaries, conditional on the independence approximation.
+
+```{r}
+#| label: fit-mald-distributional-regression
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+mald$n_phones_c <- mald$n_phones - mean(mald$n_phones)
+
+X_mu <- model.matrix(
+  ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = mald
+)
+Z_constant <- matrix(1, nrow = nrow(mald), ncol = 1L)
+Z_frequency <- model.matrix(~ log_frequency_c, data = mald)
+
+negative_log_likelihood <- function(parameters, X, Z, data) {
+  n_beta <- ncol(X)
+  beta <- parameters[seq_len(n_beta)]
+  gamma <- parameters[n_beta + seq_len(ncol(Z))]
+  mu <- drop(X %*% beta)
+  log_sigma <- drop(Z %*% gamma)
+  sigma_squared <- exp(2 * log_sigma)
+  squared_error <-
+    (data$n_observations - 1) * data$variance_log_rt +
+    data$n_observations * (data$mean_log_rt - mu)^2
+
+  .5 * sum(
+    data$n_observations * log(2 * pi) +
+      2 * data$n_observations * log_sigma +
+      squared_error / sigma_squared
+  )
+}
+
+weighted_mean_fit <- lm(
+  mean_log_rt ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = mald,
+  weights = n_observations
+)
+initial_beta <- coef(weighted_mean_fit)
+initial_sigma <- sqrt(sum(
+  (mald$n_observations - 1) * mald$variance_log_rt +
+    mald$n_observations * residuals(weighted_mean_fit)^2
+) / sum(mald$n_observations))
+
+constant_scale_fit <- optim(
+  c(initial_beta, log(initial_sigma)),
+  negative_log_likelihood,
+  X = X_mu,
+  Z = Z_constant,
+  data = mald,
+  method = "BFGS",
+  control = list(maxit = 2000L, reltol = 1e-11)
+)
+frequency_scale_fit <- optim(
+  c(initial_beta, log(initial_sigma), 0),
+  negative_log_likelihood,
+  X = X_mu,
+  Z = Z_frequency,
+  data = mald,
+  method = "BFGS",
+  hessian = TRUE,
+  control = list(maxit = 4000L, reltol = 1e-11)
+)
+
+n_beta <- ncol(X_mu)
+parameter_names <- c(
+  paste0("mu_", colnames(X_mu)),
+  paste0("log_sigma_", colnames(Z_frequency))
+)
+coefficient_table <- data.frame(
+  term = parameter_names,
+  estimate = frequency_scale_fit$par
+)
+
+model_comparison <- data.frame(
+  model = c("constant scale", "frequency-dependent scale"),
+  parameters = c(
+    length(constant_scale_fit$par),
+    length(frequency_scale_fit$par)
+  ),
+  negative_log_likelihood = c(
+    constant_scale_fit$value,
+    frequency_scale_fit$value
+  )
+)
+model_comparison$aic <-
+  2 * model_comparison$negative_log_likelihood +
+  2 * model_comparison$parameters
+
+stopifnot(
+  constant_scale_fit$convergence == 0L,
+  frequency_scale_fit$convergence == 0L
+)
+
+coefficient_table
+model_comparison
+```
+
+The frequency coefficient in the mean equation is `r sprintf("%.4f", frequency_scale_fit$par[[2]])`; the frequency coefficient in the log-scale equation is `r sprintf("%.4f", tail(frequency_scale_fit$par, 1))`. Thus greater observed frequency is associated with both a lower item mean and a lower fitted conditional spread in this grouped specification.
+
+Allowing frequency-dependent scale changes AIC from `r sprintf("%.2f", model_comparison$aic[[1]])` to `r sprintf("%.2f", model_comparison$aic[[2]])`. This comparison uses the same grouped Gaussian likelihood and the same item summaries.
+
+```{r}
+#| label: plot-mald-distributional-regression
+#| fig-cap: "MALD item means and within-item standard deviations with fitted mean and scale relations at observed mean duration and phone count."
+grid <- data.frame(
+  log_frequency_subtlex = seq(
+    quantile(mald$log_frequency_subtlex, .01),
+    quantile(mald$log_frequency_subtlex, .99),
+    length.out = 160L
+  )
+)
+grid$log_frequency_c <-
+  grid$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+grid$log_duration_c <- 0
+grid$n_phones_c <- 0
+X_grid <- model.matrix(
+  ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = grid
+)
+Z_grid <- model.matrix(~ log_frequency_c, data = grid)
+grid$fitted_mean <- drop(
+  X_grid %*% frequency_scale_fit$par[seq_len(n_beta)]
+)
+grid$fitted_sd <- exp(drop(
+  Z_grid %*%
+    frequency_scale_fit$par[n_beta + seq_len(ncol(Z_frequency))]
+))
+
+location_opacity <- 0.05
+scale_opacity <- 0.045
+ggplot(mald, aes(log_frequency_subtlex, mean_log_rt)) +
+  geom_point(color = "grey70", alpha = location_opacity, size = 0.5) +
+  geom_line(data = grid, aes(y = fitted_mean), color = "#2C6E9B", linewidth = 0.8) +
+  labs(x = "Log SUBTLEX frequency", y = "Mean log lexical-decision time") +
+  theme_classic(base_size = 12)
+```
+
+```{r}
+#| label: plot-mald-distributional-scale
+#| fig-cap: "Observed within-item log-RT standard deviations and the fitted frequency-dependent scale."
+ggplot(mald, aes(log_frequency_subtlex, sd_log_rt)) +
+  geom_point(color = "grey70", alpha = scale_opacity, size = 0.5) +
+  geom_line(data = grid, aes(y = fitted_sd), color = "#2C6E9B", linewidth = 0.85) +
+  labs(x = "Log SUBTLEX frequency", y = "Log-RT standard deviation") +
+  theme_classic(base_size = 12)
+```
+
+The likelihood treats retained correct trials as conditionally independent. Because the summaries omit participant identifiers, the fitted scale may combine trial noise with participant heterogeneity and cannot recover participant effects. The model demonstrates separate mean and scale equations; it is not a replacement for the crossed analysis used in the MALD paper.
+
+## Check your understanding
+
+1. Why is log used for the scale equation?
+2. Which sufficient summaries enter the grouped likelihood?
+3. What does the scale-frequency coefficient describe?
+4. Why can the model not separate participant heterogeneity from trial variation?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Modeling $\log\sigma_i$ allows an unconstrained linear predictor while ensuring $\sigma_i=\exp(\cdot)>0$. <!-- dqr-allow: empirical-answer -->
+2. Each item's retained-trial count $n_i$, mean $\overline y_i$, and variance $s_i^2$ enter the grouped Gaussian likelihood. <!-- dqr-allow: empirical-answer -->
+3. The scale-frequency coefficient describes the change in fitted log conditional standard deviation for a one-unit increase in centered log frequency, holding the scale model's other terms fixed. <!-- dqr-allow: empirical-answer -->
+4. Only grouped item summaries remain, so the fitted scale combines trial noise and participant heterogeneity without identifiers that could separate them. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The next module turns from fitting equations to [prediction targets and model criticism](../model-criticism-and-prediction/prediction-targets.qmd).

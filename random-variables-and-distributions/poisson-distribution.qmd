@@ -1,204 +1,127 @@
 ---
 title: "The Poisson distribution"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Suppose we divide a conversation into one-minute intervals and count filled pauses in each interval. One observation may contain 0 filled pauses, another 2, and another 5. Which distribution can represent an unbounded count when the opportunity for events is a declared amount of exposure?
+A Poisson model is often proposed for nonnegative counts. But matching the support is only the first check: the family also requires its mean and variance to be equal. English recipient length provides a direct test.
 
-Here a filled pause means an event identified by a transcription convention, such as the `[uh]`, `[um]`, `[er]`, `[ah]`, and `[mm]` labels in the [Switchboard transcription specification](https://catalog.ldc.upenn.edu/docs/LDC94S19/sro_spec.html). The model can describe annotated counts per minute; it cannot by itself identify the cognitive source of those events.
+## The dative data
 
-The response is a nonnegative count:
+We use the English dative-alternation data from the archived [`languageR` 1.5.0 release](https://cran.r-project.org/src/contrib/Archive/languageR/languageR_1.5.0.tar.gz), analyzed by Bresnan et al. ([2007](https://web.stanford.edu/~bresnan/qs-submit.pdf)). A row is one dative token from Switchboard or the Wall Street Journal portion of the Penn Treebank. The source study models how lexical, discourse, referential, and constituent properties condition dative realization; the count analysis here is a teaching simplification, not a reproduction of that multivariable model.
 
-$$
-X\in\{0,1,2,3,\ldots\}.
-$$
-
-A common baseline model for such counts is the [**Poisson distribution**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234). We write
-
-$$
-X\sim\operatorname{Poisson}(\lambda),
-$$
-
-where $\lambda>0$ is the expected count in one specified unit of exposure.
-
-The [probability mass function](probability-mass-functions.qmd) of a Poisson random variable specifies the distribution of one count. Now, you might wonder whether writing this distribution commits us to a process in continuous time. It does not. A homogeneous Poisson process provides one possible generative account under which events occur at a constant rate and increments in nonoverlapping intervals are independent. The Poisson count distribution can also be used as an observation model without claiming that the full event sequence follows that process.
-
-## Exposure is part of the definition
-
-The statement $\lambda=2$ is incomplete until the opportunity for events to occur is stated. It might mean two filled pauses per minute, per hundred words, or per speaker turn.
-
-Here one observation is a one-minute interval, so
-
-$$
-\mathbb{E}[X]=\lambda=2
-$$
-
-means two filled pauses per minute on average under the model.
-
-The expected count scales with exposure when the modeled event rate stays fixed. A thirty-second interval has half the exposure of a one-minute interval, so its expected count is
-
-$$
-2\left(\frac{30}{60}\right)=1.
-$$
-
-A five-minute interval has five times the exposure, so its expected count is
-
-$$
-2(5)=10.
-$$
-
-This scaling does not claim that every five-minute stretch contains exactly ten filled pauses. It changes the Poisson mean for the larger opportunity window.
-
-## Calculating point probabilities
-
-The Poisson PMF is
-
-$$
-p_X(x)
-\equiv\mathbb{P}(X=x)
-=\frac{e^{-\lambda}\lambda^x}{x!},
-\qquad x\in\{0,1,2,\ldots\}.
-$$
-
-For $\lambda=2$, the probability of no filled pauses is
-
-$$
-\begin{aligned}
-p_X(0)
-&=\frac{e^{-2}2^0}{0!}\\
-&=e^{-2}\\
-&\approx.135.
-\end{aligned}
-$$
-
-The probability of exactly two is
-
-$$
-\begin{aligned}
-p_X(2)
-&=\frac{e^{-2}2^2}{2!}\\
-&=2e^{-2}\\
-&\approx.271.
-\end{aligned}
-$$
-
-These are probabilities of individual counts. We can also ask for the
-probability of a range of counts. The probability of at most two filled pauses
-is
-
-$$
-\begin{aligned}
-F_X(2)
-&=p_X(0)+p_X(1)+p_X(2)\\
-&\approx .135+.271+.271\\
-&\approx .677.
-\end{aligned}
-$$
-
-The distinction between exactly two and at most two is the distinction between
-a probability mass function and a cumulative distribution function. The first
-selects one point in the support. The second adds the mass at every point up to
-and including the requested count.
-
-## Asking four kinds of question in R
-
-R uses the same four prefixes for every named distribution family. For the
-Poisson family, they are `dpois`, `ppois`, `qpois`, and `rpois`.
-
-| function | statistical question | result when $\lambda=2$ |
-|---|---|---|
-| `dpois(2, 2)` | What is $p_X(2)$? | approximately $.271$ |
-| `ppois(2, 2)` | What is $F_X(2)$? | approximately $.677$ |
-| `qpois(.90, 2)` | What is the smallest $x$ with $F_X(x)\geq.90$? | $4$ |
-| `rpois(6, 2)` | What might six new observations look like? | six simulated counts |
-
-The first three calls are deterministic and return the same answer whenever
-their arguments are unchanged. The last call is a simulation, so its result may
-change from one call to the next because it draws new values from the specified
-distribution.
+The prepared table is a value-preserving renamed extract with `r nrow(read.csv("data/english-dative/dative-alternation.csv"))` rows. It is redistributed under the package's GPL 2.0-or-later terms. Tokens repeat verbs, spoken tokens repeat speakers, and the archived table has two fewer written rows than the paper reports.
 
 ```{r}
-#| label: four-poisson-questions
-#| echo: true
-dpois(2, lambda = 2)
-ppois(2, lambda = 2)
-qpois(.90, lambda = 2)
-rpois(6, lambda = 2)
-```
+#| label: fit-dative-poisson
+library(ggplot2)
 
-The quantile call deserves a slower reading. Counts are discrete, so there may
-be no count whose cumulative probability is exactly $.90$. R returns the
-smallest count at which the cumulative probability reaches or passes $.90$.
-For $\lambda=2$, the cumulative probability through 3 is about $.857$, while
-the cumulative probability through 4 is about $.947$. Thus the requested
-quantile is 4.
-
-## Drawing the whole distribution
-
-A probability mass function can be interpreted more readily when we examine all of its
-values together. The following code evaluates the PMF from 0 through 10.
-
-```{r}
-#| label: poisson-pmf
-#| echo: true
-counts <- 0:10
-mass <- dpois(counts, lambda = 2)
-
-plot(
-  counts, mass,
-  type = "h", lwd = 4,
-  xlab = "filled pauses in one minute",
-  ylab = "probability"
+dative <- read.csv(
+  "data/english-dative/dative-alternation.csv",
+  stringsAsFactors = FALSE,
+  na.strings = c("", "NA")
 )
-points(counts, mass, pch = 16)
+dative$recipient_words_beyond_first <- dative$recipient_length_words - 1L
+y <- dative$recipient_words_beyond_first
+lambda_hat <- mean(y)
+
+fit <- data.frame(value = 0:max(y))
+counts <- table(y)
+fit$observed_probability <- 0
+fit$observed_probability[
+  match(as.integer(names(counts)), fit$value)
+] <- as.numeric(counts) / length(y)
+fit$fitted_probability <- dpois(fit$value, lambda = lambda_hat)
+
+population_variance <- mean((y - mean(y))^2)
+variance_to_mean <- population_variance / mean(y)
+observed_zero <- mean(y == 0) # dqr-allow: scale-boundary
+fitted_zero <- dpois(0, lambda_hat)
+
+stopifnot(
+  nrow(dative) == 3263L,
+  all(y >= 0),
+  abs(sum(fit$observed_probability) - 1) < 1e-12,
+  abs(lambda_hat - mean(y)) < 1e-12
+)
+
+data.frame(lambda_hat, population_variance, variance_to_mean,
+           observed_zero, fitted_zero)
 ```
 
-The distribution places its greatest mass near 2, which is also its expected
-value. But an expected value is not a promise about the next observation, and zero,
-one, three, and larger counts remain possible. The parameter describes a
-distribution over repeated observations, not the value that each observation
-must take.
+## Definition and fit
 
-## One parameter controls center and spread
-
-For a Poisson variable,
+For $Y\sim\operatorname{Poisson}(\lambda)$,
 
 $$
-\mathbb{E}[X]=\lambda
+\mathbb{P}(Y=y)
+=\frac{\lambda^y e^{-\lambda}}{y!},
+\qquad y\in\{0,1,2,\ldots\},
 $$
 
 and
 
+$$
+\mathbb{E}[Y]=\lambda,
+\qquad
+\operatorname{Var}[Y]=\lambda.
+$$
+
+The parameter must refer to a stated exposure. If events occur at rate $\rho$ per exposure unit and an observation has exposure $e$, then
 
 $$
-\operatorname{Var}(X)=\lambda.
+\lambda=\rho e.
 $$
 
-Thus a Poisson distribution with mean 2 must also have variance 2. The model cannot hold the mean fixed while increasing the variance.
+For the present variable the exposure is one dative token, and the count is the number of recipient words beyond the first. The recurrence
 
-This restriction may be too strong for linguistic counts. If speakers, documents, genres, or lexical items have different rates, the observed variance may be much larger than the mean. The [negative-binomial page](negative-binomial-distribution.qmd) gives one family whose variance can exceed its mean, though the scientific reason for extra variation still needs to be modeled.
+$$
+\frac{\mathbb{P}(Y=y+1)}{\mathbb{P}(Y=y)}
+=\frac{\lambda}{y+1}
+$$
 
-## Diagnosing the first failure mode
+shows how the mass increases up to the vicinity of $\lambda$ and decreases afterward.
 
-Suppose 100 one-minute intervals have a sample mean of 2.1 filled pauses and a
-sample variance of 9.4. A Poisson model fitted to the center would use a value of
-$\lambda$ near 2.1. It would then require a variance near 2.1 as well. The gap
-between 2.1 and 9.4 is evidence that the one-parameter family misses some
-structure in the observations.
+The log likelihood,
 
-This pattern is called [**overdispersion**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) relative to the Poisson model, but it does
-not by itself tell us why the extra variation occurs: speakers may have
-different pause rates, speech tasks may differ, or pauses may cluster after moments
-of planning difficulty. Each possibility suggests a different analysis. The
-mean to variance comparison is thus a diagnostic, not an explanation.
+$$
+\ell(\lambda)
+=\sum_{i=1}^n\left[y_i\log\lambda-\lambda-\log(y_i!)\right],
+$$
 
-::: {.callout-note title="Check the exposure"}
-1. Two documents contain 3 target constructions each, but one has 500 words and
-   the other 5,000. Explain why the raw counts do not represent the same rate.
-2. With $X\sim\operatorname{Poisson}(2)$, explain the difference between
-   `dpois(2, 2)` and `ppois(2, 2)` without referring to the R function names.
-3. A corpus count has a mean of 4.3 and a variance of 18.7. State the Poisson
-   restriction that this summary appears to violate. Then identify one linguistic
-   source of the extra variation.
-:::
+has derivative $\sum_i y_i/\lambda-n$, so $\widehat\lambda=\overline y$. The fitted value is `r sprintf("%.3f", lambda_hat)` words beyond the first.
 
-The exact upshot is that a Poisson parameter is an expected count for a stated exposure, and that same parameter fixes the variance. Both pieces must be plausible before the family is a useful count model.
+```{r}
+#| label: plot-dative-poisson
+#| fig-cap: "Observed recipient-length mass and fitted Poisson mass. The model misses both the zero mass and the long tail."
+ggplot(fit, aes(value)) +
+  geom_col(aes(y = observed_probability), fill = "grey72", width = 0.8) +
+  geom_line(aes(y = fitted_probability), color = "#8B1A1A", linewidth = 0.8) +
+  geom_point(aes(y = fitted_probability), color = "#8B1A1A", size = 1.7) +
+  labs(x = "Recipient words beyond the first", y = "Probability") +
+  theme_classic(base_size = 12)
+```
+
+The empirical variance is `r sprintf("%.3f", population_variance)`, giving a variance-to-mean ratio of `r sprintf("%.2f", variance_to_mean)`. The observed zero proportion is `r sprintf("%.3f", observed_zero)`, compared with a fitted zero probability of `r sprintf("%.3f", fitted_zero)`. Thus the Poisson family fails its equidispersion pattern and its visible mass allocation.
+
+## Check your understanding
+
+1. Use `ppois()` to find the fitted probability above the observed maximum.
+2. Why subtract one from `recipient_length_words`?
+3. Which two features of the plot show lack of fit?
+4. Why does repeated use of the same verb matter for population inference?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. With $\widehat\lambda=0.842170$ and observed maximum 30, `ppois(30, lambda_hat, lower.tail = FALSE) = 2.62e-37`. <!-- dqr-allow: empirical-answer -->
+2. Subtracting one converts recipient length to the number of words beyond the unavoidable first word, producing a nonnegative count with zero for one-word recipients. <!-- dqr-allow: empirical-answer -->
+3. The observed zero probability is 0.682807 versus 0.430775 fitted, and the observed variance-to-mean ratio is 5.075589 with a much heavier upper tail than the fitted Poisson. <!-- dqr-allow: empirical-answer -->
+4. Repeated tokens of the same verb share lexical properties, so treating them as independent evidence would overstate information for inference beyond the represented corpus. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [uniform distribution](uniform-distribution.qmd) begins a two-page sequence on bounded measurements.

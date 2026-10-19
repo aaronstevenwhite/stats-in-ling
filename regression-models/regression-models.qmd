@@ -1,10 +1,135 @@
 ---
 title: "Conditional means"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+Regression begins by naming a response distribution at each predictor value. Its first target is usually the **conditional mean function**
 
-**Available Wednesday, October 7, 2026.**
+$$
+m(x)\equiv\mathbb{E}[Y\mid X=x].
+$$
+
+This function asks how the center of a response changes across observed linguistic contexts. It does not yet require the center to be a straight line.
+
+## The Provo Regression Sequence
+
+We develop this idea with the **Provo Regression Sequence (PRS)**. Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) collected cloze norms and eye movements for 55 English passages; the [Provo OSF release](https://osf.io/sjefs/) is available under CC BY 4.0. The course table retains complete content-word positions. A row is a word position nested in a passage after first-fixation durations have been aggregated across readers. It is not a participant trial.
+
+The release variable `OrthoMatchModel` is a fitted cloze probability that avoids exact zero and one. It is not a language-model probability. We call
+
+$$
+X_i=-\log_2(\widehat p_i)
+$$
+
+**modeled cloze surprisal**, and let $Y_i$ be the mean log first-fixation duration at position $i$.
+
+```{r}
+#| label: load-provo-conditional-means
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_probability <- provo$OrthoMatchModel
+provo$cloze_surprisal_bits <- -log2(provo$cloze_probability)
+
+stopifnot(
+  nrow(provo) == 1593L,
+  length(unique(provo$Text_ID)) == 55L,
+  !anyDuplicated(provo$position_id),
+  all(provo$cloze_probability > 0 & provo$cloze_probability < 1)
+)
+
+c(
+  positions = nrow(provo),
+  passages = length(unique(provo$Text_ID)),
+  minimum_surprisal = min(provo$cloze_surprisal_bits),
+  maximum_surprisal = max(provo$cloze_surprisal_bits)
+)
+```
+
+The retained table contains `r nrow(provo)` positions from `r length(unique(provo$Text_ID))` passages. Reader-level variation is no longer recoverable.
+
+## Estimating a changing center
+
+Exact predictor values are nearly continuous, so an empirical conditional mean at one exact value would usually contain few observations. Equal-count bins provide a descriptive estimate:
+
+$$
+\widehat m_b
+\equiv
+\frac{1}{n_b}\sum_{i:X_i\in B_b}Y_i,
+$$
+
+where $B_b$ is surprisal bin $b$ and $n_b$ is its observed number of positions. The bins are a display device, not a fitted regression model.
+
+```{r}
+#| label: compute-provo-conditional-means
+breaks <- unique(quantile(
+  provo$cloze_surprisal_bits,
+  probs = seq(0, 1, length.out = 11L)
+))
+provo$surprisal_bin <- cut(
+  provo$cloze_surprisal_bits,
+  breaks = breaks,
+  include.lowest = TRUE
+)
+
+conditional_means <- do.call(rbind, lapply(
+  split(provo, provo$surprisal_bin),
+  function(rows) data.frame(
+    n_positions = nrow(rows),
+    mean_surprisal = mean(rows$cloze_surprisal_bits),
+    mean_log_ffd = mean(rows$mean_log_ffd),
+    se = sd(rows$mean_log_ffd) / sqrt(nrow(rows))
+  )
+))
+row.names(conditional_means) <- NULL
+
+conditional_means
+```
+
+```{r}
+#| label: plot-provo-conditional-means
+#| fig-cap: "Reader-aggregated Provo positions in gray and empirical conditional means in black. Bins contain approximately equal numbers of positions."
+point_opacity <- 0.22
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.9) +
+  geom_point(
+    data = conditional_means,
+    aes(mean_surprisal, mean_log_ffd),
+    inherit.aes = FALSE,
+    color = "black",
+    size = 2
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The bin means tend to increase with modeled cloze surprisal. This pattern licenses a question about the conditional mean of these position summaries. It does not by itself identify a processing mechanism or restore the repeated reader observations.
+
+## Check your understanding
+
+1. What is the observational unit in the PRS?
+2. Why are the black points estimates rather than raw observations?
+3. What information was lost when reader trials were aggregated?
+4. Which part of the display suggests that a straight line might be useful?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. One PRS observation is a retained content-word position within a Provo passage, with first-fixation duration already aggregated across readers. <!-- dqr-allow: empirical-answer -->
+2. Each black point is a bin mean computed from many position summaries, so it estimates a conditional center rather than recording one raw observation. <!-- dqr-allow: empirical-answer -->
+3. Individual reader responses, reader identities, and reader-level variation and dependence were lost. <!-- dqr-allow: empirical-answer -->
+4. The binned empirical means generally rise with modeled cloze surprisal; a straight line is a simple first approximation to that trend. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](simple-linear-regression.qmd) restricts the conditional mean to a straight line.

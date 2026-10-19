@@ -1,130 +1,122 @@
 ---
 title: "Divergent Hamiltonian transitions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [Hamiltonian Monte Carlo page](hamiltonian-monte-carlo.qmd) introduced numerical integration, and the [mass matrix page](mass-matrix-geometry.qmd) showed how one constant matrix represents global scale and correlation. When integration error grows beyond a threshold, Stan reports a [**divergent transition**](https://mc-stan.org/docs/reference-manual/mcmc.html).
+A **divergent transition** occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same PCT used throughout this sequence.
 
-A divergence is evidence that the sampler may not have followed the target geometry reliably in a particular region. The immediate question is where that region lies and which feature of the parameterization makes it difficult. A divergence is not an ordinary rejected proposal and should not be removed from a report by filtering iterations.
+## Energy error and geometry
 
-## Connecting curvature to integration error
-
-Consider a joint posterior with a positive scale parameter $\tau$ and latent deviations
-
-$$
-u_j\sim\operatorname{Normal}(0,\tau^2).
-$$
-
-When $\tau$ is near zero, all $u_j$ values must also lie near zero, whereas when $\tau$ is larger, the latent deviations can occupy a much wider range. The joint posterior can thus narrow sharply at small $\tau$ and widen at large $\tau$.
-
-This changing width is often called funnel geometry. A leapfrog step size that works in the wide region may be too large in the narrow region, where log density and gradients change rapidly.
-
-The integrator is designed to approximately preserve the Hamiltonian energy
+HMC approximately preserves
 
 $$
 H(q,\rho)
 =
--\log\kappa(q)
-+\frac{1}{2}\rho^{\mathsf T}M^{-1}\rho.
+-\log\widetilde f(q\mid\mathbf y)
++\frac12\rho^\mathsf TM^{-1}\rho.
 $$
 
-Here $q$ denotes parameters, $\rho$ denotes auxiliary momentum, and $M$ is a mass matrix. Stan monitors the change in energy along the numerical trajectory. A change beyond its divergence threshold indicates that the discrete path has become an unreliable approximation in that region.
-
-## Reading the diagnostic from a fit
-
-With CmdStanR, a fit summary can be inspected with
-
-```r
-fit$cmdstan_diagnose()
-```
-
-The per-iteration indicator is named `divergent__`:
-
-```r
-divergence_draws <- fit$draws("divergent__")
-posterior::summarise_draws(divergence_draws)
-```
-
-The diagnostic is attached to transitions, not to one parameter. A divergence occurs at a joint parameter state, even if it becomes visible only when particular parameter pairs are plotted.
-
-## Locating the affected region
-
-The count of divergences is the first check. Their location is the next one. Color pairs plots of posterior draws by divergence status and ask whether marked iterations concentrate near small scale parameters, extreme correlations, or another narrow region.
-
-```r
-bayesplot::mcmc_pairs(
-  fit$draws(c("tau", "u[1]", "u[2]")),
-  np = bayesplot::nuts_params(fit)
-)
-```
-
-A small percentage can matter if every divergence occurs in the same region. The chain may systematically underexplore precisely that part of the posterior.
-
-## Choosing a repair that matches the cause
-
-Increasing `adapt_delta` asks Stan to target a higher acceptance probability and usually leads to a smaller integration step size:
-
-```r
-refit <- model$sample(
-  data = stan_data,
-  adapt_delta = .99
-)
-```
-
-This change can repair modest integration error. It cannot identify a parameter that the data do not constrain, rescale a badly measured predictor, or remove a funnel implied by a difficult parameterization.
-
-### Reparameterize changing curvature
-
-Some posterior geometries remain difficult after step size and mass matrix adaptation. A scale parameter near zero, for instance, can create a narrow region connected to a much wider region. One constant step size and one constant mass matrix may not traverse both regions accurately and efficiently.
-
-A coordinate change can sometimes express the same joint model with more manageable geometry. The centered form writes
+Rapidly changing curvature can make one step size inaccurate in a narrow region even if it works elsewhere. In a hierarchical model, for instance,
 
 $$
-u_j\sim\operatorname{Normal}(0,\tau^2).
+u_j\sim\mathcal N(0,\tau^2)
 $$
 
-The corresponding noncentered form writes
+can produce a narrow region when $\tau$ is near zero and a wider region when $\tau$ is large. A noncentered representation writes
 
 $$
-z_j\sim\operatorname{Normal}(0,1)
-$$
-
-and defines
-
-$$
+z_j\sim\mathcal N(0,1),
+\qquad
 u_j=\tau z_j.
 $$
 
-For any fixed $\tau$, both forms imply the same distribution for $u_j$. But the sampler explores $(\tau,u_j)$ in the first form and $(\tau,z_j)$ in the second. When $\tau$ approaches zero, the centered effects must collapse toward zero, while the standardized $z_j$ values retain a common scale.
+The two forms imply the same conditional distribution for $u_j$ at fixed $\tau$, but expose different numerical coordinates.
 
-Centering or scaling predictors can similarly change posterior scales and correlations when the complete model is transformed consistently. These changes preserve fitted quantities after conversion back to the original scale, but they may make the numerical coordinates easier to explore.
+## Production and stress computations
 
-This repair is not universal. Strongly informed group effects can favor a centered form, and a predictor transformation cannot remove weak identification. Reparameterization should thus respond to the geometry located by the diagnostic.
+The production PCT fit uses adapted NUTS. The **computational stress fit** uses the same complete passage set, likelihood, priors, and data-derived initial region, but deliberately disables warmup and adaptation, uses a unit metric, fixes step size at 0.03, and caps tree depth at 7. It is an intentional coarse unadapted stress computation, not a second inferential fit and not evidence of a defect in the production model.
 
-A useful repair sequence is:
+```{r}
+#| label: load-provo-divergences
+library(ggplot2)
+library(posterior)
 
-1. Locate the divergent draws.
-2. Inspect predictor scales and parameter identification.
-3. Reparameterize when posterior geometry motivates it.
-4. Increase `adapt_delta` when finer integration is appropriate.
-5. Refit and check every diagnostic again.
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
+)
 
-Increasing `adapt_delta` is not a universal repair. A smaller step may resolve the integration warning at substantial computational cost while leaving inefficient geometry or weak identification intact. The refitted chains must still pass the other diagnostics.
+production_diagnostics <- as.data.frame(
+  as_draws_df(cache$production_diagnostics)
+)
+stress_diagnostics <- as.data.frame(as_draws_df(cache$stress_diagnostics))
+stress_parameters <- as.data.frame(as_draws_df(subset_draws(
+  cache$stress_draws, variable = c("mu", "sigma")
+)))
+stress <- merge(
+  stress_parameters,
+  stress_diagnostics[, c(".chain", ".iteration", "divergent__")],
+  by = c(".chain", ".iteration")
+)
 
-## Keeping computation and adequacy separate
+divergence_summary <- data.frame(
+  fit = c("production adapted NUTS",
+          "coarse unadapted stress computation"),
+  draws = c(nrow(production_diagnostics), nrow(stress_diagnostics)),
+  divergences = c(sum(production_diagnostics$divergent__),
+                  sum(stress_diagnostics$divergent__))
+)
+divergence_summary$rate <- divergence_summary$divergences /
+  divergence_summary$draws
 
-Every post-warmup divergence warrants investigation when reliable final inference is required. A run with no reported divergences removes this particular warning, but it is not sufficient for trusting the complete fit. Chains may still disagree, have low effective sample size, or miss a target region.
+stopifnot(nrow(provo) == 55L,
+          divergence_summary$divergences[1] == 0L,
+          divergence_summary$divergences[2] > 0L)
+divergence_summary
+```
 
-And computational success does not establish model adequacy. A well sampled normal model may still predict phonetic measurements poorly or omit a relevant source of dependence.
+```{r}
+#| label: plot-provo-stress-divergences
+#| fig-cap: "The coarse, unadapted stress computation. Accent points mark divergent transitions; this run is not the production fit."
+background_opacity <- .35
+divergent_opacity <- .75
+ggplot(stress, aes(mu, sigma)) +
+  geom_point(color = "grey68", alpha = background_opacity, size = .75) +
+  geom_point(data = subset(stress, divergent__ == 1),
+             color = "#8B1A1A", alpha = divergent_opacity, size = 1.1) +
+  coord_cartesian(xlim = c(-.015, .035), ylim = c(.025, .070)) +
+  labs(x = "Passage-level contrast (mu)",
+       y = "Passage contrast scale (sigma)") +
+  theme_classic(base_size = 12)
+```
 
-::: {.callout-note title="Problem Set 4 connection"}
-[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) requires the number of divergent transitions before students interpret commitment-rating contrasts involving predicates such as *know*. The [CommitmentBank study](https://ojs.ub.uni-konstanz.de/sub/index.php/sub/article/view/601) treats factivity as one predictor of complement commitment. That coarse lexical label is not another name for a high observed rating: commitment can also vary across embedding environments, predicates, and discourses. An apparently strong linguistic result cannot be trusted when the sampler systematically misses a difficult region of the joint posterior.
-:::
+The production fit has `r divergence_summary$divergences[1]` divergences. The intentionally coarse stress computation has `r divergence_summary$divergences[2]` among `r divergence_summary$draws[2]` transitions. The contrast shows what the diagnostic looks like when integration is degraded while the data and posterior remain fixed.
+
+## Responding to a real divergence
+
+First locate the marked draws in theoretically relevant parameter pairs. Then inspect parameter identification, predictor scales, and parameterization. Increasing `adapt_delta` usually reduces step size and may repair modest integration error; reparameterization may be needed when curvature changes substantially. Refit and recheck all diagnostics.
+
+Filtering divergent iterations is never a repair. And a run with no divergence removes only this warning: chains may still disagree, have low ESS, or target a model that predicts the linguistic data poorly.
 
 ## Check your understanding
 
-1. What numerical quantity fails to remain approximately stable during a divergence?
-2. Why can divergences cluster near a small group-level scale?
-3. Why might a few localized divergences matter more than their percentage suggests?
-4. When is reparameterization more informative than only increasing `adapt_delta`?
+1. Which numerical quantity fails to remain approximately stable during a divergence?
+2. Why is the stress run not evidence of a defective PCT model?
+3. Why might localized divergences matter even when their percentage is small?
+4. When might reparameterization be more useful than only increasing `adapt_delta`?
 
-The [pairs-plot page](parameter-pair-plots.qmd) shows how joint draws can reveal the region associated with a computational warning.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The Hamiltonian, or total energy $H(q,\rho)$, fails to remain approximately stable. <!-- dqr-allow: empirical-answer -->
+2. The stress run deliberately disables adaptation and uses a coarse unit metric while holding the data and posterior fixed; it demonstrates numerical failure rather than a defective PCT model. <!-- dqr-allow: empirical-answer -->
+3. A small rate can be concentrated in a narrow, scientifically important posterior region, biasing summaries that depend on that region. <!-- dqr-allow: empirical-answer -->
+4. Reparameterization is more useful when posterior curvature changes sharply, as in funnel-like geometry that no single smaller step size handles efficiently. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [pairs-plot page](parameter-pair-plots.qmd) separates production geometry from this stress computation.

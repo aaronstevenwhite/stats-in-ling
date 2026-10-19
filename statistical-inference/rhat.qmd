@@ -1,121 +1,93 @@
 ---
 title: "Cross-chain agreement"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [trace plot page](checking-markov-chains.qmd) used visual overlap to assess cross-chain agreement. The $\widehat{R}$ statistic summarizes that comparison numerically. Suppose four MCMC chains target a coefficient $\Theta$ for dependency length in a reading-time model. Here dependency length is the number of intervening word tokens between two syntactically related words. The coefficient describes an association under the fitted model; it does not by itself identify a processing mechanism.
+The trace and rank plots compare PCT chains visually. The **$\widehat R$ statistic** compares between-chain variation with within-chain variation: values near one are consistent with chain agreement, while larger values indicate persistent disagreement.
 
-The question is whether chain identity still predicts the sampled value after warmup. The [**$\widehat{R}$ statistic**](https://mc-stan.org/rstan/reference/Rhat.html) answers it by comparing between-chain variation with within-chain variation: values near one are consistent with chain agreement, while values appreciably above one indicate persistent disagreement.
+## The basic variance ratio
 
-## Constructing the basic variance comparison
-
-Let there be $M$ chains with $N$ draws each. Write $\overline{\beta}_m$ for the mean of chain $m$ and $s_m^2$ for its sample variance.
-
-The average within-chain variance is
+For $M$ chains with $N$ draws each, let $\overline\mu_m$ and $s_m^2$ be the mean and variance in chain $m$. The average within-chain variance is
 
 $$
-W
-=
-\frac{1}{M}
-\sum_{m=1}^Ms_m^2.
+W=\frac1M\sum_{m=1}^Ms_m^2.
 $$
 
 The scaled between-chain variance is
 
 $$
-B
-=
-N
-\operatorname{Var}
-(\overline{\beta}_1,\ldots,\overline{\beta}_M).
+B=N\operatorname{Var}[\overline\mu_1,\ldots,\overline\mu_M].
 $$
 
-A combined variance estimate is
+Combining them gives
 
 $$
-\widehat{V}
-=
-\frac{N-1}{N}W
-+
-\frac{1}{N}B.
+\widehat V=\frac{N-1}{N}W+\frac1NB,
+\qquad
+\widehat R=\sqrt{\frac{\widehat V}{W}}.
 $$
 
-The basic variance-ratio diagnostic is
-
-$$
-\widehat{R}
-=
-\sqrt{\frac{\widehat{V}}{W}}.
-$$
-
-When chain means are separated, $B$ increases and so does $\widehat{R}$.
-
-## Calculating two cases
-
-The following function implements this basic calculation for a matrix with one chain per column.
+## Calculating $\widehat R$ for the PCT
 
 ```{r}
-#| label: basic-rhat-calculation
-#| echo: true
+#| label: compute-provo-rhat
+library(posterior)
 
-basic_rhat <- function(draw_matrix) {
-  n <- nrow(draw_matrix)
-  m <- ncol(draw_matrix)
-  within <- mean(apply(draw_matrix, 2, var))
-  between <- n * var(colMeans(draw_matrix))
-  variance_plus <- ((n - 1) / n) * within + between / n
-  sqrt(variance_plus / within)
-}
-
-set.seed(556)
-n <- 1000
-agreeing <- matrix(rnorm(4 * n), nrow = n, ncol = 4)
-separated <- sweep(
-  matrix(rnorm(4 * n), nrow = n, ncol = 4),
-  2,
-  c(-2, -2, 2, 2),
-  "+"
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
 )
+production <- cache$production_draws
+draw_df <- as.data.frame(as_draws_df(subset_draws(
+  production, variable = c("mu", "sigma")
+)))
+mu_by_chain <- sapply(sort(unique(draw_df$.chain)), function(chain) {
+  draw_df$mu[draw_df$.chain == chain]
+})
 
-rhat_agreeing <- basic_rhat(agreeing)
-rhat_separated <- basic_rhat(separated)
+N <- nrow(mu_by_chain)
+M <- ncol(mu_by_chain)
+W <- mean(apply(mu_by_chain, 2, var))
+B <- N * var(colMeans(mu_by_chain))
+V_hat <- ((N - 1) / N) * W + B / N
+basic_rhat <- sqrt(V_hat / W)
+modern <- as.data.frame(summarise_draws(
+  subset_draws(production, variable = c("mu", "sigma")),
+  "rhat"
+))
 
-stopifnot(abs(rhat_agreeing - 1) < .01)
-stopifnot(rhat_separated > 2)
-c(agreeing = rhat_agreeing,
-  separated = rhat_separated)
+stopifnot(nrow(provo) == 55L, M == 4L, N == 1000L,
+          max(modern$rhat) < 1.01)
+list(basic_mu = data.frame(M, N, W, B, V_hat, basic_rhat), modern = modern)
 ```
 
-The calculation makes the comparison visible. Current software adds chain splitting, rank normalization, and folding; the next section defines each refinement.
+The textbook calculation gives $\widehat R=$ `r sprintf("%.6f", basic_rhat)` for $\mu$. The modern rank-normalized split values for both PCT parameters are at most `r sprintf("%.4f", max(modern$rhat))`.
 
-## Understanding splitting and ranking
+## Modern refinements
 
-A chain can drift from low to high values while retaining the same overall mean as another drifting chain. Splitting each chain into an early half and a late half turns that within-chain change into disagreement among sequences.
+Splitting each chain into early and late halves makes within-chain drift visible as disagreement among sequences. Rank normalization improves behavior for skewed or heavy-tailed draws. Folding replaces each value with its absolute distance from the pooled median, making the diagnostic sensitive to chains with similar centers but different spreads. Current software reports the larger rank-normalized split and folded values, following Vehtari et al. ([2021](https://doi.org/10.1214/20-BA1221)).
 
-Modern $\widehat{R}$ also rank-normalizes the draws before forming the comparison, which improves behavior for skewed and heavy-tailed distributions. The first component is commonly called [**rank-normalized split $\widehat{R}$**](https://mc-stan.org/rstan/reference/Rhat.html).
-
-Stan also folds the draws by replacing each value with its absolute distance from the pooled median and computes a second rank-normalized split statistic. Folding makes the comparison sensitive to chains with similar centers but different spreads. The value Stan reports is the larger of the rank-normalized split and folded rank-normalized split statistics, following [Vehtari et al. (2021)](https://doi.org/10.1214/20-BA1221).
-
-Students should use the software diagnostic for fitted models. The hand calculation above supplies the logic that the modern procedure refines. Current Stan guidance recommends $\widehat{R}<1.01$ for final inference and at least four chains, while a looser value may be enough for an early model-development check. The value $1.01$ is an operational warning threshold, not a theorem that certifies convergence.
-
-## Interpreting a failure narrowly
-
-A high $\widehat{R}$ supports a focused conclusion: the chains do not provide mutually consistent draws for that quantity. It does not identify one guaranteed repair. More iterations may help slow exploration, while difficult posterior geometry or weak identification may require a different parameterization or model.
-
-An $\widehat{R}$ value near one is not a convergence certificate. Chains can agree in the same incomplete region, and agreement says little about information lost to dependence. The statistic must be considered with traces and later efficiency diagnostics.
-
-$\widehat{R}$ is parameter specific. Agreement for one population parameter does not establish agreement for every scale parameter, transformed contrast, or predicted probability.
-
-## Keeping the target distinction
-
-$\widehat{R}$ evaluates the Monte Carlo approximation. It does not measure posterior uncertainty, effect magnitude, or model adequacy. A parameter may have a wide posterior and excellent $\widehat{R}$, or a narrow apparent distribution and poor $\widehat{R}$.
-
-::: {.callout-note title="Problem Set 4 connection"}
-[Problem Set 4, Task 3](../problem-sets/ps4/ps4.qmd#task-3-fit-the-factivity-model) asks for the largest split $\widehat R$ across the reported population and scale parameters. One acceptable parameter diagnostic cannot stand in for agreement across the complete fitted model.
-:::
+A value below 1.01 is an operational threshold, not a convergence theorem. Chains can agree in the same incomplete region, and $\widehat R$ does not measure posterior magnitude or model adequacy. It is also quantity specific: derived quantities and scale parameters require their own checks.
 
 ## Check your understanding
 
-1. What makes the between-chain term large?
+1. What makes $B$ large?
 2. Why are chains split before the modern calculation?
-3. What does $\widehat{R}$ near one fail to establish?
-4. Why must transformed quantities be checked as well as original parameters?
+3. What failure can folding detect?
+4. What does $\widehat R$ near one fail to establish?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Because $B=N\operatorname{Var}[\overline\mu_1,\ldots,\overline\mu_M]$, large dispersion among chain means makes $B$ large, with that dispersion scaled by the common chain length $N$. <!-- dqr-allow: empirical-answer -->
+2. Splitting turns early-versus-late drift within an original chain into disagreement between separate sequences. <!-- dqr-allow: empirical-answer -->
+3. Folding can detect chains with similar centers but different spreads or tail behavior. <!-- dqr-allow: empirical-answer -->
+4. $\widehat R$ near one does not establish that every posterior region was explored, that ESS is adequate, or that the linguistic model fits the data. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [autocorrelation page](autocorrelation.qmd) turns from cross-chain agreement to within-chain dependence.

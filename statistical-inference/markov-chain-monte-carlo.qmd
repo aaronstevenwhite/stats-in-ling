@@ -1,115 +1,148 @@
 ---
 title: "Markov chain Monte Carlo"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-[Monte Carlo integration](monte-carlo-integration.qmd) used independent draws from a target distribution. Direct posterior draws are often unavailable. Can dependent draws still approximate the same expectation? [**Markov chain Monte Carlo (MCMC)**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html) answers yes by using states from a [Markov chain](markov-chains.qmd) designed to have the posterior as its stationary distribution.
+[Monte Carlo integration](monte-carlo-integration.qmd) used independent PCT draws. Direct posterior draws are often unavailable. **Markov chain Monte Carlo (MCMC)** uses dependent states from a chain whose stationary distribution is the posterior target.
 
-## Defining the target before the chain
+## Chain averages
 
-Suppose $\Theta$ is a standardized articulation-rate contrast. After specifying a likelihood and prior, the inferential target is
-
-$$
-f_{\Theta\mid\mathbf Y}(\theta\mid\mathbf{y}).
-$$
-
-For a function $g$, the posterior quantity of interest is
+For the PCT and a function $g$, the target is
 
 $$
 I
 =
-\mathbb{E}[g(\Theta)\mid\mathbf{y}]
+\mathbb{E}[g(\eta)\mid\mathbf y]
 =
-\int g(\theta)f_{\Theta\mid\mathbf Y}(\theta\mid\mathbf{y})\,\mathrm{d}\theta.
+\int g(\eta)f(\eta\mid\mathbf y)\,\mathrm d\eta.
 $$
 
-The likelihood and prior define this posterior. MCMC constructs a dependent sequence of realized states
+Under conditions that make the chain ergodic,
 
 $$
-\theta^{(1)},\theta^{(2)},\ldots,\theta^{(S)}
-$$
-
-whose long-run distribution is intended to have density $f_{\Theta\mid\mathbf Y}(\theta\mid\mathbf{y})$.
-
-## Using chain averages
-
-Under conditions that make the chain ergodic, its long-run averages converge to expectations under the stationary target. Here *ergodic* means, roughly, that the chain can reach the relevant target regions and eventually loses the influence of its starting state. We then approximate $I$ with
-
-$$
-\widehat{I}_S
+\widehat I_S
 =
-\frac{1}{S}
-\sum_{s=1}^Sg(\theta^{(s)}).
+\frac{1}{S}\sum_{s=1}^Sg(\eta^{(s)})
 $$
 
-The formula resembles ordinary Monte Carlo integration, but adjacent MCMC states are dependent.
+converges to $I$. Here *ergodic* means, roughly, that the chain can reach the target regions relevant to $g$ and eventually loses the influence of its starting state.
 
-Dependence among the states does not by itself invalidate the average. The transition rule must preserve the target distribution, and the chain must satisfy an ergodic theorem for the function $g$. For the finite-state chains on the preceding page, irreducibility and aperiodicity are sufficient. Conditions for chains on continuous parameter spaces are more technical, so a finite run still requires diagnostics.
+## Four dependent PCT chains
 
-## Examining a chain with a known target
-
-Consider the transition
-
-$$
-\Theta^{(s+1)}
-=
-\mu
-+\rho(\Theta^{(s)}-\mu)
-+\sqrt{1-\rho^2}\,\varepsilon_s,
-$$
-
-where $\varepsilon_s\sim\operatorname{Normal}(0,1)$ and $|\rho|<1$. Its stationary distribution is $\operatorname{Normal}(\mu,1)$.
-
-Set $\mu=.40$ and $\rho=.90$. Starting at $-4$ produces a chain that initially moves toward the target region and then continues to explore it.
+The code runs the frozen random-walk computation: four chains, 6,000 iterations, 1,000 warmup iterations omitted from summaries, and proposal covariance $(2.38^2/2)\widehat\Sigma$, where $\widehat\Sigma$ is computed from the normalized PCT grid.
 
 ```{r}
-#| label: known-target-markov-chain
-#| echo: true
+#| label: run-provo-mcmc
+library(ggplot2)
 
-set.seed(183)
-draw_count <- 20000
-mu <- .40
-rho <- .90
-theta <- numeric(draw_count)
-theta[1] <- -4
-
-for (s in 2:draw_count) {
-  theta[s] <- mu + rho * (theta[s - 1] - mu) +
-    sqrt(1 - rho^2) * rnorm(1)
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+y <- provo$noun_minus_verb_log_ffd
+nu <- 4
+prior_scale <- 2 * sd(y)
+log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
+log_target <- function(eta) {
+  mu <- eta[1]; sigma <- exp(eta[2])
+  sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, prior_scale, log = TRUE) +
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
 }
+mode_fit <- optim(c(median(y), log(mad(y))),
+                  function(eta) -log_target(eta), method = "BFGS",
+                  hessian = TRUE,
+                  control = list(reltol = 1e-12, maxit = 1000L))
+local_sd <- sqrt(diag(solve(mode_fit$hessian)))
+grid <- expand.grid(
+  mu = seq(mode_fit$par[1] - 7 * local_sd[1],
+           mode_fit$par[1] + 7 * local_sd[1], length.out = 321L),
+  log_sigma = seq(mode_fit$par[2] - 7 * local_sd[2],
+                  mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
+)
+grid$log_kernel <- apply(grid, 1, log_target)
+grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
+grid_values <- as.matrix(grid[, c("mu", "log_sigma")])
+grid_mean <- colSums(grid_values * grid$weight)
+centered <- sweep(grid_values, 2, grid_mean, "-")
+grid_covariance <- crossprod(centered * sqrt(grid$weight))
+proposal_cholesky <- chol((2.38^2 / 2) * grid_covariance)
+posterior_cholesky <- t(chol(grid_covariance))
+initial_z <- rbind(c(-2, -1), c(-.6, 1), c(.6, -1), c(2, 1))
+initial <- t(vapply(seq_len(4), function(chain) {
+  grid_mean + posterior_cholesky %*% initial_z[chain, ]
+}, numeric(2)))
 
-saved <- theta[1001:draw_count]
-stopifnot(abs(mean(saved) - mu) < .05)
-stopifnot(abs(sd(saved) - 1) < .05)
-c(mean = mean(saved), sd = sd(saved))
+set.seed(2026101804)
+iterations <- 6000L
+warmup <- 1000L
+chain_rows <- vector("list", 4L)
+for (chain in seq_len(4L)) {
+  current <- initial[chain, ]
+  current_log_target <- log_target(current)
+  mu <- sigma <- numeric(iterations)
+  accepted <- logical(iterations)
+  for (iteration in seq_len(iterations)) {
+    proposal <- current + drop(rnorm(2) %*% proposal_cholesky)
+    log_ratio <- log_target(proposal) - current_log_target
+    accepted[iteration] <- log(runif(1)) < min(0, log_ratio)
+    if (accepted[iteration]) {
+      current <- proposal
+      current_log_target <- log_target(current)
+    }
+    mu[iteration] <- current[1]
+    sigma[iteration] <- exp(current[2])
+  }
+  chain_rows[[chain]] <- data.frame(chain, iteration = seq_len(iterations),
+                                    mu, sigma, accepted)
+}
+chains <- do.call(rbind, chain_rows)
+saved <- subset(chains, iteration > warmup)
+diagnostics <- do.call(rbind, lapply(split(saved, saved$chain), function(x) {
+  data.frame(chain = x$chain[1], mean_mu = mean(x$mu),
+             mean_sigma = mean(x$sigma), acceptance = mean(x$accepted))
+}))
+
+quadrature_mu <- sum(grid$mu * grid$weight)
+stopifnot(length(y) == 55L, max(abs(diagnostics$mean_mu - quadrature_mu)) < .003)
+diagnostics
 ```
 
-The first 1,000 states are omitted here only because the chain was deliberately initialized far from its high-probability region. There is no observable iteration at which a finite chain becomes exactly stationary, and discarding early iterations does not repair a transition that cannot reach part of the target.
+```{r}
+#| label: plot-provo-mcmc-dependence
+#| fig-cap: "Successive post-warmup values of mu in chain one. Their local continuity makes the dependence visible."
+chain_one <- subset(saved, chain == 1 & iteration <= warmup + 250L)
+ggplot(chain_one, aes(iteration, mu)) +
+  geom_line(color = "grey35", linewidth = .55) +
+  geom_hline(yintercept = quadrature_mu, color = "#8B1A1A", linewidth = .7) +
+  labs(x = "Post-warmup iteration", y = "Passage-level contrast (mu)") +
+  theme_classic(base_size = 12)
+```
 
-Multiple chains should begin from different plausible initial values. If they move toward and then repeatedly explore the same region, initialization appears to have lost its influence. If they remain separated, averaging them hides the failure.
+The four acceptance rates and posterior means are computed from the actual PCT chains. Adjacent values are dependent, so 20,000 retained states do not generally contain the information of 20,000 independent draws. Later pages quantify that loss.
 
-The omitted initialization period is often called burn-in for a fixed transition rule. In adaptive samplers such as Stan's NUTS, *warmup* also tunes the step size and mass matrix, so the transition rule itself changes. Those adaptation states are not included in posterior summaries.
+## Three distributions
 
-## Keeping three distributions separate
+The posterior target is defined by the likelihood and prior. The transition distribution moves from one state to the next while preserving that target. The empirical distribution of a finite run approximates the target and contains Monte Carlo error. Conflating these three objects makes it impossible to say whether a problem belongs to the model or the computation.
 
-| object | role |
-|---|---|
-| posterior target | distribution the analysis seeks to approximate |
-| transition distribution | conditional rule for moving to a new state |
-| empirical draw distribution | finite collection of states produced by one run |
-
-The transition distribution tells the chain how to move from its current state. It is designed to preserve the posterior, but it is not itself the posterior. The empirical distribution of a finite run only approximates the posterior and contains Monte Carlo error.
-
-## Distinguishing posterior spread from chain behavior
-
-A wide posterior may reflect limited linguistic information under the model, whereas a slowly moving chain reflects computational inefficiency. Collecting more data can change posterior spread. Running the chain longer can reduce Monte Carlo error, but it does not add linguistic evidence.
-
-Simply running a chain for many iterations does not show that it explored the target. A chain can remain in the wrong region for millions of steps. Later diagnostics compare multiple chains and estimate how much information remains after accounting for their dependence.
-
-MCMC output should thus be treated as an approximation with an audit trail. The model defines the target, the algorithm generates dependent draws, and diagnostics assess the finite run.
+Omitting the first 1,000 states here follows the declared reference computation. In adaptive samplers, *warmup* also tunes the transition rule. No finite iteration marks a magical point of exact stationarity, and discarding states cannot repair a transition that misses part of the target.
 
 ## Check your understanding
 
-1. Which distribution is the inferential target in MCMC?
-2. Why are adjacent chain states generally not independent?
-3. What must a transition rule accomplish before chain averages approximate posterior expectations?
-4. Why can increasing the number of iterations reduce Monte Carlo error without narrowing the posterior?
+1. Why may a dependent chain average still estimate a posterior expectation?
+2. What does warmup change in an adaptive sampler?
+3. Why do more iterations reduce computational error but not posterior spread?
+4. Which of the three distributions encodes the linguistic model?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. An ergodic theorem makes averages of dependent states converge to expectations under the chain's stationary posterior distribution. <!-- dqr-allow: empirical-answer -->
+2. Warmup adapts computational settings such as step size and mass matrix; it also lets the run move away from its initial state before retention. <!-- dqr-allow: empirical-answer -->
+3. Iterations refine the numerical approximation to a fixed posterior; they add no linguistic observations and thus do not narrow that posterior target. <!-- dqr-allow: empirical-answer -->
+4. The posterior target, defined by the likelihood and prior, encodes the linguistic model. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [Metropolis--Hastings page](metropolis-hastings.qmd) derives the transition used here.

@@ -1,10 +1,137 @@
 ---
 title: "Changing conditional variance"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+Ordinary linear regression assumes one conditional residual variance. **Heteroscedasticity** means that this spread changes across observations:
 
-**Available Wednesday, October 7, 2026.**
+$$
+\operatorname{Var}[Y_i\mid\mathbf x_i]=\sigma_i^2
+$$
+
+rather than
+
+$$
+\operatorname{Var}[Y_i\mid\mathbf x_i]=\sigma^2.
+$$
+
+## Residual spread across MALD frequency
+
+The MRS provides two related spread measurements: absolute residuals from the item-mean model and the stored within-item standard deviation of correct log response times.
+
+```{r}
+#| label: compute-mald-heteroscedasticity
+library(ggplot2)
+library(sandwich)
+library(lmtest)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+mald$n_phones_c <- mald$n_phones - mean(mald$n_phones)
+
+fit <- lm(
+  mean_log_rt ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = mald
+)
+mald$residual <- residuals(fit)
+
+breaks <- unique(quantile(
+  mald$log_frequency_subtlex,
+  probs = seq(0, 1, length.out = 11L)
+))
+mald$frequency_bin <- cut(
+  mald$log_frequency_subtlex,
+  breaks = breaks,
+  include.lowest = TRUE
+)
+spread_bins <- do.call(rbind, lapply(
+  split(mald, mald$frequency_bin),
+  function(rows) data.frame(
+    mean_log_frequency = mean(rows$log_frequency_subtlex),
+    mean_absolute_residual = mean(abs(rows$residual)),
+    mean_within_item_sd = mean(rows$sd_log_rt),
+    n_items = nrow(rows)
+  )
+))
+row.names(spread_bins) <- NULL
+
+conventional_se <- coef(summary(fit))[, "Std. Error"]
+hc3_test <- coeftest(fit, vcov. = vcovHC(fit, type = "HC3"))
+hc3_se <- hc3_test[, "Std. Error"]
+
+data.frame(
+  term = names(coef(fit)),
+  conventional_se = conventional_se,
+  hc3_se = hc3_se,
+  ratio = hc3_se / conventional_se
+)
+```
+
+```{r}
+#| label: plot-mald-heteroscedasticity
+#| fig-cap: "Absolute MALD residuals with equal-count-bin means in blue."
+point_opacity <- 0.045
+ggplot(mald, aes(log_frequency_subtlex, abs(residual))) +
+  geom_point(color = "grey70", alpha = point_opacity, size = 0.5) +
+  geom_line(
+    data = spread_bins,
+    aes(mean_log_frequency, mean_absolute_residual),
+    inherit.aes = FALSE,
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  geom_point(
+    data = spread_bins,
+    aes(mean_log_frequency, mean_absolute_residual),
+    inherit.aes = FALSE,
+    color = "#2C6E9B",
+    size = 1.5
+  ) +
+  labs(x = "Log SUBTLEX frequency", y = "Absolute residual") +
+  theme_classic(base_size = 12)
+```
+
+```{r}
+#| label: plot-mald-within-item-spread
+#| fig-cap: "Observed within-item log-response-time standard deviations and their equal-count-bin means."
+ggplot(mald, aes(log_frequency_subtlex, sd_log_rt)) +
+  geom_point(color = "grey70", alpha = point_opacity, size = 0.5) +
+  geom_line(
+    data = spread_bins,
+    aes(mean_log_frequency, mean_within_item_sd),
+    inherit.aes = FALSE,
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(x = "Log SUBTLEX frequency", y = "Within-item log-RT SD") +
+  theme_classic(base_size = 12)
+```
+
+HC3 changes the covariance estimate while preserving the OLS coefficients and fitted means. It is a sensitivity analysis for coefficient uncertainty, not a model of why spread changes. The next page instead gives conditional scale its own regression equation.
+
+The within-item spread is computed across retained correct trials. Because the item table lacks participant identifiers, neither plot separates participant heterogeneity from residual trial variation.
+
+## Check your understanding
+
+1. Which ordinary regression assumption does heteroscedasticity violate?
+2. Why do robust standard errors leave fitted means unchanged?
+3. What does `sd_log_rt` summarize?
+4. Which source of dependence remains unavailable?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Heteroscedasticity violates the ordinary regression assumption that $\operatorname{Var}[Y_i\mid\mathbf x_i]=\sigma^2$ is constant across observations. <!-- dqr-allow: empirical-answer -->
+2. Robust standard errors replace the coefficient covariance estimate after OLS minimizes the same SSE, so the coefficients and fitted means remain unchanged. <!-- dqr-allow: empirical-answer -->
+3. `sd_log_rt` summarizes the standard deviation of retained correct log response times within each MALD word item. <!-- dqr-allow: empirical-answer -->
+4. Participant-level dependence and participant heterogeneity remain unavailable because the item table omits participant identifiers. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](distributional-regression.qmd) models frequency-dependent scale directly.

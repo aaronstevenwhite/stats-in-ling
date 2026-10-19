@@ -1,10 +1,154 @@
 ---
 title: "Design matrices"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+A regression formula is converted into a numeric **design matrix**. Each row represents one observed MALD item; each column gives that item's multiplier for one coefficient.
 
-**Available Wednesday, October 7, 2026.**
+## From equations to a matrix
+
+The MRS can be written
+
+$$
+\mathbf y=\mathbf X\boldsymbol\beta+\boldsymbol\varepsilon.
+$$
+
+For item $i$, the design row is
+
+$$
+\mathbf x_i^\top
+=
+\begin{bmatrix}
+1 & F_i^c & D_i^c & P_i^c
+\end{bmatrix}.
+$$
+
+Its fitted mean is the inner product
+
+$$
+\widehat y_i=\mathbf x_i^\top\widehat{\boldsymbol\beta}.
+$$
+
+## Inspecting observed rows
+
+We select the actual MALD items nearest three observed frequency quantiles. These rows expose how the formula becomes numbers without inventing predictor combinations.
+
+```{r}
+#| label: inspect-mald-design-matrix
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+mald$n_phones_c <- mald$n_phones - mean(mald$n_phones)
+
+fit <- lm(
+  mean_log_rt ~ log_frequency_c + log_duration_c + n_phones_c,
+  data = mald
+)
+
+targets <- quantile(
+  mald$log_frequency_subtlex,
+  c(.1, .5, .9) # dqr-allow: algorithm-setting
+)
+indices <- vapply(
+  targets,
+  function(target) which.min(abs(mald$log_frequency_subtlex - target)),
+  integer(1)
+)
+observed_rows <- mald[indices, ]
+X_observed <- model.matrix(fit, data = observed_rows)
+matrix_prediction <- drop(X_observed %*% coef(fit))
+r_prediction <- predict(fit, newdata = observed_rows)
+
+stopifnot(
+  length(unique(indices)) == length(indices),
+  max(abs(matrix_prediction - r_prediction)) < 1e-12
+)
+
+cbind(
+  observed_rows[, c("item", "mean_log_rt")],
+  X_observed,
+  matrix_prediction
+)
+```
+
+```{r}
+#| label: plot-mald-design-matrix-fit
+#| fig-cap: "Observed MALD item means and their fitted multiple-regression values. The diagonal marks exact agreement."
+mald$fitted_mean_log_rt <- fitted(fit)
+
+ggplot(mald, aes(fitted_mean_log_rt, mean_log_rt)) +
+  geom_point(color = "grey45", alpha = 0.35, size = 1.2) + # dqr-allow: plot-aesthetic
+  geom_abline(intercept = 0, slope = 1, color = "#2C6E9B", linewidth = 0.7) +
+  labs(
+    x = "Fitted mean log reaction time",
+    y = "Observed mean log reaction time"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The complete matrix contains `r nrow(model.matrix(fit))` rows and `r ncol(model.matrix(fit))` columns. Its first column is the intercept column. The other columns contain observed centered item properties.
+
+The OLS solution follows by differentiating
+
+$$
+(\mathbf y-\mathbf X\boldsymbol\beta)^\top
+(\mathbf y-\mathbf X\boldsymbol\beta)
+$$
+
+with respect to $\boldsymbol\beta$. Setting the gradient to zero gives the normal equations
+
+$$
+\mathbf X^\top\mathbf X\widehat{\boldsymbol\beta}
+=
+\mathbf X^\top\mathbf y,
+$$
+
+and, when $\mathbf X^\top\mathbf X$ is invertible,
+
+$$
+\widehat{\boldsymbol\beta}
+=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf y.
+$$
+
+```{r}
+#| label: verify-mald-matrix-fit
+X <- model.matrix(fit)
+y <- mald$mean_log_rt
+beta_by_matrix <- solve(crossprod(X), crossprod(X, y))
+
+stopifnot(max(abs(beta_by_matrix - coef(fit))) < 1e-10)
+
+data.frame(
+  term = names(coef(fit)),
+  lm_estimate = coef(fit),
+  matrix_estimate = drop(beta_by_matrix)
+)
+```
+
+The design matrix makes coefficient meaning auditable. It also exposes a failure: if one column is an exact linear combination of others, the inverse does not exist. The correlated-predictor pages return to this issue with the observed MALD design.
+
+## Check your understanding
+
+1. What does one row of $\mathbf X$ represent?
+2. Why is the intercept column constant?
+3. How does a row produce one fitted value?
+4. What matrix property fails under exact collinearity?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. One row represents one observed MALD item and gives its multiplier for each coefficient. <!-- dqr-allow: empirical-answer -->
+2. A constant column of ones makes its coefficient contribute the same intercept to every fitted item mean. <!-- dqr-allow: empirical-answer -->
+3. The inner product $\mathbf x_i^\mathsf T\widehat{\boldsymbol\beta}$ multiplies each row entry by its coefficient and sums the products. <!-- dqr-allow: empirical-answer -->
+4. $\mathbf X^\mathsf T\mathbf X$ loses full rank and becomes noninvertible under exact collinearity. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](coding-categorical-predictors.qmd) constructs design columns for a categorical item property.

@@ -1,10 +1,13 @@
 ---
 title: "Cumulative distribution functions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The earlier pages represented discrete probability with a [probability mass function](probability-mass-functions.qmd) and continuous probability with a [probability density function](probability-density-functions.qmd). Must we switch representations every time we move between the two kinds of variable? A cumulative distribution function gives us one threshold-based representation that applies to both. Suppose $M$ records the number of morphemes in a sampled word token.
-
-The numerical table below is constructed. A corpus application would first need a morphological segmentation and a decision about whether the sampled objects are word tokens, word types, or lexemes; the CDF summarizes the resulting counts but does not choose among those units.
+The earlier pages represented discrete probability with a [probability mass function](probability-mass-functions.qmd) and continuous probability with a [probability density function](probability-density-functions.qmd). Must we switch representations every time we move between the two kinds of variable? A cumulative distribution function gives one threshold-based representation that applies to both.
 
 A [**cumulative distribution function**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), abbreviated [**CDF**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), records the probability at or below every threshold:
 
@@ -16,93 +19,80 @@ $$
 
 The function accumulates probability from the lower end of the support through the threshold $x$.
 
-## Constructing a discrete CDF by hand
+We compute the empirical CDF (ECDF) of the [Hillenbrand adult-men /i/ durations](continuous-random-variables.qmd#hillenbrand-vowel-duration). One row is one token from one adult male speaker.
 
-Consider this constructed PMF.
+```{r}
+#| label: load-hillenbrand-cdf
+library(ggplot2)
 
-| morpheme count $m$ | $p_M(m)$ |
-|---:|---:|
-| 1 | $.55$ |
-| 2 | $.30$ |
-| 3 | $.10$ |
-| 4 | $.05$ |
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+adult_i <- subset(vowels, speaker_type == "man" & vowel == "i")
+duration_ecdf <- ecdf(adult_i$duration_ms)
+q25 <- unname(quantile(adult_i$duration_ms, 0.25, type = 1))
+q75 <- unname(quantile(adult_i$duration_ms, 0.75, type = 1))
+f_q25 <- duration_ecdf(q25)
+f_q75 <- duration_ecdf(q75)
+middle_probability <- f_q75 - f_q25
 
-At threshold 1, the CDF contains only the first mass:
+stopifnot(
+  nrow(adult_i) == 45L,
+  !anyDuplicated(adult_i$speaker_id),
+  q25 <= q75,
+  abs(f_q25 - mean(adult_i$duration_ms <= q25)) < 1e-12,
+  abs(f_q75 - mean(adult_i$duration_ms <= q75)) < 1e-12,
+  abs(middle_probability -
+        mean(adult_i$duration_ms > q25 & adult_i$duration_ms <= q75)) < 1e-12
+)
 
-$$
-F_M(1)=.55.
-$$
+c(q25_ms = q25, F_q25 = f_q25,
+  q75_ms = q75, F_q75 = f_q75,
+  probability_q25_open_q75_closed = middle_probability)
+```
 
-At threshold 2, it contains the first two masses:
-
-$$
-F_M(2)=.55+.30=.85.
-$$
-
-Continuing gives the full CDF table.
-
-| threshold $m$ | $F_M(m)$ |
-|---:|---:|
-| 1 | $.55$ |
-| 2 | $.85$ |
-| 3 | $.95$ |
-| 4 | $1$ |
+## Constructing a discrete CDF
 
 For a discrete variable,
 
 $$
-F_X(x)=\sum_{\substack{x'\in\operatorname{cod}(X)\\x'\leq x}}p_X(x').
+F_X(x)
+=\sum_{\substack{x'\in\operatorname{cod}(X)\\x'\leq x}}p_X(x').
 $$
 
-The CDF increases in jumps when a support value has positive mass.
+The ECDF treats each observed duration record as a discrete outcome with equal mass. It consequently increases in jumps at recorded values, even though we may model the underlying acoustic quantity as continuous.
+
+```{r}
+#| label: plot-hillenbrand-ecdf
+#| fig-cap: "Empirical cumulative distribution of adult-men /i/ duration. Rug marks show the observed tokens."
+ggplot(adult_i, aes(duration_ms)) +
+  stat_ecdf(geom = "step", color = "steelblue") +
+  geom_rug(color = "grey") +
+  labs(x = "Vowel duration (ms)", y = "Empirical cumulative probability") +
+  theme_classic(base_size = 12)
+```
 
 ## Accumulating a continuous density
 
-For a continuous variable with density $f_X$, the same definition is represented by area:
+For an absolutely continuous variable with density $f_X$, the same definition is represented by area:
 
 $$
-F_X(x)=\int_{-\infty}^{x}f_X(x')\,\mathrm{d}x'.
+F_X(x)=\int_{-\infty}^{x}f_X(x')\,\mathrm dx'.
 $$
 
 The operation changes from summing masses to integrating density, but the interpretation remains $\mathbb{P}(X\leq x)$.
 
-Suppose a boundary duration variable $B$ has
-
-$$
-F_B(120)=.25
-$$
-
-and
-
-$$
-F_B(180)=.72.
-$$
-
-Then the probability in the interval above 120 and at or below 180 is
+The probability in an interval above $a$ and at or below $b$ is
 
 $$
 \begin{aligned}
-\mathbb{P}(120<B\leq180)
-&=F_B(180)-F_B(120)\\
-&=.72-.25\\
-&=.47.
+\mathbb{P}(a<X\leq b)
+&=F_X(b)-F_X(a).
 \end{aligned}
 $$
 
-The subtraction removes the probability already accumulated through 120.
-
-## Computing the discrete CDF in base R
-
-```{r}
-#| eval: false
-morpheme_value <- 1:4
-morpheme_mass <- c(.55, .30, .10, .05)
-morpheme_cdf <- cumsum(morpheme_mass)
-
-data.frame(morpheme_value, morpheme_mass, morpheme_cdf)
-```
-
-The CDF must be nondecreasing and approach one at the upper end of the support. The `cumsum()` result lets us check both properties.
+Using the empirical first and third quartiles as the thresholds, the displayed code returns `r sprintf("%.3f", middle_probability)` for $\mathbb{P}(q_{.25}<D\leq q_{.75})$. Ties at the lower threshold matter because the event is open on the left and closed on the right.
 
 ## Reading the threshold direction
 
@@ -112,26 +102,29 @@ $$
 F_X(x)\equiv\mathbb{P}(X\leq x).
 $$
 
-An upper tail probability follows by complementation:
+An upper-tail probability follows by complementation:
 
 $$
 \mathbb{P}(X>x)=1-F_X(x).
 $$
 
-For the morpheme count variable,
-
-$$
-\mathbb{P}(M>2)=1-.85=.15,
-$$
-
-which agrees with adding the masses at 3 and 4.
-Now return to the boundary duration example. The statement $F_B(180)=.72$ means that the event $B\leq180$ has probability $.72$. It does not give the probability above 180, which is $1-.72=.28$.
+Thus the empirical probability above `r q75` ms is `r sprintf("%.3f", 1 - f_q75)`. This value comes from the observed durations; it is not a claim about all American English /i/ productions.
 
 ## Check your understanding
 
-1. Use the morpheme PMF to compute $F_M(3)$.
-2. Compute $\mathbb{P}(M>1)$ from the CDF and verify it from the PMF.
-3. If $F_B(200)=.81$, what is $\mathbb{P}(B>200)$?
-4. Explain why a discrete CDF has jumps while a continuous variable cannot add positive mass at one point.
+1. Use `duration_ecdf()` to compute the empirical probability at or below the observed median duration.
+2. Verify the upper-tail probability above `q75` by averaging a logical condition over `adult_i$duration_ms`.
+3. Why does the ECDF jump even when duration is modeled as an underlying continuous quantity?
+4. Change the interval to $[q_{.25},q_{.75}]$. Which records are added relative to the interval used above?
 
-The CDF describes probability through every threshold. The [next page](expected-values.qmd) compresses a complete distribution into one probability weighted center.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. At the observed median of 240 ms, `duration_ecdf(240) = 23/45 = 0.511111`. <!-- dqr-allow: empirical-answer -->
+2. The direct upper-tail calculation is `mean(adult_i$duration_ms > 268) = 10/45 = 0.222222`, equal to $1-F(268)$. <!-- dqr-allow: empirical-answer -->
+3. The ECDF jumps because it assigns equal positive mass to each of the 45 recorded tokens, even if the underlying duration process is modeled continuously. <!-- dqr-allow: empirical-answer -->
+4. Changing $(q_{.25},q_{.75}]$ to $[q_{.25},q_{.75}]$ adds the one record at 219 ms, increasing the interval probability by $1/45$. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The CDF describes probability through every threshold. The [next page](expected-values.qmd) compresses a complete distribution into one probability-weighted center.

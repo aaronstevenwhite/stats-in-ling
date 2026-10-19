@@ -1,10 +1,106 @@
 ---
 title: "Helmert coding"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+Some categorical predictors have an order that licenses planned comparisons. **Helmert coding** compares each later level with the average of earlier levels.
 
-**Available Wednesday, October 7, 2026.**
+## Ordered syllable bands in MALD
+
+We group item syllable counts into one, two, three, and four-or-more syllables. The open top band is internally heterogeneous, so these contrasts do not represent equal one-syllable steps.
+
+R's Helmert matrix for the observed band order is
+
+$$
+\begin{array}{c|rrr}
+&H_1&H_2&H_3\\\hline % dqr-allow: symbolic-derivation
+1&-1&-1&-1\\
+2&1&-1&-1\\
+3&0&2&-1\\ % dqr-allow: symbolic-derivation
+4+&0&0&3 % dqr-allow: symbolic-derivation
+\end{array}.
+$$
+
+The columns compare two versus one, three versus the earlier-band average, and four-or-more versus the earlier-band average. Because the columns are not divided by their squared lengths, coefficient magnitude depends on this displayed scaling.
+
+```{r}
+#| label: fit-mald-helmert-coding
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+band_levels <- c(as.character(seq_len(3L)), "4+")
+mald$syllable_band <- factor(
+  ifelse(mald$n_syllables >= 4L, "4+", as.character(mald$n_syllables)),
+  levels = band_levels
+)
+helmert_matrix <- contr.helmert(4)
+rownames(helmert_matrix) <- levels(mald$syllable_band)
+contrasts(mald$syllable_band) <- helmert_matrix
+
+fit <- lm(
+  mean_log_rt ~ syllable_band + log_frequency_c + log_duration_c,
+  data = mald
+)
+
+helmert_matrix
+coef(summary(fit))
+```
+
+The first Helmert coefficient is `r sprintf("%.4f", coef(fit)[["syllable_band1"]])`. Under the displayed scaling, twice this coefficient equals the fitted two-band minus one-band contrast at mean frequency and duration.
+
+```{r}
+#| label: plot-mald-helmert-coding
+#| fig-cap: "Observed MALD item summaries and adjusted means for ordered syllable-count bands."
+prediction_data <- data.frame(
+  syllable_band = factor(
+    levels(mald$syllable_band),
+    levels = levels(mald$syllable_band)
+  ),
+  log_frequency_c = 0,
+  log_duration_c = 0
+)
+interval <- predict(fit, newdata = prediction_data, interval = "confidence")
+prediction_data$fit <- interval[, "fit"]
+prediction_data$low <- interval[, "lwr"]
+prediction_data$high <- interval[, "upr"]
+
+point_opacity <- 0.06
+ggplot(mald, aes(syllable_band, mean_log_rt)) +
+  geom_jitter(color = "grey70", alpha = point_opacity, width = 0.16, height = 0, size = 0.55) +
+  geom_pointrange(
+    data = prediction_data,
+    aes(y = fit, ymin = low, ymax = high),
+    color = "#2C6E9B",
+    linewidth = 0.6
+  ) +
+  labs(x = "Syllable-count band", y = "Mean log lexical-decision time") +
+  theme_classic(base_size = 12)
+```
+
+Orthogonality of the coding columns is an algebraic property. It does not make the observed item groups balanced, independent, or causally interpretable.
+
+## Check your understanding
+
+1. Which fitted means does the first Helmert column compare?
+2. Why must coefficient magnitude be read from the displayed scaling?
+3. Why is the four-or-more band not a one-unit step?
+4. Does orthogonal coding make the linguistic predictors independent?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The first Helmert column compares the fitted two-syllable mean with the fitted one-syllable mean. <!-- dqr-allow: empirical-answer -->
+2. The coefficient multiplies the displayed contrast column; because the column is not unit-normalized, the actual mean difference is twice the first coefficient. <!-- dqr-allow: empirical-answer -->
+3. The four-or-more-syllable band contains every item with at least four syllables, so its members differ internally and the boundary comparison is not a fixed one-syllable increment. <!-- dqr-allow: empirical-answer -->
+4. No. Orthogonality is a property of the coding columns; it does not make observed item properties or groups statistically independent. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](inverse-helmert-coding.qmd) reverses the direction of the successive grouping.

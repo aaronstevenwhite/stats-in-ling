@@ -1,158 +1,156 @@
 ---
 title: "Monte Carlo integration"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [posterior summaries page](posterior-summaries.qmd) used averages and proportions of draws without yet explaining the numerical approximation. Monte Carlo integration supplies that explanation by connecting the [expectation of a function](../random-variables-and-distributions/expectation-of-functions.qmd) to a sample average. Consider a constructed production study in which a token is coded one when a consonant has secondary palatal articulation, meaning that the tongue body is raised toward the hard palate while the consonant retains another primary constriction. Suppose the posterior distribution for the token probability is
+The passage-contrast target (PCT) has no convenient closed-form posterior. Monte Carlo integration replaces an expectation under that posterior with an average over draws while keeping posterior uncertainty distinct from numerical error.
 
-$$
-\Pi\mid\mathbf{x}
-\sim
-\operatorname{Beta}(5,3).
-$$
+## Expectations as integrals
 
-Let $\Pi:\Omega\to[0,1]$ be the random variable that maps each outcome $\omega$ to a token probability. We want the posterior probability of the event
-
-$$
-B_\Pi
-\equiv
-\{\omega\in\Omega\mid\Pi(\omega)>.60\}.
-$$
-
-Write this probability as $I\equiv\mathbb{P}(B_\Pi\mid\mathbf{x})$. It is an integral of the posterior density. The question is why an average of simulated values can stand in for that integral. [**Monte Carlo integration**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) makes the connection using random draws from the target distribution.
-
-## Rewriting probability as an expectation
-
-Define the indicator $\mathbf{1}_{B_\Pi}:\Omega\to\{0,1\}$ by
-
-$$
-\mathbf{1}_{B_\Pi}(\omega)
-=
-\begin{cases}
-1 & \text{if }\omega\in B_\Pi,\\
-0 & \text{if }\omega\notin B_\Pi.
-\end{cases}
-$$
-
-For integration over values of $\Pi$, define $g:[0,1]\to\{0,1\}$ by $g(\pi)=1$ when $\pi>.60$ and $g(\pi)=0$ otherwise. Thus $g(\Pi(\omega))=\mathbf{1}_{B_\Pi}(\omega)$. Its posterior expectation is
-
-$$
-\begin{aligned}
-\mathbb{E}[g(\Pi)\mid\mathbf{x}]
-&=
-\int_0^1
-g(\pi)
-f_{\Pi\mid\mathbf X}(\pi\mid\mathbf{x})
-\,\mathrm{d}\pi\\
-&=
-\mathbb{P}(B_\Pi\mid\mathbf{x}).
-\end{aligned}
-$$
-
-Thus a probability can be calculated as the expectation of an indicator.
-
-## Replacing the expectation with an average
-
-Draw
-
-$$
-\pi^{(1)},\ldots,\pi^{(S)}
-\overset{\mathrm{iid}}{\sim}
-\operatorname{Beta}(5,3).
-$$
-
-The Monte Carlo estimator is
-
-$$
-\widehat{I}_S
-=
-\frac{1}{S}
-\sum_{s=1}^S
-g(\pi^{(s)}).
-$$
-
-It equals the proportion of posterior draws above $.60$.
-
-```{r}
-#| label: monte-carlo-palatalization-tail
-#| echo: true
-
-set.seed(642)
-draw_count <- 50000
-pi_draw <- rbeta(draw_count, shape1 = 5, shape2 = 3)
-mc_estimate <- mean(pi_draw > .60)
-exact_value <- 1 - pbeta(.60, shape1 = 5, shape2 = 3)
-
-stopifnot(abs(mc_estimate - exact_value) < .01)
-c(Monte_Carlo = mc_estimate, exact = exact_value)
-```
-
-The beta cumulative distribution function supplies an exact benchmark for this simple target. Complicated posteriors may not provide such a benchmark, which is why the simulation calculation matters.
-
-## Generalizing the calculation
-
-For a continuous target with density $f(\theta)$ and an integrable function $g$,
+For a target density $f(\eta\mid\mathbf y)$ and an integrable function $g$,
 
 $$
 I
 =
-\mathbb{E}_{f}[g(\Theta)]
+\mathbb{E}[g(\eta)\mid\mathbf y]
 =
-\int g(\theta)f(\theta)\,\mathrm{d}\theta.
+\int g(\eta)f(\eta\mid\mathbf y)\,\mathrm d\eta.
 $$
 
-Independent target draws give
+Independent target draws give the estimator
 
 $$
-\widehat{I}_S
+\widehat I_S
 =
-\frac{1}{S}
-\sum_{s=1}^Sg(\theta^{(s)}).
+\frac{1}{S}\sum_{s=1}^Sg(\eta^{(s)}).
 $$
 
-For a discrete target with PMF $p(\theta)$, the expectation is a sum rather than an integral, but the same sample average applies. We use $f$ for a continuous density and $p$ for a discrete PMF throughout.
+Setting $g(\eta)=\mu$ estimates the posterior mean of the passage location. Setting $g(\eta)=\mathbf 1\{\mu>0\}$ estimates its directional probability, while $g(\eta)=\exp(\mu)$ gives a central geometric-scale noun-to-verb ratio.
 
-For a posterior mean, use $g(\theta)=\theta$. For a posterior second moment, use $g(\theta)=\theta^2$. For an interval endpoint, use the corresponding empirical quantile rather than a simple average.
+## Drawing from the PCT grid
 
-## Quantifying Monte Carlo error
-
-The [bootstrap page](bootstrap-confidence-intervals.qmd#checking-simulation-error) first distinguished simulation error from sampling uncertainty. In the present setting, variation caused by using a finite number $S$ of simulation draws is [**Monte Carlo error**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html). For independent draws and a binary indicator, an estimated Monte Carlo standard error is
-
-$$
-\widehat{\operatorname{MCSE}}(\widehat{I}_S)
-=
-\sqrt{
-\frac{
-\widehat{I}_S(1-\widehat{I}_S)
-}{S}
-}.
-$$
+The code below reconstructs the PCT from the 55 passage summaries, normalizes its $321\times321$ reference grid, and samples 20,000 grid cells with their posterior weights.
 
 ```{r}
-#| label: monte-carlo-standard-error
-#| echo: true
+#| label: provo-grid-monte-carlo
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+y <- provo$noun_minus_verb_log_ffd
+N <- length(y)
+nu <- 4
+prior_scale <- 2 * sd(y)
 
-mcse <- sqrt(mc_estimate * (1 - mc_estimate) / draw_count)
-stopifnot(mcse < .003)
-c(estimate = mc_estimate, MCSE = mcse)
+log_sum_exp <- function(x) {
+  maximum <- max(x)
+  maximum + log(sum(exp(x - maximum)))
+}
+
+log_posterior_eta <- function(eta) {
+  mu <- eta[1]
+  sigma <- exp(eta[2])
+  sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
+    dnorm(mu, 0, prior_scale, log = TRUE) +
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+}
+
+mode_fit <- optim(
+  c(median(y), log(mad(y))),
+  function(eta) -log_posterior_eta(eta),
+  method = "BFGS", hessian = TRUE,
+  control = list(reltol = 1e-12, maxit = 1000L)
+)
+local_sd <- sqrt(diag(solve(mode_fit$hessian)))
+mu_grid <- seq(mode_fit$par[1] - 7 * local_sd[1],
+               mode_fit$par[1] + 7 * local_sd[1], length.out = 321L)
+log_sigma_grid <- seq(mode_fit$par[2] - 7 * local_sd[2],
+                      mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
+grid <- expand.grid(mu = mu_grid, log_sigma = log_sigma_grid)
+grid$log_kernel <- apply(grid, 1, log_posterior_eta)
+grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
+
+set.seed(2026101802)
+S <- 20000L
+draw_indices <- sample(seq_len(nrow(grid)), S, replace = TRUE,
+                       prob = grid$weight)
+draws <- grid[draw_indices, ]
+
+quadrature <- c(
+  mean_mu = sum(grid$mu * grid$weight),
+  probability_mu_positive = sum(grid$weight[grid$mu > 0]),
+  mean_exp_mu = sum(exp(grid$mu) * grid$weight)
+)
+estimate <- c(
+  mean(draws$mu), mean(draws$mu > 0), mean(exp(draws$mu))
+)
+mcse <- c(
+  sd(draws$mu) / sqrt(S),
+  sqrt(estimate[2] * (1 - estimate[2]) / S),
+  sd(exp(draws$mu)) / sqrt(S)
+)
+
+stopifnot(N == 55L, abs(sum(grid$weight) - 1) < 1e-12)
+data.frame(functional = names(quadrature), quadrature, estimate, mcse)
 ```
 
-Multiplying $S$ by four tends to divide MCSE by two. This square-root rate is the same rate that appears in sampling standard errors, but the source of variation differs.
+The grid benchmark and Monte Carlo estimates agree to the scale of their Monte Carlo standard errors (MCSEs). For independent draws,
 
-The law of large numbers supplies the basic justification. As $S$ grows, the average of independent target draws tends to approach the target expectation when that expectation exists. When $g(\Theta)$ also has finite variance, a [**central limit theorem**](https://online.stat.psu.edu/stat414/Lesson27) says that the distribution of the standardized average tends toward a normal distribution. This result motivates the approximate normal distribution for the average and the MCSE calculation above.
+$$
+\widehat{\operatorname{MCSE}}(\widehat I_S)
+=
+\sqrt{\frac{\widehat{\operatorname{Var}}(g(\eta))}{S}}.
+$$
 
-This result does not guarantee that every finite simulation is precise enough. Monte Carlo error should be small relative to posterior uncertainty and the precision used in substantive claims. Reporting six decimal places when MCSE is $.003$ gives false numerical precision.
+For an indicator this becomes
 
-## Keeping two uncertainties separate
+$$
+\widehat{\operatorname{MCSE}}
+=
+\sqrt{\frac{\widehat I_S(1-\widehat I_S)}{S}}.
+$$
 
-The posterior spread describes uncertainty about the palatalization probability under the model and observed data. Monte Carlo error describes uncertainty in a numerical approximation to a posterior summary.
+Multiplying $S$ by four tends to halve MCSE. This square-root rate concerns the approximation, not the posterior spread.
 
-Increasing $S$ reduces Monte Carlo error. It does not add speakers, tokens, or elicitation contexts, so it cannot narrow the target posterior. More simulation draws are not more linguistic evidence.
+```{r}
+#| label: plot-provo-monte-carlo-running
+#| fig-cap: "Running Monte Carlo estimate of the PCT directional probability. The horizontal line is the quadrature reference."
+library(ggplot2)
+running <- cumsum(draws$mu > 0) / seq_len(S)
+display_index <- unique(round(seq(10, S, length.out = 600L)))
+running_display <- data.frame(
+  draws = display_index,
+  estimate = running[display_index]
+)
 
-Setting a seed makes the teaching calculation reproducible. Changing the seed provides a simple stability check. Agreement across seeds is evidence about simulation error only; it does not check the likelihood or prior.
+ggplot(running_display, aes(draws, estimate)) +
+  geom_line(color = "grey35", linewidth = 0.65) +
+  geom_hline(yintercept = quadrature[2], color = "#8B1A1A", linewidth = 0.7) +
+  labs(x = "Independent grid draws",
+       y = "Estimated posterior probability that mu > 0") +
+  theme_classic(base_size = 12)
+```
+
+The law of large numbers justifies convergence of the average when the expectation exists. A central limit theorem motivates MCSE when $g(\eta)$ has finite variance. Neither result says that the PCT's passage aggregation, likelihood, or empirically calibrated priors are adequate.
+
+## Two uncertainties
+
+Posterior spread describes model-based uncertainty about the PCT. Monte Carlo error describes finite numerical approximation. Increasing $S$ reduces the latter but adds no passages, positions, or readers. More draws are not more linguistic evidence.
 
 ## Check your understanding
 
-1. Which function $g(\pi)$ gives $\mathbb{E}[\Pi^2\mid\mathbf{x}]$?
-2. Why is the proportion of draws above $.60$ an integral estimate?
-3. What happens to MCSE when the number of independent draws increases from 10,000 to 40,000?
-4. Which uncertainty can be reduced without collecting more linguistic observations?
+1. Which function $g$ estimates $\mathbb{P}(\mu>0\mid\mathbf y)$?
+2. Why is the estimate an integral approximation?
+3. What happens to MCSE when $S$ is quadrupled?
+4. Which uncertainty requires additional linguistic observations to change?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Use the indicator $g(\eta)=\mathbf 1\{\mu>0\}$. <!-- dqr-allow: empirical-answer -->
+2. The sample average replaces the posterior integral of $g(\eta)$ with an empirical average over draws from that posterior. <!-- dqr-allow: empirical-answer -->
+3. Quadrupling $S$ tends to halve MCSE because MCSE decreases at the $1/\sqrt S$ rate. <!-- dqr-allow: empirical-answer -->
+4. Posterior uncertainty about the linguistic target changes with additional linguistic observations; more simulation draws change only computational uncertainty. <!-- dqr-allow: empirical-answer -->
+
+</details>

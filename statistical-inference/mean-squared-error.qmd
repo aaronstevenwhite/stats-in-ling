@@ -1,162 +1,116 @@
 ---
 title: "Mean squared error"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [preceding page](estimator-bias.qmd) separated an estimator's bias from its sampling variance. The [**mean squared error**](https://stats.libretexts.org/Bookshelves/Probability_Theory/Probability_Mathematical_Statistics_and_Stochastic_Processes_%28Siegrist%29/07%3A_Point_Estimation/7.01%3A_Estimators) (MSE) combines them by asking how far an estimator falls from its estimand on average:
+Bias records systematic displacement from a target, while variance records sampling spread. **Mean squared error** (MSE) combines them:
 
 $$
-\operatorname{MSE}(\widehat{\Theta})
-=\mathbb{E}\left[(\widehat{\Theta}-\theta)^2\right].
+\operatorname{MSE}(T;\theta)=\mathbb{E}[(T-\theta)^2].
 $$
 
-The squared distance makes errors in either direction positive and gives more weight to large errors.
+## The decomposition
 
-## Setting up two estimators
-
-Suppose each of four independently sampled complement-clause tokens either contains an overt *that* or has a zero complementizer. Write $X_i=1$ for overt *that* and $X_i=0$ for the zero variant. This is a constructed teaching example, and the population probability of the overt variant is
+Add and subtract $\mathbb{E}[T]$ inside the square:
 
 $$
-\pi=.60.
+T-\theta=(T-\mathbb{E}[T])+(\mathbb{E}[T]-\theta).
 $$
 
-The estimand is $\pi$. If $K=\sum_{i=1}^4X_i$ is the number of overt *that* tokens, the ordinary sample-proportion estimator is
-
-$$
-\widehat{\Pi}=\frac{K}{4}.
-$$
-
-Now define a second rule that adds one hypothetical overt token and one hypothetical zero token:
-
-$$
-\widetilde{\Pi}=\frac{K+1}{6}.
-$$
-
-This second estimator pulls every estimate toward $.50$. For instance, $K=4$ gives $1$ under the ordinary rule but $5/6$ under the pulled rule.
-
-## Calculating the ordinary estimator's MSE
-
-For $K\sim\operatorname{Binomial}(4,.60)$,
-
-$$
-\mathbb{E}[K]=4(.60)=2.4
-$$
-
-and
-
-$$
-\operatorname{Var}(K)=4(.60)(.40)=.96.
-$$
-
-The ordinary estimator is unbiased because
-
-$$
-\mathbb{E}[\widehat{\Pi}]
-=\frac{\mathbb{E}[K]}{4}
-=\frac{2.4}{4}
-=.60.
-$$
-
-Its variance is
-
-$$
-\operatorname{Var}(\widehat{\Pi})
-=\frac{\operatorname{Var}(K)}{4^2}
-=\frac{.96}{16}
-=.06.
-$$
-
-## Decomposing mean squared error
-
-Add and subtract $\mathbb{E}[\widehat{\Theta}]$ inside the squared error:
-
-$$
-\widehat{\Theta}-\theta
-=\left(\widehat{\Theta}-\mathbb{E}[\widehat{\Theta}]\right)
-+\left(\mathbb{E}[\widehat{\Theta}]-\theta\right).
-$$
-
-After squaring and taking expectations, the cross-product has expectation zero. The centered term $\widehat{\Theta}-\mathbb{E}[\widehat{\Theta}]$ has expectation zero, while the bias term is constant under the sampling model. Thus the cross-product is a constant times zero. This leaves
-
-$$
-\operatorname{MSE}(\widehat{\Theta})
-=\operatorname{Var}(\widehat{\Theta})
-+\operatorname{Bias}(\widehat{\Theta})^2.
-$$
-
-Because $\widehat{\Pi}$ is unbiased, its MSE equals its variance:
-
-$$
-\operatorname{MSE}(\widehat{\Pi})=.06.
-$$
-
-## Calculating the pulled estimator's MSE
-
-The expected value of the pulled estimator is
-
-$$
-\mathbb{E}[\widetilde{\Pi}]
-=\frac{\mathbb{E}[K]+1}{6}
-=\frac{2.4+1}{6}
-\approx.5667.
-$$
-
-Its bias at $\pi=.60$ is
-
-$$
-.5667-.60\approx-.0333.
-$$
-
-Adding one to $K$ does not change its variance. Dividing by six gives
-
-$$
-\operatorname{Var}(\widetilde{\Pi})
-=\frac{\operatorname{Var}(K)}{6^2}
-=\frac{.96}{36}
-\approx.0267.
-$$
-
-Thus
+Expanding and taking expectations gives
 
 $$
 \begin{aligned}
-\operatorname{MSE}(\widetilde{\Pi})
-&=.0267+(-.0333)^2\\
-&\approx.0278.
+\operatorname{MSE}(T;\theta)
+&=\mathbb{E}[(T-\mathbb{E}[T])^2]
++2\mathbb{E}[T-\mathbb{E}[T]](\mathbb{E}[T]-\theta)
++(\mathbb{E}[T]-\theta)^2\\
+&=\operatorname{Var}[T]+\operatorname{Bias}(T;\theta)^2.
 \end{aligned}
 $$
 
-At $\pi=.60$ and $n=4$, the biased rule has lower MSE. Its reduction in variance is larger than its squared bias.
+The cross-term vanishes because $\mathbb{E}[T-\mathbb{E}[T]]=0$.
+
+## Comparing two estimators on the Hillenbrand ESR
+
+The target remains the empirical mean /I/ duration among the observed adult women. The resampling unit is a speaker row, and both estimators use the observed group size.
 
 ```{r}
-#| label: enumerate-mse
-#| echo: true
+#| label: hillenbrand-mse
+library(ggplot2)
 
-k <- 0:4
-probability <- dbinom(k, size = 4, prob = .60)
-ordinary <- k / 4
-pulled <- (k + 1) / 6
+vowels <- read.csv(
+  "data/hillenbrand/vowels-complete.csv",
+  stringsAsFactors = FALSE
+)
+x <- subset(vowels, speaker_type == "woman" & vowel == "I")$duration_ms
+theta <- mean(x)
+n <- length(x)
 
-mse_ordinary <- sum(probability * (ordinary - .60)^2)
-mse_pulled <- sum(probability * (pulled - .60)^2)
+set.seed(20261019)
+replicates <- 20000L
+draws <- replicate(replicates, sample(x, n, replace = TRUE), simplify = FALSE)
+estimates <- list(
+  `Sample mean` = vapply(draws, mean, numeric(1)),
+  `Sample median` = vapply(draws, median, numeric(1))
+)
 
-stopifnot(isTRUE(all.equal(mse_ordinary, .06)))
-stopifnot(isTRUE(all.equal(mse_pulled, 1 / 36)))
-c(mse_ordinary = mse_ordinary, mse_pulled = mse_pulled)
+mse_table <- do.call(rbind, lapply(names(estimates), function(name) {
+  value <- estimates[[name]]
+  bias <- mean(value) - theta
+  variance <- mean((value - mean(value))^2)
+  mse <- mean((value - theta)^2)
+  data.frame(estimator = name, variance_ms2 = variance,
+             squared_bias_ms2 = bias^2, mse_ms2 = mse)
+}))
+
+stopifnot(max(abs(
+  mse_table$mse_ms2 - mse_table$variance_ms2 - mse_table$squared_bias_ms2
+)) < 1e-8)
+mse_table
 ```
 
-The code enumerates every possible count, weights its squared error by its binomial probability, and recovers the analytic results.
+The sample mean has MSE `r sprintf("%.3f", mse_table$mse_ms2[mse_table$estimator == "Sample mean"])` ms(^2), whereas the sample median has MSE `r sprintf("%.3f", mse_table$mse_ms2[mse_table$estimator == "Sample median"])` ms(^2) for this mean target.
 
-## Unbiasedness does not rank estimators by itself
+```{r}
+#| label: plot-hillenbrand-mse
+#| fig-cap: "Variance and squared-bias components of MSE for estimating the empirical mean."
+mse_components <- rbind(
+  data.frame(estimator = mse_table$estimator,
+             component = "Sampling variance", value_ms2 = mse_table$variance_ms2),
+  data.frame(estimator = mse_table$estimator,
+             component = "Squared bias", value_ms2 = mse_table$squared_bias_ms2)
+)
 
-An unbiased estimator is not necessarily preferable to every biased estimator, since bias is one component of expected error rather than a complete ordering of procedures. The lower-MSE rule can be biased.
+ggplot(mse_components, aes(estimator, value_ms2, fill = component)) +
+  geom_col(width = 0.65, color = "white", linewidth = 0.2) +
+  scale_fill_manual(values = c("Sampling variance" = "grey55",
+                               "Squared bias" = "#8B1A1A")) +
+  labs(x = NULL, y = expression("Mean squared error (ms"^2*")"), fill = NULL) +
+  theme_classic(base_size = 12)
+```
 
-This comparison also depends on $\pi$ and $n$. A procedure that has lower MSE at one parameter value may have higher MSE elsewhere. The calculation supports a local comparison under the stated model, not a universal claim about the estimator.
+This comparison is conditional on the estimator target and ESR. It does not imply that mean duration is always the scientifically appropriate target, nor that the sample median is generally inferior.
 
 ## Check your understanding
 
-1. An estimator has variance $.04$ and bias $.10$. What is its MSE?
-2. Which term in the decomposition disappears for an unbiased estimator?
-3. Why does adding one to $K$ leave its variance unchanged?
-4. What must be specified before two estimators can be ranked by MSE?
+1. Why does the cross-term disappear in the MSE derivation?
+2. Which component accounts for most of the sample median's MSE here?
+3. Could a biased estimator have lower MSE than an unbiased estimator?
+4. Why must an MSE comparison name its target?
 
-We now return to uncertainty about a parameter. A [confidence interval](confidence-intervals.qmd) uses a sampling procedure to produce a range of parameter values.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The cross-term contains $\mathbb{E}[T-\mathbb{E}[T]]$, which equals zero. <!-- dqr-allow: empirical-answer -->
+2. Squared bias accounts for slightly more of the sample median's MSE here than sampling variance does. <!-- dqr-allow: empirical-answer -->
+3. Yes. A biased estimator can have lower MSE than an unbiased estimator when its variance reduction exceeds its squared bias. <!-- dqr-allow: empirical-answer -->
+4. Both bias and squared error are defined relative to a target; changing the target can change the estimator ranking. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [confidence-interval page](confidence-intervals.qmd) evaluates procedures that attach a range to each estimate.

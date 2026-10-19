@@ -1,10 +1,120 @@
 ---
 title: "Coding a categorical predictor"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+A categorical predictor has labels rather than intrinsic numerical distances. **Contrast coding** constructs numeric design columns that make declared comparisons estimable.
 
-**Available Wednesday, October 7, 2026.**
+## Treatment coding in MALD
+
+We restrict this page to the three largest lexical part-of-speech classes in the MRS: noun, verb, and adjective. MALD's part-of-speech field is a word-form summary from SUBTLEX, not a token annotation in sentential context.
+
+With noun as the reference, treatment coding uses
+
+$$
+\begin{array}{c|cc}
+&V&A\\\hline
+\text{noun}&0&0\\
+\text{verb}&1&0\\
+\text{adjective}&0&1
+\end{array}.
+$$
+
+The fitted mean is
+
+$$
+\mu_i
+=
+\beta_0+\beta_VV_i+\beta_AA_i
++\beta_fF_i^c+\beta_dD_i^c+\beta_pP_i^c.
+$$
+
+At the centered numeric predictors, $\beta_0$ is the fitted noun mean, $\beta_V$ is the verb-minus-noun contrast, and $\beta_A$ is the adjective-minus-noun contrast.
+
+```{r}
+#| label: fit-mald-treatment-coding
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+mald$n_phones_c <- mald$n_phones - mean(mald$n_phones)
+
+major_pos <- subset(
+  mald,
+  part_of_speech %in% c("Noun", "Verb", "Adjective")
+)
+major_pos$part_of_speech <- factor(
+  major_pos$part_of_speech,
+  levels = c("Noun", "Verb", "Adjective")
+)
+contrasts(major_pos$part_of_speech) <- contr.treatment(3)
+
+fit <- lm(
+  mean_log_rt ~ part_of_speech + log_frequency_c +
+    log_duration_c + n_phones_c,
+  data = major_pos
+)
+
+contrasts(major_pos$part_of_speech)
+coef(summary(fit))
+```
+
+The fitted verb-minus-noun contrast is `r sprintf("%.4f", coef(fit)[["part_of_speech2"]])` log response-time units at the same modeled numeric predictors. The adjective-minus-noun contrast is `r sprintf("%.4f", coef(fit)[["part_of_speech3"]])`.
+
+```{r}
+#| label: plot-mald-treatment-coding
+#| fig-cap: "Observed MALD item summaries and adjusted part-of-speech means at observed mean frequency, duration, and phone count."
+prediction_data <- data.frame(
+  part_of_speech = factor(
+    levels(major_pos$part_of_speech),
+    levels = levels(major_pos$part_of_speech)
+  ),
+  log_frequency_c = 0,
+  log_duration_c = 0,
+  n_phones_c = 0
+)
+interval <- predict(fit, newdata = prediction_data, interval = "confidence")
+prediction_data$fit <- interval[, "fit"]
+prediction_data$low <- interval[, "lwr"]
+prediction_data$high <- interval[, "upr"]
+
+point_opacity <- 0.08
+ggplot(major_pos, aes(part_of_speech, mean_log_rt)) +
+  geom_jitter(color = "grey70", alpha = point_opacity, width = 0.16, height = 0, size = 0.6) +
+  geom_pointrange(
+    data = prediction_data,
+    aes(y = fit, ymin = low, ymax = high),
+    color = "#2C6E9B",
+    linewidth = 0.6
+  ) +
+  labs(
+    x = "Frequency-dominant part of speech",
+    y = "Mean log lexical-decision time"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+Changing the reference category changes the coefficient labels, not the fitted value for any item. The [next page](sum-coding.qmd) demonstrates this invariance with a different basis.
+
+## Check your understanding
+
+1. What does the intercept represent under noun-reference coding?
+2. Which categories does the verb coefficient compare?
+3. Why is the category variable not intrinsically numeric?
+4. Which quantities should remain unchanged under recoding?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Under noun-reference coding, the intercept is the fitted noun mean at mean log frequency, mean log duration, and mean phone count. <!-- dqr-allow: empirical-answer -->
+2. The verb coefficient compares the fitted verb mean with the fitted noun mean at the same numeric predictor values. <!-- dqr-allow: empirical-answer -->
+3. The category variable's labels define groups but provide no intrinsic spacing, order, or arithmetic operation; those properties must come from declared contrasts. <!-- dqr-allow: empirical-answer -->
+4. Fitted values, residuals, SSE, and predictions for the same observed conditions should remain unchanged under full-rank recoding. <!-- dqr-allow: empirical-answer -->
+
+</details>

@@ -1,10 +1,118 @@
 ---
 title: "A straight-line mean"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+The [conditional-mean page](regression-models.qmd) left $m(x)=\mathbb{E}[Y\mid X=x]$ unrestricted. **Simple linear regression** imposes
 
-**Available Wednesday, October 7, 2026.**
+$$
+m(x)=\beta_0+\beta_1x.
+$$
+
+The word *simple* means that the model has one predictor. The word *linear* means that the coefficients enter as a weighted sum.
+
+## Fitting the PRS line
+
+We return to the Provo position summaries and center modeled cloze surprisal at its observed mean. Centering makes the intercept correspond to an observed reference point; the [next page](centering-predictors.qmd) derives that equivalence.
+
+```{r}
+#| label: fit-provo-simple-regression
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+surprisal_center <- mean(provo$cloze_surprisal_bits)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - surprisal_center
+
+fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+coefficient_table <- coef(summary(fit))
+
+stopifnot(
+  nrow(provo) == 1593L,
+  length(unique(provo$Text_ID)) == 55L,
+  isTRUE(all.equal(mean(provo$cloze_surprisal_c), 0, tolerance = 1e-12))
+)
+
+coefficient_table
+```
+
+The fitted conditional mean is
+
+$$
+\widehat m(x_i)
+=
+\widehat\beta_0+\widehat\beta_1(x_i-\overline x).
+$$
+
+At mean modeled cloze surprisal, the fitted mean log first-fixation duration is `r sprintf("%.4f", coef(fit)[["(Intercept)"]])`. Each additional bit of modeled cloze surprisal is associated with a change of `r sprintf("%.4f", coef(fit)[["cloze_surprisal_c"]])` log milliseconds in the fitted position mean.
+
+The slope is a contrast between conditional means:
+
+$$
+m(x+1)-m(x)
+=
+\{\beta_0+\beta_1(x+1)\}
+-\{\beta_0+\beta_1x\}
+=\beta_1.
+$$
+
+Thus the intercept locates the line, while the slope gives its change per predictor unit.
+
+```{r}
+#| label: plot-provo-simple-regression
+#| fig-cap: "Reader-aggregated Provo positions and the fitted straight-line conditional mean."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - surprisal_center
+grid$fitted <- predict(fit, newdata = grid)
+
+point_opacity <- 0.22
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.9) +
+  geom_line(
+    data = grid,
+    aes(cloze_surprisal_bits, fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The line summarizes an average item-position association. A potential worry is that the plotted cloud contains nested passages. That concern is well founded: ordinary standard errors do not represent passage clustering, and reader clustering cannot be recovered from this table. We address the remaining passage identifier on the [uncertainty page](linear-regression-uncertainty.qmd).
+
+## Check your understanding
+
+1. Which conditional means are compared by the slope?
+2. Why does a one-bit increase have the same fitted change everywhere on the line?
+3. Does the positive slope show that surprisal causes longer fixations?
+4. Which dependence structure remains visible in the table?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The slope compares $m(x+1)$ with $m(x)$: fitted mean log FFD at predictor values one bit apart. <!-- dqr-allow: empirical-answer -->
+2. The straight-line restriction makes $m(x+1)-m(x)=\beta_1$ for every $x$. <!-- dqr-allow: empirical-answer -->
+3. No. The slope is an observational item-position association and does not identify a causal effect of surprisal. <!-- dqr-allow: empirical-answer -->
+4. Passage membership remains visible through `Text_ID`; reader dependence cannot be recovered after aggregation. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](centering-predictors.qmd) changes the reference point without changing the fitted relation.

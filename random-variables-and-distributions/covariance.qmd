@@ -1,117 +1,129 @@
 ---
 title: "Covariance"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [variance page](variance-and-covariance.qmd) averaged a squared deviation for one variable. Covariance instead averages the product of paired deviations from a [joint distribution](joint-probability.qmd). The linguistic question is whether less predictable words tend to receive longer reading times, an association studied directly in [work on predictability and reading time](https://doi.org/10.1016/j.cognition.2013.02.013). Suppose a constructed probability model places equal mass on four word tokens with contextual surprisal $X$ and reading time $Y$.
+Recipient and theme lengths are paired on each dative token. The **covariance** summarizes whether their deviations from their respective means tend to have the same sign.
 
-| token outcome | surprisal $X$ | reading time $Y$ | probability |
-|---|---:|---:|---:|
-| $\omega_1$ | 1 bit | 200 ms | $.25$ |
-| $\omega_2$ | 1 bit | 250 ms | $.25$ |
-| $\omega_3$ | 3 bits | 350 ms | $.25$ |
-| $\omega_4$ | 3 bits | 400 ms | $.25$ |
+## Definition
 
-Covariance asks whether the two variables depart from their means in the same direction. In this example, do tokens with above-average surprisal also tend to have above-average reading times? The constructed association illustrates the summary; it does not by itself establish why the reading-time difference arises.
-
-The [**covariance**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is the expected product of paired deviations:
+For random variables $R$ and $T$,
 
 $$
-\operatorname{Cov}(X,Y)
-\equiv\mathbb{E}\!\left[
- (X-\mathbb{E}[X])(Y-\mathbb{E}[Y])
- \right].
+\operatorname{Cov}(R,T)
+=\mathbb{E}\left[(R-\mathbb{E}[R])(T-\mathbb{E}[T])\right].
 $$
 
-## Computing the two means
-
-The surprisal mean is
+Expanding the product gives the equivalent identity
 
 $$
-\mathbb{E}[X]
-=.25(1+1+3+3)
-=2\text{ bits}.
+\operatorname{Cov}(R,T)
+=\mathbb{E}[RT]-\mathbb{E}[R]\mathbb{E}[T].
 $$
 
-The reading time mean is
-
-$$
-\mathbb{E}[Y]
-=.25(200+250+350+400)
-=300\text{ ms}.
-$$
-
-These means center each variable before their paired deviations are multiplied.
-
-## Multiplying paired deviations
-
-| outcome | $X-2$ | $Y-300$ | product |
-|---|---:|---:|---:|
-| $\omega_1$ | $-1$ | $-100$ | $100$ |
-| $\omega_2$ | $-1$ | $-50$ | $50$ |
-| $\omega_3$ | $1$ | $50$ | $50$ |
-| $\omega_4$ | $1$ | $100$ | $100$ |
-
-Every product is positive because both deviations have the same sign within each paired outcome.
-
-Weight and add:
+More explicitly,
 
 $$
 \begin{aligned}
-\operatorname{Cov}(X,Y)
-&=.25(100+50+50+100)\\
-&=75.
+\mathbb{E}[(R-\mathbb{E}[R])(T-\mathbb{E}[T])]
+&=\mathbb{E}[RT]
+-\mathbb{E}[R]\mathbb{E}[T]\\
+&\quad-\mathbb{E}[T]\mathbb{E}[R]
++\mathbb{E}[R]\mathbb{E}[T]\\
+&=\mathbb{E}[RT]-\mathbb{E}[R]\mathbb{E}[T].
 \end{aligned}
 $$
 
-The covariance is 75 bit milliseconds.
+For constants $a,b,c,d$,
 
-## Reading the sign
+$$
+\operatorname{Cov}(aR+b,cT+d)
+=ac\,\operatorname{Cov}(R,T).
+$$
 
-A positive covariance means same signed paired deviations tend to dominate. High surprisal values tend to be paired with reading times above their mean, while low surprisal values tend to be paired with reading times below their mean.
+Covariance has units equal to the product of the two measurement units. Here both lengths are measured in words, so covariance is measured in words squared.
 
-A negative covariance means opposite signed products tend to dominate. A covariance of zero means that the average paired product is zero. It does not rule out every form of dependence.
-
-## Checking the computation in base R
+## Empirical covariance of dative lengths
 
 ```{r}
-#| eval: false
-surprisal <- c(1, 1, 3, 3)
-reading_time <- c(200, 250, 350, 400)
-mass <- rep(.25, 4)
+#| label: dative-covariance
+library(ggplot2)
 
-mean_x <- sum(surprisal * mass)
-mean_y <- sum(reading_time * mass)
-cov_xy <- sum((surprisal - mean_x) *
-              (reading_time - mean_y) * mass)
+dative <- read.csv(
+  "data/english-dative/dative-alternation.csv",
+  stringsAsFactors = FALSE,
+  na.strings = c("", "NA")
+)
+R <- dative$recipient_length_words
+T <- dative$theme_length_words
+mean_R <- mean(R)
+mean_T <- mean(T)
+covariance_population <- mean((R - mean_R) * (T - mean_T))
+covariance_identity <- mean(R * T) - mean_R * mean_T
 
-c(mean_x, mean_y, cov_xy)
+joint <- as.data.frame(table(recipient = R, theme = T), responseName = "count")
+joint$recipient <- as.integer(as.character(joint$recipient))
+joint$theme <- as.integer(as.character(joint$theme))
+joint <- subset(joint, count > 0)
+
+stopifnot(
+  length(R) == 3263L,
+  abs(covariance_population - covariance_identity) < 1e-12,
+  abs(cov(R, T) * (length(R) - 1) / length(R) -
+        covariance_population) < 1e-12
+)
+
+data.frame(mean_R, mean_T, covariance_population,
+           sample_covariance = cov(R, T))
 ```
 
-The returned values are 2, 300, and 75. This is the covariance of the specified probability distribution, so the calculation divides by total probability rather than using a finite sample correction.
+The empirical population covariance is `r sprintf("%.3f", covariance_population)` words squared. Its positive sign means that same-direction deviations make a slightly larger average contribution than opposite-direction deviations.
 
-## Pairing is essential
+```{r}
+#| label: plot-dative-covariance
+#| fig-cap: "Observed dative length pairs. Point area shows token count; accent lines mark the two empirical means."
+ggplot(joint, aes(theme, recipient, size = count)) +
+  geom_point(color = "grey35", alpha = 0.65) + # dqr-allow: algorithm-setting
+  geom_vline(xintercept = mean_T, color = "#8B1A1A", linewidth = 0.65) +
+  geom_hline(yintercept = mean_R, color = "#8B1A1A", linewidth = 0.65) +
+  scale_size_area(max_size = 7) +
+  labs(x = "Theme length (words)", y = "Recipient length (words)",
+       size = "Token count") +
+  theme_classic(base_size = 12)
+```
 
-Reverse the reading time order while keeping the surprisal order fixed. The two separate distributions remain unchanged, but high surprisal is now paired with low reading time. The covariance becomes negative.
+The cloud extends far on both axes but has little diagonal organization. Covariance alone does not show nonlinear dependence, and its magnitude cannot be compared across variables with different units or scales.
 
-Covariance thus belongs to the joint distribution. Neither marginal distribution identifies the pairing.
+## Sample covariance
 
-## Keeping the units visible
+When rows are treated as a sample for estimating a population covariance, the familiar estimator is
 
-Surprisal is measured in bits and reading time in milliseconds, so covariance is measured in bit milliseconds. Converting milliseconds to seconds divides the numerical covariance by 1,000.
+$$
+s_{R,T}
+=\frac{1}{n-1}\sum_{i=1}^n(R_i-\overline R)(T_i-\overline T).
+$$
 
-This unit dependence makes raw covariance difficult to compare across pairs measured on different scales. [Correlation](correlation.qmd) standardizes the quantity.
-
-## Zero covariance does not imply independence
-
-Covariance summarizes linear co movement through paired products. A curved or otherwise balanced dependence can have covariance zero, so zero covariance does not in general imply independence.
-
-Independence implies zero covariance when the relevant expectations exist, but the reverse does not generally hold.
+The page reports the empirical population covariance of the pinned table because its immediate target is that table's joint distribution. Later inferential work must state a sampling unit and accommodate repeated verbs and speakers.
 
 ## Check your understanding
 
-1. Recalculate the covariance after reversing the reading time vector.
-2. Why can the marginal distributions stay fixed while covariance changes?
-3. What units would the covariance have if surprisal were in bits and latency in seconds?
-4. What kind of relationship can remain when covariance is zero?
+1. Verify covariance with the $\mathbb{E}[RT]-\mathbb{E}[R]\mathbb{E}[T]$ identity.
+2. Identify which quadrants around the mean lines contribute positively.
+3. Explain the difference between the two denominators used above.
+4. Why can a covariance near zero coexist with dependence?
 
-Covariance retains measurement units. The [next page](correlation.qmd) divides by the two standard deviations to obtain a unitless linear association.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $\mathbb{E}[RT]-\mathbb{E}[R]\mathbb{E}[T]=0.284045$ words squared, matching the mean centered product. <!-- dqr-allow: empirical-answer -->
+2. Observations above both means and observations below both means contribute positively because the two centered factors have the same sign. <!-- dqr-allow: empirical-answer -->
+3. Dividing by $n$ treats the represented rows as the empirical population, whereas dividing by $n-1$ applies the usual sample-covariance degrees-of-freedom correction. <!-- dqr-allow: empirical-answer -->
+4. Covariance can be near zero under strong nonlinear or sign-canceling dependence, because it summarizes only average linear co-movement. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [correlation page](correlation.qmd) standardizes covariance to remove its units.

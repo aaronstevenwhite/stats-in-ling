@@ -1,85 +1,97 @@
 ---
 title: "Expected values"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The earlier pages introduced [probability mass functions](probability-mass-functions.qmd) and [probability density functions](probability-density-functions.qmd). We can now ask how to summarize the center of either distribution with one number. Suppose $R$ records the number of self repairs in a sampled dialogue turn.
+The earlier pages introduced [probability mass functions](probability-mass-functions.qmd) and [probability density functions](probability-density-functions.qmd). We can now ask how to summarize the center of either distribution with one number. We do this by returning to total phone count in the [pinned CMUdict pronunciation table](why-random-variables.qmd#the-pronunciation-entry-outcomes).
 
-The table below is a constructed annotation distribution. A repair count depends on the transcription and disfluency scheme, as illustrated by the [Switchboard disfluency annotation guidelines](https://web.stanford.edu/~bresnan/128_2003-4/Docs/dflguide.pdf); it is not a direct measure of a speaker's underlying planning process.
+```{r}
+#| label: load-cmudict-expectation
+library(ggplot2)
 
-| repair count $r$ | $p_R(r)$ |
-|---:|---:|
-| 0 | $.50$ |
-| 1 | $.30$ |
-| 2 | $.15$ |
-| 3 | $.05$ |
+cmu <- read.csv(
+  "data/cmudict/cmudict-pronunciations.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  na.strings = ""
+)
+phone_pmf <- as.data.frame(table(cmu$phone_count))
+names(phone_pmf) <- c("phone_count", "entries")
+phone_pmf$phone_count <- as.integer(as.character(phone_pmf$phone_count))
+phone_pmf$mass <- phone_pmf$entries / nrow(cmu)
+phone_pmf$weighted_phone_count <- phone_pmf$phone_count * phone_pmf$mass
 
-We want one number that summarizes the center of this probability distribution. Averaging the four support values would give $(0+1+2+3)/4=1.5$, but that calculation gives equal weight to values with unequal probabilities.
+expected_phone_count <- sum(phone_pmf$weighted_phone_count)
+row_mean_phone_count <- mean(cmu$phone_count)
+unweighted_support_mean <- mean(phone_pmf$phone_count)
 
-The [**expected value**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) weights each value by its probability. It is also called the mean of the distribution when the weighted average exists.
+stopifnot(
+  nrow(cmu) == 133854L,
+  abs(sum(phone_pmf$mass) - 1) < 1e-12,
+  abs(expected_phone_count - row_mean_phone_count) < 1e-12
+)
 
-## Weighting and adding by hand
+c(empirical_expectation = expected_phone_count,
+  row_mean = row_mean_phone_count,
+  unweighted_support_mean = unweighted_support_mean)
+```
 
-Multiply each support value by its mass.
-
-| $r$ | $p_R(r)$ | $r p_R(r)$ |
-|---:|---:|---:|
-| 0 | $.50$ | $0$ |
-| 1 | $.30$ | $.30$ |
-| 2 | $.15$ | $.30$ |
-| 3 | $.05$ | $.15$ |
-
-Add the weighted contributions:
+The [**expected value**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) weights each value by its probability. It is also called the mean of the distribution when the weighted average exists. For a discrete random variable,
 
 $$
-0+.30+.30+.15=.75.
+\mathbb{E}[X]
+\equiv
+\sum_{x\in\operatorname{cod}(X)}x\,p_X(x).
 $$
 
-In notation,
+Applying this definition to the empirical phone-count PMF gives
 
 $$
-\mathbb{E}[R]
-\equiv\sum_{r\in\operatorname{cod}(R)} r\,p_R(r)
-=.75.
+\widehat{\mathbb{E}}[X]
+=\sum_x x\,\widehat p_X(x).
 $$
 
-The symbol $\mathbb{E}$ denotes the expectation operation. It takes the full probability distribution of $R$ and returns its probability weighted average.
+The displayed computation returns `r sprintf("%.3f", expected_phone_count)` phones. Averaging the distinct support values without their masses instead gives `r sprintf("%.3f", unweighted_support_mean)`, because that calculation treats rare and frequent counts alike.
+
+```{r}
+#| label: plot-cmudict-expectation
+#| fig-cap: "Each bar is a phone count's contribution to the empirical expectation, x times its empirical mass."
+ggplot(phone_pmf, aes(phone_count, weighted_phone_count)) +
+  geom_col(fill = "grey65", width = 0.8) +
+  labs(x = "Phones in pronunciation",
+       y = "Contribution to expected phone count") +
+  theme_classic(base_size = 12)
+```
+
+The figure makes the weighting operation visible. A value contributes when it is large, frequent, or both; summing all bar heights recovers the expected phone count.
 
 ## Interpreting a value outside the support
 
-The support contains only whole repair counts, so no dialogue turn has exactly $.75$ repairs. The expected value need not be a possible observed value.
+The expected value need not be a possible observed value. Phone counts are integers, but `r sprintf("%.3f", expected_phone_count)` is not an integer. It summarizes the empirical distribution rather than describing one dictionary entry.
 
-Let $R_1,R_2,\ldots$ be independent variables with this PMF. Their sample mean has expectation $.75$ for every sample size. The [later treatment of the law of large numbers](../statistical-inference/monte-carlo-integration.qmd#quantifying-monte-carlo-error) explains the additional conditions under which sample averages stabilize near this value. For current purposes, the important distinction is that the expectation is a property of the distribution, not the outcome of one turn.
-
-## Computing the expectation in base R
-
-```{r}
-#| eval: false
-repair_count <- 0:3
-repair_mass <- c(.50, .30, .15, .05)
-
-sum(repair_count * repair_mass)
-```
-
-The result is `.75`. The multiplication is elementwise, so each support value is paired with its own probability before the products are summed.
+If $X_1,X_2,\ldots$ were independent draws from this empirical PMF, their sample mean would have expectation $\mathbb{E}[X]$ for every sample size. The [later treatment of Monte Carlo uncertainty](../statistical-inference/monte-carlo-integration.qmd#two-uncertainties) explains the additional conditions under which sample averages stabilize near this value. For current purposes, the expectation is a property of a distribution over pronunciation entries.
 
 ## The continuous form
 
-For an absolutely continuous variable $X$ with density $f_X$, suppose
+For an absolutely continuous variable $Y$ with density $f_Y$, suppose
 
 $$
-\int_{-\infty}^{\infty}|x|f_X(x)\,\mathrm{d}x<\infty.
+\int_{-\infty}^{\infty}|y|f_Y(y)\,\mathrm dy<\infty.
 $$
 
 Its expected value is
 
 $$
-\mathbb{E}[X]
-\equiv\int_{-\infty}^{\infty}x f_X(x)\,\mathrm{d}x.
+\mathbb{E}[Y]
+\equiv
+\int_{-\infty}^{\infty}y f_Y(y)\,\mathrm dy.
 $$
 
-The factor $x$ weights the probability density at each value. Absolute integrability guarantees that the expectation is finite.
-
-The discrete sum and continuous integral implement the same idea: values receiving more modeled probability contribute more to the center.
+The factor $y$ weights the probability density at each value. Absolute integrability guarantees that the expectation is finite. The discrete sum and continuous integral implement the same operation.
 
 ## Distribution-family calculations
 
@@ -87,7 +99,7 @@ If $K\sim\operatorname{Geometric}(\pi)$ counts failures before the first success
 
 $$
 \begin{aligned}
-\mathbb E[K]
+\mathbb{E}[K]
 &=\sum_{k=0}^{\infty}k(1-\pi)^k\pi\\
 &=\pi(1-\pi)
   \sum_{k=1}^{\infty}k(1-\pi)^{k-1}\\
@@ -95,14 +107,14 @@ $$
 \end{aligned}
 $$
 
-If $X\sim\operatorname{Beta}(\alpha,\beta)$, then
+If $Y\sim\operatorname{Beta}(\alpha,\beta)$, then
 
 $$
 \begin{aligned}
-\mathbb E[X]
+\mathbb{E}[Y]
 &=\int_0^1
-x\frac{x^{\alpha-1}(1-x)^{\beta-1}}{B(\alpha,\beta)}
-\,\mathrm dx\\
+y\frac{y^{\alpha-1}(1-y)^{\beta-1}}{B(\alpha,\beta)}
+\,\mathrm dy\\
 &=\frac{B(\alpha+1,\beta)}{B(\alpha,\beta)}\\
 &=\frac{\alpha}{\alpha+\beta}.
 \end{aligned}
@@ -110,17 +122,21 @@ $$
 
 These equations are derived properties of the corresponding PMF and PDF. They are not definitions of the geometric or beta families.
 
-## Weighting each support value by its probability
-
-The expectation is not the arithmetic average of the distinct support values. For the repair example, that calculation gives 1.5 rather than $.75$ because it treats the rare value 3 as if it were as common as 0.
-
-Identify the probability attached to each value. The expectation averages outcomes under the distribution, not labels in the support set.
-
 ## Check your understanding
 
-1. Recompute $\mathbb{E}[R]$ after moving $.10$ of mass from $R=0$ to $R=2$.
-2. Why can $.75$ be the expected repair count when no turn has $.75$ repairs?
-3. What quantity provides the weights in a discrete expectation?
-4. Explain the shared logic of the discrete sum and the continuous integral.
+1. Recompute the empirical expectation for `phone_count` from its PMF.
+2. Why can the expected phone count fail to be an observed count?
+3. Which quantity provides the weights in a discrete expectation?
+4. Compare the PMF-weighted expectation with the mean of the raw `phone_count` column. Why must they agree here?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Summing $x p_X(x)$ over the empirical PMF gives $\mathbb{E}[X]=6.380586$ phones. <!-- dqr-allow: empirical-answer -->
+2. An expectation is a probability-weighted average, so it need not be an integer or one of the observed phone counts. <!-- dqr-allow: empirical-answer -->
+3. The discrete expectation uses the PMF value $p_X(x)$ as the weight attached to each possible count $x$. <!-- dqr-allow: empirical-answer -->
+4. The PMF-weighted expectation and the raw-column mean both equal 6.380586 because the PMF groups the same 133,854 rows by count without changing their total weight. <!-- dqr-allow: empirical-answer -->
+
+</details>
 
 Expected value averages the original values. The [next page](expectation-of-functions.qmd) asks how to average a transformed property of those values.

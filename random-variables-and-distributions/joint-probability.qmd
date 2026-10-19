@@ -1,150 +1,116 @@
 ---
 title: "Joint distributions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The foundations chapter introduced the [joint probability of two events](../foundations/joint-probability-of-events.qmd). Suppose each dialogue turn is annotated for two properties. If we keep only the separate frequency of each annotation, we cannot recover how often they occur on the same turn because that pairing requires a joint distribution.
+Recipient length and theme length are measured on the same dative token. Separate distributions discard that pairing. A **joint distribution** assigns mass to the ordered length pair and thus preserves which values co-occur.
 
-More specifically, a [**joint distribution**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is the distribution of a random vector such as $\langle P,R\rangle$. Let $P$ record whether the turn contains a declared politeness marker, and let $R$ record whether it ends in a final pitch rise:
+## Definition
 
-$$
-P(\omega)\equiv
-\begin{cases}
-1,&\text{if turn }\omega\text{ contains a politeness marker},\\
-0,&\text{otherwise},
-\end{cases}
-$$
-
-and
+Let $R$ be recipient length in words and $T$ be theme length in words. Their joint PMF is
 
 $$
-R(\omega)\equiv
-\begin{cases}
-1,&\text{if turn }\omega\text{ ends in a final pitch rise},\\
-0,&\text{otherwise}.
-\end{cases}
+p_{R,T}(r,t)
+=\mathbb{P}(R=r,T=t).
 $$
 
-One sampled turn produces an ordered pair $\langle P,R\rangle$. The possible value pairs are
+It must satisfy
 
 $$
-\langle0,0\rangle,\ \langle0,1\rangle,\ \langle1,0\rangle,\ \langle1,1\rangle.
+p_{R,T}(r,t)\geq0,
+\qquad
+\sum_r\sum_t p_{R,T}(r,t)=1.
 $$
 
-For discrete $P$ and $R$, define their joint probability mass function by
+For any set $A$ of length pairs,
 
 $$
-p_{P,R}(p,r)
-\equiv\mathbb{P}(P=p,R=r).
+\mathbb{P}\big(\langle R,T\rangle\in A\big)
+=\sum_{\langle r,t\rangle\in A}p_{R,T}(r,t).
 $$
 
-## Reading a joint PMF table
-
-Consider this constructed joint PMF. The numbers illustrate probability bookkeeping; they do not claim that a final rise is a context-independent marker of politeness.
-
-That restriction matters because the interpretation of final rises depends on utterance type, task, and discourse role. The two annotations here should thus be read as project-defined coding decisions rather than a universal form-to-function mapping.
-
-| | no rise $R=0$ | rise $R=1$ |
-|---|---:|---:|
-| no marker $P=0$ | $.25$ | $.15$ |
-| marker $P=1$ | $.20$ | $.40$ |
-
-The lower right cell says
+For absolutely continuous variables, the corresponding definition is
 
 $$
-p_{P,R}(1,1)
-=.40.
+\mathbb{P}\big(\langle R,T\rangle\in A\big)
+=\iint_A f_{R,T}(r,t)\,\mathrm dr\,\mathrm dt,
 $$
 
-It is the probability that one turn contains both a politeness marker and a final rise.
+where $f_{R,T}(r,t)\geq0$ and
+$\iint_{\mathbb R^2}f_{R,T}(r,t)\,\mathrm dr\,\mathrm dt=1$.
 
-The upper right cell says
+## The observed dative joint PMF
 
-$$
-p_{P,R}(0,1)=.15,
-$$
-
-the probability of a final rise without a politeness marker.
-
-The subscript on $p_{P,R}$ identifies the two variables in the joint PMF. The comma inside the probability event means that both value statements hold for the same outcome.
-
-## Checking the joint PMF requirements
-
-Every cell is nonnegative. The cells also sum to one:
-
-$$
-.25+.15+.20+.40=1.
-$$
-
-The four value pairs are mutually exclusive and exhaustive under the two binary annotations. One turn belongs to exactly one cell.
-
-A single row or column does not need to sum to one because it represents only part of the complete pair space. The whole table is the PMF.
-
-## Asking about a set of pairs
-
-The event that at least one annotation is present contains three pairs:
-
-$$
-\{(0,1),(1,0),(1,1)\}.
-$$
-
-Its probability is
-
-$$
-\begin{aligned}
-\mathbb{P}(P=1\text{ or }R=1)
-&=.15+.20+.40\\
-&=.75.
-\end{aligned}
-$$
-
-The remaining pair $(0,0)$ has probability $.25$, so the complement check gives $1-.25=.75$.
-
-## Storing and inspecting the table in base R
+We return to the [English dative table introduced on the Poisson page](poisson-distribution.qmd). The original study treats relative length as one of many predictors of dative realization; here we first describe the paired constituent lengths without fitting that response model.
 
 ```{r}
-#| eval: false
-joint_pr <- matrix(
-  c(.25, .20, .15, .40),
-  nrow = 2,
-  dimnames = list(
-    politeness = c("absent", "present"),
-    rise = c("absent", "present")
-  )
+#| label: dative-joint-pmf
+library(ggplot2)
+
+dative <- read.csv(
+  "data/english-dative/dative-alternation.csv",
+  stringsAsFactors = FALSE,
+  na.strings = c("", "NA")
+)
+joint <- as.data.frame(table(
+  recipient_length_words = dative$recipient_length_words,
+  theme_length_words = dative$theme_length_words
+), responseName = "count")
+joint$recipient_length_words <- as.integer(as.character(joint$recipient_length_words))
+joint$theme_length_words <- as.integer(as.character(joint$theme_length_words))
+joint <- subset(joint, count > 0)
+joint$probability <- joint$count / nrow(dative)
+
+modal_cell <- joint[which.max(joint$count), ]
+event_probability <- sum(joint$probability[
+  joint$recipient_length_words <= median(dative$recipient_length_words) &
+  joint$theme_length_words <= median(dative$theme_length_words)
+])
+
+stopifnot(
+  nrow(dative) == 3263L,
+  abs(sum(joint$probability) - 1) < 1e-12,
+  all(joint$probability >= 0) # dqr-allow: scale-boundary
 )
 
-joint_pr
-sum(joint_pr)
-joint_pr["present", "present"]
+modal_cell
+event_probability
 ```
 
-R fills matrices by columns, so the vector order must match the declared row and column labels. The final indexing call checks the linguistic interpretation of one cell.
+The most frequent observed pair is a recipient of `r modal_cell$recipient_length_words` word(s) with a theme of `r modal_cell$theme_length_words` word(s). Its empirical joint mass is `r sprintf("%.3f", modal_cell$probability)`. Both values belong to the same token; independently tabulating the two variables would lose that fact.
 
-## Why separate PMFs do not recover pairing
+```{r}
+#| label: plot-dative-joint
+#| fig-cap: "Observed joint distribution of recipient and theme lengths. Point area represents the number of dative tokens in each length pair."
+ggplot(joint, aes(theme_length_words, recipient_length_words, size = count)) +
+  geom_point(color = "grey30", alpha = 0.65) + # dqr-allow: algorithm-setting
+  scale_size_area(max_size = 7) +
+  labs(x = "Theme length (words)", y = "Recipient length (words)",
+       size = "Token count") +
+  theme_classic(base_size = 12)
+```
 
-Suppose we know how often politeness markers occur and how often final rises occur. Those two separate summaries do not tell us which turns contain both.
-
-Many joint tables can have the same separate probabilities while placing different amounts of mass on $(1,1)$. The pairing information lives in the joint distribution.
-
-An association between final rises and politeness markers concerns their pairing within turns. Separate rise and politeness frequencies cannot show whether the two annotations occur on the same turns. The dataset must retain the turn identifier that pairs the measurements.
-
-## The continuous version
-
-For absolutely continuous $X$ and $Y$, define their joint density $f_{X,Y}$ by the requirement
-
-$$
-\mathbb{P}(\langle X,Y\rangle\in A)
-=\iint_A f_{X,Y}(x,y)\,\mathrm{d}x\,\mathrm{d}y
-$$
-
-for every measurable region $A\subseteq\mathbb R^2$. A point $\langle x,y\rangle$ has probability zero.
-
-The discrete and continuous representations both preserve paired values from the same outcome.
+The dense lower-left region shows that both constituents are often short, while the rarer points retain the long tails. A joint PMF describes this pinned table; repeated verbs and speakers still limit independent-sampling claims.
 
 ## Check your understanding
 
-1. Translate $p_{P,R}(1,0)$ into a linguistic event and read its probability from the table.
-2. Compute the probability that exactly one annotation is present.
-3. Why can a row sum be less than one in a valid joint PMF?
-4. Explain how shuffling one annotation changes the joint distribution without changing either separate frequency table.
+1. Compute the empirical probability that both lengths are at most their empirical medians.
+2. Verify one joint cell directly from the row-level data.
+3. Explain why shuffling theme lengths leaves both marginal PMFs unchanged but changes the joint PMF.
+4. Which identifier would you preserve when asking how the pairing varies by verb?
 
-The joint table retains both variables. The [next page](marginal-distributions.qmd) removes one distinction by adding over all of its values.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. For recipient length $R$ and theme length $T$, the empirical probability that both are at most their respective medians is 0.425375. <!-- dqr-allow: empirical-answer -->
+2. The modal joint cell contains 572 rows with recipient length 1 and theme length 2, giving $572/3263=0.175299$. <!-- dqr-allow: empirical-answer -->
+3. Shuffling theme lengths preserves every recipient and theme count separately but breaks the row pairings that determine the joint PMF. <!-- dqr-allow: empirical-answer -->
+4. The `verb` identifier should be retained to study how recipient–theme length pairings vary across repeated verb types. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](marginal-distributions.qmd) recovers either one-variable distribution by summing the joint mass.

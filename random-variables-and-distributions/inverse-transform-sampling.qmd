@@ -1,170 +1,119 @@
 ---
-title: "Sampling with cumulative probability"
+title: "Inverse-transform sampling"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [cumulative distribution function](cumulative-distribution-functions.qmd) records the probability accumulated through each threshold. Suppose we can draw a uniform number between zero and one, but we want a boundary label with a nonuniform target distribution. How can cumulative thresholds convert the first draw into the second?
+The empirical Turkish interrogative-lemma PMF assigns probability to labels, while a computer's basic random-number generator produces values on the unit interval. **Inverse-transform sampling** maps those uniform values into draws from the target PMF.
 
-Suppose a prosodic annotator assigns one of three boundary strengths with probabilities
+## From cumulative mass to labels
 
-| boundary label | probability |
-|---|---:|
-| weak | $.50$ |
-| intermediate | $.30$ |
-| strong | $.20$ |
-
-The labels and masses are constructed. Prosodic boundary labels are outputs of a transcription system, not direct acoustic quantities; for instance, [ToBI](https://www.isca-archive.org/icslp_1992/silverman92_icslp.html) represents tones and break indices on distinct annotation tiers. The sampling calculation reproduces a declared label distribution, not prosodic ground truth.
-
-The PMF tells us the target frequencies across repeated draws. To simulate one label, we need a rule that converts a basic pseudorandom value into one of these outcomes.
-
-Basically, we divide the unit interval into pieces whose widths are the target probabilities. More specifically, [**inverse transform sampling**](https://bookdown.org/richard_g_everitt/notes/chapsimulation.html) uses a uniform draw on $(0,1)$ and the target CDF to make that conversion.
-
-## Transforming probabilities into intervals
-
-Accumulate the category masses in their declared order.
-
-| boundary label | mass | cumulative endpoint | uniform interval |
-|---|---:|---:|---|
-| weak | $.50$ | $.50$ | $(0,.50]$ |
-| intermediate | $.30$ | $.80$ | $(.50,.80]$ |
-| strong | $.20$ | $1$ | $(.80,1)$ |
-
-Draw
+For an ordered numerical support, define the generalized inverse CDF by
 
 $$
-U\sim\operatorname{Uniform}(0,1).
-$$
-
-If $U=.74$, it falls in $(.50,.80]$, so the simulated label is intermediate. If $U=.92$, it falls in $(.80,1)$, so the label is strong.
-
-The interval widths match the target masses. A uniform draw thus lands in each interval with the required probability.
-
-## Stating the discrete rule
-
-For ordered labels $x_1,x_2,x_3$, define the cumulative endpoints by
-
-$$
-c_k\equiv\sum_{j=1}^{k}p_X(x_j).
-$$
-
-For the stated PMF,
-
-$$
-c_1=.50,
-\qquad
-c_2=.80,
-\qquad
-c_3=1.
-$$
-
-Choose the first category $k$ for which
-
-$$
-U\leq c_k.
-$$
-
-The rule maps one uniform value to one target outcome. It also makes the category order part of the implementation, as was the case for a categorical parameter vector.
-
-## Implementing the rule in base R
-
-```{r}
-#| eval: false
-draw_boundary <- function(n) {
-  u <- runif(n)
-  label <- c("weak", "intermediate", "strong")
-  endpoint <- c(.50, .80, 1)
-
-  label[vapply(u, function(value) {
-    which(value <= endpoint)[1]
-  }, integer(1))]
-}
-
-draw_boundary(10)
-```
-
-The code follows the definition literally: draw $U$, find the first cumulative endpoint at or above it, and return the corresponding label.
-
-With many draws, the empirical category proportions should approach $.50$, $.30$, and $.20$. A large discrepancy may expose an interval or ordering error.
-
-## Extending the rule to a continuous target
-
-Let $F$ be a continuous CDF and let
-
-$$
-F^{-1}(u)\equiv\inf\{x\in\mathbb R:F(x)\geq u\}
-$$
-
-be its quantile function. If $U$ is uniform on $(0,1)$, then
-
-$$
-X\equiv F^{-1}(U)
-$$
-
-has CDF $F$.
-
-The distribution claim follows directly:
-
-$$
-\begin{aligned}
-\mathbb{P}(X\leq x)
-&=\mathbb{P}(F^{-1}(U)\leq x)\\
-&=\mathbb{P}(U\leq F(x))\\
-&=F(x).
-\end{aligned}
-$$
-
-Consider the target CDF
-
-$$
-F(x)\equiv
-\begin{cases}
-0,&x\leq0,\\
-x^2,&0<x<1,\\
-1,&x\geq1.
-\end{cases}
-$$
-
-Solve $u=x^2$ for $x$:
-
-$$
-F^{-1}(u)=\sqrt{u},
+F^{-1}(u)=\inf\{x:F(x)\geq u\},
 \qquad 0<u<1.
 $$
 
-If $U=.36$, the transformed draw is
+If $U\sim\operatorname{Uniform}(0,1)$, then $F^{-1}(U)$ has CDF $F$. For categorical labels, we first assign a computational order. That order does not imply that *hangi*, *kim*, and *ne* form a linguistic scale.
+
+The construction works because, at continuity points of $F$,
 
 $$
-X=\sqrt{.36}=.60.
+\mathbb{P}\!\left(F^{-1}(U)\leq x\right)
+=\mathbb{P}\!\left(U\leq F(x)\right)
+=F(x).
 $$
-
-The transformation stretches and compresses parts of the uniform interval so that the resulting values have the target cumulative probabilities.
 
 ```{r}
-#| eval: false
-u <- runif(1000)
-x <- sqrt(u)
+#| label: inverse-ud-questions
+library(ggplot2)
 
-mean(x <= .5)
+questions <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE
+)
+counts <- as.data.frame(table(questions$lemma), responseName = "count")
+names(counts)[1] <- "lemma"
+counts$target_probability <- counts$count / sum(counts$count)
+counts$lower <- c(0, head(cumsum(counts$target_probability), -1L))
+counts$upper <- cumsum(counts$target_probability)
+
+inverse_sample <- function(n, seed) {
+  set.seed(seed)
+  u <- runif(n)
+  index <- findInterval(u, c(0, counts$upper), rightmost.closed = TRUE)
+  index[index > nrow(counts)] <- nrow(counts)
+  data.frame(draw = seq_len(n), u = u, lemma = counts$lemma[index])
+}
+
+diagnostic_n <- 10000L
+diagnostic_seed <- 20261018L
+draws <- inverse_sample(diagnostic_n, diagnostic_seed)
+simulated <- as.data.frame(table(draws$lemma), responseName = "sampled_count")
+names(simulated)[1] <- "lemma"
+comparison <- merge(counts, simulated, by = "lemma")
+comparison$sampled_probability <- comparison$sampled_count / diagnostic_n
+
+stopifnot(
+  nrow(questions) == 167L,
+  abs(tail(counts$upper, 1) - 1) < 1e-12,
+  all(draws$lemma %in% counts$lemma),
+  sum(comparison$sampled_count) == diagnostic_n
+)
+
+comparison
 ```
 
-The target CDF gives $F(.5)=.25$, so the simulated proportion at or below $.5$ should be near $.25$ when the number of draws is large.
+The cumulative intervals $[c_{k-1},c_k)$ have widths
 
-## What the procedure requires
+$$
+c_k-c_{k-1}=\widehat p_k.
+$$
 
-The target CDF must be valid, and its inverse or generalized inverse must be available. Some families have no convenient analytic inverse, so software may use numerical inversion or another sampling method.
+Thus a uniform draw lands in the interval for lemma $k$ with the empirical lemma probability $\widehat p_k$.
 
-The procedure guarantees the target distribution only when the uniform generator and mapping are implemented correctly. It does not guarantee that the target distribution is a good linguistic model.
+```{r}
+#| label: plot-inverse-ud-questions
+#| fig-cap: "Empirical Turkish interrogative-lemma probabilities and proportions from an inverse-transform diagnostic."
+plot_data <- rbind(
+  data.frame(lemma = comparison$lemma,
+             probability = comparison$target_probability,
+             source = "empirical target"),
+  data.frame(lemma = comparison$lemma,
+             probability = comparison$sampled_probability,
+             source = "inverse-transform diagnostic")
+)
 
-## Checking the implemented cutpoints
+ggplot(plot_data, aes(lemma, probability, fill = source)) +
+  geom_col(position = position_dodge(width = 0.72), width = 0.65) +
+  scale_fill_manual(values = c("empirical target" = "grey55",
+                               "inverse-transform diagnostic" = "#8B1A1A")) +
+  labs(x = "Interrogative lemma", y = "Probability", fill = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-The implemented cumulative endpoints must match the target probability masses. If the first endpoint were coded as $.40$ instead of $.50$, the weak category would be simulated too rarely and the other intervals would change.
-
-Compute cumulative endpoints from the probability vector and check simulated proportions against the target masses.
+The simulation is an implementation check, not a replacement for the corpus probabilities. Increasing the number of draws generally reduces simulation error, while it does nothing to repair the corpus's sentence clustering or register coverage.
 
 ## Check your understanding
 
-1. Which boundary label is selected by $U=.80$ under the stated endpoint rule?
-2. Why must the final cumulative endpoint equal one?
-3. If $F(x)=x^2$, what value is produced by $U=.81$?
-4. What diagnostic would reveal incorrectly implemented cutpoints in a large discrete simulation?
+1. Inspect the first rows of `draws` and verify each interval assignment manually.
+2. Change `diagnostic_n` and compare the absolute errors.
+3. Reverse the category order and confirm that the target masses remain attached to the same labels.
+4. Why are the simulated proportions not new linguistic observations?
 
-The mapping produces a pseudorandom realization. The [next page](random-seeds.qmd) explains how to reproduce that realization without confusing reproducibility with model adequacy.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The first six uniforms, 0.4051, 0.7612, 0.1691, 0.9279, 0.3046, and 0.3345, all fall in the *ne* interval $[0.119760,1]$, so each is assigned *ne*. <!-- dqr-allow: empirical-answer -->
+2. With seed 20261018, increasing `diagnostic_n` from 10,000 to 100,000 reduces the *hangi*, *kim*, and *ne* errors from 0.001064, 0.002196, and 0.003260 to 0.000146, 0.000786, and 0.000640. <!-- dqr-allow: empirical-answer -->
+3. Reversing category order changes interval locations but not widths, so the target masses remain 0.017964 for *hangi*, 0.101796 for *kim*, and 0.880240 for *ne*. <!-- dqr-allow: empirical-answer -->
+4. The simulated proportions are computational draws from the empirical PMF, not newly observed Turkish tokens or annotations. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [random-seed page](random-seeds.qmd) separates reproducibility of the computation from replication of the linguistic data.

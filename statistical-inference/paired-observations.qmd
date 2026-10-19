@@ -1,105 +1,117 @@
 ---
 title: "Paired observations"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [one-sample procedure](one-sample-t-inference.qmd) requires one response from each independent unit. A paired design creates that response by taking a within-pair difference. Consider an acoustic study in which every speaker produces two vowel categories. The response is [first-formant frequency](https://www.fon.hum.uva.nl/praat/manual/Sound__To_Formant__burg____.html), written $F_1$ and measured in hertz. $F_1$ is a resonance of the vocal tract that is commonly interpreted in relation to vowel height; it is not pitch or fundamental frequency. The two tokens are distinct utterances, but they share a speaker's vocal tract anatomy, recording environment, and many features of speaking style.
+Two measurements are paired when the design supplies a defensible link between them. In translation research, the link may be an aligned passage rather than a speaker. We call this link the **alignment unit** (AU): the unit that must remain intact whenever the two language measurements are compared.
 
-A [**paired design**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=308) links two measurements because they arise from the same unit or from units matched before analysis. The pair, rather than either measurement alone, carries the contrast of interest, raising the question of how to turn those two linked measurements into one response at the independent-unit level. We do so by taking a within-pair difference.
+## UCCA graphs across translation
 
-## From two measurements to one contrast
+We use the public CC BY-SA 3.0 [English](https://github.com/UniversalConceptualCognitiveAnnotation/UCCA_English-20K) and [French](https://github.com/UniversalConceptualCognitiveAnnotation/UCCA_French-20K) UCCA 20K v2 corpora. Sulem, Abend, and Rappoport ([2015](https://aclanthology.org/W15-3502/)) ask whether UCCA structure is preserved across translations; the same bilingual annotator annotated the two languages separately. Current UCCA guidelines are described by Abend et al. ([2020](https://arxiv.org/abs/2012.15810)).
 
-Let $Y_{sA}$ and $Y_{sB}$ be measurements from conditions $A$ and $B$ for pair $s$, where $s=1,\ldots,S$. Define
+UCCA is a graph representation. A distinct **Scene** is a foundational node with an outgoing Process (`P`) or State (`S`) edge. A remote edge points to an already represented unit and does not create another Scene. One row in the extract is one language side of a passage graph; the analysis unit is one of the 154 source-order English--French passage pairs.
 
-$$
-D_s = Y_{sA}-Y_{sB}.
-$$
+The current v2 release is not the numerical release reported in the 2015 paper. The paper reports 583 sentences per language and mean Scene counts of 9.49 in English and 9.25 in French. <!-- dqr-allow: reference-metadata --> The pinned v2 graphs form the aligned passage pairs loaded below and produce different graph-derived counts. We apply the paper's paired estimand to v2; we do not claim to reproduce the paper's numbers.
 
-The sign is a convention, but it must be fixed before interpretation. If $A$ is a high vowel and the response is $F_1$, a negative $D_s$ means that the high vowel has lower $F_1$ than the comparison vowel for speaker $s$.
+```{r}
+#| label: load-ucca-pairs
+library(ggplot2)
 
-After differencing, the dataset contains $S$ contrast observations:
+ucca <- read.csv(
+  "data/ucca-french-english/passage-counts.csv",
+  stringsAsFactors = FALSE
+)
+english <- ucca[ucca$language == "en", ]
+french <- ucca[ucca$language == "fr", ]
+english <- english[order(english$pair_id), ]
+french <- french[order(french$pair_id), ]
 
-| pair | $Y_A$ | $Y_B$ | $D=Y_A-Y_B$ |
-|---|---:|---:|---:|
-| 1 | 312 | 381 | -69 |
-| 2 | 347 | 405 | -58 |
-| 3 | 290 | 372 | -82 |
-| 4 | 401 | 438 | -37 |
+stopifnot(
+  identical(english$pair_id, french$pair_id),
+  nrow(english) == 154L,
+  sum(english$scene_count) == 1839L,
+  sum(french$scene_count) == 2121L
+)
 
-The original measurement unit may be a trial or token, but the unit for the condition contrast is now the pair. Four pairs provide four observed differences. Counting the table as eight unrelated values would double the apparent number of contrast-bearing units.
+pairs <- data.frame(
+  pair_id = english$pair_id,
+  chapter = english$chapter,
+  english_scenes = english$scene_count,
+  french_scenes = french$scene_count,
+  english_terminals = english$terminal_count,
+  french_terminals = french$terminal_count
+)
+pairs$difference <- pairs$french_scenes - pairs$english_scenes
+```
 
-## What differencing removes
+## Pairing changes the variance
 
-Suppose each measurement can be decomposed as
-
-$$
-Y_{sc}=\alpha_s+\delta_c+\varepsilon_{sc},
-$$
-
-where $\alpha_s$ is a stable pair-specific baseline, $\delta_c$ is the condition contribution, and $\varepsilon_{sc}$ is remaining measurement variation. The difference is
-
-$$
-D_s
-=
-(\alpha_s+\delta_A+\varepsilon_{sA})
--
-(\alpha_s+\delta_B+\varepsilon_{sB})
-=
-\delta_A-\delta_B+\varepsilon_{sA}-\varepsilon_{sB}.
-$$
-
-The baseline $\alpha_s$ cancels. In the acoustic example, speakers may differ substantially in overall $F_1$ because their vocal tracts differ. Those baseline differences are not evidence about the within-speaker vowel contrast, so removing them can sharpen the comparison.
-
-The same logic applies across linguistic designs:
-
-- the same participant judges two versions of an item;
-- the same lexical item appears in two syntactic frames;
-- the same language is measured before and after a coding revision; or
-- two corpus samples are matched on speaker and lexical context.
-
-The paired unit must follow from the design or an explicit matching rule. Similar-looking rows are not automatically pairs.
-
-## Covariance determines the change in precision
-
-Now, you might wonder whether differencing always makes an estimate more precise. The [variance and covariance rules from the preceding module](../random-variables-and-distributions/variance-and-covariance.qmd) give
+For pair $i$, define $D_i=Y_{i,\mathrm{fr}}-Y_{i,\mathrm{en}}$. Then
 
 $$
-\operatorname{Var}(Y_A-Y_B)
-=
-\operatorname{Var}(Y_A)
-+
-\operatorname{Var}(Y_B)
--
-2\operatorname{Cov}(Y_A,Y_B).
+\overline D=\overline Y_{\mathrm{fr}}-\overline Y_{\mathrm{en}}
 $$
 
-When the two measurements are positively associated within pairs, the covariance term reduces the variance of the difference. Stable speaker baselines, for instance, tend to make both vowel measurements high or both low. The paired contrast subtracts that shared displacement.
+and
 
-Pairing does not guarantee a smaller variance. Negative within-pair [covariance](../random-variables-and-distributions/covariance.qmd) would increase the variance of $D_s$, and uninformative matching may produce covariance near zero. The design still determines the appropriate unit. Precision is a consequence of that design, not the criterion used to decide whether pairing exists.
+$$
+\operatorname{Var}[D]
+=\operatorname{Var}[Y_{\mathrm{fr}}]
++\operatorname{Var}[Y_{\mathrm{en}}]
+-2\operatorname{Cov}(Y_{\mathrm{fr}},Y_{\mathrm{en}}).
+$$
 
-Whether observations are paired is determined by the design, not by which analysis produces a narrower interval. The observations were paired before their values were known because the same speaker, item, or matched unit generated them.
+Positive covariance can make paired differences substantially less variable than a comparison that discards alignment.
 
-## Pairing versus repeated measurements
+```{r}
+#| label: summarize-ucca-pairs
+pair_summary <- data.frame(
+  pairs = nrow(pairs),
+  mean_english_scenes = mean(pairs$english_scenes),
+  mean_french_scenes = mean(pairs$french_scenes),
+  mean_signed_difference = mean(pairs$difference),
+  covariance = cov(pairs$english_scenes, pairs$french_scenes),
+  correlation = cor(pairs$english_scenes, pairs$french_scenes)
+)
+pair_summary
+```
 
-A simple pair contains two measurements. Linguistic datasets often contain more: twelve vowels from each speaker, forty sentences from each participant, or several annotations of each predicate and argument pair. A two-condition question can sometimes be reduced to one difference per repeated unit, as above. But a dataset with several conditions, missing cells, or multiple tokens in each condition requires additional decisions.
+```{r}
+#| label: plot-ucca-pairs
+#| fig-cap: "Graph-derived Scene counts in aligned v2 passages. The identity line marks exact count agreement."
+limits <- range(c(pairs$english_scenes, pairs$french_scenes))
 
-For instance, if each speaker produces five tokens of $A$ and five of $B$, one could average within each speaker and condition before differencing. That produces one difference per speaker, but discards token variation. A later multilevel model can retain the tokens while representing the speaker structure. Thus, the simple paired difference is a complete analysis for one measurement per condition, and a useful design diagnostic for more complex repeated data.
+ggplot(pairs, aes(english_scenes, french_scenes)) +
+  geom_abline(slope = 1, intercept = 0, color = "grey55", linewidth = 0.5) +
+  geom_point(color = "grey25", size = 1.6, alpha = 0.65) + # dqr-allow: algorithm-setting
+  coord_equal(xlim = limits, ylim = limits) +
+  labs(x = "Scenes in English passage", y = "Scenes in French passage") +
+  theme_classic(base_size = 12)
+```
 
-## Incomplete and invalid pairs
+The count correlation is `r sprintf("%.3f", pair_summary$correlation)`, but correlation does not establish agreement. Points can follow a line closely while remaining systematically above the identity line. The next page thus uses an absolute count-agreement target.
 
-If one measurement is missing, its pair does not yield a difference, so complete-pair analysis targets units observed in both conditions. This target may differ from the target over all enrolled units when missingness is related to condition or response. A report should give the number of original units, complete pairs, and exclusions.
+The AU must be preserved: v2 filenames are internal annotation identifiers, not bilingual order. The prepared table reconstructs source order from passage ranges and repository history. Sorting filenames would invent pairs.
 
-Arbitrary post hoc matching is a different problem. Pairing each short word with a long word that happens to have a similar frequency may create a useful matched design, but the matching variables and algorithm must be fixed and reported. Choosing matches that maximize a desired result makes the pairing outcome-dependent.
+## Check your understanding
 
-::: {.callout-warning title="The design chooses the pair"}
-Pair observations because the same unit generated both measurements or because a prespecified matching design linked the units. Do not infer pairing from a convenient row order or from the interval produced after fitting.
-:::
+1. What is the observational unit for the paired analysis?
+2. Why does a remote edge not create another Scene?
+3. How does covariance enter the variance of a difference?
+4. Why is a high correlation insufficient evidence of count agreement?
 
-## Checking the inferential claim
+<details class="understanding-answers">
+<summary>Answers</summary>
 
-1. An experiment records one judgment for each of two sentence versions from every participant. What is the pair identifier, and what does one difference represent?
-2. Each participant sees version $A$ of one item and version $B$ of a different item. Are the two trials paired by participant for a claim about the item contrast? What additional structure should be considered?
-3. If $\operatorname{Cov}(Y_A,Y_B)>0$, why is the variance of the within-pair difference smaller than the sum of the marginal variances?
+1. One aligned English--French passage pair is the observational unit. <!-- dqr-allow: empirical-answer -->
+2. A remote edge points to a unit already represented in the graph; it does not introduce a new Process or State unit and thus does not create a new Scene. <!-- dqr-allow: empirical-answer -->
+3. $\operatorname{Var}[D]=\operatorname{Var}[Y_{\mathrm{fr}}]+\operatorname{Var}[Y_{\mathrm{en}}]-2\operatorname{Cov}(Y_{\mathrm{fr}},Y_{\mathrm{en}})$, so positive covariance reduces difference variance. <!-- dqr-allow: empirical-answer -->
+4. Correlation measures co-movement, not equality; points can track a line closely while lying systematically above the identity line. <!-- dqr-allow: empirical-answer -->
 
-## What pairing accomplishes
+</details>
 
-A paired design makes the within-pair difference the observation that carries a two-condition contrast. Differencing removes a stable pair baseline, and positive within-pair covariance can increase precision. The [next page](paired-mean-inference.qmd) uses the distribution of these differences to estimate an average contrast and quantify its uncertainty.
+The [next page](paired-mean-inference.qmd) compares aligned absolute differences with a descriptive re-pairing reference.

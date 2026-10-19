@@ -1,100 +1,88 @@
 ---
 title: "Autocorrelation in a Markov chain"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The $\widehat{R}$ page compared different chains. We now use the [correlation concept introduced earlier](../random-variables-and-distributions/correlation.qmd) to describe dependence across iterations within one [Markov chain](markov-chains.qmd). Suppose one chain contains saved draws for a consonant-duration parameter, where duration is the elapsed acoustic time between consistently defined segment boundaries and is thus a measurement rather than a phonological category:
+The PCT chains agree across initializations, but adjacent draws remain dependent. **Autocorrelation** measures the association between a saved sequence and a shifted copy of itself.
 
-$$
-.10,.12,.13,.15,.14,.18,\ldots
-$$
-
-Adjacent values are similar because the sampler moves through the posterior gradually. The question is how to measure that within-chain resemblance at different separations. The [**autocorrelation**](https://mc-stan.org/docs/reference-manual/analysis.html) measures the association between a sequence and a shifted copy of itself.
-
-## Constructing lagged pairs
-
-At lag one, align every draw except the last with the following draw:
-
-| draw at $s$ | draw at $s+1$ |
-|---:|---:|
-| $.10$ | $.12$ |
-| $.12$ | $.13$ |
-| $.13$ | $.15$ |
-| $.15$ | $.14$ |
-| $.14$ | $.18$ |
-
-The correlation between these columns is the empirical lag-one autocorrelation.
-
-Let $\operatorname{Corr}(U,V)$ denote the correlation between random variables $U$ and $V$ under the stationary distribution. For a stationary chain, the population autocorrelation at lag $t$ is
+For a stationary scalar sequence, the autocorrelation at lag $t$ is
 
 $$
 \rho_t
 =
-\operatorname{Corr}
-(\Theta_s,\Theta_{s+t}).
+\operatorname{Corr}(\Theta_s,\Theta_{s+t}).
 $$
 
-Lag one compares adjacent draws, while lag ten compares draws separated by ten transitions. A chain of length 1,000 supplies 999 lag-one pairs and 990 lag-ten pairs.
+Lag one compares adjacent draws; lag ten compares draws ten transitions apart. A chain of 1,000 draws supplies 999 lag-one pairs and 990 lag-ten pairs.
 
-## Reading the autocorrelation function
-
-The sequence
-
-$$
-\rho_1,\rho_2,\rho_3,\ldots
-$$
-
-is the [**autocorrelation function**](https://mc-stan.org/docs/reference-manual/analysis.html) (ACF). Rapid decay toward zero suggests that dependence weakens over a small number of transitions. Slow decay means that information about one draw persists across many later draws.
-
-An autoregressive sequence supplies a controlled illustration:
-
-$$
-X_s=.85X_{s-1}+\varepsilon_s.
-$$
-
-Its theoretical autocorrelation is $\rho_t=.85^t$.
+## The production PCT autocorrelation functions
 
 ```{r}
-#| label: autocorrelation-duration-coefficient
-#| echo: true
+#| label: compute-provo-autocorrelation
+library(ggplot2)
+library(posterior)
 
-set.seed(829)
-draws <- as.numeric(
-  arima.sim(model = list(ar = .85), n = 5000)
+provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
+cache <- readRDS(
+  "data/provo/provo-stan-draw-cache.rds"
 )
-empirical_acf <- as.numeric(
-  acf(draws, lag.max = 10, plot = FALSE)$acf
-)
+draws <- as.data.frame(as_draws_df(subset_draws(
+  cache$production_draws, variable = c("mu", "sigma")
+)))
 
-stopifnot(abs(empirical_acf[2] - .85) < .05)
-data.frame(
-  lag = 0:10,
-  empirical = empirical_acf,
-  theoretical = .85^(0:10)
-)
+acf_rows <- do.call(rbind, lapply(c("mu", "sigma"), function(parameter) {
+  do.call(rbind, lapply(split(draws, draws$.chain), function(chain_data) {
+    values <- as.numeric(acf(chain_data[[parameter]], lag.max = 40L,
+                             plot = FALSE, demean = TRUE)$acf)
+    data.frame(parameter, chain = chain_data$.chain[1], lag = 0:40,
+               autocorrelation = values)
+  }))
+}))
+
+stopifnot(nrow(provo) == 55L, nrow(draws) == 4000L,
+          all(abs(acf_rows$autocorrelation[acf_rows$lag == 0] - 1) < 1e-12))
+subset(acf_rows, lag <= 3)
 ```
 
-The entry at lag zero is one because a sequence is perfectly correlated with itself. The following entries estimate dependence across increasing separation.
+```{r}
+#| label: plot-provo-autocorrelation
+#| fig-cap: "Within-chain autocorrelation for the production PCT draws."
+ggplot(acf_rows,
+       aes(lag, autocorrelation, group = factor(chain), color = factor(chain))) +
+  geom_hline(yintercept = 0, color = "grey75", linewidth = .4) +
+  geom_line(linewidth = .55) +
+  facet_wrap(~parameter, ncol = 1) +
+  scale_color_grey(start = .15, end = .7) +
+  labs(x = "Lag", y = "Autocorrelation", color = "Chain") +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
+```
 
-## Separating target correctness from efficiency
+Rapid decay suggests that dependence weakens over a small number of transitions. Slow decay means that information about one state persists across later states. High autocorrelation need not imply the wrong stationary distribution, but it reduces finite-run precision.
 
-High autocorrelation does not by itself imply the wrong stationary distribution, since a transition can preserve the correct posterior while moving through it slowly. The problem is efficiency for a finite run.
+Negative autocorrelation can make alternating values offset one another and improve precision for some averages. Thus the complete sequence matters, not only lag one. Thinning may make the retained sequence look less correlated, but it discards information and creates none.
 
-When adjacent draws are nearly repetitions, 5,000 saved values contain less information about a posterior mean than 5,000 independent target draws. Strong positive autocorrelation thus increases Monte Carlo error for a fixed raw draw count.
-
-Negative autocorrelation can instead make alternating draws offset one another and may improve precision for some averages. The complete autocorrelation pattern matters, not only the lag-one value.
-
-Autocorrelation does not by itself make a stationary chain invalid. For an ergodic chain initialized away from stationarity, the starting state can still contribute finite-run bias, and autocorrelation changes the variance of Monte Carlo estimates. Failure to reach a target region is a different problem.
-
-## Thinning
-
-Keeping every tenth draw reduces visible autocorrelation in the stored sequence, but it also discards information. Unless storage or downstream computation is limiting, retaining draws and accounting for their dependence is usually more informative than routine thinning.
+Autocorrelation diagnoses the numerical sequence. It does not describe dependence among readers, word positions, or passages in the underlying Provo study.
 
 ## Check your understanding
 
-1. How many aligned pairs enter lag 25 for a chain of length 1,000?
-2. What does slow ACF decay show about saved draws?
-3. Why can a correct chain still have high autocorrelation?
-4. Why does thinning not create new information?
-5. Why can two chains with the same lag-one autocorrelation still have different long-lag efficiency?
+1. How many lag-25 pairs occur in one 1,000-draw chain?
+2. What does slow ACF decay imply about finite-run information?
+3. Why can a correct chain have positive autocorrelation?
+4. Why does thinning not create information?
 
-The [effective-sample-size page](effective-sample-size.qmd) translates the dependence pattern into an information-equivalent draw count.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. There are $1000-25=975$ lag-25 pairs. <!-- dqr-allow: empirical-answer -->
+2. Slow decay means that many saved states carry overlapping information, reducing finite-run precision and ESS. <!-- dqr-allow: empirical-answer -->
+3. Stationarity determines the marginal target, not independence; a valid transition can preserve the target while moving locally between correlated states. <!-- dqr-allow: empirical-answer -->
+4. Thinning discards saved states. It may lower correlation among retained neighbors, but it cannot add information absent from the original chain. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [effective-sample-size page](effective-sample-size.qmd) translates this dependence into an information-equivalent draw count.

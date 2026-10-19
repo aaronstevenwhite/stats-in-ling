@@ -1,188 +1,198 @@
 ---
 title: "Posterior predictive distributions"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-The [prior predictive distribution](prior-predictive-distributions.qmd) averaged the observation model over the prior. A posterior predictive distribution performs the same averaging over the [posterior distribution](posterior-distributions.qmd).
+The [prior-predictive page](prior-predictive-distributions.qmd) averaged the observation model over the prior. A **posterior predictive distribution** averages over the posterior. The Turkish UniMorph example also lets us compare that counterfactual independent-draw prediction with the actual without-replacement design.
 
-Continue with the picture-matching task for an ambiguous prepositional phrase. Let a response of one mean that the participant selects the picture corresponding to verb-phrase attachment, and let $\Pi$ be this participant's response probability across the declared item set. Suppose the observed responses $\mathbf{x}$ produce the posterior
+## Predicting under the exchangeable bridge
 
-$$
-\Pi\mid\mathbf{X}=\mathbf{x}
-\sim
-\operatorname{Beta}(18,6).
-$$
-
-The posterior describes uncertainty about the participant's response probability under this model. For compactness, later expressions use conditioning on $\mathbf{x}$ as shorthand for conditioning on the event $\mathbf{X}=\mathbf{x}$. But another block records responses, not parameter values. A [**posterior predictive distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) describes those possible responses that have not yet been observed; the [Stan User's Guide](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html#simulating-from-the-posterior-predictive-distribution) gives the corresponding integral and simulation procedure.
-
-## Averaging over parameter uncertainty
-
-Let $\widetilde{X}$ denote a future binary response. Conditional on a fixed parameter value,
+For one future binary value,
 
 $$
-\widetilde{X}\mid\Pi=\pi
-\sim
-\operatorname{Bernoulli}(\pi).
-$$
-
-Because $\pi$ is not known, prediction averages this observation model over the posterior:
-
-$$
-\mathbb{P}(\widetilde{X}=\widetilde{x}\mid\mathbf{X}=\mathbf{x})
+\mathbb{P}(\widetilde Z=1\mid\mathbf z)
 =
-\int
-\mathbb{P}(\widetilde{X}=\widetilde{x}\mid\Pi=\pi)
-f_{\Pi\mid\mathbf{X}}(\pi\mid\mathbf{x})
-\,\mathrm{d}\pi.
+\int_0^1\theta
+f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)\,\mathrm d\theta
+=
+\mathbb{E}[\Theta\mid\mathbf z].
 $$
 
-The probability mass inside the integral describes a possible future response at a fixed $\pi$. The posterior density supplies the weight assigned to each value of $\pi$ after observing $\mathbf{x}$.
-
-For one future success,
+For a future independent block of $m$ cells,
 
 $$
-\begin{aligned}
-\mathbb{P}(\widetilde{X}=1\mid\mathbf{X}=\mathbf{x})
-&=\int \pi f_{\Pi\mid\mathbf{X}}(\pi\mid\mathbf{x})\,\mathrm{d}\pi\\
-&=\mathbb{E}[\Pi\mid\mathbf{X}=\mathbf{x}]\\
-&=\frac{18}{18+6}\\
-&=.75.
-\end{aligned}
+\widetilde K\mid\Theta=\theta
+\sim\operatorname{Binomial}(m,\theta),
 $$
 
-Though the prediction equals the posterior mean for one Bernoulli response, this equality does not make the posterior and predictive distributions identical. The posterior is continuous on $(0,1)$, while the future response is either zero or one.
-
-## Predicting a future block
-
-Now let $\widetilde{K}$ be the number of verb-phrase attachment responses in a future block of $m=20$ matched items from the same participant. Conditional on $\pi$,
+and a $\operatorname{Beta}(\alpha',\beta')$ posterior gives
 
 $$
-\widetilde{K}\mid\Pi=\pi
-\sim
-\operatorname{Binomial}(20,\pi).
+\mathbb{P}(\widetilde K=r\mid\mathbf z)
+=
+\binom mr
+\frac{B(r+\alpha',m-r+\beta')}{B(\alpha',\beta')}.
 $$
 
-The posterior predictive distribution is beta-binomial because it averages the binomial probability over a beta posterior. We can sample from it in two steps:
+Its expectation and variance are
 
-1. Draw $\pi^{(s)}\sim\operatorname{Beta}(18,6)$.
-2. Draw $\widetilde{k}^{(s)}\sim\operatorname{Binomial}(20,\pi^{(s)})$.
+$$
+\mathbb{E}[\widetilde K\mid\mathbf z]
+=m\frac{\alpha'}{\alpha'+\beta'},
+$$
+
+$$
+\operatorname{Var}[\widetilde K\mid\mathbf z]
+=
+m\frac{\alpha'\beta'}{(\alpha'+\beta')^2}
+\frac{\alpha'+\beta'+m}{\alpha'+\beta'+1}.
+$$
+
+## Predicting from the known remaining resource
+
+The actual committed sample removed its rows from the pinned resource. If another block is drawn without replacement from the remaining $N_r$ cells, of which $K_r$ are focal, then
+
+$$
+\mathbb{P}(\widetilde K=r\mid N_r,K_r,m)
+=
+\frac{\binom{K_r}{r}\binom{N_r-K_r}{m-r}}{\binom{N_r}{m}}.
+$$
+
+This hypergeometric distribution is not a posterior. It is the sampling distribution induced by the known finite resource.
 
 ```{r}
-#| label: posterior-predictive-parse-count
-#| echo: true
+#| label: compute-unimorph-predictive-designs
+library(ggplot2)
 
-set.seed(722)
-draw_count <- 100000
-pi_draw <- rbeta(draw_count, shape1 = 18, shape2 = 6)
-future_count <- rbinom(draw_count, size = 20, prob = pi_draw)
+population <- read.csv(
+  "data/unimorph-turkish/verb-past-population.csv",
+  stringsAsFactors = FALSE
+)
+sample_120 <- read.csv(
+  "data/unimorph-turkish/verb-past-sample-120.csv",
+  stringsAsFactors = FALSE
+)
 
-predictive_mean <- 20 * 18 / (18 + 6)
-simulated_mean <- mean(future_count)
+N <- nrow(population)
+K <- sum(population$t_initial)
+n <- nrow(sample_120)
+k <- sum(sample_120$t_initial)
+N_remaining <- N - n
+K_remaining <- K - k
+m <- n
 
-stopifnot(abs(simulated_mean - predictive_mean) < .05)
-c(
-  analytic_mean = predictive_mean,
-  simulated_mean = simulated_mean,
-  quantile(future_count, c(.025, .5, .975))
+unit_count <- 1L
+alpha_post <- unit_count + k
+beta_post <- unit_count + n - k
+support <- 0:m
+
+posterior_mass <- exp(
+  lchoose(m, support) +
+    lbeta(support + alpha_post, m - support + beta_post) -
+    lbeta(alpha_post, beta_post)
+)
+finite_mass <- dhyper(
+  support, m = K_remaining,
+  n = N_remaining - K_remaining, k = m
+)
+
+posterior_mean <- m * alpha_post / (alpha_post + beta_post)
+posterior_variance <- m * alpha_post * beta_post *
+  (alpha_post + beta_post + m) /
+  ((alpha_post + beta_post)^2 * (alpha_post + beta_post + 1))
+finite_mean <- m * K_remaining / N_remaining
+finite_variance <- m * K_remaining / N_remaining *
+  (1 - K_remaining / N_remaining) *
+  (N_remaining - m) / (N_remaining - 1)
+
+stopifnot(
+  N == 588L, K == 200L, n == 120L, k == 42L,
+  abs(sum(posterior_mass) - 1) < 1e-12,
+  abs(sum(finite_mass) - 1) < 1e-12
+)
+
+data.frame(
+  design = c("posterior independent block", "remaining resource without replacement"),
+  expected_count = c(posterior_mean, finite_mean),
+  variance = c(posterior_variance, finite_variance),
+  next_cell_probability = c(
+    alpha_post / (alpha_post + beta_post),
+    K_remaining / N_remaining
+  )
 )
 ```
 
-The analytic predictive mean is
-
-$$
-\mathbb{E}[\widetilde{K}\mid\mathbf{x}]
-=20(.75)
-=15.
-$$
-
-The posterior predictive distribution is more dispersed than a binomial distribution that fixes $\pi=.75$ because it mixes over posterior uncertainty about $\Pi$.
-
-For this beta-binomial distribution, the predictive variance is
-
-$$
-\operatorname{Var}(\widetilde{K}\mid\mathbf{x})
-=
-20
-\frac{18(6)}{(18+6)^2}
-\frac{18+6+20}{18+6+1}
-=6.60.
-$$
-
-If we fix $\pi=.75$, the binomial variance is only
-
-$$
-20(.75)(.25)=3.75.
-$$
-
-The difference between these two variances is $2.85$. To understand that difference correctly, we next separate the posterior predictive variance into its two components.
+The FRB predicts a mean of `r sprintf("%.3f", posterior_mean)` *t*-initial rows and variance `r sprintf("%.3f", posterior_variance)`. The actual remaining-resource design has mean `r sprintf("%.3f", finite_mean)` and variance `r sprintf("%.3f", finite_variance)`. The difference is a design difference, not a small correction to one model.
 
 ```{r}
-#| label: posterior-predictive-variance
-#| echo: true
+#| label: plot-unimorph-predictive-designs
+#| fig-cap: "Predictive masses for a second 120-cell block. The posterior beta-binomial belongs to an independent-draw bridge; the narrower hypergeometric mass belongs to the known remaining resource."
+predictive <- rbind(
+  data.frame(count = support, probability = posterior_mass,
+             design = "posterior independent draws"),
+  data.frame(count = support, probability = finite_mass,
+             design = "known resource, no replacement")
+)
 
-analytic_variance <- 20 * 18 * 6 * (18 + 6 + 20) /
-  ((18 + 6)^2 * (18 + 6 + 1))
-plug_in_variance <- 20 * .75 * .25
-posterior_variance_pi <- 18 * 6 / ((18 + 6)^2 * (18 + 6 + 1))
-mean_conditional_variance <-
-  20 * (.75 * .25 - posterior_variance_pi)
-variance_conditional_mean <- 20^2 * posterior_variance_pi
-
-stopifnot(abs(analytic_variance - 6.60) < 1e-12)
-stopifnot(abs(var(future_count) - analytic_variance) < .10)
-stopifnot(abs(mean_conditional_variance - 3.60) < 1e-12)
-stopifnot(abs(variance_conditional_mean - 3.00) < 1e-12)
-c(full_prediction = analytic_variance,
-  fixed_parameter = plug_in_variance,
-  mean_conditional_variance = mean_conditional_variance,
-  variance_conditional_mean = variance_conditional_mean)
+ggplot(subset(predictive, probability > 1e-5),
+       aes(count, probability, linetype = design)) +
+  geom_line(color = "#8B1A1A", linewidth = 0.8) +
+  labs(x = "t-initial forms in a second 120-cell block",
+       y = "Predictive probability", linetype = NULL) +
+  theme_classic(base_size = 12) +
+  theme(legend.position = "top")
 ```
 
-## Separating two sources of predictive spread
+## Two sources of posterior-predictive variation
 
 The law of total variance gives
 
 $$
-\operatorname{Var}(\widetilde{K}\mid\mathbf{x})
+\operatorname{Var}[\widetilde K\mid\mathbf z]
 =
-\mathbb{E}\left[
-\operatorname{Var}(\widetilde{K}\mid\Pi,\mathbf{x})
-\mid\mathbf{x}
-\right]
+\mathbb{E}[\operatorname{Var}[\widetilde K\mid\Theta,\mathbf z]\mid\mathbf z]
 +
-\operatorname{Var}\left(
-\mathbb{E}[\widetilde{K}\mid\Pi,\mathbf{x}]
-\mid\mathbf{x}
-\right).
+\operatorname{Var}[\mathbb{E}[\widetilde K\mid\Theta,\mathbf z]\mid\mathbf z].
 $$
 
-The first term averages future response variation over the posterior, while the second measures how much the conditional mean $20\Pi$ varies across the posterior. In the current example, the two terms are
+The first term averages binomial variation, while the second represents variation in the conditional mean $m\Theta$ across the posterior.
 
-$$
-\begin{aligned}
-\mathbb{E}\left[20\Pi(1-\Pi)\mid\mathbf{x}\right]
-&=3.60,\\
-\operatorname{Var}(20\Pi\mid\mathbf{x})
-&=3.00.
-\end{aligned}
-$$
+```{r}
+#| label: decompose-unimorph-predictive-variance
+theta_mean <- alpha_post / (alpha_post + beta_post)
+theta_variance <- alpha_post * beta_post /
+  ((alpha_post + beta_post)^2 * (alpha_post + beta_post + 1))
+mean_conditional_variance <- m *
+  (theta_mean * (1 - theta_mean) - theta_variance)
+variance_conditional_mean <- m^2 * theta_variance
 
-Their sum is $6.60$. The plug-in variance $20(.75)(.25)=3.75$ is not exactly the first component: evaluating the concave function $20\pi(1-\pi)$ at the posterior mean gives a slightly larger value than averaging it over the posterior. More importantly, the plug-in distribution omits the second component entirely. It is thus too narrow in this example.
+stopifnot(abs(mean_conditional_variance + variance_conditional_mean -
+                posterior_variance) < 1e-10)
+data.frame(mean_conditional_variance, variance_conditional_mean,
+           total = posterior_variance)
+```
 
-## Keeping prediction and checking separate
-
-A posterior predictive distribution says what the fitted model predicts after observing the data. It does not establish that those predictions resemble relevant features of the observed data. [Posterior predictive checking](posterior-predictive-checks.qmd) later compares simulated and observed summaries to assess model adequacy.
-
-A future observation must also match the population and measurement process represented by the observation model. Prediction for a new trial from the same participant differs from prediction for a new participant when participants vary. The symbol $\widetilde{X}$ should be defined with the same care as the original response.
-
-We use a tilde for a genuinely future response. Later, $\mathbf{X}^{\mathrm{rep}}$ will denote a replicated dataset generated under the design of the observed $\mathbf{x}$ for a posterior predictive check. Both use the posterior predictive distribution, but they answer different questions.
-
-Monte Carlo error is separate again: using more simulated draws makes a computed predictive probability more stable, but it does not reduce posterior uncertainty or future response variation.
+More simulation draws can estimate either predictive distribution more precisely, but they do not reduce future variation. And neither distribution supports a token-frequency claim about Turkish.
 
 ## Check your understanding
 
-1. What is the support of $\Pi\mid\mathbf{x}$?
-2. What is the support of $\widetilde{K}$ for a block of 20 responses?
-3. Which source of predictive variance is lost by setting $\pi=.75$ for every future block?
-4. Why does increasing the number of simulation draws not make future responses less variable?
+1. Why does the one-cell FRB prediction equal the posterior mean?
+2. Which term in total variance disappears under a plug-in prediction?
+3. Why is the hypergeometric prediction narrower?
+4. Which prediction matches another sample from the committed resource?
 
-This beta-binomial prediction is available algebraically because the posterior is conjugate. The [next page](beyond-conjugacy.qmd) asks what remains possible when the posterior does not belong to a familiar family.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Conditional on $\Theta$, the success probability is $\Theta$; averaging it over the posterior gives $\mathbb{P}(\widetilde Z=1\mid\mathbf z)=\mathbb{E}[\Theta\mid\mathbf z]$. <!-- dqr-allow: empirical-answer -->
+2. The plug-in fixes $\Theta$, so $\operatorname{Var}[\mathbb{E}[\widetilde K\mid\Theta,\mathbf z]\mid\mathbf z]$, the parameter-uncertainty term, disappears. <!-- dqr-allow: empirical-answer -->
+3. Sampling without replacement uses up focal and nonfocal cells and adds a finite-population correction, reducing variance. <!-- dqr-allow: empirical-answer -->
+4. The hypergeometric prediction matches another without-replacement sample from the remaining committed resource. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](beyond-conjugacy.qmd) turns to a posterior whose normalizing constant is unavailable in closed form.

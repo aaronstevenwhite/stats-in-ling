@@ -1,10 +1,117 @@
 ---
 title: "Earlier-versus-later Helmert contrasts"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+**Reverse Helmert coding** compares each earlier level with the average of the levels that follow it. The matrix, rather than the label, determines the comparison.
 
-**Available Wednesday, October 7, 2026.**
+## Reversing the MALD syllable comparisons
+
+For the MALD syllable bands, use
+
+$$
+\mathbf C=
+\begin{bmatrix}
+3&0&0\\ % dqr-allow: symbolic-derivation
+-1&2&0\\
+-1&-1&1\\
+-1&-1&-1
+\end{bmatrix},
+$$
+
+with rows ordered as one, two, three, and four-or-more syllables. The orthogonal columns encode one versus the later-band average, two versus the later-two average, and three versus four-or-more. Under this scaling, those three mean differences are respectively four, three, and two times their fitted coefficients.
+
+```{r}
+#| label: fit-mald-reverse-helmert-coding
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+mald$log_frequency_c <-
+  mald$log_frequency_subtlex - mean(mald$log_frequency_subtlex)
+mald$log_duration_c <- mald$log_duration - mean(mald$log_duration)
+band_levels <- c(as.character(seq_len(3L)), "4+")
+mald$syllable_band <- factor(
+  ifelse(mald$n_syllables >= 4L, "4+", as.character(mald$n_syllables)),
+  levels = band_levels
+)
+
+reverse_matrix <- matrix(
+  c(3, -1, -1, -1, 0, 2, -1, -1, 0, 0, 1, -1), # dqr-allow: symbolic-derivation
+  nrow = 4L,
+  ncol = 3L
+)
+rownames(reverse_matrix) <- levels(mald$syllable_band)
+colnames(reverse_matrix) <- c(
+  "one_vs_later", "two_vs_later", "three_vs_four_plus"
+)
+
+reverse_data <- mald
+contrasts(reverse_data$syllable_band) <- reverse_matrix
+reverse_fit <- lm(
+  mean_log_rt ~ syllable_band + log_frequency_c + log_duration_c,
+  data = reverse_data
+)
+
+treatment_data <- mald
+contrasts(treatment_data$syllable_band) <- contr.treatment(4)
+treatment_fit <- lm(
+  mean_log_rt ~ syllable_band + log_frequency_c + log_duration_c,
+  data = treatment_data
+)
+
+maximum_fit_difference <- max(abs(
+  fitted(reverse_fit) - fitted(treatment_fit)
+))
+stopifnot(maximum_fit_difference < 1e-9)
+
+reverse_matrix
+coef(summary(reverse_fit))
+```
+
+The fitted values agree to within `r format(maximum_fit_difference, scientific = TRUE, digits = 2)`. Reverse Helmert coding has changed the coordinate system for the category effects, not the fitted conditional means.
+
+```{r}
+#| label: plot-mald-reverse-helmert
+#| fig-cap: "Observed MALD item summaries and the fitted syllable-band means preserved by reverse Helmert coding."
+prediction_data <- data.frame(
+  syllable_band = factor(
+    levels(reverse_data$syllable_band),
+    levels = levels(reverse_data$syllable_band)
+  ),
+  log_frequency_c = 0,
+  log_duration_c = 0
+)
+prediction_data$fit <- predict(reverse_fit, newdata = prediction_data)
+
+point_opacity <- 0.06
+ggplot(reverse_data, aes(syllable_band, mean_log_rt)) +
+  geom_jitter(color = "grey70", alpha = point_opacity, width = 0.16, height = 0, size = 0.55) +
+  geom_point(data = prediction_data, aes(y = fit), color = "#2C6E9B", size = 2) +
+  labs(x = "Syllable-count band", y = "Mean log lexical-decision time") +
+  theme_classic(base_size = 12)
+```
+
+The top band remains open-ended. Thus the final coefficient compares two observed bands, but it does not estimate the effect of adding exactly one syllable.
+
+## Check your understanding
+
+1. Which rows receive nonzero weights in the first contrast?
+2. Why do treatment and reverse Helmert coding preserve fitted values?
+3. What does the final contrast compare?
+4. Why is that contrast not a one-syllable causal effect?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. All four rows receive nonzero weights: 3 for the one-syllable band and -1 for each later band. <!-- dqr-allow: empirical-answer -->
+2. Both are full-rank bases for the same category-mean subspace, so they change coefficients but preserve fitted conditional means. <!-- dqr-allow: empirical-answer -->
+3. The final reverse Helmert contrast compares the fitted three-syllable mean with the fitted four-or-more-syllable mean; under the displayed scaling, that difference is twice the coefficient. <!-- dqr-allow: empirical-answer -->
+4. The upper band is open-ended and membership is observational, so the contrast neither adds exactly one syllable nor identifies a causal intervention. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](interactions.qmd) uses paired MegaOrientation judgments to define a difference in orientation shifts.

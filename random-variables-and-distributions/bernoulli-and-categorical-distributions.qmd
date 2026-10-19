@@ -1,5 +1,5 @@
 ---
-title: "The categorical distribution"
+title: "Categorical and Bernoulli distributions"
 execute:
   enabled: true
   echo: true
@@ -7,104 +7,108 @@ execute:
   message: false
 ---
 
-Suppose a sampled token must receive exactly one label from a finite inventory. How do we specify a distribution when the possible values are names such as pronouns rather than numerical measurements? Use the case-coded English pronouns
+A corpus annotation can record a label, such as an interrogative lemma, or a binary property, such as whether the token is an object. These outcomes require two closely related distributions: the **categorical distribution** for a finite label inventory and the **Bernoulli distribution** for a binary indicator.
 
-$$
-\begin{aligned}
-\mathcal V\equiv(&\textit{us},\textit{they},\textit{them},
-\textit{you}_{[-\mathrm{acc}]},\textit{he},\textit{I},
-\textit{it}_{[-\mathrm{acc}]},\textit{me},\textit{him},\textit{she},\\
-&\textit{we},\textit{it}_{[+\mathrm{acc}]},
-\textit{you}_{[+\mathrm{acc}]},\textit{her}).
-\end{aligned}
-$$
+## Turkish interrogative arguments
 
-This list answers the first question by declaring the support. The ordering is part of the parameterization because it fixes which probability belongs to which pronoun label.
+We use [UD Turkish BOUN 2.18](https://universaldependencies.org/treebanks/tr_boun/), a Turkic treebank built from five written registers of the Turkish National Corpus. Türk et al. ([2022](https://doi.org/10.1007/s10579-021-09558-0)) describe the sampling and native-speaker annotation, while Marşan et al. ([2022](https://arxiv.org/abs/2207.11782)) document later agglutination-sensitive revisions. The release is CC BY-SA 4.0. The teaching extract retains tokens whose lemma is *hangi* ‘which’, *kim* ‘who’, or *ne* ‘what’ and whose source dependency relation is `nsubj` or `obj`; it does not infer unannotated dependencies.
 
-The split copies of *you* and *it* represent case-annotated tokens, not distinct surface word types. This follows the [Universal Dependencies English case convention](https://universaldependencies.org/docsv1/en/feat/Case.html), under which these forms may receive nominative or accusative case according to their syntactic context.
-
-## Definition
-
-Basically, a categorical distribution pairs each label with one probability. More specifically, a [**categorical distribution**](https://mc-stan.org/docs/functions-reference/categorical-distribution.html) assigns probability to a finite set of labels. Let $R$ record pronoun identity and take values in $\mathcal V\equiv\{v_1,\ldots,v_K\}$. For a vector
-
-$$
-\boldsymbol\pi\equiv(\pi_1,\ldots,\pi_K)
-$$
-
-such that $\pi_k\geq0$ and $\sum_{k=1}^K\pi_k=1$, we write
-
-$$
-R\sim\operatorname{Categorical}(\boldsymbol\pi)
-$$
-
-when
-
-$$
-p_R(v_k)
-\equiv\mathbb P(R=v_k)
-=\pi_k,
-\qquad k\in\{1,\ldots,K\}.
-$$
-
-The symbol $\sim$ means “is distributed as.” It is not an equality between the random variable and the probability vector.
-
-## The pronoun example
-
-Define the probability vector
-
-$$
-\boldsymbol\pi
-\equiv(.03,.09,.03,.12,.07,.28,.07,.05,.02,.02,.07,.08,.05,.02).
-$$
-
-The first probability belongs to *us*, the second to *they*, and so on through the ordered list $\mathcal V$. The probabilities sum to one.
+One row is one annotated token. Tokens remain nested in sentences, and the selected registers are not a probability sample of Turkish usage. Thus the empirical probabilities below describe this pinned corpus extract.
 
 ```{r}
-pronoun_probability <- c(
-  us = .03,
-  they = .09,
-  them = .03,
-  `you[-acc]` = .12,
-  he = .07,
-  I = .28,
-  `it[-acc]` = .07,
-  me = .05,
-  him = .02,
-  she = .02,
-  we = .07,
-  `it[+acc]` = .08,
-  `you[+acc]` = .05,
-  her = .02
+#| label: load-ud-categorical
+library(ggplot2)
+
+questions <- read.csv(
+  "data/ud-turkish-boun/question-core-arguments.csv",
+  stringsAsFactors = FALSE
 )
 
-sum(pronoun_probability)
+lemma_counts <- as.data.frame(table(questions$lemma), responseName = "count")
+names(lemma_counts)[1] <- "lemma"
+lemma_counts$probability <- lemma_counts$count / sum(lemma_counts$count)
 
-plot(
-  seq_along(pronoun_probability), pronoun_probability,
-  type = "h", lwd = 5, lend = 1, col = "#B2182B",
-  xaxt = "n", xlab = "Pronoun", ylab = "Probability",
-  main = "PMF for the categorical distribution on pronouns",
-  ylim = c(0, .31), bty = "l"
+relation_counts <- as.data.frame(
+  table(questions$dependency_relation), responseName = "count"
 )
-axis(1, at = seq_along(pronoun_probability),
-     labels = names(pronoun_probability), las = 2, cex.axis = .72)
-points(seq_along(pronoun_probability), pronoun_probability,
-       pch = 19, col = "#B2182B")
+names(relation_counts)[1] <- "relation"
+relation_counts$probability <- relation_counts$count / sum(relation_counts$count)
+
+stopifnot(
+  nrow(questions) == 167L,
+  setequal(lemma_counts$lemma, c("hangi", "kim", "ne")),
+  abs(sum(lemma_counts$probability) - 1) < 1e-12,
+  all(questions$object == as.integer(questions$dependency_relation == "obj"))
+)
+
+lemma_counts
+relation_counts
 ```
 
-The graph is the PMF evaluated at all fourteen pronoun values. Its vertical coordinates are probabilities, not densities.
+## Categorical outcomes
 
-## Label order
+Let $L$ record interrogative lemma and let $\mathcal L$ be its finite support. A categorical probability vector $\boldsymbol\pi=(\pi_1,\ldots,\pi_K)$ satisfies $\pi_k\geq0$ and $\sum_k\pi_k=1$. We write
 
-Suppose a permutation sends $v_k$ to position $j$. The same permutation must send $\pi_k$ to position $j$. Reordering the labels while holding the numeric vector fixed assigns the probabilities to different pronouns and thus defines a different distribution.
+$$
+L\sim\operatorname{Categorical}(\boldsymbol\pi),
+\qquad
+p_L(\ell_k)=\mathbb{P}(L=\ell_k)=\pi_k.
+$$
 
-The labels themselves need not be numerical or ordered. The integer position merely indexes the corresponding entry of $\boldsymbol\pi$.
+The maximum-likelihood categorical probabilities are the empirical relative frequencies,
+
+$$
+\widehat\pi_k=\frac{n_k}{n}.
+$$
+
+The extract contains `r nrow(questions)` tokens. Its most frequent lemma is *`r lemma_counts$lemma[which.max(lemma_counts$count)]`*, with empirical mass `r sprintf("%.3f", max(lemma_counts$probability))`.
+
+## Binary outcomes
+
+Define $O=1$ when the source relation is `obj` and $O=0$ when it is `nsubj`. Then
+
+$$
+O\sim\operatorname{Bernoulli}(p),
+\qquad
+\mathbb{P}(O=o)=p^o(1-p)^{1-o},\quad o\in\{0,1\}.
+$$
+
+The fitted value is $\widehat p=n^{-1}\sum_i o_i$, computed here as `r sprintf("%.3f", mean(questions$object))`. This is a corpus proportion, not an estimate from independent sentence sampling.
+
+```{r}
+#| label: plot-ud-categorical
+#| fig-cap: "Empirical mass functions for interrogative lemma and annotated dependency relation in the Turkish BOUN extract."
+plot_data <- rbind(
+  data.frame(variable = "Interrogative lemma", category = lemma_counts$lemma,
+             probability = lemma_counts$probability),
+  data.frame(variable = "Dependency relation", category = relation_counts$relation,
+             probability = relation_counts$probability)
+)
+
+ggplot(plot_data, aes(category, probability)) +
+  geom_col(fill = "grey45", width = 0.72) +
+  facet_wrap(~variable, scales = "free_x", ncol = 1) +
+  labs(x = NULL, y = "Empirical probability") +
+  theme_classic(base_size = 12)
+```
+
+The categorical model preserves which lemma occurred; the Bernoulli mapping collapses the relation to a success/failure indicator. That collapse is useful only when the binary property answers the linguistic question.
 
 ## Check your understanding
 
-1. Verify that the displayed probability vector sums to one.
-2. State $p_R(\textit{I})$ and $p_R(\textit{her})$.
-3. Explain why permuting only the labels changes the distribution.
-4. State how many free probabilities remain after fixing the support size at $K$.
+1. Recompute the categorical PMF for `dependency_relation` directly from `questions`.
+2. Define a Bernoulli indicator for lemma *ne* and compute its empirical $p$.
+3. Explain why treating the `object` indicator as a Bernoulli variable does not make the rows independent.
+4. Which information is lost when `dependency_relation` replaces the three-level lemma?
 
-The [Bernoulli distribution](bernoulli-distribution.qmd) is the categorical special case with two values coded as zero and one.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The empirical relation PMF is $p_R(\text{nsubj})=51/167=0.305389$ and $p_R(\text{obj})=116/167=0.694611$. <!-- dqr-allow: empirical-answer -->
+2. For $I_{\textit{ne}}=\mathbb{1}\{L=\textit{ne}\}$, the empirical Bernoulli parameter is $p=147/167=0.880240$. <!-- dqr-allow: empirical-answer -->
+3. Bernoulli coding specifies two possible row values but does not make rows independent, because multiple tokens can come from the same sentence and register. <!-- dqr-allow: empirical-answer -->
+4. Replacing the three-level lemma with dependency relation discards which of *hangi*, *kim*, or *ne* the token instantiates. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](bernoulli-distribution.qmd) develops the Bernoulli expectation and variance for the same object indicator.

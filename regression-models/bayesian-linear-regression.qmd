@@ -1,10 +1,209 @@
 ---
 title: "Bayesian linear regression"
-toc: false
-course-release-id: linear-regression
-course-release-placeholder: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
 ---
 
-Linear regression represents a conditional mean using predictors and their interactions. We then consider uncertainty, residuals, and model checks.
+The PRS likelihood can be combined with a prior to produce a posterior distribution over regression lines. The response model remains
 
-**Available Wednesday, October 7, 2026.**
+$$
+\mathbf Y\mid\boldsymbol\beta,\sigma^2
+\sim
+\mathcal N(\mathbf X\boldsymbol\beta,\sigma^2\mathbf I).
+$$
+
+What changes is that uncertainty about $\boldsymbol\beta$ and $\sigma^2$ is represented before and after observing the responses.
+
+## A conjugate teaching bridge
+
+We use the normal--inverse-gamma specification
+
+$$
+\boldsymbol\beta\mid\sigma^2
+\sim
+\mathcal N(\mathbf b_0,\sigma^2\mathbf V_0)
+$$
+
+and
+
+$$
+\sigma^2\sim\operatorname{InverseGamma}(a_0,d_0).
+$$
+
+The posterior is again normal--inverse-gamma, with
+
+$$
+\mathbf V_n
+=
+(\mathbf V_0^{-1}+\mathbf X^\top\mathbf X)^{-1},
+$$
+
+$$
+\mathbf b_n
+=
+\mathbf V_n
+(\mathbf V_0^{-1}\mathbf b_0+\mathbf X^\top\mathbf y),
+$$
+
+$$
+a_n=a_0+\frac n2,
+$$
+
+and
+
+$$
+d_n
+=
+d_0+\frac12
+\left(
+\mathbf y^\top\mathbf y
++\mathbf b_0^\top\mathbf V_0^{-1}\mathbf b_0
+-\mathbf b_n^\top\mathbf V_n^{-1}\mathbf b_n
+\right).
+$$
+
+## Computing the PRS posterior
+
+```{r}
+#| label: fit-provo-bayesian-regression
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+provo$cloze_surprisal_c <-
+  provo$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+
+ols_fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
+X <- model.matrix(ols_fit)
+y <- provo$mean_log_ffd
+residual_scale <- summary(ols_fit)$sigma
+
+b0 <- c(mean(y), 0)
+V0 <- diag(c(
+  (2 * sd(y) / residual_scale)^2,
+  (2 * sd(y) / (sd(provo$cloze_surprisal_c) * residual_scale))^2
+))
+a0 <- ncol(X) + 1
+d0 <- (a0 - 1) * residual_scale^2
+
+Vn <- solve(solve(V0) + crossprod(X))
+bn <- drop(Vn %*% (solve(V0) %*% b0 + crossprod(X, y)))
+an <- a0 + nrow(provo) / 2
+dn <- as.numeric(
+  d0 + .5 * (
+    crossprod(y) +
+      t(b0) %*% solve(V0) %*% b0 -
+      t(bn) %*% solve(Vn) %*% bn
+  )
+)
+
+set.seed(20261019)
+n_draws <- 4000L
+sigma2_draws <- 1 / rgamma(n_draws, shape = an, rate = dn)
+beta_noise <- matrix(
+  rnorm(n_draws * ncol(X)),
+  nrow = n_draws
+) %*% chol(Vn)
+beta_draws <- matrix(
+  bn,
+  nrow = n_draws,
+  ncol = ncol(X),
+  byrow = TRUE
+) + sweep(beta_noise, 1, sqrt(sigma2_draws), `*`)
+colnames(beta_draws) <- colnames(X)
+
+slope_interval <- quantile(
+  beta_draws[, "cloze_surprisal_c"],
+  c(.025, .975)
+)
+
+stopifnot(
+  all(is.finite(beta_draws)),
+  all(is.finite(sigma2_draws)),
+  slope_interval[[1]] < slope_interval[[2]]
+)
+
+data.frame(
+  posterior_mean_slope = mean(beta_draws[, "cloze_surprisal_c"]),
+  posterior_sd_slope = sd(beta_draws[, "cloze_surprisal_c"]),
+  lower = slope_interval[[1]],
+  upper = slope_interval[[2]]
+)
+```
+
+The posterior mean slope is `r sprintf("%.6f", mean(beta_draws[, "cloze_surprisal_c"]))`, with a central interval from `r sprintf("%.6f", slope_interval[[1]])` to `r sprintf("%.6f", slope_interval[[2]])`.
+
+The coefficient-prior location and scale use the observed Provo response and predictor scales. The inverse-gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. We call this the **empirical-prior bridge (EPB)**. It is useful for connecting conjugate algebra to regression, but it is not an independently specified confirmatory prior.
+
+```{r}
+#| label: plot-provo-bayesian-regression
+#| fig-cap: "Provo positions with the posterior mean line and a central posterior interval for the conditional mean."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$cloze_surprisal_c <-
+  grid$cloze_surprisal_bits - mean(provo$cloze_surprisal_bits)
+mu_draws <- outer(
+  beta_draws[, "cloze_surprisal_c"],
+  grid$cloze_surprisal_c,
+  `*`
+)
+mu_draws <- sweep(mu_draws, 1, beta_draws[, "(Intercept)"], `+`)
+grid$posterior_mean <- colMeans(mu_draws)
+grid$lower <- apply(mu_draws, 2, quantile, probs = .025)
+grid$upper <- apply(mu_draws, 2, quantile, probs = .975)
+
+point_opacity <- 0.2
+interval_opacity <- 0.2
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_ribbon(
+    data = grid,
+    aes(x = cloze_surprisal_bits, ymin = lower, ymax = upper),
+    inherit.aes = FALSE,
+    fill = "#2C6E9B",
+    alpha = interval_opacity
+  ) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(
+    data = grid,
+    aes(y = posterior_mean),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The posterior represents uncertainty under the same aggregated position likelihood. Bayesian updating does not restore participant observations or make the association causal.
+
+## Check your understanding
+
+1. Which part of the model is shared with OLS?
+2. Why is the EPB not a confirmatory prior analysis?
+3. Why are predictions computed for every posterior draw?
+4. Which data limitation survives the Bayesian formulation?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The Gaussian linear response model, including the straight conditional mean and common independent residual variance, is shared with OLS. <!-- dqr-allow: empirical-answer -->
+2. The EPB coefficient and variance priors are calibrated from the observed predictor, response, and OLS residual scales rather than specified independently before seeing the data. <!-- dqr-allow: empirical-answer -->
+3. Evaluating the fitted mean within every joint draw propagates posterior covariance among coefficients into uncertainty about the prediction. <!-- dqr-allow: empirical-answer -->
+4. The data still contain reader-aggregated position summaries, so participant-level responses and dependence remain unavailable. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+The [next page](multiple-regression.qmd) switches to MALD and adds several item predictors.
