@@ -24,7 +24,7 @@ The foundations module gave us a probability space $\langle\Omega,\mathcal F,\ma
 
 Source note: `random-variables-and-distributions/index.qmd`
 
-A random variable supplies this **outcome-to-value mapping (OVM)**. The OVM extracts a value without replacing the outcome that supports it. More specifically, it is a measurable function from outcomes to values, so questions about those values correspond to events in $\mathcal F$.
+A random variable maps each outcome to a value without replacing the outcome that supports it. More specifically, it is a measurable function from outcomes to values, so questions about those values correspond to events in $\mathcal F$.
 
 ## Slide 5: From outcomes to distributions
 
@@ -124,7 +124,7 @@ The foundations chapter defined outcomes and sample spaces, events, and probabil
 
 Source note: `random-variables-and-distributions/why-random-variables.qmd`
 
-We call this mismatch the **representation gap**. A random variable closes the gap by mapping a rich outcome to the particular value used in an analysis.
+A random variable resolves this mismatch by mapping a rich outcome to the particular value used in an analysis.
 
 ## Slide 19: The pronunciation-entry outcomes
 
@@ -1605,7 +1605,7 @@ The transformed expectation is expressed in the units created by $g$. Here those
 
 Source note: `random-variables-and-distributions/expectation-of-functions.qmd`
 
-This distinction is the **transformation commitment**: choosing $g$ specifies which property is being averaged. The function should thus be stated before its expectation is interpreted.
+Choosing $g$ specifies which property is being averaged. The function should thus be stated before its expectation is interpreted.
 
 ## Slide 221: Expectations of functions: question 1
 
@@ -4709,7 +4709,7 @@ $$
 
 Source note: `random-variables-and-distributions/conditional-independence.qmd`
 
-This **conditional-invariance criterion** says that learning $B$ supplies no further information about $A$ after $M$ is known.
+This equality states the usual conditional-independence criterion: learning $B$ supplies no further information about $A$ after $M$ is known.
 
 ## Slide 637: Definition
 

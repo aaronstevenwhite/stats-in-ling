@@ -18,7 +18,7 @@ Now we turn to Learning from a sample.
 
 Source note: `statistical-inference/index.qmd`
 
-An empirical proportion depends on which units receive equal weight. A token proportion weights every retained token equally. An average of speaker proportions first weights tokens within speaker and then weights speakers equally. The term **unit-weighting problem** (UWP) names this dependence: two calculations from the same corpus may target different quantities because their denominators represent different units.
+An empirical proportion depends on which units receive equal weight. A token proportion weights every retained token equally. An average of speaker proportions first weights tokens within speaker and then weights speakers equally. These are different weighting schemes, and they may target different quantities because their denominators represent different units.
 
 ## Slide 4: Learning from a sample
 
@@ -108,7 +108,7 @@ The data source is Türk et al. (2022), UD Turkish BOUN 2.18. It provides manual
 
 Source note: `statistical-inference/populations-and-samples.qmd`
 
-Statistical inference begins by naming the collection to which a claim refers. We call this requirement the **population-unit requirement** (PUR): a population is not defined until its units and their route into the data have been stated.
+Statistical inference begins by specifying the target population. That population is not defined until its units and their route into the data have been stated.
 
 ## Slide 19: A finite linguistic population
 
@@ -838,17 +838,17 @@ Source note: `statistical-inference/properties-of-estimators.qmd`
 
 An estimate is one realized number. An **estimator** is the rule that would produce an estimate from every possible sample, and its **sampling distribution** describes the estimates that rule would produce across repeated samples.
 
-## Slide 117: An empirical repeated-sampling reference
+## Slide 117: A nonparametric bootstrap from the observed cohort
 
 Source note: `statistical-inference/properties-of-estimators.qmd`
 
 We use the vowel measurements of Hillenbrand et al. (1995), distributed here through `phonTools::h95` under the package's BSD 2-Clause terms. The study recorded 45 adult men, 48 adult women, 27 boys, and 19 girls producing the same 12 /hVd/ vowels. One row is one vowel token nested within a speaker.
 
-## Slide 118: An empirical repeated-sampling reference
+## Slide 118: A nonparametric bootstrap from the observed cohort
 
 Source note: `statistical-inference/properties-of-estimators.qmd`
 
-The teaching table contains complete duration measurements. Its F2 and F3 columns include package-supplied imputations, but those columns play no role here. We focus on the 48 adult women producing /I/ in *hid*. Repeated samples draw speaker rows with replacement from these observed durations. We call this construction the **empirical sampling reference** (ESR). It is useful for studying estimator behavior conditional on the cohort, but it does not reconstruct recruitment from all American English speakers.
+The teaching table contains complete duration measurements. Its F2 and F3 columns include package-supplied imputations, but those columns play no role here. We focus on the 48 adult women producing /I/ in *hid*. A nonparametric bootstrap samples these observed speaker rows with replacement. It is useful for studying estimator behavior conditional on the cohort, but it does not reconstruct recruitment from all American English speakers.
 
 ## Slide 119: Estimators are random variables
 
@@ -894,7 +894,7 @@ The estimates vary even though the empirical target remains fixed at 241.396 ms.
 
 Source note: `statistical-inference/properties-of-estimators.qmd`
 
-Which object changes across the ESR draws, and which target remains fixed?
+Which object changes across the bootstrap samples, and which target remains fixed?
 
 ## Slide 125: Properties of estimators: answer 1
 
@@ -930,13 +930,13 @@ The twelve vowel measurements from one speaker are dependent. Row-wise resamplin
 
 Source note: `statistical-inference/properties-of-estimators.qmd`
 
-What population claim does this ESR not license?
+What population claim does this nonparametric bootstrap not license?
 
 ## Slide 131: Properties of estimators: answer 4
 
 Source note: `statistical-inference/properties-of-estimators.qmd`
 
-The ESR does not license a claim about all American English speakers or reproduce the study's recruitment process. The next page relates the spread of this sampling distribution to sample size.
+This nonparametric bootstrap does not license a claim about all American English speakers or reproduce the study's recruitment process. The next page relates the spread of this sampling distribution to sample size.
 
 ## Slide 132: Standard errors
 
@@ -948,7 +948,7 @@ Our next step is Standard errors.
 
 Source note: `statistical-inference/standard-errors.qmd`
 
-The **standard error** of an estimator is the standard deviation of its sampling distribution. We continue with the Hillenbrand empirical sampling reference introduced on the preceding page.
+The **standard error** of an estimator is the standard deviation of its sampling distribution. We continue with the nonparametric bootstrap of the Hillenbrand cohort introduced on the preceding page.
 
 ## Slide 134: Deriving the standard error of a mean
 
@@ -991,13 +991,13 @@ The four sample sizes below are not arbitrary: they are the observed counts of g
 
 Source note: `statistical-inference/standard-errors.qmd`
 
-This figure shows simulated standard errors (points) and the analytic empirical-reference values (line).
+This figure shows bootstrap standard errors (points) and analytic values under the empirical distribution (line).
 
 ## Slide 139: Checking the relation in vowel durations
 
 Source note: `statistical-inference/standard-errors.qmd`
 
-At the observed adult-women size, the simulation gives 7.615 ms, compared with the analytic ESR value 7.580 ms.
+At the observed adult-women sample size, the simulation gives 7.615 ms, compared with the analytic value 7.580 ms.
 
 ## Slide 140: Checking the relation in vowel durations
 
@@ -1170,7 +1170,7 @@ Which target would make the sample median a more natural estimator?
 
 Source note: `statistical-inference/estimator-bias.qmd`
 
-For this empirical sampling reference, the natural target is the empirical median of adult-women /I/ durations in the observed Hillenbrand cohort; under a broader sampling model, it would be the corresponding population median. The mean-squared-error page combines spread and bias in one target-specific criterion.
+For this bootstrap, the target is the empirical median of /I/ durations for the observed women; a broader sampling model would target a population median. The mean-squared-error page combines spread and bias in one target-specific criterion.
 
 ## Slide 166: Mean squared error
 
@@ -1220,29 +1220,29 @@ Source note: `statistical-inference/mean-squared-error.qmd`
 
 The cross-term vanishes because $\mathbb{E}[T-\mathbb{E}[T]]=0$.
 
-## Slide 171: Comparing two estimators on the Hillenbrand ESR
+## Slide 171: Comparing two estimators by nonparametric bootstrap
 
 Source note: `statistical-inference/mean-squared-error.qmd`
 
 The target remains the empirical mean /I/ duration among the observed adult women. The resampling unit is a speaker row, and both estimators use the observed group size.
 
-## Slide 172: Comparing two estimators on the Hillenbrand ESR
+## Slide 172: Comparing two estimators by nonparametric bootstrap
 
 Source note: `statistical-inference/mean-squared-error.qmd`
 
 The sample mean has MSE 57.872 ms(^2), whereas the sample median has MSE 226.443 ms(^2) for this mean target.
 
-## Slide 173: Comparing two estimators on the Hillenbrand ESR
+## Slide 173: Comparing two estimators by nonparametric bootstrap
 
 Source note: `statistical-inference/mean-squared-error.qmd`
 
 This figure shows variance and squared-bias components of MSE for estimating the empirical mean.
 
-## Slide 174: Comparing two estimators on the Hillenbrand ESR
+## Slide 174: Comparing two estimators by nonparametric bootstrap
 
 Source note: `statistical-inference/mean-squared-error.qmd`
 
-This comparison is conditional on the estimator target and ESR. It does not imply that mean duration is always the scientifically appropriate target, nor that the sample median is generally inferior.
+This comparison is conditional on the empirical target and the observed Hillenbrand cohort. It does not imply that mean duration is always the scientifically appropriate target, nor that the sample median is generally inferior.
 
 ## Slide 175: Mean squared error: question 1
 
@@ -1330,29 +1330,29 @@ $$
 \mathbb{P}_\theta\{L(\mathbf X)\leq\theta\leq U(\mathbf X)\}=1-\alpha.
 $$
 
-## Slide 187: Coverage in the Hillenbrand ESR
+## Slide 187: Bootstrap coverage in the Hillenbrand cohort
 
 Source note: `statistical-inference/confidence-intervals.qmd`
 
-We repeatedly draw adult-women /I/ speaker rows from the empirical reference. The empirical cohort mean is the fixed target. The simulation evaluates both the t procedure and a normal procedure that treats the ESR standard deviation as known.
+We repeatedly draw adult-women /I/ speaker rows with replacement from the observed cohort. The empirical cohort mean is the fixed target. The simulation evaluates both the t procedure and a normal procedure that treats the empirical standard deviation as known.
 
-## Slide 188: Coverage in the Hillenbrand ESR
+## Slide 188: Bootstrap coverage in the Hillenbrand cohort
 
 Source note: `statistical-inference/confidence-intervals.qmd`
 
-The t procedure covers the empirical target in 94.53% of ESR draws and has average width 30.331 ms.
+The t procedure covers the empirical target in 94.53% of bootstrap samples and has average width 30.331 ms.
 
-## Slide 189: Coverage in the Hillenbrand ESR
+## Slide 189: Bootstrap coverage in the Hillenbrand cohort
 
 Source note: `statistical-inference/confidence-intervals.qmd`
 
 This figure shows the first sixty t intervals from empirical speaker resamples. Red intervals miss the empirical target line.
 
-## Slide 190: Coverage in the Hillenbrand ESR
+## Slide 190: Bootstrap coverage in the Hillenbrand cohort
 
 Source note: `statistical-inference/confidence-intervals.qmd`
 
-After an interval is observed, it either covers this fixed target or does not. The confidence coefficient describes the procedure across samples. And the ESR coverage remains conditional on the observed cohort rather than representing the original recruitment process.
+After an interval is observed, it either covers this fixed target or does not. The confidence coefficient describes the procedure across samples. And this bootstrap coverage remains conditional on the observed cohort rather than representing the original recruitment process.
 
 ## Slide 191: Confidence intervals: question 1
 
@@ -1394,7 +1394,7 @@ A red interval from that repeated sample does not contain the fixed empirical co
 
 Source note: `statistical-inference/confidence-intervals.qmd`
 
-Why does empirical-reference coverage not guarantee coverage for all American English speakers?
+Why does bootstrap coverage conditional on this cohort not guarantee coverage for all American English speakers?
 
 ## Slide 198: Confidence intervals: answer 4
 
@@ -1635,7 +1635,7 @@ Next, we take up Null hypotheses and test statistics.
 
 Source note: `statistical-inference/null-hypotheses-and-test-statistics.qmd`
 
-A hypothesis test begins with a parameter claim and a statistic that standardizes the discrepancy between that claim and the data. We call this link the **null-reference construction** (NRC): the null value, estimator, and standard error must refer to the same unit and estimand.
+A hypothesis test begins with a parameter claim and a statistic that standardizes the discrepancy between that claim and the data. The null value, estimator, and standard error must refer to the same unit and estimand.
 
 ## Slide 235: A within-speaker target
 
@@ -1698,7 +1698,7 @@ Within-speaker duration differences. The line is the null value and the red poin
 
 Source note: `statistical-inference/null-hypotheses-and-test-statistics.qmd`
 
-A small tail probability measures incompatibility with this null-reference model. It is not the probability that $H_0$ is true, and it does not replace the effect estimate or its units.
+A small tail probability measures incompatibility with this null model. It is not the probability that $H_0$ is true, and it does not replace the effect estimate or its units.
 
 ## Slide 242: Null hypotheses and test statistics: question 1
 
@@ -1878,7 +1878,7 @@ The data source is Sulem, Abend, and Rappoport (2015), UCCA French-English 20K. 
 
 Source note: `statistical-inference/paired-observations.qmd`
 
-Two measurements are paired when the design supplies a defensible link between them. In translation research, the link may be an aligned passage rather than a speaker. We call this link the **alignment unit** (AU): the unit that must remain intact whenever the two language measurements are compared.
+Two measurements are paired when the design supplies a defensible match between them. In translation research, an aligned passage pair may serve as the paired observational unit and must remain intact whenever the two language measurements are compared.
 
 ## Slide 269: UCCA graphs across translation
 
@@ -1939,7 +1939,7 @@ The count correlation is 0.968, but correlation does not establish agreement. Po
 
 Source note: `statistical-inference/paired-observations.qmd`
 
-The AU must be preserved: v2 filenames are internal annotation identifiers, not bilingual order. The prepared table reconstructs source order from passage ranges and repository history. Sorting filenames would invent pairs.
+The paired observational unit must be preserved: v2 filenames are internal annotation identifiers, not bilingual order. The prepared table reconstructs source order from passage ranges and repository history. Sorting filenames would invent pairs.
 
 ## Slide 277: Paired observations: question 1
 
@@ -2505,29 +2505,29 @@ Source note: `statistical-inference/posterior-distributions.qmd`
 
 The foundations chapter derived Bayes' rule, and the frequentist sequence distinguished a likelihood from a probability distribution over observations. We now combine the two to construct a posterior distribution from an observed linguistic resource.
 
-## Slide 356: A finite-resource bridge
+## Slide 356: An exchangeable Bernoulli superpopulation model
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
 We use the Turkish table from the UniMorph release pinned at commit `6c179ac`. Pimentel et al. (2021) describe its use in a morphological-reinflection task, and Batsuren et al. (2022) describe UniMorph as a type-level resource of lemma--form--feature triples. The data are CC BY-SA 3.0.
 
-## Slide 357: A finite-resource bridge
+## Slide 357: An exchangeable Bernoulli superpopulation model
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
 The course table retains 588 distinct verb lexemes with one form in the feature cell `V;IND;PST;3;SG;POS;DECL`. A row is a lexeme--paradigm cell, not a usage token. The binary variable $Z_i$ marks whether the course-derived two-character ending begins with *t*. This ending is an orthographic measurement, not a UniMorph morpheme boundary.
 
-## Slide 358: A finite-resource bridge
+## Slide 358: An exchangeable Bernoulli superpopulation model
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-The value $K/N=$ 0.340136 is known because the complete pinned resource is available. There is no posterior uncertainty about that finite-resource proportion.
+The value $K/N=$ 0.340136 is known because the complete pinned resource is available. There is no posterior uncertainty about that finite-population proportion.
 
-## Slide 359: A finite-resource bridge
+## Slide 359: An exchangeable Bernoulli superpopulation model
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-To introduce Bayesian updating, we state a different model. We call it the **finite-resource bridge** (FRB): posit an exchangeable superpopulation from which lexeme cells are independently drawn,
+To introduce Bayesian updating, we posit an exchangeable superpopulation from which lexeme cells are independently drawn,
 
 $$
 Z_i\mid\Theta=\theta
@@ -2537,11 +2537,11 @@ Z_i\mid\Theta=\theta
 \Theta\sim\operatorname{Beta}(1,1).
 $$
 
-## Slide 360: A finite-resource bridge
+## Slide 360: An exchangeable Bernoulli superpopulation model
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-The FRB is a counterfactual teaching model, not the actual design. The committed 120-row sample was drawn without replacement from the known 588-row resource, so the independent Bernoulli design does not describe that sampling procedure.
+This exchangeable Bernoulli superpopulation model is counterfactual, not a description of the actual sampling design. The committed 120-row sample was drawn without replacement from the known 588-row resource, so independent Bernoulli sampling does not describe that procedure.
 
 ## Slide 361: Updating a continuous parameter
 
@@ -2599,7 +2599,7 @@ f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)
 \theta^{1+k-1}(1-\theta)^{1+n-k-1},
 $$
 
-so the FRB posterior is
+so the exchangeable Bernoulli superpopulation model posterior is
 
 $$
 \Theta\mid\mathbf z
@@ -2617,7 +2617,7 @@ The 42 observed *t*-initial cells and 78 other cells update the prior to a beta 
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-Prior and FRB posterior densities. The vertical line is the known proportion in the pinned resource, not an uncertain parameter estimate.
+Prior and exchangeable Bernoulli superpopulation model posterior densities. The vertical line is the known proportion in the pinned resource, not an uncertain parameter estimate.
 
 ## Slide 367: Updating a continuous parameter
 
@@ -2642,7 +2642,7 @@ The shorter statement $f(\theta\mid\mathbf z)\propto p(\mathbf z\mid\theta)f(\th
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-The likelihood evaluates the fixed sample as a function of $\theta$; the posterior distributes model-based uncertainty over $\theta$ after conditioning on that sample. Neither quantity changes the known resource proportion. And because UniMorph supplies types rather than token frequencies, the FRB posterior does not estimate how often *t*-initial past endings occur in Turkish use.
+The likelihood evaluates the fixed sample as a function of $\theta$; the posterior distributes model-based uncertainty over $\theta$ after conditioning on that sample. Neither quantity changes the known resource proportion. UniMorph supplies types, not token frequencies, so this posterior does not estimate the frequency of *t*-initial past endings in Turkish use.
 
 ## Slide 370: Posterior distributions: question 1
 
@@ -2672,13 +2672,13 @@ The complete pinned resource is observed, so its 200 focal rows and 588 total ro
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-Which assumption makes the FRB a counterfactual superpopulation model rather than a description of the committed sample?
+Which assumption makes the exchangeable Bernoulli superpopulation model a counterfactual superpopulation model rather than a description of the committed sample?
 
 ## Slide 375: Posterior distributions: answer 3
 
 Source note: `statistical-inference/posterior-distributions.qmd`
 
-The FRB assumes independent, exchangeable Bernoulli draws from a superpopulation, while the committed sample was drawn without replacement from the known finite resource.
+The exchangeable Bernoulli superpopulation model assumes independent, exchangeable Bernoulli draws from a superpopulation, while the committed sample was drawn without replacement from the known finite resource.
 
 ## Slide 376: Posterior distributions: question 4
 
@@ -2702,7 +2702,7 @@ Now we turn to Summarizing a posterior distribution.
 
 Source note: `statistical-inference/posterior-summaries.qmd`
 
-The posterior-distribution page defined the finite-resource bridge (FRB). We now summarize its $\operatorname{Beta}(43,79)$ posterior without changing the estimand or the sampling caveat.
+The posterior-distribution page defined the exchangeable Bernoulli superpopulation model. We now summarize its $\operatorname{Beta}(43,79)$ posterior without changing the estimand or the sampling caveat.
 
 ## Slide 380: Center and spread
 
@@ -2728,7 +2728,7 @@ $$
 
 Source note: `statistical-inference/posterior-summaries.qmd`
 
-The FRB posterior mean is 0.352459, and its variance is 0.001856. The posterior median is 0.351650. The mean minimizes posterior expected squared-error loss; a median minimizes posterior expected absolute-error loss. Thus neither center is automatically the preferred estimate without a loss function.
+The exchangeable Bernoulli superpopulation model posterior mean is 0.352459, and its variance is 0.001856. The posterior median is 0.351650. The mean minimizes posterior expected squared-error loss; a median minimizes posterior expected absolute-error loss. Thus neither center is automatically the preferred estimate without a loss function.
 
 ## Slide 382: Credible intervals and directional probabilities
 
@@ -2747,7 +2747,7 @@ $$
 
 Source note: `statistical-inference/posterior-summaries.qmd`
 
-For the FRB it is [0.270494, 0.439007]. Conditional on the exchangeable model, prior, and observed sample, 95% of the posterior mass lies in this interval. This is not the repeated-sampling interpretation of a confidence interval.
+For the exchangeable Bernoulli superpopulation model it is [0.270494, 0.439007]. Conditional on the exchangeable model, prior, and observed sample, 95% of the posterior mass lies in this interval. This is not the repeated-sampling interpretation of a confidence interval.
 
 ## Slide 384: Credible intervals and directional probabilities
 
@@ -2772,7 +2772,7 @@ Its value is 0.605346. This comparison does not make $K/N$ uncertain and should 
 
 Source note: `statistical-inference/posterior-summaries.qmd`
 
-FRB posterior density. The shaded region is the central 95% interval; the vertical line is the known pinned-resource share.
+exchangeable Bernoulli superpopulation model posterior density. The shaded region is the central 95% interval; the vertical line is the known pinned-resource share.
 
 ## Slide 387: Transform before summarizing
 
@@ -2812,7 +2812,7 @@ Compute the estimand within each posterior value or draw, then summarize that di
 
 Source note: `statistical-inference/posterior-summaries.qmd`
 
-A center answers a location question, an interval describes posterior concentration, and a directional probability answers a threshold question. None of these summaries turns the FRB into a model of Turkish token frequency. The row remains a lexeme--paradigm cell, and the bridge remains an independent-draw model imposed for instruction.
+A center answers a location question, an interval describes posterior concentration, and a directional probability answers a threshold question. None of these summaries turns the exchangeable Bernoulli superpopulation model into a model of Turkish token frequency. The row remains a lexeme--paradigm cell, and the independent-draw assumption remains a modeling assumption imposed for instruction.
 
 ## Slide 392: Summarizing a posterior distribution: question 1
 
@@ -2848,7 +2848,7 @@ Why does $\mathbb{P}(\Theta>K/N\mid\mathbf z)$ not update $K/N$?
 
 Source note: `statistical-inference/posterior-summaries.qmd`
 
-$K/N$ is computed from the complete pinned resource and remains fixed; the posterior probability concerns the counterfactual FRB parameter $\Theta$.
+$K/N$ is computed from the complete pinned resource and remains fixed; the posterior probability concerns the counterfactual superpopulation parameter $\Theta$.
 
 ## Slide 398: Summarizing a posterior distribution: question 4
 
@@ -2874,11 +2874,11 @@ Source note: `statistical-inference/conjugate-priors.qmd`
 
 The posterior-distribution page normalized a continuous update by recognizing a beta density. A prior is **conjugate** to a likelihood when the resulting posterior belongs to the same distribution family as the prior.
 
-## Slide 402: The FRB likelihood and prior
+## Slide 402: The exchangeable Bernoulli superpopulation model likelihood and prior
 
 Source note: `statistical-inference/conjugate-priors.qmd`
 
-The finite-resource bridge (FRB) treats the Turkish UniMorph indicators as draws from a counterfactual exchangeable superpopulation:
+The exchangeable Bernoulli superpopulation model treats the Turkish UniMorph indicators as draws from a counterfactual exchangeable superpopulation:
 
 $$
 Z_i\mid\Theta=\theta
@@ -2886,13 +2886,13 @@ Z_i\mid\Theta=\theta
 \operatorname{Bernoulli}(\theta).
 $$
 
-## Slide 403: The FRB likelihood and prior
+## Slide 403: The exchangeable Bernoulli superpopulation model likelihood and prior
 
 Source note: `statistical-inference/conjugate-priors.qmd`
 
 The committed sample contains 42 *t*-initial endings among 120 lexeme--paradigm cells. These are type-level rows, not corpus tokens, and the actual sample was drawn without replacement.
 
-## Slide 404: The FRB likelihood and prior
+## Slide 404: The exchangeable Bernoulli superpopulation model likelihood and prior
 
 Source note: `statistical-inference/conjugate-priors.qmd`
 
@@ -2906,7 +2906,7 @@ f_\Theta(\theta)
 \qquad 0<\theta<1.
 $$
 
-## Slide 405: The FRB likelihood and prior
+## Slide 405: The exchangeable Bernoulli superpopulation model likelihood and prior
 
 Source note: `statistical-inference/conjugate-priors.qmd`
 
@@ -2965,7 +2965,7 @@ Thus the two posterior shape parameters are obtained by adding the focal and non
 
 Source note: `statistical-inference/conjugate-priors.qmd`
 
-This figure shows beta prior and posterior for the FRB, calculated from the observed 42 of 120 lexeme cells.
+This figure shows beta prior and posterior for the exchangeable Bernoulli superpopulation model, calculated from the observed 42 of 120 lexeme cells.
 
 ## Slide 410: The normalizing constant
 
@@ -3002,7 +3002,7 @@ Conjugacy makes this calculation algebraic. It does not establish that the excha
 
 Source note: `statistical-inference/conjugate-priors.qmd`
 
-The update is computationally convenient: it provides a normalized posterior, closed-form moments, and beta-binomial predictive masses. But convenience is separate from measurement and sampling. The known UniMorph resource contains 200 focal cells among 588, so the actual finite-resource design is hypergeometric. The FRB remains a stated superpopulation bridge rather than an analysis of uncertainty about the file.
+The update is computationally convenient: it provides a normalized posterior, closed-form moments, and beta-binomial predictive masses. But convenience is separate from measurement and sampling. The known UniMorph resource contains 200 focal cells among 588, so the actual finite-population design is hypergeometric. The exchangeable Bernoulli model is a working superpopulation model rather than an analysis of uncertainty about the file.
 
 ## Slide 414: Conjugate priors: question 1
 
@@ -3062,7 +3062,7 @@ Now we turn to Prior predictive distributions.
 
 Source note: `statistical-inference/prior-predictive-distributions.qmd`
 
-The conjugate-prior page updated a beta prior after observing the Turkish UniMorph sample. We now ask what the finite-resource bridge (FRB) predicted before those rows were observed.
+The conjugate-prior page updated a beta prior after observing the Turkish UniMorph sample. We now ask what the exchangeable Bernoulli superpopulation model predicted before those rows were observed.
 
 ## Slide 424: From a parameter prior to possible counts
 
@@ -3136,7 +3136,7 @@ They evaluate to 60.000 and 1220.000. The variance is large because one $\theta$
 
 Source note: `statistical-inference/prior-predictive-distributions.qmd`
 
-FRB prior-predictive mass for a 120-cell independent block. The line marks the count in the committed sample; it is shown only as an observed reference.
+exchangeable Bernoulli superpopulation model prior-predictive mass for a 120-cell independent block. The line marks the count in the committed sample; it is shown only as an observed reference.
 
 ## Slide 430: Generating the same distribution
 
@@ -3150,17 +3150,17 @@ Source note: `statistical-inference/prior-predictive-distributions.qmd`
 
 Drawing a fresh $\theta$ before every cell would define a different model. It would average the Bernoulli probability cell by cell and lose the block-level variation represented by the beta-binomial distribution.
 
-## Slide 432: The design boundary
+## Slide 432: The finite-population restriction
 
 Source note: `statistical-inference/prior-predictive-distributions.qmd`
 
-The prior-predictive distribution belongs to the counterfactual independent-draw FRB. It is not the randomization distribution of the actual sample file, whose rows were drawn without replacement from a known population. Nor does it describe Turkish usage, since UniMorph rows have no token-frequency interpretation.
+The prior-predictive distribution belongs to the counterfactual independent-draw exchangeable Bernoulli superpopulation model. It is not the randomization distribution of the actual sample file, whose rows were drawn without replacement from a known population. Nor does it describe Turkish usage, since UniMorph rows have no token-frequency interpretation.
 
-## Slide 433: The design boundary
+## Slide 433: The finite-population restriction
 
 Source note: `statistical-inference/prior-predictive-distributions.qmd`
 
-Prior prediction remains useful here because it makes that model's commitment explicit. The posterior-predictive page will put the independent prediction beside the corresponding finite-resource prediction.
+Prior prediction remains useful here because it makes that model's commitment explicit. The posterior-predictive page will put the independent-draw prediction beside the corresponding finite-population prediction.
 
 ## Slide 434: Prior predictive distributions: question 1
 
@@ -3222,7 +3222,7 @@ Source note: `statistical-inference/predictive-distributions.qmd`
 
 The prior-predictive page averaged the observation model over the prior. A **posterior predictive distribution** averages over the posterior. The Turkish UniMorph example also lets us compare that counterfactual independent-draw prediction with the actual without-replacement design.
 
-## Slide 444: Predicting under the exchangeable bridge
+## Slide 444: Prediction under the exchangeable Bernoulli model
 
 Source note: `statistical-inference/predictive-distributions.qmd`
 
@@ -3237,7 +3237,7 @@ f_{\Theta\mid\mathbf Z}(\theta\mid\mathbf z)\,\mathrm d\theta
 \mathbb{E}[\Theta\mid\mathbf z].
 $$
 
-## Slide 445: Predicting under the exchangeable bridge
+## Slide 445: Prediction under the exchangeable Bernoulli model
 
 Source note: `statistical-inference/predictive-distributions.qmd`
 
@@ -3257,7 +3257,7 @@ $$
 \frac{B(r+\alpha',m-r+\beta')}{B(\alpha',\beta')}.
 $$
 
-## Slide 446: Predicting under the exchangeable bridge
+## Slide 446: Prediction under the exchangeable Bernoulli model
 
 Source note: `statistical-inference/predictive-distributions.qmd`
 
@@ -3297,13 +3297,13 @@ This hypergeometric distribution is not a posterior. It is the sampling distribu
 
 Source note: `statistical-inference/predictive-distributions.qmd`
 
-The FRB predicts a mean of 42.295 *t*-initial rows and variance 53.885. The actual remaining-resource design has mean 40.513 and variance 19.997. The difference is a design difference, not a small correction to one model.
+The exchangeable Bernoulli superpopulation model predicts a mean of 42.295 *t*-initial rows and variance 53.885. The actual remaining-resource design has mean 40.513 and variance 19.997. The difference is a design difference, not a small correction to one model.
 
 ## Slide 450: Predicting from the known remaining resource
 
 Source note: `statistical-inference/predictive-distributions.qmd`
 
-This figure shows predictive masses for a second 120-cell block. The posterior beta-binomial belongs to an independent-draw bridge; the narrower hypergeometric mass belongs to the known remaining resource.
+This figure shows predictive masses for a second 120-cell block. The posterior beta-binomial uses an independent-draw model; the narrower hypergeometric mass uses the known remaining finite population.
 
 ## Slide 451: Two sources of posterior-predictive variation
 
@@ -3335,7 +3335,7 @@ More simulation draws can estimate either predictive distribution more precisely
 
 Source note: `statistical-inference/predictive-distributions.qmd`
 
-Why does the one-cell FRB prediction equal the posterior mean?
+Why does the one-cell exchangeable Bernoulli superpopulation model prediction equal the posterior mean?
 
 ## Slide 455: Posterior predictive distributions: answer 1
 
@@ -3397,13 +3397,13 @@ Source note: `statistical-inference/beyond-conjugacy.qmd`
 
 Conjugacy identifies a normalized posterior by matching a familiar density. Many useful likelihood--prior combinations do not provide that match. We now fix one empirical posterior that every remaining computation page will target.
 
-## Slide 465: The passage-contrast target
+## Slide 465: A passage-level Student-t model
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
 The Provo Corpus contains eye-tracking measurements and predictability norms for 55 English passages. Luke and Christianson (2018) describe the resource and its original measurements. The release is CC BY 4.0.
 
-## Slide 466: The passage-contrast target
+## Slide 466: A passage-level Student-t model
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
@@ -3416,17 +3416,17 @@ y_j=
 \frac{1}{|\mathcal V_j|}\sum_{i\in\mathcal V_j}d_{ji}.
 $$
 
-## Slide 467: The passage-contrast target
+## Slide 467: A passage-level Student-t model
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
-We call the resulting 55-observation analysis the **passage-contrast target** (PCT). It describes the unweighted distribution of passage summaries; it is not participant-level inference or a probability sample of English texts.
+The resulting 55-observation analysis describes the unweighted distribution of passage summaries. It is not participant-level inference or a probability sample of English texts.
 
 ## Slide 468: A robust location--scale model
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
-The PCT uses
+The passage-level model uses
 
 $$
 Y_j\mid\mu,\sigma
@@ -3479,7 +3479,7 @@ The final term is the Jacobian for $\sigma=\exp(\eta_2)$. The Stan program later
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
-The grid gives $\mathbb{P}(\mu>0\mid\mathbf y)=$ 0.911, though the 95% interval for $\mu$, [-0.0046, 0.0236], includes zero. This measured result concerns the PCT only.
+The grid gives $\mathbb{P}(\mu>0\mid\mathbf y)=$ 0.911, though the 95% interval for $\mu$, [-0.0046, 0.0236], includes zero. This measured result concerns the passage-level Student-t model only.
 
 ## Slide 473: A robust location--scale model
 
@@ -3537,7 +3537,7 @@ One $y_j$ is a passage's mean noun log-FFD minus its mean verb log-FFD, computed
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
-Why does the PCT not support participant-level inference?
+Why does the passage-level Student-t model not support participant-level inference?
 
 ## Slide 480: When the posterior will not normalize by hand: answer 2
 
@@ -3567,7 +3567,7 @@ Why can later algorithms use the unnormalized target?
 
 Source note: `statistical-inference/beyond-conjugacy.qmd`
 
-Density ratios and gradients do not require the common normalizing constant $Z$; it cancels or differentiates away. The Monte Carlo page first approximates PCT expectations using independent draws from this normalized grid.
+Density ratios and gradients do not require the common normalizing constant $Z$; it cancels or differentiates away. The Monte Carlo page first approximates expectations under the passage-level Student-t posterior using independent draws from this normalized grid.
 
 ## Slide 485: Monte Carlo integration
 
@@ -3579,7 +3579,7 @@ Next, we take up Monte Carlo integration.
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
-The passage-contrast target (PCT) has no convenient closed-form posterior. Monte Carlo integration replaces an expectation under that posterior with an average over draws while keeping posterior uncertainty distinct from numerical error.
+The passage-level Student-$t$ model has no convenient closed-form posterior. Monte Carlo integration replaces an expectation under that posterior with an average over draws while keeping posterior uncertainty distinct from numerical error.
 
 ## Slide 487: Expectations as integrals
 
@@ -3613,13 +3613,13 @@ Source note: `statistical-inference/monte-carlo-integration.qmd`
 
 Setting $g(\eta)=\mu$ estimates the posterior mean of the passage location. Setting $g(\eta)=\mathbf 1\{\mu>0\}$ estimates its directional probability, while $g(\eta)=\exp(\mu)$ gives a central geometric-scale noun-to-verb ratio.
 
-## Slide 490: Drawing from the PCT grid
+## Slide 490: Drawing from the posterior grid
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
-the calculation reconstructs the PCT from the 55 passage summaries, normalizes its $321\times321$ reference grid, and samples 20,000 grid cells with their posterior weights.
+the calculation reconstructs the passage-level Student-t model from the 55 passage summaries, normalizes its $321\times321$ reference grid, and samples 20,000 grid cells with their posterior weights.
 
-## Slide 491: Drawing from the PCT grid
+## Slide 491: Drawing from the posterior grid
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
@@ -3631,7 +3631,7 @@ $$
 \sqrt{\frac{\widehat{\operatorname{Var}}(g(\eta))}{S}}.
 $$
 
-## Slide 492: Drawing from the PCT grid
+## Slide 492: Drawing from the posterior grid
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
@@ -3643,29 +3643,29 @@ $$
 \sqrt{\frac{\widehat I_S(1-\widehat I_S)}{S}}.
 $$
 
-## Slide 493: Drawing from the PCT grid
+## Slide 493: Drawing from the posterior grid
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
 Multiplying $S$ by four tends to halve MCSE. This square-root rate concerns the approximation, not the posterior spread.
 
-## Slide 494: Drawing from the PCT grid
+## Slide 494: Drawing from the posterior grid
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
-Running Monte Carlo estimate of the PCT directional probability. The horizontal line is the quadrature reference.
+Running Monte Carlo estimate of the passage-level Student-t model directional probability. The horizontal line is the quadrature reference.
 
-## Slide 495: Drawing from the PCT grid
+## Slide 495: Drawing from the posterior grid
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
-The law of large numbers justifies convergence of the average when the expectation exists. A central limit theorem motivates MCSE when $g(\eta)$ has finite variance. Neither result says that the PCT's passage aggregation, likelihood, or empirically calibrated priors are adequate.
+The law of large numbers justifies convergence of the average when the expectation exists. A central limit theorem motivates MCSE when $g(\eta)$ has finite variance. Neither result says that the passage-level Student-t model's passage aggregation, likelihood, or empirically calibrated priors are adequate.
 
 ## Slide 496: Two uncertainties
 
 Source note: `statistical-inference/monte-carlo-integration.qmd`
 
-Posterior spread describes model-based uncertainty about the PCT. Monte Carlo error describes finite numerical approximation. Increasing $S$ reduces the latter but adds no passages, positions, or readers. More draws are not more linguistic evidence.
+Posterior spread describes model-based uncertainty about the passage-level Student-t model. Monte Carlo error describes finite numerical approximation. Increasing $S$ reduces the latter but adds no passages, positions, or readers. More draws are not more linguistic evidence.
 
 ## Slide 497: Monte Carlo integration: question 1
 
@@ -3725,7 +3725,7 @@ Our next step is Importance sampling.
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
-Monte Carlo integration used draws from the normalized PCT grid. **Importance sampling** instead draws from a proposal distribution and corrects its mismatch with the unnormalized PCT posterior through weights.
+Monte Carlo integration used draws from the normalized posterior grid. **Importance sampling** instead draws from a proposal distribution and corrects its mismatch with the unnormalized passage-level Student-t posterior through weights.
 
 ## Slide 507: Reweighting a proposal
 
@@ -3778,13 +3778,13 @@ Source note: `statistical-inference/importance-sampling.qmd`
 
 It is generally biased at finite $S$, but consistent under the required support and integrability conditions.
 
-## Slide 511: A proposal scaled to the observed PCT
+## Slide 511: Assessing importance weights
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
-the calculation reconstructs the same PCT grid used on the preceding page. It then draws 30,000 values from a bivariate $t_5$ proposal centered at the grid mean with scale $1.5\widehat\Sigma$. The proposal is calibrated to this computation target, not interpreted as a linguistic distribution.
+the calculation reconstructs the same posterior grid used on the preceding page. It then draws 30,000 values from a bivariate $t_5$ proposal centered at the grid mean with scale $1.5\widehat\Sigma$. The proposal is calibrated to this computation target, not interpreted as a linguistic distribution.
 
-## Slide 512: A proposal scaled to the observed PCT
+## Slide 512: Assessing importance weights
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
@@ -3798,29 +3798,29 @@ $$
 
 is 23,991 from 30,000 proposal draws.
 
-## Slide 513: A proposal scaled to the observed PCT
+## Slide 513: Assessing importance weights
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
 It summarizes weight concentration, not Markov-chain dependence and not the number of Provo passages.
 
-## Slide 514: A proposal scaled to the observed PCT
+## Slide 514: Assessing importance weights
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
-Proposal draws for the PCT. The accent marks the one percent with the largest normalized weights.
+Proposal draws for the passage-level Student-t model. The accent marks the one percent with the largest normalized weights.
 
-## Slide 515: A proposal scaled to the observed PCT
+## Slide 515: Assessing importance weights
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
 The proposal must cover every target region of positive probability. Shared support is not sufficient for efficiency: if $q$ places little mass in an important target region, a few weights dominate. The largest weight and the mass in the largest 100 weights diagnose that realized concentration but cannot prove that an unseen tail was covered.
 
-## Slide 516: A proposal scaled to the observed PCT
+## Slide 516: Assessing importance weights
 
 Source note: `statistical-inference/importance-sampling.qmd`
 
-The proposal distribution is a computational device. Its unweighted draw frequency is neither a prior nor a statement about passage contrasts. Only the weighted empirical distribution approximates the PCT.
+The proposal distribution is a computational device. Its unweighted draw frequency is neither a prior nor a statement about passage contrasts. Only the weighted empirical distribution approximates the passage-level Student-t model.
 
 ## Slide 517: Importance sampling: question 1
 
@@ -3880,7 +3880,7 @@ The next topic is Markov chains.
 
 Source note: `statistical-inference/markov-chains.qmd`
 
-The PCT cannot be sampled directly in closed form. We now construct a sequence of parameter states in which the next state depends on the current state. This dependence defines a **Markov chain**.
+The passage-level Student-t model cannot be sampled directly in closed form. We now construct a sequence of parameter states in which the next state depends on the current state. This dependence defines a **Markov chain**.
 
 ## Slide 527: The Markov property
 
@@ -3899,19 +3899,19 @@ $$
 
 Source note: `statistical-inference/markov-chains.qmd`
 
-Once the current PCT state is known, earlier states do not alter the next transition distribution. This does not make adjacent states independent: the proposal is centered on the current state, and rejection repeats it.
+Once the current passage-level Student-t model state is known, earlier states do not alter the next transition distribution. This does not make adjacent states independent: the proposal is centered on the current state, and rejection repeats it.
 
-## Slide 529: An actual PCT transition sequence
-
-Source note: `statistical-inference/markov-chains.qmd`
-
-The normalized PCT grid supplies the proposal covariance for the first 25 recorded transitions; the full sampler is developed with Metropolis--Hastings.
-
-## Slide 530: An actual PCT transition sequence
+## Slide 529: An actual passage-level Student-t model transition sequence
 
 Source note: `statistical-inference/markov-chains.qmd`
 
-The first 25 states of one PCT random-walk chain. Horizontal segments arise when a proposal is rejected and the current state is retained.
+The normalized posterior grid supplies the proposal covariance for the first 25 recorded transitions; the full sampler is developed with Metropolis--Hastings.
+
+## Slide 530: An actual passage-level Student-t model transition sequence
+
+Source note: `statistical-inference/markov-chains.qmd`
+
+The first 25 states of one passage-level Student-t model random-walk chain. Horizontal segments arise when a proposal is rejected and the current state is retained.
 
 ## Slide 531: Transition and stationary distributions
 
@@ -3997,13 +3997,13 @@ Repetition records the time the chain spends in that posterior region; deleting 
 
 Source note: `statistical-inference/markov-chains.qmd`
 
-Which distribution is stationary for a correctly constructed PCT chain?
+Which distribution is stationary for a correctly constructed chain for the passage-level Student-t model?
 
 ## Slide 543: Markov chains: answer 4
 
 Source note: `statistical-inference/markov-chains.qmd`
 
-The PCT posterior is stationary for a correctly constructed chain targeting it. The next page connects averages of these dependent states to posterior expectations.
+The passage-level Student-t posterior is stationary for a correctly constructed chain targeting it. The next page connects averages of these dependent states to posterior expectations.
 
 ## Slide 544: Markov chain Monte Carlo
 
@@ -4015,13 +4015,13 @@ The next topic is Markov chain Monte Carlo.
 
 Source note: `statistical-inference/markov-chain-monte-carlo.qmd`
 
-Monte Carlo integration used independent PCT draws. Direct posterior draws are often unavailable. **Markov chain Monte Carlo (MCMC)** uses dependent states from a chain whose stationary distribution is the posterior target.
+Monte Carlo integration used independent draws from the passage-level Student-t posterior. Direct posterior draws are often unavailable. **Markov chain Monte Carlo (MCMC)** uses dependent states from a chain whose stationary distribution is the posterior target.
 
 ## Slide 546: Chain averages
 
 Source note: `statistical-inference/markov-chain-monte-carlo.qmd`
 
-For the PCT and a function $g$, the target is
+For the passage-level Student-t model and a function $g$, the target is
 
 $$
 I
@@ -4051,23 +4051,23 @@ Source note: `statistical-inference/markov-chain-monte-carlo.qmd`
 
 Here *ergodic* means, roughly, that the chain can reach the target regions relevant to $g$ and eventually loses the influence of its starting state.
 
-## Slide 549: Four dependent PCT chains
+## Slide 549: Four dependent chains for the passage-level Student-t model
 
 Source note: `statistical-inference/markov-chain-monte-carlo.qmd`
 
-Four chains use 6,000 iterations, discard 1,000 as warmup, and share proposal covariance $(2.38^2/2)\widehat\Sigma$ estimated from the normalized PCT grid.
+Four chains use 6,000 iterations, discard 1,000 as warmup, and share proposal covariance $(2.38^2/2)\widehat\Sigma$ estimated from the normalized posterior grid.
 
-## Slide 550: Four dependent PCT chains
+## Slide 550: Four dependent chains for the passage-level Student-t model
 
 Source note: `statistical-inference/markov-chain-monte-carlo.qmd`
 
 This figure shows successive post-warmup values of mu in chain one. Their local continuity makes the dependence visible.
 
-## Slide 551: Four dependent PCT chains
+## Slide 551: Four dependent chains for the passage-level Student-t model
 
 Source note: `statistical-inference/markov-chain-monte-carlo.qmd`
 
-The four acceptance rates and posterior means are computed from the actual PCT chains. Adjacent values are dependent, so 20,000 retained states do not generally contain the information of 20,000 independent draws. Later pages quantify that loss.
+The four acceptance rates and posterior means are computed from the actual chains for the passage-level Student-t model. Adjacent values are dependent, so 20,000 retained states do not generally contain the information of 20,000 independent draws. Later pages quantify that loss.
 
 ## Slide 552: Three distributions
 
@@ -4139,7 +4139,7 @@ Our next step is Metropolis--Hastings sampling.
 
 Source note: `statistical-inference/metropolis-hastings.qmd`
 
-The MCMC page used a random-walk transition without yet deriving its correction. The **Metropolis--Hastings (MH) algorithm** accepts or rejects proposals so that the PCT posterior remains stationary.
+The MCMC page used a random-walk transition without yet deriving its correction. The **Metropolis--Hastings (MH) algorithm** accepts or rejects proposals so that the passage-level Student-t posterior remains stationary.
 
 ## Slide 564: Proposal and acceptance
 
@@ -4189,29 +4189,29 @@ Source note: `statistical-inference/metropolis-hastings.qmd`
 
 Rejected current states must remain in the chain. Removing them would change the proportion of time spent in each posterior region.
 
-## Slide 568: Fitting the PCT
+## Slide 568: Fitting the passage-level Student-t model
 
 Source note: `statistical-inference/metropolis-hastings.qmd`
 
-The PCT fit uses the frozen seed and the data-scaled proposal from the reference analysis.
+The passage-level Student-$t$ fit uses the frozen seed and data-scaled proposal from the reference analysis.
 
-## Slide 569: Fitting the PCT
+## Slide 569: Fitting the passage-level Student-t model
 
 Source note: `statistical-inference/metropolis-hastings.qmd`
 
-This figure shows four post-warmup random-walk MH chains targeting the PCT.
+This figure shows four post-warmup random-walk MH chains targeting the passage-level Student-t model.
 
-## Slide 570: Fitting the PCT
+## Slide 570: Fitting the passage-level Student-t model
 
 Source note: `statistical-inference/metropolis-hastings.qmd`
 
 The post-warmup acceptance rates lie between 0.340 and 0.349. Proposal scale changes efficiency: very small moves are accepted often but explore slowly, while very large moves are often rejected. A correctly formed MH ratio preserves the same target across these choices.
 
-## Slide 571: Fitting the PCT
+## Slide 571: Fitting the passage-level Student-t model
 
 Source note: `statistical-inference/metropolis-hastings.qmd`
 
-Acceptance is a randomized computational decision, not a significance test. It says nothing by itself about whether noun and verb reading times differ or whether the PCT represents participant-level variation.
+Acceptance is a randomized computational decision, not a significance test. It says nothing by itself about whether noun and verb reading times differ or whether the passage-level Student-t model represents participant-level variation.
 
 ## Slide 572: Metropolis--Hastings sampling: question 1
 
@@ -4271,7 +4271,7 @@ Our next step is Hamiltonian Monte Carlo.
 
 Source note: `statistical-inference/hamiltonian-monte-carlo.qmd`
 
-Random-walk MH proposes without consulting the target's local geometry. **Hamiltonian Monte Carlo (HMC)** instead uses the gradient of the PCT log posterior to build a coordinated proposal in $(\mu,\log\sigma)$.
+Random-walk MH proposes without consulting the target's local geometry. **Hamiltonian Monte Carlo (HMC)** instead uses the gradient of the passage-level Student-t model log posterior to build a coordinated proposal in $(\mu,\log\sigma)$.
 
 ## Slide 582: Potential, kinetic, and total energy
 
@@ -4355,19 +4355,19 @@ $$
 \right\}.
 $$
 
-## Slide 589: One trajectory through the PCT
+## Slide 589: One trajectory through the passage-level Student-t model
 
 Source note: `statistical-inference/hamiltonian-monte-carlo.qmd`
 
-The reference trajectory first whitens the grid posterior, then applies 12 leapfrog steps of size 0.20. Every potential and gradient evaluation still uses the observed 55-passage PCT.
+The reference trajectory first whitens the grid posterior, then applies 12 leapfrog steps of size 0.20. Every potential and gradient evaluation still uses the observed 55-passage passage-level Student-t model.
 
-## Slide 590: One trajectory through the PCT
+## Slide 590: One trajectory through the passage-level Student-t model
 
 Source note: `statistical-inference/hamiltonian-monte-carlo.qmd`
 
-A 12-step leapfrog path through the PCT posterior. Contours come from the normalized grid; the two accent points are the trajectory endpoints.
+A 12-step leapfrog path through the passage-level Student-t posterior. Contours come from the normalized grid; the two accent points are the trajectory endpoints.
 
-## Slide 591: One trajectory through the PCT
+## Slide 591: One trajectory through the passage-level Student-t model
 
 Source note: `statistical-inference/hamiltonian-monte-carlo.qmd`
 
@@ -4431,7 +4431,7 @@ Now we turn to Mass matrices and posterior geometry.
 
 Source note: `statistical-inference/mass-matrix-geometry.qmd`
 
-The HMC trajectory whitened the PCT before applying unit-mass leapfrog steps. A **mass matrix** supplies HMC with a constant scale and orientation for its momentum without changing the posterior target.
+The HMC trajectory whitened the passage-level Student-t model before applying unit-mass leapfrog steps. A **mass matrix** supplies HMC with a constant scale and orientation for its momentum without changing the posterior target.
 
 ## Slide 602: General kinetic energy
 
@@ -4478,29 +4478,29 @@ Source note: `statistical-inference/mass-matrix-geometry.qmd`
 
 Thus the inverse mass matrix should roughly match posterior covariance: wider posterior directions receive wider typical velocities.
 
-## Slide 605: Geometry of the PCT
+## Slide 605: Geometry of the passage-level Student-t model
 
 Source note: `statistical-inference/mass-matrix-geometry.qmd`
 
-the calculation reconstructs the exact PCT grid and compares the observed $(\mu,\log\sigma)$ covariance with its whitening transformation.
+the calculation reconstructs the exact posterior grid and compares the observed $(\mu,\log\sigma)$ covariance with its whitening transformation.
 
-## Slide 606: Geometry of the PCT
+## Slide 606: Geometry of the passage-level Student-t model
 
 Source note: `statistical-inference/mass-matrix-geometry.qmd`
 
-This figure shows pCT grid cells before and after posterior whitening. Point darkness represents normalized posterior mass.
+This figure shows posterior grid cells before and after posterior whitening. Point darkness represents normalized posterior mass.
 
-## Slide 607: Geometry of the PCT
+## Slide 607: Geometry of the passage-level Student-t model
 
 Source note: `statistical-inference/mass-matrix-geometry.qmd`
 
 A unit matrix treats all directions as equally scaled and uncorrelated. A diagonal matrix supplies separate scales but no rotation. A dense matrix can also represent global linear correlation. One constant dense matrix cannot remove curvature that changes across the posterior.
 
-## Slide 608: Geometry of the PCT
+## Slide 608: Geometry of the passage-level Student-t model
 
 Source note: `statistical-inference/mass-matrix-geometry.qmd`
 
-Stan estimates a regularized inverse mass matrix during warmup, then holds it fixed during retained sampling. Adaptation must stop because changing the transition indefinitely could change its stationary distribution. The matrix improves computation; it does not alter the 55 passage summaries or repair the PCT's aggregation limits.
+Stan estimates a regularized inverse mass matrix during warmup, then holds it fixed during retained sampling. Adaptation must stop because changing the transition indefinitely could change its stationary distribution. The matrix improves computation; it does not alter the 55 passage summaries or repair the passage-level Student-t model's aggregation limits.
 
 ## Slide 609: Mass matrices and posterior geometry: question 1
 
@@ -4598,25 +4598,25 @@ Source note: `statistical-inference/no-u-turn-sampler.qmd`
 
 Stan also checks completed subtrees. It selects one eligible state with weights related to $\exp\{-H(q,\rho)\}$, rather than automatically taking the final endpoint.
 
-## Slide 623: Actual PCT tree lengths
+## Slide 623: Actual passage-level Student-t model tree lengths
 
 Source note: `statistical-inference/no-u-turn-sampler.qmd`
 
-The production PCT fit used four chains, 750 warmup iterations, 1,000 retained iterations, `adapt_delta = 0.90`, and `max_treedepth = 10`. the calculation imports the original 55 passage summaries and the frozen draw object produced by the exact Stan program on the next page.
+The production passage-level Student-t fit used four chains, 750 warmup iterations, 1,000 retained iterations, `adapt_delta = 0.90`, and `max_treedepth = 10`. the calculation imports the original 55 passage summaries and the frozen draw object produced by the exact Stan program on the next page.
 
-## Slide 624: Actual PCT tree lengths
+## Slide 624: Actual passage-level Student-t model tree lengths
 
 Source note: `statistical-inference/no-u-turn-sampler.qmd`
 
-This figure shows leapfrog work in the production PCT fit. No transition reached the maximum tree depth.
+This figure shows leapfrog work in the production passage-level Student-t fit. No transition reached the maximum tree depth.
 
-## Slide 625: Actual PCT tree lengths
+## Slide 625: Actual passage-level Student-t model tree lengths
 
 Source note: `statistical-inference/no-u-turn-sampler.qmd`
 
 The maximum observed tree depth is 3, and the maximum leapfrog count is 7. These are empirical properties of the production computation, not generic NUTS examples.
 
-## Slide 626: Actual PCT tree lengths
+## Slide 626: Actual passage-level Student-t model tree lengths
 
 Source note: `statistical-inference/no-u-turn-sampler.qmd`
 
@@ -4668,19 +4668,19 @@ What does repeated maximum-depth saturation diagnose?
 
 Source note: `statistical-inference/no-u-turn-sampler.qmd`
 
-Repeated saturation indicates that the allowed trajectory length is truncating exploration, though it does not identify whether the cause is geometry, step size, or the depth cap. The Stan page shows the exact PCT program and sampling call that generated these diagnostics.
+Repeated saturation indicates that the allowed trajectory length is truncating exploration, though it does not identify whether the cause is geometry, step size, or the depth cap. The Stan page shows the exact passage-level Student-t program and sampling call that generated these diagnostics.
 
-## Slide 635: Implementing the PCT in Stan
-
-Source note: `statistical-inference/stan.qmd`
-
-Our next step is Implementing the PCT in Stan.
-
-## Slide 636: Implementing the PCT in Stan
+## Slide 635: Implementing the passage-level Student-t model in Stan
 
 Source note: `statistical-inference/stan.qmd`
 
-Stan samples a posterior after the analyst declares data, parameters, and density contributions. The PCT program below corresponds exactly to the robust model introduced on the nonconjugate-posterior page.
+Next, we take up Implementing the passage-level Student-t model in Stan.
+
+## Slide 636: Implementing the passage-level Student-t model in Stan
+
+Source note: `statistical-inference/stan.qmd`
+
+Stan samples a posterior after the analyst declares data, parameters, and density contributions. The passage-level Student-t program below corresponds exactly to the robust model introduced on the nonconjugate-posterior page.
 
 ## Slide 637: The complete program
 
@@ -4698,7 +4698,7 @@ The half-normal prior is represented by the lower bound on `sigma` together with
 
 Source note: `statistical-inference/stan.qmd`
 
-The reference run uses four data-scaled initial values constructed from the PCT grid covariance shown on the mass-matrix page. the calculation reconstructs those values from the observed Provo contrasts rather than relying on an undeclared helper.
+The reference run uses four data-scaled initial values constructed from the posterior grid covariance shown on the mass-matrix page. the calculation reconstructs those values from the observed Provo contrasts rather than relying on an undeclared helper.
 
 ## Slide 640: Fitting the exact model
 
@@ -4716,7 +4716,7 @@ The evaluated page reads the frozen draw object from that exact run. The cache k
 
 Source note: `statistical-inference/stan.qmd`
 
-The fitted mean of $\mu$ is 0.009518, and the geometric-scale ratio has mean 1.009588. These are PCT summaries, not participant-level duration effects.
+The fitted mean of $\mu$ is 0.009518, and the geometric-scale ratio has mean 1.009588. These are passage-level Student-t model summaries, not participant-level duration effects.
 
 ## Slide 643: Factorization and adequacy
 
@@ -4734,49 +4734,49 @@ Source note: `statistical-inference/stan.qmd`
 
 Concise code does not make passages a probability sample or recover reader-level measurements. Stan can correctly sample the declared posterior even when the declared model is scientifically inadequate. Computation, prior implications, posterior prediction, and the correspondence between rows and modeled units require separate checks.
 
-## Slide 645: Implementing the PCT in Stan: question 1
+## Slide 645: Implementing the passage-level Student-t model in Stan: question 1
 
 Source note: `statistical-inference/stan.qmd`
 
 Which objects belong in the data block?
 
-## Slide 646: Implementing the PCT in Stan: answer 1
+## Slide 646: Implementing the passage-level Student-t model in Stan: answer 1
 
 Source note: `statistical-inference/stan.qmd`
 
 Observed quantities and fixed constants belong in `data`: here $N$, `y`, the two prior scales, and $\nu$.
 
-## Slide 647: Implementing the PCT in Stan: question 2
+## Slide 647: Implementing the passage-level Student-t model in Stan: question 2
 
 Source note: `statistical-inference/stan.qmd`
 
 How do the positivity constraint and half-normal prior differ?
 
-## Slide 648: Implementing the PCT in Stan: answer 2
+## Slide 648: Implementing the passage-level Student-t model in Stan: answer 2
 
 Source note: `statistical-inference/stan.qmd`
 
 The lower bound defines the parameter's support and transformation; the zero-centered normal density supplies the half-normal prior shape on that support.
 
-## Slide 649: Implementing the PCT in Stan: question 3
+## Slide 649: Implementing the passage-level Student-t model in Stan: question 3
 
 Source note: `statistical-inference/stan.qmd`
 
 What do tilde statements add to `target`?
 
-## Slide 650: Implementing the PCT in Stan: answer 3
+## Slide 650: Implementing the passage-level Student-t model in Stan: answer 3
 
 Source note: `statistical-inference/stan.qmd`
 
 Each tilde statement adds the corresponding log-density or log-mass contribution, up to constants, to `target`.
 
-## Slide 651: Implementing the PCT in Stan: question 4
+## Slide 651: Implementing the passage-level Student-t model in Stan: question 4
 
 Source note: `statistical-inference/stan.qmd`
 
 Why does successful sampling not validate the aggregation scheme?
 
-## Slide 652: Implementing the PCT in Stan: answer 4
+## Slide 652: Implementing the passage-level Student-t model in Stan: answer 4
 
 Source note: `statistical-inference/stan.qmd`
 
@@ -4792,25 +4792,25 @@ The next topic is Reading trace and rank plots.
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-The production PCT fit retains four independently initialized NUTS chains. A **trace plot** places iteration on the horizontal axis and a sampled quantity on the vertical axis. A **rank plot** divides the pooled ranks into bins and compares how often each chain occupies them.
+The production passage-level Student-t fit retains four independently initialized NUTS chains. A **trace plot** places iteration on the horizontal axis and a sampled quantity on the vertical axis. A **rank plot** divides the pooled ranks into bins and compares how often each chain occupies them.
 
 ## Slide 655: Production traces
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-The diagnostic draws come from the production PCT fit, retain chain identity, and exclude warmup.
+The diagnostic draws come from the production passage-level Student-$t$ fit, retain chain identity, and exclude warmup.
 
 ## Slide 656: Production traces
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-This figure shows four post-warmup NUTS traces from the production PCT fit.
+This figure shows four post-warmup NUTS traces from the production passage-level Student-t fit.
 
 ## Slide 657: Production traces
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-A useful trace fluctuates around a stable location, overlaps across chains, and continues to move. The PCT traces show these properties. They do not prove that the chains found every posterior region or that the model fits the passage summaries.
+A useful trace fluctuates around a stable location, overlaps across chains, and continues to move. The passage-level Student-t model traces show these properties. They do not prove that the chains found every posterior region or that the model fits the passage summaries.
 
 ## Slide 658: Rank histograms
 
@@ -4822,7 +4822,7 @@ Chain identity should not systematically predict pooled rank. the calculation co
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-This figure shows pooled-rank histograms for the production PCT chains.
+This figure shows pooled-rank histograms for the production chains for the passage-level Student-t model.
 
 ## Slide 660: Rank histograms
 
@@ -4876,13 +4876,13 @@ All chains can overlap within the same incomplete region if none reaches another
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-Which diagnostic asks whether the PCT reproduces passage-level data features?
+Which diagnostic asks whether the passage-level Student-t model reproduces passage-level data features?
 
 ## Slide 669: Reading trace and rank plots: answer 4
 
 Source note: `statistical-inference/checking-markov-chains.qmd`
 
-A posterior predictive check asks whether the PCT reproduces selected passage-level data features. The $\widehat R$ page summarizes cross-chain agreement numerically.
+A posterior predictive check asks whether the passage-level Student-t model reproduces selected passage-level data features. The $\widehat R$ page summarizes cross-chain agreement numerically.
 
 ## Slide 670: Cross-chain agreement
 
@@ -4894,7 +4894,7 @@ Next, we take up Cross-chain agreement.
 
 Source note: `statistical-inference/rhat.qmd`
 
-The trace and rank plots compare PCT chains visually. The **$\widehat R$ statistic** compares between-chain variation with within-chain variation: values near one are consistent with chain agreement, while larger values indicate persistent disagreement.
+The trace and rank plots compare chains for the passage-level Student-t model visually. The **$\widehat R$ statistic** compares between-chain variation with within-chain variation: values near one are consistent with chain agreement, while larger values indicate persistent disagreement.
 
 ## Slide 672: The basic variance ratio
 
@@ -4928,11 +4928,11 @@ $$
 \widehat R=\sqrt{\frac{\widehat V}{W}}.
 $$
 
-## Slide 675: Calculating $\widehat R$ for the PCT
+## Slide 675: Calculating $\widehat R$ for the passage-level Student-t model
 
 Source note: `statistical-inference/rhat.qmd`
 
-The textbook calculation gives $\widehat R=$ 0.999615 for $\mu$. The modern rank-normalized split values for both PCT parameters are at most 1.0001.
+The textbook calculation gives $\widehat R=$ 0.999615 for $\mu$. The modern rank-normalized split values for both parameters of the passage-level Student-t model are at most 1.0001.
 
 ## Slide 676: Modern refinements
 
@@ -5004,7 +5004,7 @@ Our next step is Autocorrelation in a Markov chain.
 
 Source note: `statistical-inference/autocorrelation.qmd`
 
-The PCT chains agree across initializations, but adjacent draws remain dependent. **Autocorrelation** measures the association between a saved sequence and a shifted copy of itself.
+The chains for the passage-level Student-t model agree across initializations, but adjacent draws remain dependent. **Autocorrelation** measures the association between a saved sequence and a shifted copy of itself.
 
 ## Slide 688: Autocorrelation in a Markov chain
 
@@ -5024,25 +5024,25 @@ Source note: `statistical-inference/autocorrelation.qmd`
 
 Lag one compares adjacent draws; lag ten compares draws ten transitions apart. A chain of 1,000 draws supplies 999 lag-one pairs and 990 lag-ten pairs.
 
-## Slide 690: The production PCT autocorrelation functions
+## Slide 690: The production passage-level Student-t model autocorrelation functions
 
 Source note: `statistical-inference/autocorrelation.qmd`
 
-This figure shows within-chain autocorrelation for the production PCT draws.
+This figure shows within-chain autocorrelation for the production draws from the passage-level Student-t posterior.
 
-## Slide 691: The production PCT autocorrelation functions
+## Slide 691: The production passage-level Student-t model autocorrelation functions
 
 Source note: `statistical-inference/autocorrelation.qmd`
 
 Rapid decay suggests that dependence weakens over a small number of transitions. Slow decay means that information about one state persists across later states. High autocorrelation need not imply the wrong stationary distribution, but it reduces finite-run precision.
 
-## Slide 692: The production PCT autocorrelation functions
+## Slide 692: The production passage-level Student-t model autocorrelation functions
 
 Source note: `statistical-inference/autocorrelation.qmd`
 
 Negative autocorrelation can make alternating values offset one another and improve precision for some averages. Thus the complete sequence matters, not only lag one. Thinning may make the retained sequence look less correlated, but it discards information and creates none.
 
-## Slide 693: The production PCT autocorrelation functions
+## Slide 693: The production passage-level Student-t model autocorrelation functions
 
 Source note: `statistical-inference/autocorrelation.qmd`
 
@@ -5144,35 +5144,35 @@ Source note: `statistical-inference/effective-sample-size.qmd`
 
 This is uncertainty in a numerical estimate of a posterior mean, not posterior uncertainty about a linguistic quantity.
 
-## Slide 708: PCT effective sample sizes
+## Slide 708: passage-level Student-t model effective sample sizes
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
 the calculation computes a textbook positive-sequence estimate for chain one's $\mu$ draws, then obtains modern four-chain bulk and tail ESS from `posterior`.
 
-## Slide 709: PCT effective sample sizes
+## Slide 709: passage-level Student-t model effective sample sizes
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
 The one-chain textbook value is 665. The modern bulk ESS for $\mu$ is 2867, while its tail ESS is 2355. These are different estimators applied to different collections of draws, so their difference is not a disagreement.
 
-## Slide 710: PCT effective sample sizes
+## Slide 710: passage-level Student-t model effective sample sizes
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
 The posterior standard deviation of $\mu$ is 0.007075, whereas the estimated MCSE of its posterior mean is 0.000132. This separation is the point of ESS.
 
-## Slide 711: PCT effective sample sizes
+## Slide 711: passage-level Student-t model effective sample sizes
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
 Bulk ESS uses rank-normalized draws and is useful for location summaries. Tail ESS targets information relevant to the 5% and 95% quantiles. A chain can move adequately through the center but rarely reach a tail, so the appropriate diagnostic depends on the reported summary.
 
-## Slide 712: PCT effective sample sizes
+## Slide 712: passage-level Student-t model effective sample sizes
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
-ESS counts simulation information, not passages, word positions, or readers. Running longer can increase ESS and reduce MCSE. It cannot add evidence to the PCT or narrow its posterior target.
+ESS counts simulation information, not passages, word positions, or readers. Running longer can increase ESS and reduce MCSE. It cannot add evidence to the passage-level Student-t model or narrow its posterior target.
 
 ## Slide 713: Effective sample size: question 1
 
@@ -5214,13 +5214,13 @@ MCSE can decrease as the run grows; posterior spread remains a property of the f
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
-Why is PCT ESS not a linguistic sample size?
+Why is passage-level Student-t model ESS not a linguistic sample size?
 
 ## Slide 720: Effective sample size: answer 4
 
 Source note: `statistical-inference/effective-sample-size.qmd`
 
-PCT ESS counts information in simulated posterior draws, not Provo passages, word positions, readers, or any other linguistic unit.
+passage-level Student-t model ESS counts information in simulated posterior draws, not Provo passages, word positions, readers, or any other linguistic unit.
 
 ## Slide 721: Divergent Hamiltonian transitions
 
@@ -5232,7 +5232,7 @@ Our next step is Divergent Hamiltonian transitions.
 
 Source note: `statistical-inference/divergent-transitions.qmd`
 
-A **divergent transition** occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same PCT used throughout this sequence.
+A **divergent transition** occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same passage-level Student-t model used throughout this sequence.
 
 ## Slide 723: Energy error and geometry
 
@@ -5281,7 +5281,7 @@ The two forms imply the same conditional distribution for $u_j$ at fixed $\tau$,
 
 Source note: `statistical-inference/divergent-transitions.qmd`
 
-The production PCT fit uses adapted NUTS. The **computational stress fit** uses the same complete passage set, likelihood, priors, and data-derived initial region, but deliberately disables warmup and adaptation, uses a unit metric, fixes step size at 0.03, and caps tree depth at 7. It is an intentional coarse unadapted stress computation, not a second inferential fit and not evidence of a defect in the production model.
+The production passage-level Student-t fit uses adapted NUTS. A deliberately coarse run uses the same complete passage set, likelihood, priors, and data-derived initial region, but disables warmup and adaptation, uses a unit metric, fixes step size at 0.03, and caps tree depth at 7. This run demonstrates a numerical warning; it is not a second inferential fit and is not evidence of a defect in the production model.
 
 ## Slide 728: Production and stress computations
 
@@ -5323,13 +5323,13 @@ The Hamiltonian, or total energy $H(q,\rho)$, fails to remain approximately stab
 
 Source note: `statistical-inference/divergent-transitions.qmd`
 
-Why is the stress run not evidence of a defective PCT model?
+Why is the stress run not evidence of a defective passage-level Student-t model?
 
 ## Slide 735: Divergent Hamiltonian transitions: answer 2
 
 Source note: `statistical-inference/divergent-transitions.qmd`
 
-The stress run deliberately disables adaptation and uses a coarse unit metric while holding the data and posterior fixed; it demonstrates numerical failure rather than a defective PCT model.
+The run deliberately disables adaptation and uses a coarse unit metric while holding the data and posterior fixed; it demonstrates numerical failure, not a defective model.
 
 ## Slide 736: Divergent Hamiltonian transitions: question 3
 
@@ -5367,13 +5367,13 @@ Source note: `statistical-inference/parameter-pair-plots.qmd`
 
 A trace plot shows one parameter across iterations. A **pairs plot** shows joint draws and can reveal dependence or locate a computational warning in parameter space. The plot must distinguish inference from a diagnostic manipulation.
 
-## Slide 742: Production PCT geometry
+## Slide 742: Production passage-level Student-t model geometry
 
 Source note: `statistical-inference/parameter-pair-plots.qmd`
 
 This figure shows joint mu and sigma draws from the production adapted-NUTS fit.
 
-## Slide 743: Production PCT geometry
+## Slide 743: Production passage-level Student-t model geometry
 
 Source note: `statistical-inference/parameter-pair-plots.qmd`
 
@@ -5457,13 +5457,13 @@ Source note: `statistical-inference/generated-quantities.qmd`
 
 Stan's **generated quantities block** runs after each retained parameter draw. It can transform a joint draw, simulate replicated responses, and evaluate pointwise log likelihoods without changing the posterior target.
 
-## Slide 757: Three PCT outputs
+## Slide 757: Three passage-level Student-t model outputs
 
 Source note: `statistical-inference/generated-quantities.qmd`
 
-The exact PCT program returns a transformed ratio, replicated responses, and pointwise log likelihoods.
+The exact Stan program returns a transformed ratio, replicated responses, and pointwise log likelihoods.
 
-## Slide 758: Three PCT outputs
+## Slide 758: Three passage-level Student-t model outputs
 
 Source note: `statistical-inference/generated-quantities.qmd`
 
@@ -5473,13 +5473,13 @@ $$
 R=\exp(\mu).
 $$
 
-## Slide 759: Three PCT outputs
+## Slide 759: Three passage-level Student-t model outputs
 
 Source note: `statistical-inference/generated-quantities.qmd`
 
 Within draw $s$, $r^{(s)}=\exp(\mu^{(s)})$. It is a central geometric-scale noun-to-verb ratio for the passage contrast, not a participant-level raw-duration ratio.
 
-## Slide 760: Three PCT outputs
+## Slide 760: Three passage-level Student-t model outputs
 
 Source note: `statistical-inference/generated-quantities.qmd`
 
@@ -5496,7 +5496,7 @@ $$
 \log t_4(y_j\mid\mu^{(s)},\sigma^{(s)}).
 $$
 
-## Slide 761: Three PCT outputs
+## Slide 761: Three passage-level Student-t model outputs
 
 Source note: `statistical-inference/generated-quantities.qmd`
 
@@ -5578,9 +5578,9 @@ Now we turn to Posterior predictive checks.
 
 Source note: `statistical-inference/posterior-predictive-checks.qmd`
 
-A **posterior predictive check** compares an observed feature with the same feature in data generated from the fitted model. It criticizes one implication of the PCT rather than assigning a global fit label.
+A **posterior predictive check** compares an observed feature with the same feature in data generated from the fitted model. It criticizes one implication of the passage-level Student-t model rather than assigning a global fit label.
 
-## Slide 775: Replication under the fitted PCT
+## Slide 775: Replication under the fitted passage-level Student-t model
 
 Source note: `statistical-inference/posterior-predictive-checks.qmd`
 
@@ -5599,7 +5599,7 @@ Y_j^{\mathrm{rep},(s)}
 \qquad j=1,\ldots,55.
 $$
 
-## Slide 776: Replication under the fitted PCT
+## Slide 776: Replication under the fitted passage-level Student-t model
 
 Source note: `statistical-inference/posterior-predictive-checks.qmd`
 
@@ -5633,7 +5633,7 @@ Posterior-predictive distributions for four passage-level discrepancies. Each ac
 
 Source note: `statistical-inference/posterior-predictive-checks.qmd`
 
-All four observed values lie within their central 95% predictive intervals. This result says only that the fitted PCT does not miss these four passage-level features grossly. It does not validate the aggregation scheme, the empirically calibrated priors, participant-level generalization, or unexamined discrepancies.
+All four observed values lie within their central 95% predictive intervals. This result says only that the fitted passage-level Student-t model does not miss these four passage-level features grossly. It does not validate the aggregation scheme, the empirically calibrated priors, participant-level generalization, or unexamined discrepancies.
 
 ## Slide 782: Posterior predictive checks: question 1
 
@@ -5669,7 +5669,7 @@ What does a successful check license us to say?
 
 Source note: `statistical-inference/posterior-predictive-checks.qmd`
 
-A successful posterior predictive check licenses only the claim that the fitted PCT does not grossly miss the checked passage-level features.
+A successful posterior predictive check licenses only the claim that the fitted passage-level Student-t model does not grossly miss the checked passage-level features.
 
 ## Slide 788: Posterior predictive checks: question 4
 
