@@ -9,6 +9,8 @@ execute:
 
 The trace and rank plots compare chains for the passage-level Student-t model visually. The **$\widehat R$ statistic** compares between-chain variation with within-chain variation: values near one are consistent with chain agreement, while larger values indicate persistent disagreement.
 
+We first derive the basic variance ratio, then calculate it for the passage-level chains, and finally explain the rank-normalized and split refinements that modern software uses to detect failures the original ratio may miss.
+
 ## The basic variance ratio
 
 For $M$ chains with $N$ draws each, let $\overline\mu_m$ and $s_m^2$ be the mean and variance in chain $m$. The average within-chain variance is
@@ -22,6 +24,8 @@ The scaled between-chain variance is
 $$
 B=N\operatorname{Var}[\overline\mu_1,\ldots,\overline\mu_M].
 $$
+
+For a tiny calculation, imagine two four-draw chains. Compute each chain mean and sample variance; their average is $W$. Then calculate the sample variance of the two means and multiply it by four to obtain $B$. If the means are far apart relative to their internal spreads, $B$ is large and $\widehat R$ rises above one.
 
 Combining them gives
 
@@ -67,11 +71,24 @@ list(basic_mu = data.frame(M, N, W, B, V_hat, basic_rhat), modern = modern)
 
 The textbook calculation gives $\widehat R=$ `r sprintf("%.6f", basic_rhat)` for $\mu$. The modern rank-normalized split values for both parameters of the passage-level Student-t model are at most `r sprintf("%.4f", max(modern$rhat))`.
 
+The code names each ingredient: `colMeans(mu_by_chain)` gives the four chain means, `W` averages the four within-chain variances, `B` scales their between-chain variance by $N$, and `basic_rhat` takes the square root of the variance ratio.
+
 ## Modern refinements
 
 Splitting each chain into early and late halves makes within-chain drift visible as disagreement among sequences. Rank normalization improves behavior for skewed or heavy-tailed draws. Folding replaces each value with its absolute distance from the pooled median, making the diagnostic sensitive to chains with similar centers but different spreads. Current software reports the larger rank-normalized split and folded values, following Vehtari et al. ([2021](https://doi.org/10.1214/20-BA1221)).
 
 A value below 1.01 is an operational threshold, not a convergence theorem. Chains can agree in the same incomplete region, and $\widehat R$ does not measure posterior magnitude or model adequacy. It is also quantity specific: derived quantities and scale parameters require their own checks.
+
+The modern value is not merely a software rewrite of the displayed textbook formula. Splitting doubles the number of comparison sequences, rank normalization changes their scale, and folding targets scale and tail discrepancies. Thus its numerical value need not equal `basic_rhat` even when both are near one.
+
+## Recap and forward link
+
+1. $W$ measures within-chain spread; $B$ measures disagreement among chain means.
+2. Modern $\widehat R$ adds splitting, rank normalization, and folding to detect more failures.
+3. The 1.01 threshold is a workflow trigger, not proof of convergence.
+4. Agreement does not establish adequate ESS or model fit.
+
+The [autocorrelation page](autocorrelation.qmd) turns from cross-chain agreement to within-chain dependence.
 
 ## Check your understanding
 
@@ -89,5 +106,3 @@ A value below 1.01 is an operational threshold, not a convergence theorem. Chain
 4. $\widehat R$ near one does not establish that every posterior region was explored, that ESS is adequate, or that the linguistic model fits the data. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [autocorrelation page](autocorrelation.qmd) turns from cross-chain agreement to within-chain dependence.

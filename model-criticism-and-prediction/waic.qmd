@@ -1,10 +1,394 @@
 ---
 title: "The widely applicable information criterion"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The [PSIS-LOO page](psis-loo.qmd) used full-posterior draws to approximate omitted-position posteriors. The [**widely applicable information criterion (WAIC)**](https://mc-stan.org/loo/reference/waic.html) instead corrects fitted pointwise posterior predictive density using posterior variation. Both calculations require the same pointwise likelihood matrix, but their approximations differ.
 
-**Available Wednesday, October 14, 2026.**
+We first construct fitted pointwise posterior predictive density, derive the posterior-variance optimism correction, and then compare WAIC with exact LOO on the fixed Provo models before stating which target choices that correction leaves untouched.
+
+## Fitted posterior predictive density
+
+For observation $i$, the [**log pointwise predictive density (lppd)**](https://mc-stan.org/loo/reference/waic.html) is
+
+$$
+\operatorname{lppd}_i
+=
+\log\left[
+\frac{1}{S}
+\sum_{s=1}^S
+f(y_i\mid\theta^{(s)})
+\right].
+$$
+
+The average integrates the likelihood of $y_i$ over posterior uncertainty. But $y_i$ helped determine the posterior, so this remains a fitted predictive quantity. Summing gives
+
+$$
+\operatorname{lppd}=\sum_{i=1}^N\operatorname{lppd}_i.
+$$
+
+The stable calculation follows from adding and subtracting the largest pointwise log
+likelihood $m_i=\max_s\ell_i^{(s)}$:
+
+$$
+\begin{aligned}
+\log\left[\frac1S\sum_s e^{\ell_i^{(s)}}\right]
+&=\log\left[e^{m_i}\frac1S\sum_s
+e^{\ell_i^{(s)}-m_i}\right]\\
+&=m_i+\log\left[\frac1S\sum_s
+e^{\ell_i^{(s)}-m_i}\right].
+\end{aligned}
+$$
+
+Every exponent in the second line is at most zero, which avoids overflow without
+changing the value. This is `stable_log_mean_exp()` in the code.
+
+## The pointwise optimism correction
+
+WAIC estimates effective flexibility from the posterior variance of each pointwise log likelihood:
+
+$$
+p_{\mathrm{waic},i}
+=
+\operatorname{Var}_s\left[
+\log f(y_i\mid\theta^{(s)})
+\right],
+$$
+
+and
+
+$$
+p_{\mathrm{waic}}
+=
+\sum_{i=1}^Np_{\mathrm{waic},i}.
+$$
+
+The effective count depends on the fitted posterior, not merely on the number of regression coefficients. WAIC's expected log predictive density is
+
+$$
+\operatorname{elpd}_{\mathrm{waic}}
+=
+\operatorname{lppd}-p_{\mathrm{waic}}.
+$$
+
+Larger values are preferred. The deviance-scale quantity is
+
+$$
+\operatorname{WAIC}=-2\operatorname{elpd}_{\mathrm{waic}},
+$$
+
+for which smaller is preferred.
+
+## Why posterior variance corrects optimism {#why-posterior-variance-corrects-optimism}
+
+Let $\ell_i=\log f(y_i\mid\theta)$ and define its posterior cumulant-generating
+function as
+
+$$
+K_i(t)=\log\mathbb{E}_{\theta\mid y}[e^{t\ell_i}].
+$$
+
+Then fitted lppd is $K_i(1)$. The raw importance-sampling identity from the
+[PSIS page](psis-loo.qmd#relating-the-omitted-posterior-to-the-full-posterior) gives
+the omitted log predictive density as $-K_i(-1)$. Expanding around $t=0$,
+
+$$
+K_i(t)
+=t\mathbb{E}[\ell_i]
++\frac{t^2}{2}\operatorname{Var}[\ell_i]
++\frac{t^3}{6}\kappa_{3,i}+\cdots.
+$$
+
+Thus
+
+$$
+K_i(1)+K_i(-1)
+=\operatorname{Var}[\ell_i]+
+\text{higher even-order terms}.
+$$
+
+Subtracting the posterior variance from fitted lppd thus supplies the second-order
+approximation $K_i(1)-\operatorname{Var}[\ell_i]\approx-K_i(-1)$. This explains
+both the direction and the pointwise form of the WAIC correction. It also explains
+why large higher-order behavior can make WAIC differ from exact LOO.
+
+The code uses R's `var()`, which divides by $S-1$ and estimates the posterior
+variance from a finite set of draws. This is variation across posterior parameter
+draws for one position, not variance across Provo positions. Treating contributions
+as pointwise also requires the likelihood to factorize at the declared observation
+unit. Here that unit is an aggregated position, even though passage dependence may
+make that factorization scientifically incomplete.
+
+## WAIC and exact LOO for the Provo models
+
+The code independently reloads the [Provo data](likelihood-ratio-tests.qmd#provo-measurement-dossier), reconstructs the fixed conjugate posteriors, and generates the same independent posterior draws used for PSIS. The [normal-inverse-gamma derivation](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update) defines the reused `Vn`, `bn`, `an`, and `dn` quantities. It computes WAIC both manually and with `loo::waic()`, then compares each pointwise WAIC contribution with exact LOO.
+
+```{r}
+#| label: provo-waic
+#| message: false
+#| warning: false
+
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+y <- provo$mean_log_ffd
+
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+X_linear <- model.matrix(linear_fit)
+X_quadratic <- model.matrix(quadratic_fit)
+
+make_prior <- function(X) {
+  log_bounds <- log(c(80, 800))
+  log_span <- diff(log_bounds)
+  expected_sigma2 <- (log_span / 4)^2
+  list(
+    b0 = c(mean(log_bounds), rep(0, ncol(X) - 1L)),
+    V0 = diag(rep(log_span^2 / expected_sigma2, ncol(X))),
+    a0 = 3,
+    d0 = 2 * expected_sigma2
+  )
+}
+
+nig_posterior <- function(X, y, prior) {
+  V0_inverse <- solve(prior$V0)
+  Vn <- solve(V0_inverse + crossprod(X))
+  bn <- drop(Vn %*% (
+    V0_inverse %*% prior$b0 + crossprod(X, y)
+  ))
+  an <- prior$a0 + length(y) / 2
+  dn <- as.numeric(
+    prior$d0 + 0.5 * (
+      crossprod(y) +
+        t(prior$b0) %*% V0_inverse %*% prior$b0 -
+        t(bn) %*% solve(Vn) %*% bn
+    )
+  )
+  list(Vn = Vn, bn = bn, an = an, dn = dn)
+}
+
+draw_nig <- function(posterior, draws, seed) {
+  set.seed(seed)
+  sigma2 <- 1 / rgamma(
+    draws, shape = posterior$an, rate = posterior$dn
+  )
+  standard_normal <- matrix(
+    rnorm(draws * length(posterior$bn)), nrow = draws
+  )
+  beta <- matrix(
+    posterior$bn,
+    nrow = draws,
+    ncol = length(posterior$bn),
+    byrow = TRUE
+  ) + sweep(
+    standard_normal %*% chol(posterior$Vn),
+    1,
+    sqrt(sigma2),
+    "*"
+  )
+  list(beta = beta, sigma2 = sigma2)
+}
+
+log_likelihood_matrix <- function(X, y, draws) {
+  mu <- draws$beta %*% t(X)
+  standardized <- sweep(mu, 2, y, "-")
+  standardized <- sweep(
+    standardized, 1, sqrt(draws$sigma2), "/"
+  )
+  -0.5 * log(2 * pi) - 0.5 * log(draws$sigma2) -
+    0.5 * standardized^2
+}
+
+exact_nig_loo <- function(X, y, prior) {
+  n <- nrow(X)
+  V0_inverse <- solve(prior$V0)
+  full_xtx <- crossprod(X)
+  full_xty <- crossprod(X, y)
+  full_yty <- sum(y^2)
+  log_density <- numeric(n)
+
+  for (i in seq_len(n)) {
+    xi <- matrix(X[i, ], nrow = 1L)
+    yi <- y[i]
+    Vn <- solve(V0_inverse + full_xtx - crossprod(xi))
+    bn <- drop(Vn %*% (
+      V0_inverse %*% prior$b0 + full_xty - drop(xi) * yi
+    ))
+    an <- prior$a0 + (n - 1L) / 2
+    dn <- as.numeric(
+      prior$d0 + 0.5 * (
+        full_yty - yi^2 +
+          t(prior$b0) %*% V0_inverse %*% prior$b0 -
+          t(bn) %*% solve(Vn) %*% bn
+      )
+    )
+    location <- drop(xi %*% bn)
+    scale <- sqrt(
+      (dn / an) * (1 + drop(xi %*% Vn %*% t(xi)))
+    )
+    degrees <- 2 * an
+    log_density[i] <-
+      dt((yi - location) / scale, df = degrees, log = TRUE) -
+      log(scale)
+  }
+  log_density
+}
+
+stable_log_mean_exp <- function(values) {
+  maximum <- max(values)
+  maximum + log(mean(exp(values - maximum)))
+}
+
+manual_waic <- function(log_lik) {
+  lppd <- apply(log_lik, 2, stable_log_mean_exp)
+  p_waic <- apply(log_lik, 2, var)
+  data.frame(
+    lppd = lppd,
+    p_waic = p_waic,
+    elpd_waic = lppd - p_waic
+  )
+}
+
+linear_prior <- make_prior(X_linear)
+quadratic_prior <- make_prior(X_quadratic)
+linear_posterior <- nig_posterior(X_linear, y, linear_prior)
+quadratic_posterior <- nig_posterior(
+  X_quadratic, y, quadratic_prior
+)
+
+posterior_draws <- 4000L
+linear_draws <- draw_nig(
+  linear_posterior, posterior_draws, seed = 20261104
+)
+quadratic_draws <- draw_nig(
+  quadratic_posterior, posterior_draws, seed = 20261105
+)
+linear_log_lik <- log_likelihood_matrix(
+  X_linear, y, linear_draws
+)
+quadratic_log_lik <- log_likelihood_matrix(
+  X_quadratic, y, quadratic_draws
+)
+
+linear_pointwise <- manual_waic(linear_log_lik)
+quadratic_pointwise <- manual_waic(quadratic_log_lik)
+linear_waic <- loo::waic(linear_log_lik)
+quadratic_waic <- loo::waic(quadratic_log_lik)
+
+waic_summary <- data.frame(
+  model = c("Linear", "Quadratic"),
+  elpd_waic = c(
+    linear_waic$estimates["elpd_waic", "Estimate"],
+    quadratic_waic$estimates["elpd_waic", "Estimate"]
+  ),
+  p_waic = c(
+    linear_waic$estimates["p_waic", "Estimate"],
+    quadratic_waic$estimates["p_waic", "Estimate"]
+  ),
+  waic_deviance = c(
+    linear_waic$estimates["waic", "Estimate"],
+    quadratic_waic$estimates["waic", "Estimate"]
+  )
+)
+stopifnot(max(abs(
+  waic_summary$elpd_waic - c(
+    sum(linear_pointwise$elpd_waic),
+    sum(quadratic_pointwise$elpd_waic)
+  )
+)) < 1e-12)
+waic_summary
+
+linear_exact <- exact_nig_loo(X_linear, y, linear_prior)
+quadratic_exact <- exact_nig_loo(
+  X_quadratic, y, quadratic_prior
+)
+comparison_plot <- rbind(
+  data.frame(
+    surprisal = provo$cloze_surprisal_bits,
+    model = "Linear",
+    waic_minus_exact = linear_pointwise$elpd_waic - linear_exact
+  ),
+  data.frame(
+    surprisal = provo$cloze_surprisal_bits,
+    model = "Quadratic",
+    waic_minus_exact =
+      quadratic_pointwise$elpd_waic - quadratic_exact
+  )
+)
+
+ggplot2::ggplot(
+  comparison_plot,
+  ggplot2::aes(surprisal, waic_minus_exact)
+) +
+  ggplot2::geom_hline(
+    yintercept = 0, color = "grey55", linewidth = 0.45
+  ) +
+  ggplot2::geom_point(size = 0.7, alpha = 0.3, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~ model) +
+  ggplot2::labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Pointwise WAIC minus exact LOO contribution"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+WAIC gives ELPD `r sprintf("%.3f", waic_summary$elpd_waic[waic_summary$model == "Linear"])` with $p_{\mathrm{waic}} = `r sprintf("%.3f", waic_summary$p_waic[waic_summary$model == "Linear"])`$ for the linear model. The quadratic values are `r sprintf("%.3f", waic_summary$elpd_waic[waic_summary$model == "Quadratic"])` and $p_{\mathrm{waic}} = `r sprintf("%.3f", waic_summary$p_waic[waic_summary$model == "Quadratic"])`$. The manual pointwise implementation and `loo::waic()` agree to the asserted numerical tolerance.
+
+The mathematics-to-code bridge is visible in `manual_waic()`: matrix column $i$
+contains the $S$ values $\ell_i^{(s)}$; `stable_log_mean_exp` computes
+$\operatorname{lppd}_i$; `var` computes $p_{\mathrm{waic},i}$; and their difference
+is the pointwise ELPD approximation. Summing those rows reproduces the package output.
+
+The figure shows the approximation rather than another abstract score: every point is one Provo position's WAIC contribution minus its exact LOO contribution. Most differences cluster near zero, but the display preserves their relation to modeled cloze surprisal.
+
+## What the correction does not change
+
+WAIC is tied to the unit represented by one likelihood column. Here that unit is an aggregated content-word position. The correction does not create prediction for a wholly new reader, word type, or passage. Other positions from the same passage remain part of the fitted posterior used to calculate each contribution.
+
+Large posterior variance in a pointwise log likelihood can warn that WAIC is unreliable for that position. The warning concerns the approximation; it does not license discarding a linguistically surprising point. PSIS-LOO is often easier to diagnose because Pareto $k$ targets its importance-sampling approximation directly.
+
+WAIC and LOO are asymptotically connected when the posterior and pointwise
+factorization support the cumulant approximation, including in model classes broader
+than those covered by ordinary parameter-count arguments. In a finite dataset,
+influential positions, heavy posterior tails, dependence within passages, or too few
+draws may separate them. The exact conjugate comparison on this page is thus evidence
+for this application, not a guarantee for every Bayesian model.
+
+Finally, WAIC ranks compatible candidate models. It does not establish that the preferred predictor causes the reading response or explains the linguistic process that produced it.
+
+## Checking the correction
+
+1. Why is lppd a fitted rather than omitted-data quantity?
+2. Which posterior quantity supplies WAIC's optimism correction?
+3. Why can $p_{\mathrm{waic}}$ differ from a coefficient count?
+4. What is the empirical unit of one point in the final figure?
+
+<details>
+<summary>Answers</summary>
+
+1. The observed $y_i$ helped form the posterior over which its likelihood is
+   averaged.
+2. The posterior variance of the pointwise log likelihood.
+3. It measures effective fitted flexibility and can be fractional or larger than a
+   raw coefficient count.
+4. One aggregated Provo content-word position.
+
+</details>
+
+## Recap and forward link
+
+1. Stable log-mean-exp computes lppd without changing it.
+2. Posterior log-likelihood variance is the second-order optimism correction linking
+   fitted lppd to LOO.
+3. Both methods inherit the likelihood column's position-level target.
+
+The [previous page](psis-loo.qmd#pareto-smoothing-the-importance-ratios)
+used an importance-sampling approximation. Return to the [module VTS](index.qmd#validation-target-specification)
+to place both approximations within the full model-evaluation sequence.

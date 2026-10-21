@@ -1,10 +1,383 @@
 ---
 title: "Comparing predictive loss"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The [grouped-validation page](grouped-cross-validation.qmd) returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the new-verb prediction task visible.
 
-**Available Wednesday, October 14, 2026.**
+We begin with the MegaOrientation measurement dossier, compare cumulative-link procedures on the same held-out verbs, inspect their descriptive fit to the raw ratings, and then delimit the population and model changes to which the observed gain might transfer.
+
+## MegaOrientation measurement dossier {#megaorientation-measurement-dossier}
+
+[Moon and White (2020)](https://ling.auf.net/lingbuzz/005282/current.pdf) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale. The corrected [MegaOrientation v1.1 release](https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip) changes the released participant and verb inventories after items with irregular-inflection errors were rerun.
+
+For the verb *abhor* in the active-gerund frame, the released pair is “Someone
+abhorred doing something in the future” and “Someone will abhor doing something in
+the past.” Past matrix tense conflicts with the future adverb in the first sentence;
+future-oriented *will* conflicts with the past adverb in the second. The manipulation
+uses that mismatch to force the embedded event toward the adverb's labeled
+orientation. The orientation label is experimental metadata, not a participant
+response.
+
+The five compact `frame_code` values abbreviate these released templates:
+
+| `frame_code` | released frame | plain-language frame |
+|:--|:--|:--|
+| `active_gerund` | `NP _ed VPing` | active matrix predicate with a gerund complement |
+| `active_to_eventive` | `NP _ed to VP[+eventive]` | active *to*-complement with an eventive predicate |
+| `active_to_stative` | `NP _ed to VP[-eventive]` | active *to*-complement with a stative predicate |
+| `passive_to_eventive` | `NP was _ed to VP[+eventive]` | passive eventive *to*-complement |
+| `passive_to_stative` | `NP was _ed to VP[-eventive]` | passive stative *to*-complement |
+
+One actual response row records participant `0` rating the future-oriented *abhor*
+active-gerund sentence as 7. Thus the course-facing row is a
+participant-by-verb-frame-item judgment with an ordered response, not a verb-level
+summary. Version 1.1 reran items affected by irregular-inflection errors, which
+changed the participant and verb inventories; all counts and folds below use the
+corrected release rather than the original paper's v1 counts.
+
+The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. The teaching comparison is narrower. It restricts the release to verbs attested in at least two frames, fits population cumulative-logit models, and holds out every response from a verb together. Thus, the target is an unseen verb within the selected multi-frame inventory, not a reproduction of the paper's latent-type comparison.
+
+Requiring at least two observed frames keeps the transfer question tied to verbs
+represented across frame contexts and prevents the selected inventory from being
+dominated by single-frame verbs. It does not balance the number of judgments or
+frames per verb. The restriction is part of the target population and must not be
+read as evidence about unrestricted English embedding verbs.
+
+The two models are
+
+$$
+\begin{aligned}
+M_0 &: \text{response}\sim\text{orientation}+\text{frame},\\
+M_1 &: \text{response}\sim\text{orientation}*\text{frame}.
+\end{aligned}
+$$
+
+For response $y_i$, the ordinal log score is
+
+$$
+L_i(M)=-\log p_M(Y_i=y_i\mid x_i).
+$$
+
+Equivalently, we can compare the log probability itself, where larger values are better. The sign convention below reports $\log p_{M_1}-\log p_{M_0}$, so positive values favor the interaction.
+
+The [cumulative-logit model](../regression-models/ordinal-regression.qmd#cumulative-logits)
+starts with thresholds $\alpha_1<\cdots<\alpha_6$ and linear predictor $\eta_i$:
+
+$$
+\mathbb{P}(Y_i\leq c\mid x_i)
+=\operatorname{logit}^{-1}(\alpha_c-\eta_i),
+\qquad c=1,\ldots,6.
+$$
+
+Category probabilities follow by subtraction: the first is the first cumulative
+probability, an interior category $c$ has probability
+$\mathbb{P}(Y_i\leq c)-\mathbb{P}(Y_i\leq c-1)$, and category 7 receives one minus
+the sixth cumulative probability. These are the three operations in
+`ordinal_probabilities()`.
+
+## Held-out-verb comparison
+
+The code loads the tracked response table and frozen verb folds, fits both ordinal models in every fold, and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the `r length(unique(utils::read.csv("data/megaorientation/verb-folds-multiframe.csv")$verb))` verbs, preventing verbs with more judgment rows from receiving greater weight.
+
+Its [VTS](index.qmd#validation-target-specification) splits complete verb types,
+weights verbs equally, retains a held-out verb's frame and forced-orientation labels,
+refits thresholds and coefficients in every fold, and targets unseen verbs in the
+corrected multi-frame inventory. Five folds retain about four fifths of the verbs per
+fit while keeping enough unseen verbs in each score. `maxIter = 200` is a cap on
+optimizer iterations and `gradTol = 1e-3` is the declared convergence tolerance;
+these are computational safeguards, not linguistic parameters.
+
+```{r}
+#| label: megaorientation-predictive-comparison
+#| message: false
+#| warning: false
+
+orientation <- utils::read.delim(
+  "data/megaorientation/megaorientation-v1.1.tsv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+verb_folds <- utils::read.csv(
+  "data/megaorientation/verb-folds-multiframe.csv",
+  stringsAsFactors = FALSE
+)
+orientation <- merge(
+  orientation,
+  verb_folds[c("verb", "fold")],
+  by = "verb",
+  sort = FALSE
+)
+orientation$outcome <- ordered(orientation$response, levels = 1:7)
+orientation$orientation <- factor(
+  orientation$orientation, levels = c("past", "future")
+)
+orientation$frame_code <- factor(orientation$frame_code)
+
+stopifnot(all(tapply(
+  orientation$fold, orientation$verb,
+  function(x) length(unique(x))
+) == 1))
+
+ordinal_probabilities <- function(fit, newdata, formula) {
+  design <- model.matrix(formula, newdata)
+  eta <- drop(design[, names(fit$beta), drop = FALSE] %*% fit$beta)
+  cumulative <- plogis(outer(
+    eta,
+    fit$alpha,
+    function(linear_predictor, threshold) {
+      threshold - linear_predictor
+    }
+  ))
+  probability <- cbind(
+    cumulative[, 1],
+    cumulative[, -1, drop = FALSE] -
+      cumulative[, -ncol(cumulative), drop = FALSE],
+    1 - cumulative[, ncol(cumulative)]
+  )
+  probability <- pmax(probability, 1e-12)
+  probability / rowSums(probability)
+}
+
+prediction_rows <- vector("list", length(unique(orientation$fold)))
+fold_rows <- vector("list", length(unique(orientation$fold)))
+
+for (fold in sort(unique(orientation$fold))) {
+  train <- orientation[orientation$fold != fold, ]
+  test <- orientation[orientation$fold == fold, ]
+
+  restricted_fit <- ordinal::clm(
+    outcome ~ orientation + frame_code,
+    data = train,
+    link = "logit",
+    Hess = FALSE,
+    control = ordinal::clm.control(maxIter = 200L, gradTol = 1e-3)
+  )
+  interaction_fit <- ordinal::clm(
+    outcome ~ orientation * frame_code,
+    data = train,
+    link = "logit",
+    Hess = FALSE,
+    control = ordinal::clm.control(maxIter = 200L, gradTol = 1e-3)
+  )
+
+  restricted_probability <- ordinal_probabilities(
+    restricted_fit, test, ~ orientation + frame_code
+  )
+  interaction_probability <- ordinal_probabilities(
+    interaction_fit, test, ~ orientation * frame_code
+  )
+  observed <- cbind(seq_len(nrow(test)), as.integer(test$outcome))
+  restricted_log_score <- log(restricted_probability[observed])
+  interaction_log_score <- log(interaction_probability[observed])
+
+  prediction_rows[[fold]] <- data.frame(
+    verb = test$verb,
+    fold = fold,
+    restricted_log_score = restricted_log_score,
+    interaction_log_score = interaction_log_score
+  )
+  fold_rows[[fold]] <- data.frame(
+    fold = fold,
+    held_out_verbs = length(unique(test$verb)),
+    held_out_rows = nrow(test),
+    interaction_minus_restricted = mean(
+      interaction_log_score - restricted_log_score
+    )
+  )
+}
+
+predictions <- do.call(rbind, prediction_rows)
+fold_scores <- do.call(rbind, fold_rows)
+verb_scores <- aggregate(
+  predictions[c("restricted_log_score", "interaction_log_score")],
+  list(verb = predictions$verb, fold = predictions$fold),
+  mean
+)
+verb_scores$interaction_minus_restricted <- with(
+  verb_scores, interaction_log_score - restricted_log_score
+)
+
+set.seed(20261106)
+verb_bootstrap <- replicate(
+  999L,
+  mean(sample(
+    verb_scores$interaction_minus_restricted,
+    nrow(verb_scores),
+    replace = TRUE
+  ))
+)
+comparison <- data.frame(
+  held_out_rows = nrow(predictions),
+  held_out_verbs = nrow(verb_scores),
+  row_weighted_gain = mean(
+    predictions$interaction_log_score - predictions$restricted_log_score
+  ),
+  verb_weighted_gain = mean(
+    verb_scores$interaction_minus_restricted
+  ),
+  bootstrap_low = quantile(verb_bootstrap, 0.025, names = FALSE),
+  bootstrap_high = quantile(verb_bootstrap, 0.975, names = FALSE),
+  folds_favoring_interaction = sum(
+    fold_scores$interaction_minus_restricted > 0
+  )
+)
+comparison
+
+ggplot2::ggplot(
+  verb_scores,
+  ggplot2::aes(factor(fold), interaction_minus_restricted)
+) +
+  ggplot2::geom_hline(
+    yintercept = 0, color = "grey55", linewidth = 0.45
+  ) +
+  ggplot2::geom_point(
+    position = ggplot2::position_jitter(width = 0.12, height = 0),
+    size = 0.8,
+      alpha = 0.35, # dqr-allow: algorithm-setting
+    color = "grey25"
+  ) +
+  ggplot2::geom_point(
+    data = fold_scores,
+    ggplot2::aes(factor(fold), interaction_minus_restricted),
+    inherit.aes = FALSE,
+    size = 2,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::labs(
+    x = "Held-out verb fold",
+    y = "Interaction minus restricted mean log score"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The interaction improves the verb-weighted mean log score by `r sprintf("%.5f", comparison$verb_weighted_gain)`, with a conditional verb-bootstrap interval of [`r sprintf("%.5f", comparison$bootstrap_low)`, `r sprintf("%.5f", comparison$bootstrap_high)`]. The row-weighted gain is `r sprintf("%.5f", comparison$row_weighted_gain)`, and `r comparison$folds_favoring_interaction` of `r nrow(fold_scores)` folds favor the interaction. The gray points show all held-out verb differences; the blue points show fold means.
+
+The 999 bootstrap draws make the resampling calculation reproducible at modest cost;
+they do not remove Monte Carlo error, and 999 has no special statistical status. Each
+draw resamples the stored verb-level differences, so the resulting quantiles are
+conditional on the fitted folds and the observed response rows. They do not repeat
+participant sampling, item construction, model fitting, or the v1.1 correction.
+
+## Raw responses and the descriptive fit
+
+The predictive comparison uses held-out verbs. A full-data interaction fit serves a different purpose: it lets us check fitted ordinal probabilities against the empirical rating distribution in each represented frame-orientation cell.
+
+```{r}
+#| label: megaorientation-raw-fitted
+#| message: false
+#| warning: false
+
+full_interaction <- ordinal::clm(
+  outcome ~ orientation * frame_code,
+  data = orientation,
+  link = "logit",
+  Hess = FALSE
+)
+orientation_grid <- expand.grid(
+  orientation = levels(orientation$orientation),
+  frame_code = levels(orientation$frame_code)
+)
+orientation_grid$orientation <- factor(
+  orientation_grid$orientation,
+  levels = levels(orientation$orientation)
+)
+orientation_grid$frame_code <- factor(
+  orientation_grid$frame_code,
+  levels = levels(orientation$frame_code)
+)
+fitted_probability <- ordinal_probabilities(
+  full_interaction,
+  orientation_grid,
+  ~ orientation * frame_code
+)
+
+empirical <- as.data.frame(table(
+  orientation$frame_code,
+  orientation$orientation,
+  orientation$outcome,
+  dnn = c("frame_code", "orientation", "rating")
+))
+names(empirical)[4] <- "count"
+empirical$empirical_probability <- ave(
+  empirical$count,
+  empirical$frame_code,
+  empirical$orientation,
+  FUN = function(x) x / sum(x)
+)
+fitted <- do.call(rbind, lapply(
+  seq_len(nrow(orientation_grid)),
+  function(index) data.frame(
+    frame_code = as.character(orientation_grid$frame_code[index]),
+    orientation = as.character(orientation_grid$orientation[index]),
+    rating = as.character(seq_len(7)),
+    fitted_probability = fitted_probability[index, ]
+  )
+))
+raw_and_fitted <- merge(
+  empirical,
+  fitted,
+  by = c("frame_code", "orientation", "rating"),
+  sort = FALSE
+)
+raw_and_fitted$rating <- as.integer(raw_and_fitted$rating)
+
+ggplot2::ggplot(
+  raw_and_fitted,
+  ggplot2::aes(rating, empirical_probability, color = orientation)
+) +
+  ggplot2::geom_point(size = 1.4, alpha = 0.75) + # dqr-allow: algorithm-setting
+  ggplot2::geom_line(
+    ggplot2::aes(y = fitted_probability),
+    linewidth = 0.55
+  ) +
+  ggplot2::facet_wrap(~ frame_code) +
+  ggplot2::scale_color_manual(
+    values = c("past" = "grey35", "future" = "#2B6CB0") # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_x_continuous(breaks = seq_len(7)) +
+  ggplot2::labs(
+    x = "Acceptability rating",
+    y = "Response probability",
+    color = "Forced orientation"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The tracked comparison contains `r format(nrow(orientation), big.mark = ",")` judgments from `r length(unique(orientation$verb))` multi-frame verbs and `r nrow(unique(orientation[c("verb", "frame_code")]))` predicate-frame pairs. Points are empirical category probabilities; lines are the descriptive full-data interaction fit. Those fitted lines do not supply the held-out comparison numbers.
+
+## Scope of the gain
+
+The conditional bootstrap resamples the stored verb differences while holding the fitted cross-validation predictions fixed. It respects verb as the resampling unit, but it does not reproduce participant, item, or refitting uncertainty. The population models also omit participant and sentence-item effects. Thus, the interval is useful for the paired-loss lesson, not a full confirmatory analysis of the experiment.
+
+The interaction gain suggests that frame-specific orientation patterns help predict ratings for unseen verbs within this selected inventory. It does not turn acceptability into a directly observed temporal-orientation label, reproduce Moon and White's lexical-versus-structural theory comparison, or generalize to unrestricted English embedding verbs.
+
+## Checking the comparison
+
+1. Why does a positive difference favor the interaction model?
+2. Why are log scores averaged within verbs before the primary mean is taken?
+3. What does the full-data probability plot check, and what does it not estimate?
+4. Which omitted sources of dependence limit the bootstrap interval?
+
+<details>
+<summary>Answers</summary>
+
+1. The difference is interaction minus restricted log probability, and larger log
+   probability is better.
+2. The scientific score unit is a verb, so verbs with more judgments should not
+   receive more weight.
+3. It checks descriptive agreement in represented frame-orientation cells; it does
+   not estimate held-out-verb performance.
+4. Participant, sentence-item, and refitting variation are omitted from the
+   conditional verb bootstrap.
+
+</details>
+
+## Recap and forward link
+
+1. A MegaOrientation row is an ordered participant judgment of a verb-frame sentence.
+2. Cumulative thresholds generate the seven probabilities scored by log loss.
+3. Paired differences return to held-out verbs before averaging.
+
+The [previous page](grouped-cross-validation.qmd#participant-and-story-validation-targets)
+developed grouped splitting with Natural Stories. The [next page](likelihood-ratio-tests.qmd#provo-measurement-dossier)
+begins a five-page Provo sequence using two fixed Gaussian mean models.

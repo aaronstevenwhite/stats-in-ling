@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-A **divergent transition** occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same passage-level Student-t model used throughout this sequence.
+A [**divergent transition**](https://mc-stan.org/docs/reference-manual/mcmc.html) occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same passage-level Student-t model used throughout this sequence.
+
+We first connect divergence to Hamiltonian energy error, then contrast the production fit with a controlled stress computation, and finally develop a response sequence for diagnosing a divergence without treating a tuning change as automatic repair.
 
 ## Energy error and geometry
 
@@ -19,6 +21,14 @@ H(q,\rho)
 -\log\widetilde f(q\mid\mathbf y)
 +\frac12\rho^\mathsf TM^{-1}\rho.
 $$
+
+If a leapfrog trajectory begins at $(q,\rho)$ and ends at $(q^*,\rho^*)$, define
+
+$$
+\Delta H=H(q^*,\rho^*)-H(q,\rho).
+$$
+
+The HMC correction accepts with probability $\min\{1,\exp(-\Delta H)\}$. Small numerical errors are corrected by this accept--reject step. A divergence flags an energy error large enough that the discrete trajectory may have failed to represent the local geometry reliably.
 
 Rapidly changing curvature can make one step size inaccurate in a narrow region even if it works elsewhere. In a hierarchical model, for instance,
 
@@ -39,6 +49,8 @@ The two forms imply the same conditional distribution for $u_j$ at fixed $\tau$,
 ## Production and stress computations
 
 The production passage-level Student-t fit uses adapted NUTS. A deliberately coarse run uses the same complete passage set, likelihood, priors, and data-derived initial region, but disables warmup and adaptation, uses a unit metric, fixes step size at 0.03, and caps tree depth at 7. This run demonstrates a numerical warning; it is not a second inferential fit and is not evidence of a defect in the production model.
+
+Each degradation has a role: disabling warmup prevents step-size and mass adaptation; the unit metric ignores posterior scale and correlation; the fixed step size is not tuned to the target; and the depth cap limits trajectory work. Together they create a diagnostic stress test while holding the statistical model fixed.
 
 ```{r}
 #| label: load-provo-divergences
@@ -100,7 +112,18 @@ The production fit has `r divergence_summary$divergences[1]` divergences. The in
 
 First locate the marked draws in theoretically relevant parameter pairs. Then inspect parameter identification, predictor scales, and parameterization. Increasing `adapt_delta` usually reduces step size and may repair modest integration error; reparameterization may be needed when curvature changes substantially. Refit and recheck all diagnostics.
 
+The response sequence is thus: (i) locate the divergences, (ii) inspect scaling, identification, and parameterization, (iii) rescale or reparameterize when warranted, (iv) refit, and (v) recheck divergences, $\widehat R$, ESS, tree depth, and predictive behavior. Raising `adapt_delta` is one possible intervention within that sequence, not a substitute for it.
+
 Filtering divergent iterations is never a repair. And a run with no divergence removes only this warning: chains may still disagree, have low ESS, or target a model that predicts the linguistic data poorly.
+
+## Recap and forward link
+
+1. Divergences flag large numerical energy error in particular target regions.
+2. The stress run degrades computation while holding the model and data fixed.
+3. Localized warnings may bias summaries even when their overall percentage is small.
+4. Repair requires diagnosis, refitting, and rechecking rather than filtering transitions.
+
+The [pairs-plot page](parameter-pair-plots.qmd#locating-the-stress-warning) shows where the stress divergences occur in joint parameter space.
 
 ## Check your understanding
 
@@ -118,5 +141,3 @@ Filtering divergent iterations is never a repair. And a run with no divergence r
 4. Reparameterization is more useful when posterior curvature changes sharply, as in funnel-like geometry that no single smaller step size handles efficiently. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [pairs-plot page](parameter-pair-plots.qmd) separates production geometry from this stress computation.

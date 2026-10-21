@@ -7,7 +7,11 @@ execute:
   message: false
 ---
 
-Stan's **generated quantities block** runs after each retained parameter draw. It can transform a joint draw, simulate replicated responses, and evaluate pointwise log likelihoods without changing the posterior target.
+Stan's [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) runs after each retained parameter draw. It can transform a joint draw, simulate replicated responses, and evaluate pointwise log likelihoods without changing the posterior target.
+
+The phrase “after each retained draw” matters. Every output is evaluated conditionally on the same joint $(\mu^{(s)},\sigma^{(s)})$. This preserves posterior dependence among transformed quantities, replicated values, and log scores. Computing each output from unrelated marginal draws would destroy that joint structure. The [Stan program](stan.qmd#the-complete-program) declares the target from which these draws came.
+
+We first declare three derived outputs for each passage-level draw, then inspect their realized values, and finally distinguish a deterministic posterior transformation from a replicated response and a pointwise log-likelihood contribution.
 
 ## Three passage-level Student-t model outputs
 
@@ -48,6 +52,12 @@ $$
 $$
 
 The `_rng` function simulates; the `_lpdf` function evaluates the observed response.
+
+| Output type | Mathematics | Stan code | Interpretation |
+|---|---|---|---|
+| deterministic transform | $r^{(s)}=\exp(\mu^{(s)})$ | `exp(mu)` | one derived estimand for the same draw |
+| posterior replication | $Y_j^{\mathrm{rep},(s)}\sim t_4(\mu^{(s)},\sigma^{(s)})$ | `student_t_rng(...)` | one new passage-level value under the fitted draw |
+| pointwise log score | $\log p(y_j\mid\mu^{(s)},\sigma^{(s)})$ | `student_t_lpdf(...)` | density assigned to the observed passage value |
 
 ## Inspecting actual generated quantities
 
@@ -107,6 +117,15 @@ ggplot(display, aes(value, fill = source)) +
 
 Assignments in generated quantities cannot contribute to Stan's `target`. Moving a prior or likelihood there would remove it from inference. And grouping pointwise log likelihoods after fitting does not automatically change a passage-level prediction task into leave-one-reader-out evaluation; the reader rows are unavailable in this teaching table.
 
+## Recap and forward link
+
+1. Generated quantities are evaluated conditionally on every retained joint posterior draw.
+2. Deterministic transforms, replicated responses, and observed-data log scores answer different questions.
+3. The passage index must be preserved for pointwise predictive work.
+4. Generated quantities cannot repair or add a missing target-density term.
+
+The [posterior-predictive-check page](posterior-predictive-checks.qmd#replication-under-the-fitted-passage-level-student-t-model) compares the replicated passage data with the observations.
+
 ## Check your understanding
 
 1. Which line simulates a replicated passage contrast?
@@ -123,5 +142,3 @@ Assignments in generated quantities cannot contribute to Stan's `target`. Moving
 4. No. Generated quantities run after sampling and cannot add a prior or likelihood contribution to `target`. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [posterior-predictive-check page](posterior-predictive-checks.qmd) compares these replicated passage data with the observations.

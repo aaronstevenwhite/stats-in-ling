@@ -9,7 +9,9 @@ execute:
 
 The [preceding page](continuous-random-variables.qmd) explained why a continuous distribution assigns zero probability to an exact value. A table of point masses thus cannot describe how probability is arranged across the modeled duration support. If individual points have zero probability, what quantity lets us recover the probability of an interval?
 
-Basically, we describe how quickly probability accumulates near each value and compute interval probability as area. More specifically, a [**probability density function**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), abbreviated [**PDF**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), is a function $f_D:\mathbb R\to[0,\infty)$ satisfying
+We define density through interval area, verify the nonnegativity and unit-area requirements, and then interpret density height in relation to the measurement scale rather than as a point probability.
+
+A [**probability density function**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), abbreviated [**PDF**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html), describes how quickly probability accumulates near each value. It is a function $f_D:\mathbb R\to[0,\infty)$ satisfying
 
 $$
 \mathbb{P}(D\in A)=\int_A f_D(d)\,\mathrm dd
@@ -53,6 +55,16 @@ density_function <- approxfun(
   yright = 0
 )
 ```
+
+This page uses a Gaussian kernel density estimate (KDE) as a descriptive
+smoother. Each observed duration contributes a small normal-shaped kernel;
+their average forms the curve. R's `bw.nrd0()` chooses the default bandwidth,
+which controls the smoothness, and `density()` evaluates the curve on 4,096
+grid points. Extending the grid six bandwidths beyond the observed extrema
+makes omitted tail area negligible for the numerical check. `approxfun()` then
+linearly interpolates between grid points so `integrate()` can evaluate areas.
+These are transparent defaults, not features of the Hillenbrand design, and a
+different bandwidth would produce a different descriptive shape.
 
 ## Area, not height
 
@@ -105,6 +117,13 @@ $$
 
 where the displayed code sets $d$ to the observed median. The resulting probability is `r sprintf("%.4f", bin_probability)`. It is area over a one-millisecond bin, not the density height at the median.
 
+Three quantities should not be conflated. `density_function(d)` is a fitted
+height in units of probability per millisecond. `bin_probability` is the KDE
+area over a one-millisecond interval. `mean(adult_i$duration_ms == d)` is the
+empirical proportion stored at the exact integer $d$. Only the last uses
+unsmoothed row counts, and only the middle is an interval probability under the
+KDE.
+
 ```{r}
 #| label: plot-hillenbrand-density
 #| fig-cap: "Raw adult-men /i/ durations and a kernel density estimate. The rug shows every observed token."
@@ -144,6 +163,8 @@ This unit check is another reason not to interpret density height as probability
 2. Why can a density height exceed one without producing a probability larger than one?
 3. What does `density_function(median_duration)` describe, and what does it not describe?
 4. Which parts of this page come from the observed Hillenbrand tokens, and which part is the descriptive smoothing model?
+5. If the KDE bandwidth is doubled, has the observed dataset changed? What has
+   changed?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -152,7 +173,14 @@ This unit check is another reason not to interpret density height as probability
 2. Density has inverse-measurement units, so its height may exceed one while probability remains the area under the curve and the total area remains one. <!-- dqr-allow: empirical-answer -->
 3. `density_function(240)` is the fitted density height, about 0.009857 per millisecond; it is neither a point probability nor an interval probability. <!-- dqr-allow: empirical-answer -->
 4. The 45 duration tokens and their histogram are observed Hillenbrand data, whereas `density()` supplies the descriptive kernel-smoothing model. <!-- dqr-allow: empirical-answer -->
+5. The rows do not change. The smoother changes how their empirical mass is
+   spread across nearby modeled durations, so heights and interval areas may
+   change.
 
 </details>
 
-Mass and density represent probability differently. The [next page](cumulative-distribution-functions.qmd) gives one threshold function that applies to both representations.
+Density is height per measurement unit, whereas probability is area over an
+interval. A KDE estimates that descriptive density, with a shape that depends
+on the smoothing choices. The [next
+page](cumulative-distribution-functions.qmd) gives one threshold function that
+applies to both discrete and continuous distributions.

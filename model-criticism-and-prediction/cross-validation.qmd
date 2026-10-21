@@ -1,10 +1,205 @@
 ---
 title: "Cross-validation"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The [training-and-test page](training-and-test-data.qmd) separated one training set from one test set. [**$K$-fold cross-validation (CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) reduces dependence on a single partition by rotating which fold serves as the test set.
 
-**Available Wednesday, October 14, 2026.**
+The output is one out-of-fold prediction for every observation. Each prediction comes from a fit that excluded that response. This does not make its reader or story new as well; the fold construction determines which units cross the training-test boundary.
+
+We first derive the fold rotation, then choose and implement a validation unit in Natural Stories, and finally examine preprocessing, fold count, score dependence, and split checks that determine what the resulting out-of-fold loss estimates.
+
+::: {.callout-note title="Reading: Nicenboim, Schad, and Vasishth, Chapter 14"}
+[Nicenboim, Schad, and Vasishth, *Cross-validation*, in *An Introduction to Bayesian Data Analysis for Cognitive Science*](https://bruno.nicenboim.me/bayescogsci/ch-cv.html).
+
+Read the chapter opening and Section 14.2 through Equation 14.6. These passages distinguish training data from held-out data and derive the rotation used here.
+:::
+
+## The algorithm {#the-algorithm}
+
+Partition observation indices into disjoint folds $F_1,\ldots,F_K$. For fold $k$:
+
+1. fit the complete procedure to observations outside $F_k$;
+2. use that fitted procedure to predict observations in $F_k$; and
+3. store the predictions in their original rows.
+
+After every fold has been processed,
+
+$$
+\widehat R_{\mathrm{CV}}
+=
+\frac{1}{N}
+\sum_{k=1}^K
+\sum_{i\in F_k}
+L\left(y_i,\widehat f_{-k}(x_i)\right),
+$$
+
+where $\widehat f_{-k}$ is fit without fold $k$. The fitted model changes across folds, but the procedure remains fixed.
+
+For a five-observation, two-fold rotation, take
+$F_1=\{1,3,5\}$ and $F_2=\{2,4\}$. The first fit uses observations 2 and 4 and
+produces predictions for 1, 3, and 5. The second fit uses 1, 3, and 5 and produces
+predictions for 2 and 4. Thus every observation is scored once, but no prediction is
+made by a fit that used its response. This small rotation is exactly what the loop
+below performs on five much larger folds.
+
+## The validation unit {#the-validation-unit}
+
+The [VTS](index.qmd#validation-target-specification) distinguishes three objects that
+are easy to collapse. A **fold** is a computational container. A **held-out unit** is
+the empirical object that must move together. A **score-aggregation unit** is what
+receives equal weight in the final loss. On this page, individual response rows are
+both the held-out and score units, while a fold contains many such rows. Participants
+and stories can cross the boundary, so neither is new.
+
+Five random row folds are used because the lesson needs repeated training-test
+rotation at manageable cost, not because five is a property of Natural Stories.
+Random row assignment is appropriate only for the narrow target of another retained
+response from represented readers and stories. The seed makes the teaching split
+reproducible.
+
+## Random-row validation in Natural Stories
+
+The following code independently loads the [corrected Natural Stories data](prediction-targets.qmd#natural-stories-measurement-dossier), assigns retained responses to five random folds with the frozen seed, fits the same standardized regression inside each fold, and stores every held-out prediction. Predictor moments are recomputed from the training rows of each fold.
+
+```{r}
+#| label: natural-row-cv
+#| message: false
+#| warning: false
+
+natural_all <- readRDS(
+  "data/natural-stories/natural-stories-corrected.rds"
+)
+keep <- with(
+  natural_all,
+  is.finite(log_rt) & is.finite(word_length) &
+    is.finite(log_unigram_frequency) & is.finite(gpt3_surprisal)
+)
+natural <- natural_all[keep, c(
+  "participant_id", "story_id", "log_rt", "word_length",
+  "log_unigram_frequency", "gpt3_surprisal"
+)]
+
+set.seed(20261031)
+row_order <- sample.int(nrow(natural), nrow(natural))
+row_fold <- integer(nrow(natural))
+row_fold[row_order] <- rep(seq_len(5), length.out = nrow(natural))
+
+predictors <- c(
+  "word_length", "log_unigram_frequency", "gpt3_surprisal"
+)
+prediction <- rep(NA_real_, nrow(natural))
+fold_rows <- vector("list", length(unique(row_fold)))
+
+for (fold in sort(unique(row_fold))) {
+  test <- row_fold == fold
+  train <- !test
+  training_mean <- vapply(
+    natural[train, predictors, drop = FALSE], mean, numeric(1)
+  )
+  training_sd <- vapply(
+    natural[train, predictors, drop = FALSE], sd, numeric(1)
+  )
+  training_matrix <- sweep(
+    as.matrix(natural[train, predictors]), 2, training_mean, "-"
+  )
+  training_matrix <- sweep(training_matrix, 2, training_sd, "/")
+  test_matrix <- sweep(
+    as.matrix(natural[test, predictors]), 2, training_mean, "-"
+  )
+  test_matrix <- sweep(test_matrix, 2, training_sd, "/")
+  fit <- lm.fit(
+    cbind("(Intercept)" = 1, training_matrix),
+    natural$log_rt[train]
+  )
+  prediction[test] <- drop(
+    cbind("(Intercept)" = 1, test_matrix) %*% fit$coefficients
+  )
+  error <- natural$log_rt[test] - prediction[test]
+  fold_rows[[fold]] <- data.frame(
+    fold = fold,
+    held_out_rows = sum(test),
+    held_out_participants = length(unique(natural$participant_id[test])),
+    held_out_stories = length(unique(natural$story_id[test])),
+    rmse_log_rt = sqrt(mean(error^2)),
+    mae_log_rt = mean(abs(error))
+  )
+}
+
+stopifnot(all(is.finite(prediction)))
+fold_scores <- do.call(rbind, fold_rows)
+fold_scores
+
+ggplot2::ggplot(
+  fold_scores,
+  ggplot2::aes(factor(fold), rmse_log_rt)
+) +
+  ggplot2::geom_point(size = 2, color = "#2B6CB0") +
+  ggplot2::labs(
+    x = "Random response-row fold",
+    y = "Held-out RMSE (log reading time)"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The five fold RMSEs range from `r sprintf("%.4f", min(fold_scores$rmse_log_rt))` to `r sprintf("%.4f", max(fold_scores$rmse_log_rt))`. Every held-out fold contains responses from all `r unique(fold_scores$held_out_stories)` stories and `r paste(range(fold_scores$held_out_participants), collapse = " to ")` represented participants. The estimand is thus a new retained response when its story and reader remain represented in training.
+
+The subscripts in the displayed estimator correspond to the loop as follows:
+
+| formula | code |
+|:--|:--|
+| fold $F_k$ | `row_fold == fold` |
+| training complement $-k$ | `train <- !test` |
+| $\widehat f_{-k}$ | `fit` after fold-local standardization |
+| $\widehat f_{-k}(x_i)$ | `prediction[test]` |
+| $L(y_i,\widehat y_i)$ | `error^2` or `abs(error)` |
+
+The printed fold rows summarize these stored pointwise losses. They do not replace
+the prediction vector or become independent replicates.
+
+The stored prediction vector is more useful than the fold means alone. It permits prespecified inspection by response range, story, reader, or linguistic category and permits paired model comparisons on identical rows. A category discovered only after inspecting its errors supplies exploratory evidence.
+
+## Every fitted decision stays inside the loop
+
+Cross-validation evaluates the complete procedure, not just its final coefficient formula. Centering, scaling, feature selection, imputation, and penalty tuning must be repeated using only each training portion. A tuning parameter requires an inner validation loop if it adapts to responses; the outer prediction then evaluates the complete selection rule.
+
+This nesting is unnecessary when the specification is fixed in advance. The Natural Stories code has no tuning step: its predictor set and fold seed are fixed, but its training moments and regression coefficients remain fold-specific.
+
+## What $K$ changes
+
+With larger $K$, each model uses a larger training fraction and a smaller test fold. Leave-one-out CV sets $K=N$ for row-level omission. Fewer folds cost less computation but fit on less of the data for each prediction.
+
+Fold count is a design setting, not a probability law. If the scientific target is an omitted story, the ten story identifiers naturally define ten held-out groups. Randomly creating more row folds cannot manufacture additional story-level replication.
+
+## Fold scores are not independent experiments
+
+The five fits reuse most of their training rows. Their losses are consequently not five independent studies. A test applied to fold means would treat computational partitions as if they were sampling units.
+
+Predictive differences should instead be returned to the groups specified by the claim. For an omitted-story claim, that means story-level losses even when several stories share one computational fold. The [next page](grouped-cross-validation.qmd) changes the fold assignment while retaining the same fitting algorithm.
+
+## Checking the split
+
+1. Why is each stored prediction out of sample for its response?
+2. Which quantities are re-estimated inside every Natural Stories fold?
+3. Why does this random-row procedure not evaluate a reader or story absent from fitting?
+4. Why are the five fold scores not independent experiments?
+
+<details>
+<summary>Answers</summary>
+
+1. Its response belongs to the test fold and is excluded from that fold's fit.
+2. Predictor centers, predictor scales, and regression coefficients are re-estimated.
+3. Other rows from the same reader and story remain in training.
+4. The fitted training sets overlap, reusing most of the same observations.
+
+</details>
+
+## Recap and forward link
+
+1. Each response is scored by a fit that excluded it.
+2. $K$ controls a computational rotation rather than the empirical unit.
+3. All fitted decisions stay inside the fold.
+
+The [previous page](bias-variance-tradeoff.qmd#deriving-the-decomposition)
+described repeated training samples; the [next page](grouped-cross-validation.qmd#participant-and-story-validation-targets)
+keeps complete participants and stories together when those groups must be absent
+during fitting.

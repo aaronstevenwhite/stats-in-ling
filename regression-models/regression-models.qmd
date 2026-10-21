@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-Regression begins by naming a response distribution at each predictor value. Its first target is usually the **conditional mean function**
+Regression begins by naming a response distribution at each predictor value. Its first target is usually the **conditional mean function** stated below.
+
+This page first defines that target, then grounds it in Provo word-position measurements and distinguishes a changing conditional center from a claim about causes.
 
 $$
 m(x)\equiv\mathbb{E}[Y\mid X=x].
@@ -15,9 +17,13 @@ $$
 
 This function asks how the center of a response changes across observed linguistic contexts. It does not yet require the center to be a straight line.
 
+Recall from [conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd) that $X=x$ is held fixed inside this expectation. Before observing a sample, $Y$ and $X$ denote random variables. After observation, $y_i$ and $x_i$ denote the realized position summary and surprisal for row $i$.
+
 ## Provo word-position data
 
-We develop this idea with data from the Provo Corpus. Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) collected cloze norms and eye movements for 55 English passages; the [Provo OSF release](https://osf.io/sjefs/) is available under CC BY 4.0. The course table retains complete content-word positions. A row is a word position nested in a passage after first-fixation durations have been aggregated across readers. It is not a participant trial.
+We develop this idea with data from the Provo Corpus. Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) collected cloze norms and eye movements for 55 English passages; the [Provo OSF release](https://osf.io/sjefs/) is available under CC BY 4.0. A **fixation** is an interval during which a reader's eyes remain relatively stable on a region of text. The **first-fixation duration (FFD)** for a word is the duration of the first recorded fixation on that word. It differs from gaze duration, which adds first-pass refixations, and from total reading time, which can include later returns.
+
+We use FFD because it is a relatively early word-level measure and is available in the audited source transformation. That choice narrows the target: the analysis does not describe later rereading. The course table retains complete content-word positions. A row is a word position nested in a passage after FFDs have been aggregated across readers. It is not a participant trial. Passage text and reader-level rows are not redistributed in this notes-owned table, so the dossier shows the retained source fields rather than inventing a passage example.
 
 The release variable `OrthoMatchModel` is a fitted cloze probability that avoids exact zero and one. It is not a language-model probability. We call
 
@@ -52,6 +58,29 @@ c(
   maximum_surprisal = max(provo$cloze_surprisal_bits)
 )
 ```
+
+Here is one actual retained observation. `position_id` joins passage and position; `Word_Number` and `Word_In_Sentence_Number` locate the word; `Word_POS` and `Word_Length` describe it; `OrthoMatchModel` supplies modeled cloze probability; and `n_fixations` records how many positive FFDs contributed to `mean_log_ffd`.
+
+```{r}
+#| label: inspect-one-provo-position
+provo[1L, c(
+  "position_id", "Text_ID", "Word_Number", "Word_In_Sentence_Number",
+  "Word_POS", "Word_Length", "OrthoMatchModel", "mean_log_ffd",
+  "n_fixations"
+)]
+```
+
+If $D_{ri}>0$ is reader $r$'s FFD at retained position $i$, the analyzed response is
+
+$$
+Y_i
+=
+\frac{1}{n_i}
+\sum_{r\in\mathcal R_i}
+\log D_{ri}.
+$$
+
+The logarithm is applied to each positive duration before averaging. This choice reduces right skew on the modeled scale and gives every retained reader fixation equal weight within a position. Aggregation makes the later algebra visible and targets the average log FFD for a position, but it removes reader identities, between-reader variation, and unequal within-position uncertainty. The [response-transformation page](response-transformations.qmd) returns to the difference between mean duration, mean log duration, and geometric mean.
 
 The retained table contains `r nrow(provo)` positions from `r length(unique(provo$Text_ID))` passages. Reader-level variation is no longer recoverable.
 
@@ -115,7 +144,7 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
 
 The bin means tend to increase with modeled cloze surprisal. This pattern licenses a question about the conditional mean of these position summaries. It does not by itself identify a processing mechanism or restore the repeated reader observations.
 
-## Check your understanding
+## Recap and check your understanding
 
 1. What is the observational unit in the Provo analysis?
 2. Why are the black points estimates rather than raw observations?

@@ -7,32 +7,79 @@ execute:
   message: false
 ---
 
-The Provo regression specifies a straight-line conditional mean. We now need an estimation rule. **Ordinary least squares (OLS)** chooses the coefficients whose fitted values minimize the residual sum of squares.
+The [Provo measurement dossier](regression-models.qmd#provo-word-position-data) defines each response as a reader-aggregated mean log first-fixation duration. The regression specifies a straight-line conditional mean for those summaries. We now need an estimation rule. **Ordinary least squares (OLS)** chooses the coefficients whose fitted values minimize the residual sum of squares. This is the squared-error rule introduced for the observed sample; the [maximum-likelihood connection](../statistical-inference/maximum-likelihood.qmd) comes after the minimizer is derived.
+
+We first derive the squared-error objective and its minimizer, then compute the Provo estimate and reconnect the resulting rule to its sampling assumptions.
 
 ## From discrepancies to an objective
 
-For position $i$,
+For candidate coefficients $b_0$ and $b_1$, define
 
 $$
-\widehat y_i=\beta_0+\beta_1x_i
+\widetilde y_i(b_0,b_1)=b_0+b_1x_i
 $$
 
 and
 
 $$
-e_i=y_i-\widehat y_i.
+e_i(b_0,b_1)=y_i-\widetilde y_i(b_0,b_1).
 $$
 
 The OLS objective is
 
 $$
-\operatorname{SSE}(\beta_0,\beta_1)
+Q(b_0,b_1)
 =
 \sum_{i=1}^n
-\left(y_i-\beta_0-\beta_1x_i\right)^2.
+\left(y_i-b_0-b_1x_i\right)^2.
 $$
 
-Differentiating with respect to the coefficients and setting both derivatives to zero gives
+Differentiate one coefficient at a time:
+
+$$
+\frac{\partial Q}{\partial b_0}
+=-2\sum_i(y_i-b_0-b_1x_i),
+$$
+
+$$
+\frac{\partial Q}{\partial b_1}
+=-2\sum_i x_i(y_i-b_0-b_1x_i).
+$$
+
+At the minimizer both derivatives are zero. The first normal equation gives
+
+$$
+\sum_i y_i=n\widehat\beta_0+widehat\beta_1\sum_i x_i,
+$$
+
+so
+
+$$
+\widehat\beta_0=\overline y-\widehat\beta_1\overline x.
+$$
+
+Substitute this expression into the second normal equation:
+
+$$
+0
+=
+\sum_i x_i
+\left[
+(y_i-\overline y)
+-\widehat\beta_1(x_i-\overline x)
+\right].
+$$
+
+Because the centered terms sum to zero, this is equivalent to
+
+$$
+\sum_i(x_i-\overline x)(y_i-\overline y)
+=
+\widehat\beta_1
+\sum_i(x_i-\overline x)^2.
+$$
+
+Thus
 
 $$
 \widehat\beta_1
@@ -41,11 +88,7 @@ $$
 {\sum_i(x_i-\overline x)^2}
 $$
 
-and
-
-$$
-\widehat\beta_0=\overline y-\widehat\beta_1\overline x.
-$$
+Before sampling, $\widehat\beta_1(\mathbf Y)$ is an estimator: a random function of the response vector. Once the observed vector $\mathbf y$ is inserted, $\widehat\beta_1(\mathbf y)$ is the numerical estimate printed below. The distinction follows the [estimator terminology](../statistical-inference/properties-of-estimators.qmd).
 
 ## Computing the Provo regression estimate
 
@@ -81,7 +124,11 @@ data.frame(
 )
 ```
 
+The code implements the final two formulas directly: `sum((x-x_bar)*(y-y_bar))` is the centered cross-product, `sum((x-x_bar)^2)` is centered predictor variation, and the intercept then forces the fitted line through $(\overline x,\overline y)$.
+
 The fitted slope is `r sprintf("%.6f", slope_by_hand)` log milliseconds per bit. Squaring makes large vertical discrepancies count more heavily, which is one reason a few unusual responses may affect the fit.
+
+Squared error is plausible when positive and negative deviations on the modeled scale should receive the same penalty and larger deviations should matter increasingly. It is not forced by the eye-tracking measurement. A heavy-tailed response model or absolute loss would reduce the relative influence of unusually large discrepancies.
 
 If
 
@@ -131,7 +178,7 @@ ggplot(plot_data, aes(cloze_surprisal_bits, mean_log_ffd)) +
 
 OLS estimates the best line under its squared-error criterion. It does not establish that the line is an adequate description, nor does it account for the passage grouping. Those questions require uncertainty calculations and diagnostics.
 
-## Check your understanding
+## Recap and check your understanding
 
 1. Which quantity does OLS minimize?
 2. Why does the slope contain cross-products of centered $x$ and $y$?

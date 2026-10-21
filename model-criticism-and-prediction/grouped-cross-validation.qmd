@@ -1,10 +1,276 @@
 ---
 title: "Grouped cross-validation"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The [cross-validation page](cross-validation.qmd) placed response rows into random folds. The same reader and story consequently occurred in both training and test data. [**Grouped $K$-fold cross-validation**](https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation-iterators-for-grouped-data) instead assigns every row from a group to the same fold.
 
-**Available Wednesday, October 14, 2026.**
+The [Natural Stories dossier](prediction-targets.qmd#natural-stories-measurement-dossier) fixed participant and story as two candidate grouping units. Holding out participants evaluates new readers of the represented stories. Holding out a story evaluates one omitted member of the ten construction-enriched texts.
+
+We first construct folds that keep groups intact, then compare participant-held-out and story-held-out targets, return losses to the units receiving equal weight, and finally inspect leakage and the limits imposed by the available groups.
+
+## Constructing grouped folds
+
+Let $g(i)$ be the group containing observation $i$. Grouped validation requires
+
+$$
+g(i)=g(j)
+\quad\Longrightarrow\quad
+\operatorname{fold}(i)=\operatorname{fold}(j).
+$$
+
+The group controls both the split and the interpretation. Moving story rows together removes its sentences and word positions automatically; splitting sentences cannot evaluate an omitted story if other sentences from the same story remain in training.
+
+## Participant and story validation targets {#participant-and-story-validation-targets}
+
+The code fits the same population regression under two grouped designs. Their
+[validation-target specifications](index.qmd#validation-target-specification) are:
+
+| decision | participant design | story design |
+|:--|:--|:--|
+| split unit | participant | story |
+| primary displayed score unit | computational fold | story |
+| available information | lexical predictors and represented stories | lexical predictors and represented participants |
+| refit inside fold | predictor moments and coefficients | predictor moments and coefficients |
+| transfer target | similarly sampled readers of these stories | another omission among these ten enriched stories |
+
+Participants receive five frozen folds. Five is a computational compromise that
+keeps about four fifths of the readers in each training fit. The shuffled round-robin
+assignment balances participant counts to within one, but it is not type-balanced:
+the prepared table supplies no participant stratum used by this algorithm. Stories
+use leave-one-story-out validation because the scientific unit and the ten available
+groups already define a complete rotation. Combining stories into five folds would
+confound which omission produced a loss difference.
+
+For the story comparison, a base model includes length and frequency, while an
+expanded model adds GPT-3 surprisal. Each training fold estimates its own predictor
+moments.
+
+```{r}
+#| label: natural-grouped-cv
+#| message: false
+#| warning: false
+
+natural_all <- readRDS(
+  "data/natural-stories/natural-stories-corrected.rds"
+)
+keep <- with(
+  natural_all,
+  is.finite(log_rt) & is.finite(word_length) &
+    is.finite(log_unigram_frequency) & is.finite(gpt3_surprisal)
+)
+natural <- natural_all[keep, c(
+  "participant_id", "story_id", "log_rt", "word_length",
+  "log_unigram_frequency", "gpt3_surprisal"
+)]
+
+make_group_folds <- function(group, folds, seed) {
+  units <- sort(unique(as.character(group)))
+  set.seed(seed)
+  shuffled <- sample(units, length(units))
+  assignment <- rep(seq_len(folds), length.out = length(shuffled))
+  lookup <- setNames(assignment, shuffled)
+  unname(lookup[as.character(group)])
+}
+
+participant_fold <- make_group_folds(
+  natural$participant_id, folds = 5L, seed = 20261101
+)
+story_fold <- natural$story_id
+
+stopifnot(all(tapply(
+  participant_fold, natural$participant_id,
+  function(x) length(unique(x))
+) == 1))
+stopifnot(all(tapply(
+  story_fold, natural$story_id,
+  function(x) length(unique(x))
+) == 1))
+
+cross_validated_prediction <- function(data, fold, predictors) {
+  prediction <- rep(NA_real_, nrow(data))
+  for (current in sort(unique(fold))) {
+    test <- fold == current
+    train <- !test
+    training_mean <- vapply(
+      data[train, predictors, drop = FALSE], mean, numeric(1)
+    )
+    training_sd <- vapply(
+      data[train, predictors, drop = FALSE], sd, numeric(1)
+    )
+    training_matrix <- sweep(
+      as.matrix(data[train, predictors]), 2, training_mean, "-"
+    )
+    training_matrix <- sweep(training_matrix, 2, training_sd, "/")
+    test_matrix <- sweep(
+      as.matrix(data[test, predictors]), 2, training_mean, "-"
+    )
+    test_matrix <- sweep(test_matrix, 2, training_sd, "/")
+    fit <- lm.fit(
+      cbind("(Intercept)" = 1, training_matrix), data$log_rt[train]
+    )
+    prediction[test] <- drop(
+      cbind("(Intercept)" = 1, test_matrix) %*% fit$coefficients
+    )
+  }
+  stopifnot(all(is.finite(prediction)))
+  prediction
+}
+
+base_predictors <- c("word_length", "log_unigram_frequency")
+expanded_predictors <- c(base_predictors, "gpt3_surprisal")
+
+participant_prediction <- cross_validated_prediction(
+  natural, participant_fold, expanded_predictors
+)
+story_prediction <- cross_validated_prediction(
+  natural, story_fold, expanded_predictors
+)
+story_base_prediction <- cross_validated_prediction(
+  natural, story_fold, base_predictors
+)
+
+score_folds <- function(observed, prediction, fold, target) {
+  do.call(rbind, lapply(sort(unique(fold)), function(current) {
+    rows <- fold == current
+    error <- observed[rows] - prediction[rows]
+    data.frame(
+      target = target,
+      fold = as.character(current),
+      held_out_rows = sum(rows),
+      rmse_log_rt = sqrt(mean(error^2)),
+      mae_log_rt = mean(abs(error))
+    )
+  }))
+}
+
+grouped_scores <- rbind(
+  score_folds(
+    natural$log_rt, participant_prediction, participant_fold,
+    "Participant"
+  ),
+  score_folds(
+    natural$log_rt, story_prediction, story_fold,
+    "Story"
+  )
+)
+
+story_comparison <- do.call(rbind, lapply(
+  sort(unique(natural$story_id)),
+  function(story) {
+    rows <- natural$story_id == story
+    base_error <- natural$log_rt[rows] - story_base_prediction[rows]
+    expanded_error <- natural$log_rt[rows] - story_prediction[rows]
+    data.frame(
+      story_id = story,
+      n_rows = sum(rows),
+      base_rmse = sqrt(mean(base_error^2)),
+      expanded_rmse = sqrt(mean(expanded_error^2)),
+      base_minus_expanded_rmse =
+        sqrt(mean(base_error^2)) - sqrt(mean(expanded_error^2))
+    )
+  }
+))
+
+grouped_scores
+story_comparison
+
+ggplot2::ggplot(
+  grouped_scores,
+  ggplot2::aes(target, rmse_log_rt)
+) +
+  ggplot2::geom_point(
+    position = ggplot2::position_jitter(width = 0.08, height = 0),
+    size = 1.7,
+      alpha = 0.75, # dqr-allow: algorithm-setting
+    color = "grey25"
+  ) +
+  ggplot2::labs(
+    x = "Held-out unit",
+    y = "Fold RMSE (log reading time)"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+
+ggplot2::ggplot(
+  story_comparison,
+  ggplot2::aes(factor(story_id), base_minus_expanded_rmse)
+) +
+  ggplot2::geom_hline(
+    yintercept = 0, color = "grey55", linewidth = 0.45
+  ) +
+  ggplot2::geom_point(size = 1.8, color = "#2B6CB0") +
+  ggplot2::labs(
+    x = "Held-out story",
+    y = "RMSE reduction after adding GPT-3 surprisal"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+Participant-fold RMSE ranges from `r sprintf("%.4f", min(grouped_scores$rmse_log_rt[grouped_scores$target == "Participant"]))` to `r sprintf("%.4f", max(grouped_scores$rmse_log_rt[grouped_scores$target == "Participant"]))`. Story-fold RMSE ranges from `r sprintf("%.4f", min(grouped_scores$rmse_log_rt[grouped_scores$target == "Story"]))` to `r sprintf("%.4f", max(grouped_scores$rmse_log_rt[grouped_scores$target == "Story"]))`. These ranges should not be treated as a difficulty ranking because the held-out groups differ in size and composition. They show that predictive performance is a property of the validation target.
+
+The plotted ranges are descriptive variation across these particular folds. They are
+not confidence intervals: folds reuse training observations, participant folds are
+arbitrary containers, and the ten story points exhaust the available enriched
+stories rather than forming independent draws supplied by the validation algorithm.
+
+Adding surprisal lowers leave-one-story-out RMSE for stories `r paste(story_comparison$story_id[story_comparison$base_minus_expanded_rmse > 0], collapse = ", ")` and raises it for stories `r paste(story_comparison$story_id[story_comparison$base_minus_expanded_rmse < 0], collapse = ", ")`. The changes range from `r sprintf("%.6f", min(story_comparison$base_minus_expanded_rmse))` to `r sprintf("%.6f", max(story_comparison$base_minus_expanded_rmse))` log-time units. Showing all story points prevents a pooled claim from concealing this heterogeneity.
+
+## Group-weighted scores
+
+For group $g$ with $n_g$ responses, define
+
+$$
+\overline L_g
+=
+\frac{1}{n_g}
+\sum_{i:g(i)=g}L(y_i,\widehat y_i).
+$$
+
+A group-weighted score is
+
+$$
+\frac{1}{G}\sum_{g=1}^G\overline L_g.
+$$
+
+Each group receives equal weight. A row-weighted score instead pools all responses before averaging. The latter may be useful for corpus prediction, but its uncertainty cannot treat positions from one story as independent story transfers.
+
+For a concrete unequal-size case, suppose Group A has one response with loss 9 and
+Group B has nine responses, each with loss 1. The row-weighted loss is
+$(9+9\times1)/10=1.8$. The group-weighted loss is
+$[9+(9\times1)/9]/2=5$. Neither calculation is erroneous. The first targets a
+random response row; the second targets a random group followed by a response within
+that group.
+
+## Group leakage and limits
+
+Moving rows together does not prevent leakage from a response-derived predictor constructed before the split. A word-position mean reading time computed across all participants would contain the test participants' responses. For that reason, this analysis retains participant-level response rows and fits predictor transformations inside folds.
+
+The participant model remains a population regression without participant or story effects. It is designed to expose the difference among targets, not to reproduce the mixed-effects validation in Futrell et al. The story results concern ten omitted enriched texts. They do not license generalization to arbitrary English stories.
+
+## Checking the grouping variable
+
+1. Why is a sentence split insufficient for an omitted-story target?
+2. Which assertion verifies that participants do not cross folds?
+3. Why can row-weighted and group-weighted losses answer different questions?
+4. What does the story-difference plot show that a pooled RMSE change would hide?
+
+<details>
+<summary>Answers</summary>
+
+1. Other sentences from the same story would remain in training.
+2. The first `stopifnot()` checks that every participant has exactly one fold label.
+3. Row weighting favors groups with more retained responses; group weighting gives
+   every group equal influence.
+4. It shows which particular story omissions improve or worsen after surprisal is
+   added, rather than concealing that heterogeneity in one pooled score.
+
+</details>
+
+## Recap and forward link
+
+1. The grouping variable determines which empirical unit is absent.
+2. A computational fold and a score unit need not be the same object.
+3. Row- and group-weighted losses target different sampling schemes.
+
+The [previous page](cross-validation.qmd#the-validation-unit) evaluated new
+rows from represented readers and stories. The [next page](comparing-predictive-loss.qmd#megaorientation-measurement-dossier)
+switches to MegaOrientation and compares ordinal models on entirely unseen verbs.

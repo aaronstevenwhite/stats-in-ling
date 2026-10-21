@@ -1,10 +1,195 @@
 ---
 title: "What must be new at prediction time"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The earlier page on [populations and samples](../statistical-inference/populations-and-samples.qmd) required an inferential claim to specify the population represented by a sample. Predictive evaluation requires a related decision. We must say which responses were unavailable during fitting and what information is available when those responses are predicted. The [module introduction](index.qmd) describes this choice of held-out unit.
 
-**Available Wednesday, October 14, 2026.**
+[**Out-of-sample prediction**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) predicts responses that did not contribute to fitting the model. Out-of-sample can mean a new response row, a new reader, or a new text; the distinction must be stated.
+
+We first reconstruct the Natural Stories measurement process, then distinguish row-, participant-, and story-level prediction targets, and finally specify the information available at prediction time and the linguistic theory that selects the relevant holdout.
+
+## Natural Stories measurement dossier {#natural-stories-measurement-dossier}
+
+We use the corrected [Natural Stories release](https://github.com/languageMIT/naturalstories/tree/4700daad696e942f5aba23c957a7423d0de66612), introduced and validated by [Futrell et al. (2021)](https://doi.org/10.1007/s10579-020-09503-7), throughout the first six pages of this unit. The corpus contains English stories enriched for low-frequency syntactic constructions, self-paced reading times, and aligned lexical annotations. One story opens, “If you were to journey to the North of England,” before describing a valley surrounded by high moors. In a self-paced reading trial, a reader reveals this text one region at a time by pressing a button. The latency between two presses is the reading time assigned to the newly revealed word.
+
+The corrected release fixes a one-position displacement: before the correction, a
+latency could be attached to the neighboring word rather than the word whose button
+press ended that interval. Its preprocessing excludes reader-story passes with fewer
+than five correct comprehension answers and reading times outside the release's
+100-to-3,000-ms window. These source-defined rules aim to remove poorly attended
+passes and implausibly short or long button intervals. They also narrow the target to
+retained trials; the notes do not estimate what the excluded responses would have
+been.
+
+One retained row records participant `A3QJPB0NZU5PY1` reading *you* at Story 1,
+sentence 1, position 2. The observed reading time is 924 ms, so
+`log_rt = log(924) = 6.828712`. The remaining focal columns mean:
+
+- `word_length`: the number of characters in the displayed word, here 3;
+- `log_unigram_frequency`: the natural logarithm of the released Google Books
+  unigram count, here `log(578117187) = 20.17529`; and
+- `gpt3_surprisal`: the negative sum of the released GPT-3 token log probabilities <!-- dqr-allow: empirical-answer -->
+  aligned to this experiment word, here 0.7762714.
+
+This gives the raw-to-modeled ladder used below: a button interval becomes one
+participant-by-position `rt_ms`; source filtering retains the trial; a natural log
+produces `log_rt`; lexical and contextual annotations are joined by story position;
+and complete focal rows enter the regression. The row remains nested within a
+participant and a story. No averaging removes that dependence on this page.
+
+The code below constructs the prediction table from the tracked release. One row is one retained button latency for one reader at one word position. It is a self-paced reading time, not an eye fixation.
+
+```{r}
+#| label: natural-targets
+#| message: false
+#| warning: false
+
+natural_all <- readRDS(
+  "data/natural-stories/natural-stories-corrected.rds"
+)
+natural_all$row_id <- seq_len(nrow(natural_all))
+
+complete_prediction_row <- with(
+  natural_all,
+  is.finite(log_rt) & is.finite(word_length) &
+    is.finite(log_unigram_frequency) & is.finite(gpt3_surprisal)
+)
+
+natural <- natural_all[complete_prediction_row, c(
+  "row_id", "participant_id", "story_id", "sentence_id",
+  "word_position", "word", "word_length", "log_rt",
+  "log_unigram_frequency", "gpt3_surprisal"
+)]
+natural$position_id <- paste(
+  natural$story_id, natural$word_position, sep = ":"
+)
+
+target_inventory <- data.frame(
+  object = c(
+    "retained response row", "participant", "story", "sentence",
+    "story-position", "participant-story pass"
+  ),
+  count = c(
+    nrow(natural),
+    length(unique(natural$participant_id)),
+    length(unique(natural$story_id)),
+    length(unique(natural$sentence_id)),
+    length(unique(natural$position_id)),
+    length(unique(paste(
+      natural$participant_id, natural$story_id, sep = ":"
+    )))
+  )
+)
+
+participant_means <- aggregate(
+  log_rt ~ participant_id, data = natural, FUN = mean
+)
+names(participant_means) <- c("group_id", "mean_log_rt")
+participant_means$unit <- "Participant"
+
+story_means <- aggregate(
+  log_rt ~ story_id, data = natural, FUN = mean
+)
+names(story_means) <- c("group_id", "mean_log_rt")
+story_means$unit <- "Story"
+
+target_variation <- rbind(participant_means, story_means)
+target_variation$rank_within_unit <- ave(
+  target_variation$mean_log_rt,
+  target_variation$unit,
+  FUN = function(x) rank(x, ties.method = "first")
+)
+
+target_inventory
+
+ggplot2::ggplot(
+  target_variation,
+  ggplot2::aes(rank_within_unit, mean_log_rt)
+) +
+  ggplot2::geom_point(size = 1.2, alpha = 0.7, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~ unit, scales = "free_x") +
+  ggplot2::labs(
+    x = "Group rank by mean response",
+    y = "Mean log reading time"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The prepared release has `r format(nrow(natural_all), big.mark = ",")` response rows from `r length(unique(natural_all$participant_id))` participants and `r length(unique(natural_all$story_id))` stories. Requiring finite word length, log unigram frequency, and GPT-3 surprisal retains `r format(nrow(natural), big.mark = ",")` rows at `r format(length(unique(natural$position_id)), big.mark = ",")` contextual word positions. The figure shows why a response row, participant, and story are not interchangeable units: the participant and story means vary, but there are only `r nrow(story_means)` story-level values.
+
+## Three prediction targets {#three-prediction-targets}
+
+All three procedures used later fit the population regression
+
+$$
+\log RT_i
+=
+\beta_0+\beta_1z(L_i)+\beta_2z(F_i)+\beta_3z(S_i)+\epsilon_i,
+$$
+
+where $L_i$ is word length, $F_i$ is log unigram frequency, and $S_i$ is released GPT-3 surprisal. What changes is the **prediction unit**, the object excluded from training.
+
+Before the data are observed, $Y_i$ denotes a random log reading time. After the
+button interval is recorded, $y_i$ is its realized value. A fitted procedure maps the
+available predictor vector $x_i=(L_i,F_i,S_i)$ to the estimate
+$\widehat f_{-g}(x_i)$, where $g$ names the held-out row or group. The hat marks an
+estimate learned from training data; it is not a new random response.
+
+| target | absent from fitting | still represented in fitting |
+|:--|:--|:--|
+| new response row | that latency | the reader and story |
+| new participant | every latency from that reader | the ten stories |
+| omitted enriched story | every latency from that story | the reader population represented by the other stories |
+
+These separations ask different questions. A random row split evaluates another response from the represented collection of readers and stories. A participant split evaluates a reader absent from fitting. A story split evaluates one omitted member of these deliberately enriched texts.
+
+The story target needs especially narrow wording. The corpus supplies `r nrow(story_means)` opportunities to inspect an omitted story, not `r format(nrow(natural), big.mark = ",")` independent story transfers. Leave-one-story-out results consequently describe these ten omissions; they do not estimate performance for an unrestricted population of English texts.
+
+## The prediction information set
+
+Holding out a group does not by itself determine which information about it may be used. In these analyses, a held-out row keeps its word length, frequency, and surprisal because those predictors are available at prediction time. A held-out participant contributes no reading-time response to fitting. A held-out story contributes its lexical predictors but no response from any of its positions.
+
+The preprocessing rule is part of the information set. Each predictor mean and standard deviation is estimated from training rows and then applied to test rows. A full-data center would let held-out predictor values affect the training representation. A separately estimated test center would place the test observations in a different coordinate system.
+
+The [validation-target specification](index.qmd#validation-target-specification)
+keeps five choices separate. In the present sequence, the split unit is a response
+row, participant, or story; the score unit is declared on the loss page; lexical
+predictors remain available; centers, scales, and coefficients are refit inside the
+training fold; and transfer is limited to the represented readers or ten enriched
+stories named by the chosen design.
+
+## Theory determines what should be held out
+
+The most demanding split is not automatically the right one. A reading model used for an already represented reader may reasonably target another response row. A claim about transfer across readers requires participant folds. A claim about connected text requires story folds and enough story-level replication to support it.
+
+Successful prediction also does not establish a processing mechanism. Word surprisal can improve a held-out score without showing that readers internally represent the fitted language model's probabilities. Predictive evaluation establishes performance for a stated response, information set, split, and population; the mechanism requires additional evidence.
+
+## Checking the target
+
+1. Which Natural Stories target keeps the same reader and story represented during fitting?
+2. What must move together when the target is a reader absent during fitting?
+3. Why do the retained response rows not provide that many independent evaluations of an omitted story?
+4. Which predictor transformations must be estimated without the held-out responses?
+
+<details>
+<summary>Answers</summary>
+
+1. A random response-row target keeps both its reader and story represented.
+2. Every response from that reader must move into the same held-out fold.
+3. The rows are repeated measurements within only ten stories, so they do not create
+   additional independent story omissions.
+4. Predictor centers and standard deviations, together with any response-guided
+   transformation or feature choice, must be learned from training rows only.
+
+</details>
+
+## Recap and forward link
+
+1. One row is a retained button latency for one reader and word position.
+2. *Out of sample* has no unique group meaning.
+3. The information retained about a held-out unit is part of the prediction target.
+
+The [previous page](index.qmd#validation-target-specification) names the full VTS;
+the [next page](training-and-test-data.qmd#participant-held-out-validation-target)
+implements one participant-held-out split and makes its training-only preprocessing
+visible.

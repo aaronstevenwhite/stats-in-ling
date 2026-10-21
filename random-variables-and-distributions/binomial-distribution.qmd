@@ -7,11 +7,18 @@ execute:
   message: false
 ---
 
-A Bernoulli variable records whether one Turkish interrogative argument is annotated as an object. If $n$ independent opportunities had the same object probability $p$, their sum would follow a **binomial distribution**.
+A Bernoulli variable records whether one Turkish interrogative argument is annotated as an object. If $n$ independent opportunities had the same object probability $p$, their sum would follow a [**binomial distribution**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html).
+
+We derive the count mass function from that repeated-draw process, calibrate it to the observed object rate, and then examine why sentence clustering makes the resulting corpus comparison only a reference model.
 
 ## Definition
 
 Let $O_1,\ldots,O_n\overset{\text{iid}}{\sim}\operatorname{Bernoulli}(p)$ and $Y=\sum_{i=1}^n O_i$. Then
+
+This statement contains four assumptions: the opportunity count $n$ is fixed
+in advance; each trial has exactly two outcomes; all trials share one success
+probability $p$; and the trial indicators are independent. Equal marginal
+probabilities without independence are not enough to obtain the binomial PMF.
 
 $$
 Y\sim\operatorname{Binomial}(n,p)
@@ -49,6 +56,11 @@ $$
 $$
 
 The variance equality uses independence; the expectation equality does not. The support is $\{0,\ldots,n\}$, and $\binom ny$ counts which $y$ of the $n$ opportunities are successes.
+
+For any one sequence with $y$ successes and $n-y$ failures, independence gives
+probability $p^y(1-p)^{n-y}$. There are
+$\binom ny=n!/[y!(n-y)!]$ choices of the $y$ success positions. These sequences
+are disjoint, so adding their equal masses yields the displayed PMF.
 
 ## A corpus-calibrated reference
 
@@ -92,6 +104,11 @@ data.frame(
 
 The plug-in reference has expectation `r sprintf("%.3f", reference_mean)` object tokens and variance `r sprintf("%.3f", reference_variance)` tokens squared. The equality between the fitted expectation and observed count is not a discovery: fitting $p=Y/n$ forces $n\widehat p=Y$.
 
+The code maps `n_opportunities` to fixed $n$, `p_hat` to $\widehat p$, and
+`object_count` to possible random values of $Y$. `dbinom()` evaluates the
+formula across those values. The vertical line is the realized count $y=116$,
+not another draw from the fitted reference.
+
 ```{r}
 #| label: plot-ud-binomial
 #| fig-cap: "Binomial reference distribution calibrated to the Turkish BOUN object proportion. The vertical line marks the observed count."
@@ -107,12 +124,20 @@ ggplot(binomial_reference, aes(object_count, probability)) +
 
 A potential worry is that the formula appears to model the corpus design. It does not. The BOUN extract contains tokens nested within sampled sentences, and its opportunity count was observed rather than fixed in repeated experiments. Thus the curve is a data-calibrated independent-trial reference. It shows the distribution implied by the binomial assumptions and prepares us to recognize when those assumptions fail.
 
+There is also an assessment limit: the same observed count determines
+$\widehat p$ and is then placed at the fitted mean. That agreement cannot test
+the model. Assessing fit would require replicated counts at a justified unit,
+held-out data, or structure beyond the one sufficient statistic used for
+fitting.
+
 ## Check your understanding
 
 1. Compute the reference standard deviation from `reference_variance`.
 2. Use `pbinom()` to calculate the reference probability of a count no greater than the observed count.
 3. Why does fitting $p$ to the same count guarantee that the fitted expectation equals that count?
 4. Name the grouping identifier that prevents a literal iid interpretation here.
+5. Why does the vertical line at the fitted mean provide no evidence that the
+   binomial variance is appropriate?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -121,7 +146,15 @@ A potential worry is that the formula appears to model the corpus design. It doe
 2. The fitted reference probability of no more than 116 objects is `pbinom(116, 167, 116/167) = 0.529136`. <!-- dqr-allow: empirical-answer -->
 3. Because $\widehat p=x/n$, the fitted expectation is $\mathbb{E}[X]=n\widehat p=n(x/n)=x=116$. <!-- dqr-allow: empirical-answer -->
 4. The repeated `sentence_id` values, 167 tokens from 159 sentences, prevent a literal iid interpretation of the token trials. <!-- dqr-allow: empirical-answer -->
+5. The observed count was used to set $\widehat p=y/n$, which algebraically
+   forces the fitted mean to equal $y$; it provides no independent information
+   about repeated-count variation.
 
 </details>
 
-The [hypergeometric distribution](hypergeometric-distribution.qmd) changes the sampling design from independent draws to sampling without replacement.
+The binomial family assumes a fixed $n$, iid trials, and a constant $p$; its
+combinatorial term counts the possible placements of the successes. But a
+model fitted and assessed with the same single count cannot thereby validate
+its variance. The [hypergeometric
+distribution](hypergeometric-distribution.qmd) next changes the design to
+sampling without replacement.

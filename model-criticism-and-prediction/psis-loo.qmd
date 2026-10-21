@@ -1,10 +1,368 @@
 ---
 title: "Pareto-smoothed importance sampling leave-one-out cross-validation"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The [exact LOO page](leave-one-out-cross-validation.qmd) computed every omitted-position posterior directly under a conjugate Provo model. [**Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)**](https://mc-stan.org/loo/articles/online-only/faq.html) approximates those omitted-data posteriors using draws from the posterior fit to all observations. Because exact values are available here, approximation error becomes observable. We proceed in three steps: first, we derive the inverse-likelihood ratio; second, we show how Pareto smoothing modifies its tail; finally, we compare the approximation with exact LOO on the same Provo positions.
 
-**Available Wednesday, October 14, 2026.**
+## Exact Bayesian leave-one-out prediction
+
+Let $y_{-i}$ contain all responses except $y_i$. Given a factorized likelihood and prior density $f(\theta)$,
+
+$$
+f(\theta\mid y_{-i})
+\propto
+f(\theta)\prod_{j\neq i}f(y_j\mid\theta).
+$$
+
+The exact predictive density is
+
+$$
+f(y_i\mid y_{-i})
+=
+\int f(y_i\mid\theta)f(\theta\mid y_{-i})\,\mathrm d\theta.
+$$
+
+Summing its logarithm gives expected log pointwise predictive density:
+
+$$
+\operatorname{elpd}_{\mathrm{loo}}
+=
+\sum_{i=1}^N\log f(y_i\mid y_{-i}).
+$$
+
+Larger values indicate greater predictive density for the omitted positions.
+
+## Relating the omitted posterior to the full posterior
+
+Given draws $\theta^{(1)},\ldots,\theta^{(S)}$ from
+
+$$
+f(\theta\mid y)
+\propto
+f(\theta)\prod_{j=1}^Nf(y_j\mid\theta),
+$$
+
+removing the $i$th contribution gives
+
+$$
+f(\theta\mid y_{-i})
+\propto
+\frac{f(\theta\mid y)}{f(y_i\mid\theta)}.
+$$
+
+The raw importance ratio is consequently
+
+$$
+r_i^{(s)}\propto\frac{1}{f(y_i\mid\theta^{(s)})}.
+$$
+
+This inverse weighting is both the shortcut and its weakness. A few enormous ratios can make full-posterior draws a poor representation of the omitted posterior.
+
+Normalize the ratios within position $i$:
+
+$$
+w_i^{(s)}
+=
+\frac{r_i^{(s)}}{\sum_{t=1}^S r_i^{(t)}}.
+$$
+
+The importance-sampling estimate of the omitted predictive density is
+
+$$
+\begin{aligned}
+\widehat f(y_i\mid y_{-i})
+&=
+\sum_{s=1}^S w_i^{(s)}f(y_i\mid\theta^{(s)})\\
+&=
+\frac{\sum_s f(y_i\mid\theta^{(s)})/f(y_i\mid\theta^{(s)})}
+{\sum_s 1/f(y_i\mid\theta^{(s)})}\\
+&=
+\left[
+\frac1S\sum_{s=1}^S\frac{1}{f(y_i\mid\theta^{(s)})}
+\right]^{-1}.
+\end{aligned}
+$$
+
+Thus raw importance sampling produces a harmonic-mean form. The same cancellation
+that makes the expression simple makes it sensitive to a draw assigning tiny
+likelihood to $y_i$.
+
+## Pareto-smoothing the importance ratios {#pareto-smoothing-the-importance-ratios}
+
+PSIS orders the raw ratios for position $i$ and treats the largest ratios as a tail
+sample. It fits a generalized Pareto distribution to that tail, replaces the ordered
+extremes with fitted Pareto quantiles, and applies a finite-sample truncation rule so
+one smoothed ratio cannot dominate without bound. The smaller ratios remain
+unchanged. The resulting ratios are normalized and used in the same weighted
+predictive-density calculation.
+
+The fitted tail shape $k$ summarizes how heavy the ratio tail is. In the idealized
+Pareto model, a moment of order $m$ exists only when $k<1/m$: variance requires
+$k<1/2$, while the mean requires $k<1$. The plotted 0.7 line is a practical
+finite-sample warning threshold used by the implementation, not a new moment
+boundary or a data-exclusion rule. A position above it calls for checking exact
+refitting, moment matching, or another validation design.
+
+The [**Pareto $k$ diagnostic**](https://mc-stan.org/loo/reference/pareto-k-diagnostic.html) reports that fitted tail shape for each position. Large $k$ warns about the approximation; it does not establish that an observation is erroneous or should be removed.
+
+## PSIS and exact LOO on the same Provo positions
+
+The code reloads the [Provo position table](likelihood-ratio-tests.qmd#provo-measurement-dossier), reconstructs the fixed study-calibrated priors, draws independently from both conjugate posteriors, and preserves one log-likelihood column per position. It also recomputes exact LOO so the PSIS totals can be checked directly. The [normal-inverse-gamma update](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update) supplies `Vn`, `bn`, `an`, and `dn`; this page reuses those quantities rather than defining a second posterior.
+
+```{r}
+#| label: provo-psis-loo
+#| message: false
+#| warning: false
+
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+y <- provo$mean_log_ffd
+
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+X_linear <- model.matrix(linear_fit)
+X_quadratic <- model.matrix(quadratic_fit)
+
+make_prior <- function(X) {
+  log_bounds <- log(c(80, 800))
+  log_span <- diff(log_bounds)
+  expected_sigma2 <- (log_span / 4)^2
+  list(
+    b0 = c(mean(log_bounds), rep(0, ncol(X) - 1L)),
+    V0 = diag(rep(log_span^2 / expected_sigma2, ncol(X))),
+    a0 = 3,
+    d0 = 2 * expected_sigma2
+  )
+}
+
+nig_posterior <- function(X, y, prior) {
+  V0_inverse <- solve(prior$V0)
+  Vn <- solve(V0_inverse + crossprod(X))
+  bn <- drop(Vn %*% (
+    V0_inverse %*% prior$b0 + crossprod(X, y)
+  ))
+  an <- prior$a0 + length(y) / 2
+  dn <- as.numeric(
+    prior$d0 + 0.5 * (
+      crossprod(y) +
+        t(prior$b0) %*% V0_inverse %*% prior$b0 -
+        t(bn) %*% solve(Vn) %*% bn
+    )
+  )
+  list(Vn = Vn, bn = bn, an = an, dn = dn)
+}
+
+draw_nig <- function(posterior, draws, seed) {
+  set.seed(seed)
+  sigma2 <- 1 / rgamma(
+    draws, shape = posterior$an, rate = posterior$dn
+  )
+  standard_normal <- matrix(
+    rnorm(draws * length(posterior$bn)), nrow = draws
+  )
+  beta <- matrix(
+    posterior$bn,
+    nrow = draws,
+    ncol = length(posterior$bn),
+    byrow = TRUE
+  ) + sweep(
+    standard_normal %*% chol(posterior$Vn),
+    1,
+    sqrt(sigma2),
+    "*"
+  )
+  list(beta = beta, sigma2 = sigma2)
+}
+
+log_likelihood_matrix <- function(X, y, draws) {
+  mu <- draws$beta %*% t(X)
+  standardized <- sweep(mu, 2, y, "-")
+  standardized <- sweep(
+    standardized, 1, sqrt(draws$sigma2), "/"
+  )
+  -0.5 * log(2 * pi) - 0.5 * log(draws$sigma2) -
+    0.5 * standardized^2
+}
+
+exact_nig_loo <- function(X, y, prior) {
+  n <- nrow(X)
+  V0_inverse <- solve(prior$V0)
+  full_xtx <- crossprod(X)
+  full_xty <- crossprod(X, y)
+  full_yty <- sum(y^2)
+  log_density <- numeric(n)
+
+  for (i in seq_len(n)) {
+    xi <- matrix(X[i, ], nrow = 1L)
+    yi <- y[i]
+    Vn <- solve(V0_inverse + full_xtx - crossprod(xi))
+    bn <- drop(Vn %*% (
+      V0_inverse %*% prior$b0 + full_xty - drop(xi) * yi
+    ))
+    an <- prior$a0 + (n - 1L) / 2
+    dn <- as.numeric(
+      prior$d0 + 0.5 * (
+        full_yty - yi^2 +
+          t(prior$b0) %*% V0_inverse %*% prior$b0 -
+          t(bn) %*% solve(Vn) %*% bn
+      )
+    )
+    location <- drop(xi %*% bn)
+    scale <- sqrt(
+      (dn / an) * (1 + drop(xi %*% Vn %*% t(xi)))
+    )
+    degrees <- 2 * an
+    log_density[i] <-
+      dt((yi - location) / scale, df = degrees, log = TRUE) -
+      log(scale)
+  }
+  log_density
+}
+
+linear_prior <- make_prior(X_linear)
+quadratic_prior <- make_prior(X_quadratic)
+linear_posterior <- nig_posterior(X_linear, y, linear_prior)
+quadratic_posterior <- nig_posterior(
+  X_quadratic, y, quadratic_prior
+)
+
+posterior_draws <- 4000L
+linear_draws <- draw_nig(
+  linear_posterior, posterior_draws, seed = 20261104
+)
+quadratic_draws <- draw_nig(
+  quadratic_posterior, posterior_draws, seed = 20261105
+)
+linear_log_lik <- log_likelihood_matrix(
+  X_linear, y, linear_draws
+)
+quadratic_log_lik <- log_likelihood_matrix(
+  X_quadratic, y, quadratic_draws
+)
+
+linear_psis <- loo::loo(
+  linear_log_lik, r_eff = rep(1, ncol(linear_log_lik))
+)
+quadratic_psis <- loo::loo(
+  quadratic_log_lik,
+  r_eff = rep(1, ncol(quadratic_log_lik))
+)
+linear_k <- loo::pareto_k_values(linear_psis)
+quadratic_k <- loo::pareto_k_values(quadratic_psis)
+
+linear_exact <- sum(exact_nig_loo(X_linear, y, linear_prior))
+quadratic_exact <- sum(exact_nig_loo(
+  X_quadratic, y, quadratic_prior
+))
+
+psis_summary <- data.frame(
+  model = c("Linear", "Quadratic"),
+  psis_elpd_loo = c(
+    linear_psis$estimates["elpd_loo", "Estimate"],
+    quadratic_psis$estimates["elpd_loo", "Estimate"]
+  ),
+  exact_elpd_loo = c(linear_exact, quadratic_exact),
+  max_pareto_k = c(max(linear_k), max(quadratic_k)),
+  positions_k_over_threshold = c(
+    sum(linear_k > 0.7), sum(quadratic_k > 0.7)
+  )
+)
+psis_summary$psis_minus_exact <- with(
+  psis_summary, psis_elpd_loo - exact_elpd_loo
+)
+psis_summary
+
+pareto_data <- rbind(
+  data.frame(
+    surprisal = provo$cloze_surprisal_bits,
+    model = "Linear",
+    pareto_k = linear_k
+  ),
+  data.frame(
+    surprisal = provo$cloze_surprisal_bits,
+    model = "Quadratic",
+    pareto_k = quadratic_k
+  )
+)
+
+ggplot2::ggplot(
+  pareto_data,
+  ggplot2::aes(surprisal, pareto_k)
+) +
+  ggplot2::geom_hline(
+    yintercept = 0.7,
+    color = "grey55",
+    linewidth = 0.45,
+    linetype = 2
+  ) +
+  ggplot2::geom_point(size = 0.7, alpha = 0.35, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~ model) +
+  ggplot2::labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Pareto k"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The independent posterior draws make the relative effective sample size one for every position. PSIS-LOO gives ELPD `r sprintf("%.3f", psis_summary$psis_elpd_loo[psis_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", psis_summary$psis_elpd_loo[psis_summary$model == "Quadratic"])` for the quadratic model. The differences from exact conjugate LOO are `r sprintf("%.3f", psis_summary$psis_minus_exact[psis_summary$model == "Linear"])` and `r sprintf("%.3f", psis_summary$psis_minus_exact[psis_summary$model == "Quadratic"])`.
+
+The 4,000 draws are a computational accuracy choice: more independent draws reduce
+Monte Carlo variation in the log-mean calculations, while costing memory and time.
+They are not 4,000 new Provo observations. Because `draw_nig()` samples directly and
+independently from the conjugate posterior rather than producing an autocorrelated
+Markov chain, the relative effective sample-size input is `r_eff = 1` for each
+position.
+
+Maximum Pareto $k$ is `r sprintf("%.3f", psis_summary$max_pareto_k[psis_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", psis_summary$max_pareto_k[psis_summary$model == "Quadratic"])` for the quadratic model. `r sum(psis_summary$positions_k_over_threshold)` positions exceed the plotted reference value. Thus the approximation is accurate for this fitted pair, and the exact calculation provides the evidence for saying so.
+
+The formula-to-code map is: each column of `linear_log_lik` or
+`quadratic_log_lik` contains $\log f(y_i\mid\theta^{(s)})$ across draws; `loo::loo()`
+constructs and smooths the inverse-likelihood ratios; `pareto_k_values()` returns one
+tail diagnostic per column; and `exact_nig_loo()` provides the target against which
+the approximation is checked.
+
+## The pointwise likelihood fixes the target
+
+The log-likelihood matrices have `r ncol(linear_log_lik)` position columns and `r nrow(linear_log_lik)` posterior-draw rows. A vector of total log likelihoods cannot support omission because it discards the pointwise contributions.
+
+Default PSIS-LOO omits one such contribution. Here that contribution is one aggregated content-word position. Other positions from the same passage remain in the full posterior, so summing position scores by passage cannot create leave-one-passage-out validation. A new-passage target would require a grouped likelihood and validation design from the start.
+
+When $k$ is large, responses include exact refitting, moment matching, or a different validation design. Removing the position solely because it is difficult would confuse a computational warning with a data-quality judgment.
+
+## Checking the approximation
+
+1. Why are raw importance ratios inversely related to the held-out likelihood contribution?
+2. What does Pareto $k$ diagnose?
+3. Why is exact LOO available as a decisive check in this example?
+4. Which prediction target is fixed by one column of the log-likelihood matrix?
+
+<details>
+<summary>Answers</summary>
+
+1. Removing $y_i$ divides the full posterior kernel by its likelihood contribution.
+2. It diagnoses whether the importance-ratio tail is too heavy for stable
+   full-posterior reweighting.
+3. Conjugacy supplies the omitted-position Student-$t$ density without numerical
+   refitting.
+4. One aggregated content-word position, conditional on all remaining positions.
+
+</details>
+
+## Recap and forward link
+
+1. Raw LOO importance sampling has a harmonic-mean form.
+2. Pareto smoothing stabilizes the largest ratios and $k$ diagnoses their tail.
+3. A likelihood column fixes the omitted unit.
+
+The [previous page](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update)
+computed the exact target; the [next page](waic.qmd#fitted-posterior-predictive-density)
+applies a posterior-variance correction to the same pointwise likelihood matrices.

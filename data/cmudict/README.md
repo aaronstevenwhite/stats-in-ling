@@ -2,8 +2,8 @@
 
 `cmudict-pronunciations.csv` contains one row for each of the 133,854
 pronunciation entries in CMUdict 0.7b. The source is the already tracked
-`decks/random-variables-and-distributions/data/cmudict-0.7b` file. Its checksum
-pins the release used by the notes.
+0.7b release. The raw dictionary is no longer vendored with the course notes;
+its checksum pins the release used to construct the teaching table.
 
 The table preserves the orthographic entry and complete ARPAbet phone sequence.
 It also derives four count variables: total phones, vowel phones, consonants
@@ -36,10 +36,11 @@ analysis code is part of the 0.7b release.
 Rebuild the table with:
 
 ```sh
-python3 scripts/data-grounding/prepare_cmudict.py
+python3 scripts/data-grounding/prepare_cmudict.py --source /path/to/cmudict-0.7b
 ```
 
-The script uses only the Python standard library and checks row counts, entry
+The script uses only the Python standard library. It first checks that the
+supplied file has the audited checksum, then checks row counts, entry
 uniqueness, ranges, and missingness.
 
 ## Checksum

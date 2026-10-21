@@ -9,9 +9,13 @@ execute:
 
 A categorical predictor has labels rather than intrinsic numerical distances. **Contrast coding** constructs numeric design columns that make declared comparisons estimable.
 
+This page first builds noun-reference treatment columns for MALD part of speech and then verifies how those columns determine coefficient interpretations without changing fitted category means.
+
 ## Treatment coding in MALD
 
 We restrict this page to the three largest lexical part-of-speech classes in the MALD regression: noun, verb, and adjective. MALD's part-of-speech field is a word-form summary from SUBTLEX, not a token annotation in sentential context.
+
+The restriction is data-driven and descriptive: these are the three largest represented classes, not the only lexical categories in MALD. The [MALD dossier](multiple-regression.qmd#mald-word-item-data) explains the item-level measurement.
 
 With noun as the reference, treatment coding uses
 
@@ -34,6 +38,16 @@ $$
 $$
 
 At the centered numeric predictors, $\beta_0$ is the fitted noun mean, $\beta_V$ is the verb-minus-noun contrast, and $\beta_A$ is the adjective-minus-noun contrast.
+
+Multiplying a coding row by the category coefficients makes the comparison explicit:
+
+$$
+\begin{array}{c|c}
+\text{noun}&\beta_0+0\beta_V+0\beta_A\\
+\text{verb}&\beta_0+1\beta_V+0\beta_A\\
+\text{adjective}&\beta_0+0\beta_V+1\beta_A
+\end{array}.
+$$
 
 ```{r}
 #| label: fit-mald-treatment-coding
@@ -64,6 +78,21 @@ fit <- lm(
 contrasts(major_pos$part_of_speech)
 coef(summary(fit))
 ```
+
+The following actual rows show the word-form labels being encoded:
+
+```{r}
+#| label: inspect-mald-pos-examples
+do.call(rbind, lapply(
+  c("Noun", "Verb", "Adjective"),
+  function(level) major_pos[which(major_pos$part_of_speech == level)[[1L]], c(
+    "item", "part_of_speech", "mean_log_rt", "frequency_subtlex",
+    "duration_ms", "n_phones"
+  )]
+))
+```
+
+These SUBTLEX-derived labels summarize a word form's dominant category. They are not token-level syntactic analyses in sentences.
 
 The fitted verb-minus-noun contrast is `r sprintf("%.4f", coef(fit)[["part_of_speech2"]])` log response-time units at the same modeled numeric predictors. The adjective-minus-noun contrast is `r sprintf("%.4f", coef(fit)[["part_of_speech3"]])`.
 
@@ -102,7 +131,7 @@ ggplot(major_pos, aes(part_of_speech, mean_log_rt)) +
 
 Changing the reference category changes the coefficient labels, not the fitted value for any item. The [next page](sum-coding.qmd) demonstrates this invariance with a different basis.
 
-## Check your understanding
+## Recap and check your understanding
 
 1. What does the intercept represent under noun-reference coding?
 2. Which categories does the verb coefficient compare?
@@ -118,3 +147,5 @@ Changing the reference category changes the coefficient labels, not the fitted v
 4. Fitted values, residuals, SSE, and predictions for the same observed conditions should remain unchanged under full-rank recoding. <!-- dqr-allow: empirical-answer -->
 
 </details>
+
+The [sum-coding page](sum-coding.qmd) next changes the coefficient basis while preserving the fitted category means.

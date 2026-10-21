@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-The Provo Gaussian linear model can be combined with a prior to produce a posterior distribution over regression lines. The response model remains
+The Provo Gaussian linear model can be combined with a prior to produce a posterior distribution over regression lines. Recall from [posterior distributions](../statistical-inference/posterior-distributions.qmd) that updating multiplies a likelihood by a prior and then normalizes the product. The response model remains the Gaussian specification stated below.
+
+The derivation has three parts: we first specify a conjugate prior, then update its parameters from the likelihood, and finally compute posterior summaries and fitted means.
 
 $$
 \mathbf Y\mid\boldsymbol\beta,\sigma^2
@@ -32,6 +34,77 @@ and
 $$
 \sigma^2\sim\operatorname{InverseGamma}(a_0,d_0).
 $$
+
+We use the shape--scale parameterization
+
+$$
+p(\sigma^2)
+\propto
+(\sigma^2)^{-(a_0+1)}
+\exp\left(-\frac{d_0}{\sigma^2}\right),
+$$
+
+whose mean is $d_0/(a_0-1)$ when $a_0>1$. Conditional conjugacy is useful here because it makes every updating step visible. It is not a claim that a normal--inverse-gamma prior is required for regression.
+
+## From likelihood and prior to posterior
+
+The likelihood kernel is
+
+$$
+p(\mathbf y\mid\boldsymbol\beta,\sigma^2)
+\propto
+(\sigma^2)^{-n/2}
+\exp\left[
+-\frac{1}{2\sigma^2}
+(\mathbf y-\mathbf X\boldsymbol\beta)^\top
+(\mathbf y-\mathbf X\boldsymbol\beta)
+\right].
+$$
+
+Multiplying by the conditional normal prior adds the quadratic
+
+$$
+(\boldsymbol\beta-\mathbf b_0)^\top
+\mathbf V_0^{-1}
+(\boldsymbol\beta-\mathbf b_0).
+$$
+
+Collect the terms involving $\boldsymbol\beta$:
+
+$$
+\begin{aligned}
+&\boldsymbol\beta^\top
+(\mathbf X^\top\mathbf X+\mathbf V_0^{-1})
+\boldsymbol\beta\\
+&\quad-2\boldsymbol\beta^\top
+(\mathbf X^\top\mathbf y+\mathbf V_0^{-1}\mathbf b_0)
++\mathbf y^\top\mathbf y
++\mathbf b_0^\top\mathbf V_0^{-1}\mathbf b_0.
+\end{aligned}
+$$
+
+Define
+
+$$
+\mathbf V_n^{-1}=\mathbf V_0^{-1}+\mathbf X^\top\mathbf X,
+\qquad
+\mathbf V_n^{-1}\mathbf b_n
+=\mathbf V_0^{-1}\mathbf b_0+\mathbf X^\top\mathbf y.
+$$
+
+Completing the square yields
+
+$$
+(\boldsymbol\beta-\mathbf b_n)^\top
+\mathbf V_n^{-1}
+(\boldsymbol\beta-\mathbf b_n)
++
+\mathbf y^\top\mathbf y
++\mathbf b_0^\top\mathbf V_0^{-1}\mathbf b_0
+-\mathbf b_n^\top\mathbf V_n^{-1}\mathbf b_n.
+$$
+
+The first term is the kernel of the updated conditional normal distribution. The remaining scalar joins the inverse-gamma scale. Thus the posterior parameters are the quantities left by completing the square.
 
 The posterior is again normal--inverse-gamma, with
 
@@ -137,9 +210,54 @@ data.frame(
 )
 ```
 
+The code mirrors the algebra: `Vn` inverts prior precision plus data precision; `bn` multiplies that covariance by the prior-and-data information vector; `an` adds $n/2$; and `dn` is the constant left after completing the square. Because $1/\sigma^2\sim\operatorname{Gamma}(a_n,d_n)$ under this parameterization, `1 / rgamma(..., rate = dn)` generates inverse-gamma draws. Conditional beta draws then add a Cholesky-transformed standard-normal vector scaled by each sampled $\sigma$.
+
+The 4,000 draws are a Monte Carlo setting, not an inferential assumption. For a posterior mean, simulation error is approximately the posterior draw SD divided by $\sqrt{4000}$ because these conjugate draws are independent. More draws reduce numerical error but do not change the posterior distribution.
+
 The posterior mean slope is `r sprintf("%.6f", mean(beta_draws[, "cloze_surprisal_c"]))`, with a central interval from `r sprintf("%.6f", slope_interval[[1]])` to `r sprintf("%.6f", slope_interval[[2]])`.
 
 The coefficient-prior location and scale use the observed Provo response and predictor scales. The inverse-gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. These data-dependent priors are useful for connecting conjugate algebra to regression, but they are not independently specified confirmatory priors.
+
+The following prior-predictive calculation makes that limitation visible. It draws parameters from the data-calibrated prior and a response at centered surprisal before conditioning on the likelihood.
+
+```{r}
+#| label: check-provo-prior-predictive
+set.seed(20261018)
+n_prior_draws <- 1000L
+prior_sigma2 <- 1 / rgamma(n_prior_draws, shape = a0, rate = d0) # dqr-allow: symbolic-derivation
+prior_beta_noise <- matrix(
+  rnorm(n_prior_draws * ncol(X)),
+  nrow = n_prior_draws
+) %*% chol(V0)
+prior_beta <- matrix(
+  b0,
+  nrow = n_prior_draws,
+  ncol = ncol(X),
+  byrow = TRUE
+) + sweep(prior_beta_noise, 1L, sqrt(prior_sigma2), `*`)
+colnames(prior_beta) <- colnames(X)
+prior_mean_at_center <- prior_beta[, "(Intercept)"]
+prior_response_at_center <- prior_mean_at_center +
+  rnorm(n_prior_draws, sd = sqrt(prior_sigma2))
+
+data.frame(
+  quantity = c("mean at centered surprisal", "new response at centered surprisal"),
+  lower = c(
+    quantile(prior_mean_at_center, .025),
+    quantile(prior_response_at_center, .025)
+  ),
+  median = c(
+    median(prior_mean_at_center),
+    median(prior_response_at_center)
+  ),
+  upper = c(
+    quantile(prior_mean_at_center, .975),
+    quantile(prior_response_at_center, .975)
+  )
+)
+```
+
+A [prior-predictive check](../statistical-inference/prior-predictive-distributions.qmd) ordinarily precedes looking at the responses. Here it documents the implications of a teaching prior already calibrated to those responses; it cannot retroactively make the prior independent of the sample.
 
 ```{r}
 #| label: plot-provo-bayesian-regression
@@ -189,7 +307,7 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
 
 The posterior represents uncertainty under the same aggregated position likelihood. Bayesian updating does not restore participant observations or make the association causal.
 
-## Check your understanding
+## Recap and check your understanding
 
 1. Which part of the model is shared with OLS?
 2. Why is this not a confirmatory prior analysis?

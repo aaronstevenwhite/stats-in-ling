@@ -9,6 +9,8 @@ execute:
 
 Normal intervals for a proportion can cross the boundaries of the parameter space, especially when successes are rare. The Hillenbrand paired vowel measurements produce such a case without invented counts.
 
+We first construct the within-speaker binary response, then obtain the interval by inverting two binomial tail tests, and finally show why the resulting endpoints can be written as beta quantiles without changing the repeated-sampling interpretation.
+
 ## A within-speaker binary response
 
 For each adult woman, define a success when /I/ in *hid* lasts longer than /i/ in *heed*. The speaker, not the vowel row, is the observational unit.
@@ -50,26 +52,147 @@ Here its lower endpoint falls below zero, which is impossible for a probability.
 
 ## Inverting binomial tail tests
 
-Under $X\sim\operatorname{Binomial}(n,p)$, the Clopper--Pearson interval finds parameter values whose binomial tails are not too small. For an interior count $x$, the endpoints satisfy
+Let
 
 $$
-\mathbb{P}_{p_L}(X\geq x)=\frac{\alpha}{2}
+X_i\overset{\mathrm{iid}}{\sim}\operatorname{Bernoulli}(p),
+\qquad i=1,\ldots,n,
+$$
+
+and define the random success count
+
+$$
+K(\mathbf X)=\sum_{i=1}^n X_i.
+$$
+
+Then $K(\mathbf X)\sim\operatorname{Binomial}(n,p)$. We use $K$ for this random count and $k=K(\mathbf x)$ for the count actually observed. Here $n=48$ and $k=3$.
+
+The [confidence-interval page](confidence-intervals.qmd) defined random endpoints before observation. In the current case, the data enter through $K$, so write
+
+$$
+\left[p_{\mathrm L}(K),p_{\mathrm U}(K)\right].
+$$
+
+Once $K=k$ is observed, these endpoints become the numbers $p_{\mathrm L}(k)$ and $p_{\mathrm U}(k)$. The interval can fail in two ways:
+
+$$
+\left\{p<p_{\mathrm L}(K)\right\}
+\quad\text{or}\quad
+\left\{p>p_{\mathrm U}(K)\right\}.
+$$
+
+The Clopper--Pearson construction assigns at most $\alpha/2$ probability to each form of noncoverage. Thus,
+
+$$
+\begin{aligned}
+\mathbb{P}_p
+\left(
+p\notin[p_{\mathrm L}(K),p_{\mathrm U}(K)]
+\right)
+&\leq
+\mathbb{P}_p\{p<p_{\mathrm L}(K)\}
++
+\mathbb{P}_p\{p>p_{\mathrm U}(K)\}\\
+&\leq \frac{\alpha}{2}+\frac{\alpha}{2}=\alpha.
+\end{aligned}
+$$
+
+So the coverage is at least $1-\alpha$. We write “at least” because the binomial distribution is discrete: in general, no rejection region has probability exactly $\alpha/2$.
+
+The remaining question is how to choose the endpoints. Consider a candidate value $p_0$ and suppose temporarily that $K\sim\operatorname{Binomial}(n,p_0)$. If $p_0$ is too small, observing $k$ or more successes is unlikely. Thus, for $k>0$, the lower endpoint is the boundary solving
+
+$$
+\mathbb{P}_{p_{\mathrm L}(k)}(K\geq k)=\frac{\alpha}{2}.
+$$
+
+If $p_0$ is too large, observing $k$ or fewer successes is unlikely. Thus, for $k<n$, the upper endpoint solves
+
+$$
+\mathbb{P}_{p_{\mathrm U}(k)}(K\leq k)=\frac{\alpha}{2}.
+$$
+
+This reversal is worth stating explicitly: the lower endpoint uses the **upper** binomial tail, while the upper endpoint uses the **lower** binomial tail. If $k=0$, set $p_{\mathrm L}(0)=0$; if $k=n$, set $p_{\mathrm U}(n)=1$.
+
+## From binomial tails to beta quantiles
+
+The binomial-tail identities are
+
+$$
+\mathbb{P}_p(K\geq k)=I_p(k,n-k+1)
 $$
 
 and
 
 $$
-\mathbb{P}_{p_U}(X\leq x)=\frac{\alpha}{2}.
+\mathbb{P}_p(K\leq k)=I_{1-p}(n-k,k+1),
 $$
 
-Equivalently, the endpoints are beta quantiles. R performs this inversion with `binom.test()`.
+where $I_x(a,b)$ is the regularized incomplete beta function, or equivalently the CDF of a $\operatorname{Beta}(a,b)$ random variable evaluated at $x$.
+
+The appearance of a continuous beta CDF inside a discrete binomial problem may initially seem strange. To see the connection, imagine placing $a+b-1$ points independently and uniformly on $[0,1]$. Let $Y_{(a)}$ be the position of the $a$th point from the left. This order statistic has the distribution
+
+$$
+Y_{(a)}\sim\operatorname{Beta}(a,b).
+$$
+
+Why do these parameters appear? For the $a$th point to lie near $x$, there must be $a-1$ points to its left and $b-1$ points to its right. Those two requirements supply the factors $x^{a-1}$ and $(1-x)^{b-1}$ in the beta density.
+
+Now let $J$ count how many of the $a+b-1$ points fall at or below $x$. Each point independently has probability $x$ of doing so, and hence
+
+$$
+J\sim\operatorname{Binomial}(a+b-1,x).
+$$
+
+The event that the $a$th point falls at or below $x$ is exactly the event that at least $a$ points do so:
+
+$$
+\left\{Y_{(a)}\leq x\right\}
+=
+\left\{J\geq a\right\}.
+$$
+
+Thus the same probability has two representations:
+
+$$
+\begin{aligned}
+F(x;a,b)
+&=\mathbb{P}\left[Y_{(a)}\leq x\right]\\
+&=\mathbb{P}[J\geq a]\\
+&=\sum_{j=a}^{a+b-1}
+{a+b-1\choose j}x^j(1-x)^{a+b-1-j}.
+\end{aligned}
+$$
+
+This equality is not an approximation. The beta formulation tracks the position of an ordered point, while the binomial formulation counts the points at or below $x$. They describe the same event.
+
+For the lower endpoint, set $a=k$ and $b=n-k+1$. Then $a+b-1=n$, so the beta CDF is the binomial upper tail $\mathbb{P}_p[K\geq k]$. For the upper endpoint, use the complement $\mathbb{P}_p[K\leq k]=1-\mathbb{P}_p[K\geq k+1]$. We can now solve the endpoint equations by taking beta quantiles:
+
+$$
+p_{\mathrm L}(k)
+=F^{-1}_{\operatorname{Beta}(k,n-k+1)}(\alpha/2)
+$$
+
+for $k>0$, and
+
+$$
+p_{\mathrm U}(k)
+=F^{-1}_{\operatorname{Beta}(k+1,n-k)}(1-\alpha/2)
+$$
+
+for $k<n$. The earlier [binomial definition](../random-variables-and-distributions/binomial-distribution.qmd#definition) supplies the count model; the [beta definition](../random-variables-and-distributions/beta-distribution.qmd#definition) supplies the continuous CDF being inverted. This beta appearance is an algebraic identity, not a Bayesian posterior claim.
+
+R's `binom.test()` performs the tail inversion. The equivalent endpoint code is `qbeta(alpha / 2, k, n - k + 1)` and `qbeta(1 - alpha / 2, k + 1, n - k)`, with the two boundary rules above.
 
 ```{r}
 #| label: hillenbrand-binomial-intervals
 exact_result <- binom.test(x, n, conf.level = 0.95)
 wald_se <- sqrt(p_hat * (1 - p_hat) / n)
 wald_interval <- p_hat + c(-1, 1) * qnorm(0.975) * wald_se
-exact_interval <- unname(exact_result$conf.int)
+exact_interval <- as.numeric(exact_result$conf.int)
+beta_interval <- c(
+  if (x == 0L) 0 else qbeta(0.025, x, n - x + 1L),
+  if (x == n) 1 else qbeta(0.975, x + 1L, n - x)
+)
 
 intervals <- data.frame(
   method = c("Clopper-Pearson", "Wald"),
@@ -78,6 +201,7 @@ intervals <- data.frame(
   upper = c(exact_interval[2], wald_interval[2])
 )
 stopifnot(wald_interval[1] < 0)
+stopifnot(isTRUE(all.equal(exact_interval, beta_interval, tolerance = 1e-12)))
 intervals
 ```
 
@@ -96,6 +220,15 @@ ggplot(intervals, aes(estimate, method, xmin = lower, xmax = upper)) +
 
 “Exact” means that the calculation uses the finite binomial distribution rather than a large-sample normal approximation. It does not make the common-probability assumption, speaker independence, or connection from this screened cohort to a broader population exact.
 
+## Recap and forward link
+
+1. $K$ is the random count; $k$ is the count observed in this sample.
+2. The lower endpoint rejects candidate probabilities that make $K\geq k$ too rare, while the upper endpoint rejects candidates that make $K\leq k$ too rare.
+3. Discreteness makes the procedure conservative: coverage is at least, and not generally exactly, $1-\alpha$.
+4. Beta quantiles compute the same endpoints because binomial tails can be written as beta CDFs.
+
+The [bootstrap page](bootstrap-confidence-intervals.qmd) next constructs an interval when no such exact finite-distribution inversion is available.
+
 ## Check your understanding
 
 1. Why is the speaker the independent unit?
@@ -112,5 +245,3 @@ ggplot(intervals, aes(estimate, method, xmin = lower, xmax = upper)) +
 4. Even the exact Clopper--Pearson interval assumes independent speakers and a common success probability; generalization still depends on the screened cohort's recruitment. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [bootstrap page](bootstrap-confidence-intervals.qmd) constructs an interval for a statistic without a simple standard-error formula.

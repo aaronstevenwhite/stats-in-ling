@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-The passage-level Student-$t$ model has no convenient closed-form posterior. Monte Carlo integration replaces an expectation under that posterior with an average over draws while keeping posterior uncertainty distinct from numerical error.
+The passage-level Student-$t$ model has no convenient closed-form posterior. Monte Carlo integration replaces an expectation under that posterior with an average over draws while keeping posterior uncertainty distinct from numerical error. The [expectation chapter](../random-variables-and-distributions/expected-values.qmd) supplied the underlying operation; the [nonconjugate-model page](beyond-conjugacy.qmd#the-missing-normalizer) supplied the target density.
+
+We first write posterior summaries as integrals, then draw from the normalized grid to approximate them, and finally separate truncation, discretization, and Monte Carlo error from uncertainty about the model parameters.
 
 ## Expectations as integrals
 
@@ -29,11 +31,27 @@ $$
 \frac{1}{S}\sum_{s=1}^Sg(\eta^{(s)}).
 $$
 
+Because the $g(\eta^{(s)})$ values are independent with variance $\operatorname{Var}[g(\eta)\mid\mathbf y]$,
+
+$$
+\operatorname{Var}[\widehat I_S\mid\mathbf y]
+=
+\frac{1}{S^2}
+\sum_{s=1}^S
+\operatorname{Var}[g(\eta^{(s)})\mid\mathbf y]
+=
+\frac{\operatorname{Var}[g(\eta)\mid\mathbf y]}{S}.
+$$
+
+Taking the square root yields the MCSE formula used below.
+
 Setting $g(\eta)=\mu$ estimates the posterior mean of the passage location. Setting $g(\eta)=\mathbf 1\{\mu>0\}$ estimates its directional probability, while $g(\eta)=\exp(\mu)$ gives a central geometric-scale noun-to-verb ratio.
 
 ## Drawing from the posterior grid
 
 The code below reconstructs the passage-level Student-t model from the 55 passage summaries, normalizes its $321\times321$ reference grid, and samples 20,000 grid cells with their posterior weights.
+
+Three approximations must be separated. First, truncation error arises if the finite grid omits posterior mass. Second, discretization error arises because a continuous density is represented by grid cells. Third, Monte Carlo error arises because only $S$ cells are sampled from the normalized grid. The equal spacings make every cell area identical, so that area cancels when `grid$weight` is normalized. Approximating the absolute evidence, rather than relative weights, would require multiplying by the cell area.
 
 ```{r}
 #| label: provo-grid-monte-carlo
@@ -113,6 +131,8 @@ $$
 
 Multiplying $S$ by four tends to halve MCSE. This square-root rate concerns the approximation, not the posterior spread.
 
+The choice $S=20{,}000$ is a precision choice rather than a model assumption. The reported MCSEs show what that choice buys. If the desired numerical tolerance were half as large, roughly four times as many independent draws would be required.
+
 ```{r}
 #| label: plot-provo-monte-carlo-running
 #| fig-cap: "Running Monte Carlo estimate of the passage-level Student-t model directional probability. The horizontal line is the quadrature reference."
@@ -137,6 +157,14 @@ The law of large numbers justifies convergence of the average when the expectati
 ## Two uncertainties
 
 Posterior spread describes model-based uncertainty about the passage-level Student-t model. Monte Carlo error describes finite numerical approximation. Increasing $S$ reduces the latter but adds no passages, positions, or readers. More draws are not more linguistic evidence.
+
+## Recap and forward link
+
+1. A posterior expectation is an integral; a draw average estimates that integral.
+2. Grid truncation, grid discretization, and finite-draw Monte Carlo error are distinct.
+3. MCSE decreases at a square-root rate, while posterior spread changes only with the model or linguistic data.
+
+The [importance-sampling page](importance-sampling.qmd#reweighting-a-proposal) next estimates the same expectations without drawing directly from the target.
 
 ## Check your understanding
 

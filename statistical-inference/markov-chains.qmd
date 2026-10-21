@@ -7,24 +7,38 @@ execute:
   message: false
 ---
 
-The passage-level Student-t model cannot be sampled directly in closed form. We now construct a sequence of parameter states in which the next state depends on the current state. This dependence defines a **Markov chain**.
+The passage-level Student-t model cannot be sampled directly in closed form. We now construct a sequence of parameter states in which the next state depends on the current state. This dependence defines a [**Markov chain**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html).
+
+We begin with the Markov property, make it concrete in an actual passage-level transition sequence, and then separate a transition rule from its stationary distribution before using the chain for Monte Carlo integration.
 
 ## The Markov property
 
-Let $\eta_s=(\mu_s,\log\sigma_s)$ denote the state at iteration $s$. For every measurable set $A$, the Markov property is
+Let the random state at iteration $s$ be $H_s=(M_s,\Lambda_s)$, and let a realized state be $\eta_s=(\mu_s,\lambda_s)$. For every measurable set $A$, the Markov property is
 
 $$
-\mathbb{P}(\eta_{s+1}\in A\mid
-\eta_s=\eta_s,\ldots,\eta_1=\eta_1)
+\mathbb{P}(H_{s+1}\in A\mid
+H_s=\eta_s,\ldots,H_1=\eta_1)
 =
-\mathbb{P}(\eta_{s+1}\in A\mid\eta_s=\eta_s).
+\mathbb{P}(H_{s+1}\in A\mid H_s=\eta_s).
 $$
 
 Once the current passage-level Student-t model state is known, earlier states do not alter the next transition distribution. This does not make adjacent states independent: the proposal is centered on the current state, and rejection repeats it.
 
+For a finite example, suppose the state is either `low` or `high` and the transition matrix is
+
+$$
+P=
+\begin{pmatrix}
+.8&.2\\ % dqr-allow: symbolic-derivation
+.3&.7 % dqr-allow: symbolic-derivation
+\end{pmatrix}.
+$$
+
+If the current state is `low`, the next state is `high` with probability $.2$, regardless of how the chain arrived at `low`. Solving $\pi=\pi P$ gives the stationary distribution $(.6,.4)$. The transition matrix and stationary distribution are thus different objects. <!-- dqr-allow: symbolic-derivation -->
+
 ## An actual passage-level Student-t model transition sequence
 
-The following code reconstructs the posterior grid, uses its covariance to scale a random-walk proposal, and records the first 25 transitions from one chain. The full sampler is developed on the [Metropolis--Hastings page](metropolis-hastings.qmd).
+The following code reconstructs the posterior grid, uses its covariance to scale a random-walk proposal, and records the first 25 transitions from one chain. To keep the page self-contained, the preview transition proposes symmetrically around the current state and accepts with probability $\min\{1,\widetilde f(\eta')/\widetilde f(\eta_s)\}$. This correction preserves the target; the [Metropolis--Hastings page](metropolis-hastings.qmd#proposal-and-acceptance) derives why.
 
 ```{r}
 #| label: first-provo-markov-transitions
@@ -121,6 +135,14 @@ For convergence from a starting state, a chain must be able to reach the relevan
 
 The Markov property is thus a conditional-independence statement about computation. It is not a substantive claim that Provo passages form a temporal sequence or that nearby passages depend on one another.
 
+## Recap and forward link
+
+1. The Markov property conditions on the current random state and uses distinct notation for realized values.
+2. A transition kernel governs movement; a stationary distribution is preserved by that movement.
+3. Computational dependence among states is not dependence among Provo passages.
+
+The [MCMC page](markov-chain-monte-carlo.qmd#chain-averages) connects averages of dependent states to posterior expectations.
+
 ## Check your understanding
 
 1. Which earlier states enter the transition after $\eta_s$ is known?
@@ -137,5 +159,3 @@ The Markov property is thus a conditional-independence statement about computati
 4. The passage-level Student-t posterior is stationary for a correctly constructed chain targeting it. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [next page](markov-chain-monte-carlo.qmd) connects averages of these dependent states to posterior expectations.

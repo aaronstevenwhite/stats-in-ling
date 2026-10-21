@@ -1,10 +1,316 @@
 ---
 title: "Leaving out one unit at a time"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The [information-criteria page](information-criteria.qmd) approximated predictive discrepancy without constructing omitted-data predictions. [**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage.
 
-**Available Wednesday, October 14, 2026.**
+We first define the leave-one-position rotation, derive exact omitted-data predictions for the two conjugate Provo models, and then make the omitted unit, prior calibration, and overlapping training sets explicit before checking the complete computation.
+
+## Defining the rotation
+
+Let the data contain $N$ position summaries. For each position $i$, fit the complete procedure to the data with $i$ removed. Write the fitted predictor as
+
+$$
+\widehat f_{-i}
+$$
+
+and its prediction as
+
+$$
+\widehat y_{-i}=\widehat f_{-i}(x_i).
+$$
+
+For a chosen loss $L$, the leave-one-out risk estimate is
+
+$$
+\widehat R_{\mathrm{LOO}}
+=
+\frac{1}{N}
+\sum_{i=1}^N
+L(y_i,\widehat y_{-i}).
+$$
+
+Each response is absent from its own fit. The fits still overlap extensively, so they are not independent replications of the study.
+
+## Exact Bayesian LOO for the Provo models
+
+We use the same [Provo position table and Gaussian mean models](likelihood-ratio-tests.qmd#provo-measurement-dossier) as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted.
+
+The source paper reports excluding fixations shorter than 80 ms and longer than 800 ms. Their log-scale midpoint sets the prior intercept mean; slope means are zero. The expected residual variance treats four standard deviations as spanning those study bounds, and each coefficient's conditional prior variance multiplier is derived from the same span. The inverse-gamma shape is a fixed computational setting, and its rate follows from the declared residual-variance mean.
+
+This prior is calibrated to study-level measurement bounds, not to the observed Provo response values. It is a teaching prior, not a prior proposed by Luke and Christianson.
+
+## Normal-inverse-gamma posterior and predictive update {#normal-inverse-gamma-posterior-and-predictive-update}
+
+For a training response vector $y$ and design matrix $X$, the parameterization used
+in the code is
+
+$$
+\begin{aligned}
+y\mid\beta,\sigma^2 &\sim
+  \operatorname{Normal}(X\beta,\sigma^2I),\\
+\beta\mid\sigma^2 &\sim
+  \operatorname{Normal}(b_0,\sigma^2V_0),\\
+\sigma^2 &\sim
+  \operatorname{InverseGamma}(a_0,d_0),
+\end{aligned}
+$$
+
+where the inverse-gamma density is proportional to
+$(\sigma^2)^{-(a_0+1)}\exp(-d_0/\sigma^2)$. Before observing a training set,
+$Y$ and the eventual estimator are random; after conditioning on the realized
+training vector $y$, $(b_n,V_n,a_n,d_n)$ are posterior hyperparameter estimates.
+
+Combining the likelihood and conditional normal prior yields the quadratic form
+
+$$
+(y-X\beta)^T(y-X\beta)
++(\beta-b_0)^TV_0^{-1}(\beta-b_0).
+$$
+
+Completing the square gives
+
+$$
+(\beta-b_n)^TV_n^{-1}(\beta-b_n)
++y^Ty+b_0^TV_0^{-1}b_0-b_n^TV_n^{-1}b_n,
+$$
+
+with
+
+$$
+\begin{aligned}
+V_n&=(V_0^{-1}+X^TX)^{-1},\\
+b_n&=V_n(V_0^{-1}b_0+X^Ty),\\
+a_n&=a_0+\frac n2,\\
+d_n&=d_0+\frac12\left(
+y^Ty+b_0^TV_0^{-1}b_0-b_n^TV_n^{-1}b_n
+\right).
+\end{aligned}
+$$
+
+Thus $\beta\mid\sigma^2,y$ is normal with mean $b_n$ and covariance
+$\sigma^2V_n$, while $\sigma^2\mid y$ is inverse-gamma with shape $a_n$ and rate
+$d_n$. At a held-out row vector $x_i^T$, first integrate $\beta$:
+
+$$
+Y_i\mid\sigma^2,y_{-i}
+\sim
+\operatorname{Normal}\left(
+x_i^Tb_n,\
+\sigma^2[1+x_i^TV_nx_i]
+\right).
+$$
+
+Integrating $\sigma^2$ against its inverse-gamma posterior gives
+
+$$
+Y_i\mid y_{-i}
+\sim
+t_{2a_n}\left(
+x_i^Tb_n,
+\sqrt{\frac{d_n}{a_n}(1+x_i^TV_nx_i)}
+\right).
+$$
+
+This is the source of `location`, `scale`, and `degrees` in the loop; the Student-$t$
+predictive distribution is not posited separately.
+
+The prior choices also have a visible calculation. The log-scale study bounds are
+$\log 80$ and $\log 800$. Their midpoint sets the intercept mean, while slope means
+are zero. Treating the span as four residual standard deviations gives
+$\mathbb{E}[\sigma^2]=(\log(800/80)/4)^2$. Choosing $a_0=3$ gives the inverse-gamma
+a finite mean and variance, and setting
+$d_0=2\mathbb{E}[\sigma^2]$ recovers that declared mean because
+$\mathbb{E}[\sigma^2]=d_0/(a_0-1)$. Finally, the diagonal of $V_0$ makes the
+conditional coefficient scale commensurate with the same log span. These are
+regularizing teaching choices, not estimates from the position responses.
+
+```{r}
+#| label: provo-exact-loo
+#| message: false
+#| warning: false
+
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+X_linear <- model.matrix(linear_fit)
+X_quadratic <- model.matrix(quadratic_fit)
+y <- provo$mean_log_ffd
+
+make_prior <- function(X) {
+  log_bounds <- log(c(80, 800))
+  log_span <- diff(log_bounds)
+  expected_sigma2 <- (log_span / 4)^2
+  list(
+    b0 = c(mean(log_bounds), rep(0, ncol(X) - 1L)),
+    V0 = diag(rep(log_span^2 / expected_sigma2, ncol(X))),
+    a0 = 3,
+    d0 = 2 * expected_sigma2,
+    lower_ms = min(exp(log_bounds)),
+    upper_ms = max(exp(log_bounds))
+  )
+}
+
+exact_nig_loo <- function(X, y, prior) {
+  n <- nrow(X)
+  V0_inverse <- solve(prior$V0)
+  full_xtx <- crossprod(X)
+  full_xty <- crossprod(X, y)
+  full_yty <- sum(y^2)
+  result <- data.frame(
+    observation = seq_len(n),
+    predictive_location = NA_real_,
+    predictive_scale = NA_real_,
+    predictive_df = NA_real_,
+    log_predictive_density = NA_real_
+  )
+
+  for (i in seq_len(n)) {
+    xi <- matrix(X[i, ], nrow = 1L)
+    yi <- y[i]
+    Vn <- solve(V0_inverse + full_xtx - crossprod(xi))
+    bn <- drop(Vn %*% (
+      V0_inverse %*% prior$b0 + full_xty - drop(xi) * yi
+    ))
+    an <- prior$a0 + (n - 1L) / 2
+    dn <- as.numeric(
+      prior$d0 + 0.5 * (
+        full_yty - yi^2 +
+          t(prior$b0) %*% V0_inverse %*% prior$b0 -
+          t(bn) %*% solve(Vn) %*% bn
+      )
+    )
+    location <- drop(xi %*% bn)
+    scale <- sqrt(
+      (dn / an) * (1 + drop(xi %*% Vn %*% t(xi)))
+    )
+    degrees <- 2 * an
+
+    result$predictive_location[i] <- location
+    result$predictive_scale[i] <- scale
+    result$predictive_df[i] <- degrees
+    result$log_predictive_density[i] <-
+      dt((yi - location) / scale, df = degrees, log = TRUE) -
+      log(scale)
+  }
+  result
+}
+
+linear_prior <- make_prior(X_linear)
+quadratic_prior <- make_prior(X_quadratic)
+linear_loo <- exact_nig_loo(X_linear, y, linear_prior)
+quadratic_loo <- exact_nig_loo(X_quadratic, y, quadratic_prior)
+
+loo_summary <- data.frame(
+  model = c("Linear", "Quadratic"),
+  omitted_positions = nrow(provo),
+  exact_elpd_loo = c(
+    sum(linear_loo$log_predictive_density),
+    sum(quadratic_loo$log_predictive_density)
+  ),
+  exact_loo_rmse = c(
+    sqrt(mean((y - linear_loo$predictive_location)^2)),
+    sqrt(mean((y - quadratic_loo$predictive_location)^2))
+  )
+)
+loo_summary
+
+loo_plot <- data.frame(
+  cloze_surprisal_bits = provo$cloze_surprisal_bits,
+  observed = y,
+  linear = linear_loo$predictive_location,
+  quadratic = quadratic_loo$predictive_location
+)
+loo_plot <- loo_plot[order(loo_plot$cloze_surprisal_bits), ]
+
+ggplot2::ggplot(
+  loo_plot,
+  ggplot2::aes(cloze_surprisal_bits, observed)
+) +
+  ggplot2::geom_point(size = 0.7, alpha = 0.18, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::geom_line(
+    ggplot2::aes(y = linear, linetype = "Linear"),
+    linewidth = 0.65,
+    color = "grey25"
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(y = quadratic, linetype = "Quadratic"),
+    linewidth = 0.65,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::scale_linetype_manual(
+    values = c("Linear" = 2, "Quadratic" = 1)
+  ) +
+  ggplot2::labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Observed and LOO-predicted mean log FFD",
+    linetype = "LOO mean"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+Conjugacy gives a Student-$t$ predictive density for every omitted position. Exact ELPD is `r sprintf("%.3f", loo_summary$exact_elpd_loo[loo_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", loo_summary$exact_elpd_loo[loo_summary$model == "Quadratic"])` for the quadratic model. The corresponding RMSEs are `r sprintf("%.5f", loo_summary$exact_loo_rmse[loo_summary$model == "Linear"])` and `r sprintf("%.5f", loo_summary$exact_loo_rmse[loo_summary$model == "Quadratic"])` on the mean log-duration scale.
+
+The efficient omission algebra reuses full-data sufficient statistics. In iteration
+$i$, `full_xtx - crossprod(xi)` is $X_{-i}^TX_{-i}$,
+`full_xty - drop(xi) * yi` is $X_{-i}^Ty_{-i}$, and
+`full_yty - yi^2` is $y_{-i}^Ty_{-i}$. Substituting those three quantities into the
+displayed update is algebraically identical to rebuilding the reduced design matrix.
+
+The raw points and LOO predictive means remain on the same axes. This matters because a small aggregate advantage can otherwise hide where the two fitted functions differ.
+
+## What one means here
+
+One omitted unit is a content-word position summary. Other positions from the same passage remain in the training data, and the response already averages over readers. The target is thus one position summary conditional on the remaining position table. It is not a new passage, reader, participant response, or word type.
+
+The distinction persists even though every position receives an out-of-sample prediction. Summing pointwise scores within a passage would not retroactively remove that passage from fitting. A passage target requires leave-one-passage-out validation from the start.
+
+## Computation, tuning, and overlap
+
+Literal LOO usually requires $N$ fits, which can be expensive. Conjugacy makes all `r nrow(provo)` Provo calculations available analytically. The next page evaluates whether posterior draws from the full fit can approximate these exact omitted-position quantities.
+
+Any response-adaptive tuning would still have to occur within each (N-1) training set. Fixing a transformation or penalty after consulting all responses would let the omitted response influence its own prediction.
+
+The training sets also overlap. Two LOO fits share all but their two distinct omitted positions. This dependence does not invalidate the mean score, but it rules out treating the position fits as independent study replications.
+
+## Checking the omitted unit
+
+1. What empirical object does one Provo LOO unit represent?
+2. Which data remain available when a position is omitted?
+3. Why is this not an omitted-passage analysis?
+4. Which part of the prior uses the source-study measurement bounds?
+
+<details>
+<summary>Answers</summary>
+
+1. One aggregated content-word position.
+2. Every other position, including positions from the same passage, remains
+   available.
+3. The omitted position's passage still contributes other training positions.
+4. The intercept midpoint, expected residual variance, and conditional coefficient
+   scale are calibrated from the 80-to-800-ms bounds.
+
+</details>
+
+## Recap and forward link
+
+1. *One* means one aggregated position.
+2. Completing the normal-inverse-gamma square yields the displayed Student-$t$
+   predictive density.
+3. Full sufficient statistics can be downdated by one row without changing the
+   result.
+
+The [previous page](information-criteria.qmd#information-criteria-compared)
+used in-sample approximations; the [next page](psis-loo.qmd#relating-the-omitted-posterior-to-the-full-posterior)
+approximates these exact omitted-position densities using full-posterior draws.

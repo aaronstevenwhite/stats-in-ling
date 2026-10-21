@@ -7,13 +7,33 @@ execute:
   message: false
 ---
 
-Conjugacy identifies a normalized posterior by matching a familiar density. Many useful likelihood--prior combinations do not provide that match. We now fix one empirical posterior that every remaining computation page will target.
+Conjugacy identifies a normalized posterior by matching a familiar density. Many useful likelihood-prior combinations do not provide that match. We now fix one empirical posterior that every remaining computation page will target.
 
-## A passage-level Student-t model
+We do this in four steps. First, we reconstruct the path from a reader's eye movement to one passage-level observation. Second, we explain why a Student-t likelihood and these particular priors provide a useful teaching model. Third, we derive the posterior density from the likelihood and priors. Finally, we approximate its normalizing constant on a grid. The order matters: the computation is meaningful only after the data and model have been specified.
+
+## From an eye movement to a modeled observation {#provo-data-ladder}
 
 The [Provo Corpus](https://osf.io/sjefs/) contains eye-tracking measurements and predictability norms for 55 English passages. Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) describe the resource and its original measurements. The release is CC BY 4.0.
 
-The course table contains one summary per passage, derived from 1,593 retained content-word positions. Each position was already aggregated across readers, so these rows are not participant trials. For passage $j$, let $\mathcal N_j$ and $\mathcal V_j$ be its retained noun and verb positions and let $d_{ji}$ be the position-level mean log first-fixation duration. We define
+Suppose a reader encounters a word in one of these passages. The corpus treats the region occupied by that word as an *interest area*. A **first-fixation duration (FFD)** is the duration, in milliseconds, of the first recorded fixation in that interest area. It is an early and local measure: gaze duration instead sums the fixations in the first run through the word, while total reading time also includes later returns. We use FFD here because it supplies a relatively direct word-level duration for the teaching contrast. This choice does not make FFD a complete measure of comprehension.
+
+The source article illustrates the corpus with the fragment “With schools still closed, cars still buried and streets still,” followed by the target verb *blocked*. This is useful because it makes the different measurements concrete. The target has a position in a particular passage, a part-of-speech label, a word length, several cloze-based predictability measures, and one FFD for each reader who fixated it. A reader who skipped the word on the first pass does not contribute a positive FFD.
+
+The notes-owned table retains the following position-level quantities:
+
+| Column | Meaning |
+|---|---|
+| `Text_ID`, `Word_Number` | The passage and the word position within that passage. Together they form the stable position key. |
+| `Word_Length`, `Word_POS`, `Word_In_Sentence_Number` | The number of letters, the broad part-of-speech class, and the position within the sentence. |
+| `OrthoMatchModel` | A fitted cloze probability for an exact orthographic match. It is not a language-model probability. |
+| `POSMatchModel` | A fitted cloze probability that a response has the target's broad part of speech. |
+| `LSA_Response_Match_Score` | The mean semantic-similarity score between cloze responses and the target. |
+| `mean_log_ffd` | The mean of the logged positive FFDs supplied by readers at this position. It is not the log of the arithmetic mean FFD. |
+| `n_fixations` | The number of positive reader-level FFDs entering that mean. |
+
+The data ladder has four levels. The source begins with reader-by-word records. The preparation retains complete content-word records with positive FFD, logs each duration, and averages the logged durations over the observed readers at each word position. It then averages those position summaries separately over nouns and verbs within each passage. The final subtraction produces one contrast for each passage.
+
+Thus the course table contains one summary per passage, derived from 1,593 retained content-word positions. The position summaries were already aggregated across readers, so they are not participant trials. For passage $j$, let $\mathcal N_j$ and $\mathcal V_j$ be its retained noun and verb positions and let $d_{ji}$ be the position-level mean log FFD. We define
 
 $$
 y_j=
@@ -22,7 +42,15 @@ y_j=
 \frac{1}{|\mathcal V_j|}\sum_{i\in\mathcal V_j}d_{ji}.
 $$
 
-The resulting 55-observation analysis describes the unweighted distribution of passage summaries. It is not participant-level inference or a probability sample of English texts.
+For instance, the first passage contributes 33 retained positions, including 16 nouns and 13 verbs. Its noun mean is about 5.323 log milliseconds, its verb mean is about 5.216, and its contrast is about 0.108. Exponentiating the contrast gives the ratio of the two geometric means on the millisecond scale. <!-- dqr-allow: empirical-answer -->
+
+## Why aggregate? {#why-aggregate-provo}
+
+The [first treatment of aggregation](../foundations/linguistic-data.qmd#what-aggregation-removes) stressed that a summary both answers a question and removes variation. Here aggregation provides a two-parameter location-scale target that can be normalized on a grid and then reused when we introduce importance sampling, Markov chains, Hamiltonian Monte Carlo, and Stan. Giving each passage one contrast also prevents passages with more retained noun or verb positions from automatically receiving more weight.
+
+But this convenience has a cost. The passage summaries remove reader variation, word-position variation, reader-by-word-class variation, and information about how precisely each passage contrast was measured. Passages with different noun counts, verb counts, and contributing fixation counts are treated as equally precise observations. A trial-level hierarchical model could represent those sources of variation, but it would answer a richer question and would no longer provide the two-dimensional target needed for the computational sequence.
+
+The resulting 55-observation analysis thus describes the unweighted distribution of these passage summaries, conditional on positive FFDs. It is not participant-level inference, a causal effect of part of speech, or inference from a probability sample of English texts.
 
 ```{r}
 #| label: load-provo-passage-target
@@ -30,6 +58,10 @@ library(ggplot2)
 
 provo <- read.csv(
   "data/provo/passage-summaries.csv",
+  stringsAsFactors = FALSE
+)
+positions <- read.csv(
+  "data/provo/content-word-positions.csv",
   stringsAsFactors = FALSE
 )
 y <- provo$noun_minus_verb_log_ffd
@@ -41,6 +73,7 @@ prior_sigma_sd <- 2 * response_scale
 
 stopifnot(
   N == 55L,
+  nrow(positions) == 1593L,
   !anyDuplicated(provo$Text_ID),
   all(provo$n_nouns >= 4L),
   all(provo$n_verbs >= 4L),
@@ -54,11 +87,30 @@ data.frame(
   minimum = min(y), maximum = max(y),
   proportion_positive = mean(y > 0)
 )
+
+positions[
+  positions$Text_ID == 1L,
+  c(
+    "position_id", "Word_Length", "Word_POS",
+    "Word_In_Sentence_Number", "mean_log_ffd", "n_fixations"
+  )
+][1, ]
+
+provo[
+  provo$Text_ID == 1L,
+  c(
+    "Text_ID", "n_positions", "n_nouns", "n_verbs",
+    "noun_mean_log_ffd", "verb_mean_log_ffd",
+    "noun_minus_verb_log_ffd"
+  )
+]
 ```
 
-## A robust location--scale model
+## Why use a Student-t likelihood? {#a-robust-location-scale-model}
 
-The passage-level model uses
+The [Student-t distribution page](../random-variables-and-distributions/student-t-distribution.qmd#construction) used a Student-t distribution as the sampling distribution of a standardized sample mean under a normal model. The role here is different. We use a Student-t distribution as an observation model for the 55 passage contrasts themselves.
+
+The basic idea is to estimate a common center while allowing an unusually large passage contrast to have less influence than it would under a normal likelihood. More specifically, the passage-level model uses
 
 $$
 Y_j\mid\mu,\sigma
@@ -74,6 +126,125 @@ $$
 $$
 
 where $s_y$ is the observed standard deviation of the 55 contrasts. Thus both prior scales are computed as `r sprintf("%.6f", prior_mu_sd)`. This is an empirically calibrated teaching prior, not a confirmatory analysis. The fixed four degrees of freedom make the observation model less sensitive to an extreme passage than a normal likelihood would be.
+
+This choice makes six assumptions that the notation can otherwise hide:
+
+1. Conditional on $\mu$ and $\sigma$, the passage contrasts are independent.
+2. The passages share one location, one scale, and one tail parameter.
+3. The distribution is symmetric around $\mu$.
+4. The parameter $\sigma$ is the Student-t scale. With four degrees of freedom, the standard deviation is $\sigma\sqrt{4/(4-2)}$, not $\sigma$.
+5. No passage-level predictor explains systematic differences among the contrasts.
+6. Each aggregate is treated as observed without a passage-specific measurement-error term.
+
+These assumptions are working simplifications. The histogram below lets us inspect symmetry and tail behavior, but 55 aggregated observations cannot verify conditional independence or recover the variation removed before modeling.
+
+### Why four degrees of freedom? {#why-four-degrees-of-freedom}
+
+The value four is a teaching choice, not a quantity implied by the Provo Corpus. It gives the likelihood finite variance but substantially heavier tails than a normal distribution. Fixing it also leaves only $\mu$ and $\sigma$ unknown, which makes a two-dimensional grid possible. A smaller value would allow still heavier tails; a larger value would approach the normal model. Thus any substantive conclusion should be checked for sensitivity to this choice.
+
+### Why these priors? {#provo-teaching-priors}
+
+The prior for $\mu$ is centered at zero because zero represents no average noun-minus-verb contrast. Its scale, $2s_y$, is broad relative to the observed contrast distribution. The half-normal prior for $\sigma$ enforces positive scale and downweights implausibly large between-passage dispersion.
+
+A potential worry is that $s_y$ comes from the same outcomes used in the likelihood. That worry is correct. These are data-calibrated teaching priors, chosen to keep the computational example on the observed scale; they should not be presented as beliefs specified before seeing the data. The following simulation makes their implications visible before the posterior is computed.
+
+```{r}
+#| label: check-provo-prior-predictive
+set.seed(20261021)
+prior_draws <- 10000L
+prior_mu <- rnorm(prior_draws, 0, prior_mu_sd)
+prior_sigma <- abs(rnorm(prior_draws, 0, prior_sigma_sd))
+prior_y <- prior_mu + prior_sigma * rt(prior_draws, df = nu)
+
+rbind(
+  data.frame(
+    quantity = "mu",
+    q025 = quantile(prior_mu, 0.025),
+    median = median(prior_mu),
+    q975 = quantile(prior_mu, 0.975)
+  ),
+  data.frame(
+    quantity = "new passage contrast",
+    q025 = quantile(prior_y, 0.025),
+    median = median(prior_y),
+    q975 = quantile(prior_y, 0.975)
+  )
+)
+```
+
+The prior predictive contrast is deliberately much wider than the observed passage summaries. This check does not make the prior independent of the data; it shows what the chosen calibration implies.
+
+## Deriving the posterior {#deriving-the-provo-student-t-posterior}
+
+The [posterior-distribution page](posterior-distributions.qmd#updating-a-continuous-parameter) established the rule “likelihood times prior, divided by evidence.” We now apply that rule without dropping the intermediate pieces.
+
+First distinguish the random contrast $Y_j$ from the observed contrast $y_j$. For a general degrees-of-freedom value $\nu$, the location-scale Student-t density is
+
+$$
+f(y_j\mid\mu,\sigma,\nu)
+=
+\frac{
+  \Gamma\left((\nu+1)/2\right)
+}{
+  \Gamma(\nu/2)\sqrt{\nu\pi}\,\sigma
+}
+\left[
+  1+
+  \frac{1}{\nu}
+  \left(\frac{y_j-\mu}{\sigma}\right)^2
+\right]^{-(\nu+1)/2}.
+$$
+
+Conditional independence turns the 55 density contributions into a product:
+
+$$
+L(\mu,\sigma;\mathbf y)
+=
+\prod_{j=1}^{N}
+f(y_j\mid\mu,\sigma,4).
+$$
+
+Let $\tau=2s_y$. The two normalized prior densities are
+
+$$
+f(\mu)
+=
+\phi(\mu;0,\tau)
+$$
+
+and
+
+$$
+f(\sigma)
+=
+2\phi(\sigma;0,\tau)
+\mathbf 1(\sigma>0).
+$$
+
+Here $\phi(x;m,s)$ denotes the normal density at $x$ with mean $m$ and standard deviation $s$. The factor of two turns the positive half of the zero-centered normal density into a density that integrates to one.
+
+Thus continuous Bayes' rule gives
+
+$$
+f(\mu,\sigma\mid\mathbf y)
+=
+\frac{
+  \left[\prod_{j=1}^{N}f(y_j\mid\mu,\sigma,4)\right]
+  \phi(\mu;0,\tau)
+  2\phi(\sigma;0,\tau)
+  \mathbf 1(\sigma>0)
+}{
+  \displaystyle
+  \int_{-\infty}^{\infty}
+  \int_0^\infty
+  \left[\prod_{j=1}^{N}f(y_j\mid\mu',\sigma',4)\right]
+  \phi(\mu';0,\tau)
+  2\phi(\sigma';0,\tau)
+  \,\mathrm d\sigma'\,\mathrm d\mu'
+}.
+$$
+
+The denominator is where conjugacy fails: the numerator does not match a familiar normalized two-parameter density. But the numerator still defines an unnormalized posterior.
 
 Let $\eta=(\mu,\log\sigma)$. The unnormalized log posterior on this unconstrained scale is
 
@@ -92,6 +263,31 @@ $$
 $$
 
 The final term is the Jacobian for $\sigma=\exp(\eta_2)$. The Stan program later samples $\sigma$ directly and lets Stan handle its internal transform, so it does not add this term manually.
+
+To see why the Jacobian appears, write $\lambda=\log\sigma$. Then $\sigma=\exp(\lambda)$ and
+
+$$
+\frac{\mathrm d\sigma}{\mathrm d\lambda}
+=
+\exp(\lambda)
+=
+\sigma.
+$$
+
+Changing variables thus multiplies the density by $\sigma$ and adds $\log\sigma=\lambda$ to its logarithm. This addition does not come from the likelihood or either prior; it comes from expressing posterior mass on a different coordinate scale.
+
+The mathematical terms and code correspond as follows:
+
+| Mathematical object | Code expression | Role |
+|---|---|---|
+| $\sum_j\log f(y_j\mid\mu,\sigma,4)$ | `sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma))` | Student-t log likelihood, including the location-scale factor. |
+| $\log\phi(\mu;0,2s_y)$ | `dnorm(mu, 0, prior_mu_sd, log = TRUE)` | Location prior. |
+| $\log 2+\log\phi(\sigma;0,2s_y)$ | `log(2) + dnorm(sigma, 0, prior_sigma_sd, log = TRUE)` | Half-normal scale prior for positive $\sigma$. |
+| $\log\sigma$ | `eta[2]` | Change-of-variables Jacobian for $\lambda=\log\sigma$. |
+
+## Approximating the posterior on a grid {#provo-posterior-grid}
+
+A rectangular grid needs both a center and an extent. We first locate the posterior mode numerically. The inverse Hessian at that mode supplies a local covariance approximation, which we use only to construct the grid. Extending seven local standard deviations in each direction is a computational choice; the later boundary-mass check asks whether appreciable normalized weight remains on the edge. If it does, the grid is too narrow even if the optimizer converged.
 
 ```{r}
 #| label: fit-provo-grid-posterior
@@ -174,6 +370,62 @@ rbind(
 )
 ```
 
+The `321` by `321` grid has equal spacing in both coordinates. Each raw kernel value approximates density at one grid point, and a Riemann approximation to the absolute normalizing constant would multiply the sum by the common cell area. Because that same area appears in every normalized grid weight, it cancels when the weights are divided by their sum. The normalized weights can thus approximate posterior expectations even though the code does not report the absolute value of the normalizer.
+
+### Sensitivity to the fixed tail parameter
+
+The next calculation repeats the identical grid weighting with three heavy-tailed likelihoods and a normal limit. It is a sensitivity check, not an attempt to estimate $\nu$.
+
+```{r}
+#| label: check-provo-tail-sensitivity
+summarize_tail_choice <- function(degrees) {
+  log_kernel <- vapply(
+    seq_len(nrow(posterior_grid)),
+    function(index) {
+      mu <- posterior_grid$mu[index]
+      log_sigma <- posterior_grid$log_sigma[index]
+      sigma <- exp(log_sigma)
+      log_likelihood <- if (is.infinite(degrees)) {
+        sum(dnorm(y, mu, sigma, log = TRUE))
+      } else {
+        sum(
+          dt((y - mu) / sigma, df = degrees, log = TRUE) -
+            log(sigma)
+        )
+      }
+      log_likelihood +
+        dnorm(mu, 0, prior_mu_sd, log = TRUE) +
+        log(2) + dnorm(sigma, 0, prior_sigma_sd, log = TRUE) +
+        log_sigma
+    },
+    numeric(1)
+  )
+  weight <- exp(log_kernel - log_sum_exp(log_kernel))
+  data.frame(
+    likelihood = if (is.infinite(degrees)) {
+      "Normal limit"
+    } else {
+      paste0("Student-t, df = ", degrees)
+    },
+    mu_mean = sum(posterior_grid$mu * weight),
+    probability_positive = sum(weight[posterior_grid$mu > 0]),
+    boundary_mass = sum(weight[
+      posterior_grid$mu %in% range(mu_grid) |
+        posterior_grid$log_sigma %in% range(log_sigma_grid)
+    ])
+  )
+}
+
+tail_sensitivity <- do.call(
+  rbind,
+  lapply(c(3, 4, 7, Inf), summarize_tail_choice) # dqr-allow: algorithm-setting
+)
+stopifnot(all(tail_sensitivity$boundary_mass < 1e-5))
+tail_sensitivity
+```
+
+The boundary-mass column checks that reusing the same grid has not truncated one of the alternative targets. If these rows support materially different conclusions, fixing four degrees of freedom is carrying substantive weight. If they are similar, the reported location summary is less sensitive to this particular tail choice. Neither result establishes that the common symmetric location-scale model is correct.
+
 The grid gives $\mathbb{P}(\mu>0\mid\mathbf y)=$ `r sprintf("%.3f", probability_positive)`, though the 95% interval for $\mu$, [`r sprintf("%.4f", mu_interval[1])`, `r sprintf("%.4f", mu_interval[3])`], includes zero. This measured result concerns the passage-level Student-t model only.
 
 ```{r}
@@ -222,19 +474,31 @@ because $Z$ cancels. A missing closed-form normalizer is thus a computational pr
 
 ## Check your understanding
 
-1. What does one $y_j$ summarize?
-2. Why does the passage-level Student-t model not support participant-level inference?
-3. Which term is the Jacobian in the log target?
-4. Why can later algorithms use the unnormalized target?
+1. What does one $y_j$ summarize, and which lower-level observations have already been averaged away?
+2. Why is `mean_log_ffd` not the log of an arithmetic mean duration?
+3. Why does the passage-level Student-t model not support participant-level inference?
+4. Which assumption permits the likelihood to factor over passages?
+5. Why is four degrees of freedom a teaching choice rather than an estimate from the corpus?
+6. Which term is the Jacobian in the log target, and why does it appear?
+7. Why does the normalized grid-weight calculation not need an explicit cell-area factor?
+8. Why can later algorithms use the unnormalized target?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. One $y_j$ is a passage's mean noun log-FFD minus its mean verb log-FFD, computed from the retained position summaries in that passage. <!-- dqr-allow: empirical-answer -->
-2. Reader trials were already aggregated into position and passage summaries, so participant identities and participant-level variation cannot be recovered. <!-- dqr-allow: empirical-answer -->
-3. The final $+\log\sigma$ term is the Jacobian for the transformation $\sigma=\exp(\eta_2)$. <!-- dqr-allow: empirical-answer -->
-4. Density ratios and gradients do not require the common normalizing constant $Z$; it cancels or differentiates away. <!-- dqr-allow: empirical-answer -->
+1. One $y_j$ is a passage's mean noun log-FFD minus its mean verb log-FFD, computed from retained position summaries. Reader-level FFDs and word-position variation have already been averaged away. <!-- dqr-allow: empirical-answer -->
+2. The preparation first logs each positive reader-level duration and then averages those logged values. In general, $\overline{\log Y}\neq\log\overline Y$. <!-- dqr-allow: empirical-answer -->
+3. Reader trials were already aggregated into position and passage summaries, so participant identities and participant-level variation cannot be recovered. <!-- dqr-allow: empirical-answer -->
+4. Conditional independence of the 55 passage contrasts, given $\mu$ and $\sigma$, permits the likelihood product. <!-- dqr-allow: empirical-answer -->
+5. The corpus does not determine four degrees of freedom. Fixing four provides finite variance, heavy tails, and a two-dimensional teaching posterior. <!-- dqr-allow: empirical-answer -->
+6. The final $+\log\sigma$ term is the Jacobian for the transformation $\sigma=\exp(\eta_2)$. It converts density on the positive $\sigma$ scale to density on the unconstrained $\log\sigma$ scale. <!-- dqr-allow: empirical-answer -->
+7. Every grid point represents the same cell area, so that common factor cancels when the weights are normalized by their sum. <!-- dqr-allow: empirical-answer -->
+8. Density ratios and gradients do not require the common normalizing constant $Z$; it cancels or differentiates away. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [Monte Carlo page](monte-carlo-integration.qmd) first approximates expectations under the passage-level Student-t posterior using independent draws from this normalized grid.
+## Summing up
+
+The page established four results. First, one modeled observation is a passage-level contrast built through two stages of aggregation. Second, the Student-t likelihood is a robust symmetric working model whose four degrees of freedom are fixed for teaching convenience. Third, the priors are data-calibrated teaching priors and should be interpreted on that basis. Fourth, the posterior follows from likelihood times priors, with an additional Jacobian only when the scale parameter is represented on the log scale.
+
+The [Monte Carlo page](monte-carlo-integration.qmd#expectations-as-integrals) next uses independent draws from this normalized grid to approximate posterior expectations. The live possibility is to replace the aggregated target with a reader-by-word hierarchical model; doing so would improve the measurement model but would also change the inferential target and the computational problem.

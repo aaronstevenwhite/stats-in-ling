@@ -1,10 +1,264 @@
 ---
 title: "Comparing nested likelihoods"
-toc: false
-course-release-id: model-criticism-and-prediction
-course-release-placeholder: true
 ---
 
-Predictive evaluation asks how well a model predicts observations that were not used for fitting. We compare models using loss functions and cross-validation.
+The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. Across five pages, one response table and two nested Gaussian models stay fixed while the comparison criterion changes.
 
-**Available Wednesday, October 14, 2026.**
+We begin with the Provo measurement dossier, derive the likelihood-ratio statistic from a restriction, fit the nested models, and then separate its reference-distribution assumptions and narrow evidential claim from later predictive comparisons.
+
+## Provo measurement dossier {#provo-measurement-dossier}
+
+[Luke and Christianson (2018)](https://doi.org/10.3758/s13428-017-0908-4) released cloze norms for each word in English passages and eye-movement measurements from readers of those passages. The [OSF release](https://osf.io/sjefs/) includes `OrthoMatchModel`, an orthographic-match cloze estimate from a logit mixed model with word intercepts. It is a fitted cloze estimate, not a language-model probability.
+
+A **first-fixation duration (FFD)** is the duration in milliseconds of the first
+recorded fixation in a word's interest area during first-pass reading. It differs
+from gaze duration, which sums all first-pass fixations on that word, and total
+reading time, which also includes later rereading. We use FFD because it supplies an
+early, word-local measure that aligns directly with the cloze value at a position.
+That choice does not establish that FFD isolates one cognitive stage.
+
+The tracked course table retains complete content-word positions from all passages and averages first-fixation duration across readers at each position. One row is thus a position summary, not one reader's fixation. The analyses below cannot recover reader-level dependence from that aggregation.
+
+More precisely, the preparation retains raw rows with complete focal fields,
+positive FFD, and `Word_Content_Or_Function == "Content"`; takes the natural log of
+each retained reader-level FFD; and averages those log durations by passage and word
+number. Aggregation gives one response per contextual position for the teaching
+likelihood. It removes reader variation, unequal reader-by-word responses, and the
+within-position precision information beyond the retained `n_fixations` count. A raw
+hierarchical model would answer a richer question.
+
+The first course-facing row is position `1-2`: `Word_Unique_ID = QID1`, passage 1,
+word number 2, a three-character verb. Its `OrthoMatchModel` value is 0.390221218,
+its mean log FFD is 5.167650878, and 60 positive fixations contribute. The notes table <!-- dqr-allow: empirical-answer -->
+does not retain passage text or the surface word, and the raw reader-level rows are
+not distributed with it. Thus an exact passage excerpt or individual fixation row
+cannot be reconstructed here without returning to the licensed source release; the
+position identifiers are the most concrete observation available in the tracked
+course data.
+
+Let $y_i$ be mean log first-fixation duration and let
+
+$$
+x_i=-\log_2(\texttt{OrthoMatchModel}_i)
+$$
+
+be modeled cloze surprisal in bits. The restricted and expanded models are
+
+$$
+\begin{aligned}
+M_L &: y_i=\beta_0+\beta_1x_i+\epsilon_i,\\
+M_Q &: y_i=\beta_0+\beta_1x_i+\beta_2x_i^2+\epsilon_i,
+\qquad \epsilon_i\sim\operatorname{Normal}(0,\sigma^2).
+\end{aligned}
+$$
+
+Setting $\beta_2=0$ in $M_Q$ gives $M_L$, so $M_L\subset M_Q$. This nesting statement also requires identical response rows, response distribution, variance specification, and likelihood definition.
+
+Before sampling, $Y_i$ is the random position-level mean log FFD described by the
+Gaussian model. The table supplies its realized value $y_i$. The parameters
+$(\beta_0,\beta_1,\beta_2,\sigma)$ are unknown; their maximum-likelihood estimates
+are $(\widehat\beta_0,\widehat\beta_1,\widehat\beta_2,\widehat\sigma)$. The maximized
+likelihood $\widehat L$ is the likelihood evaluated at those estimates, not a random
+response probability.
+
+## From a likelihood ratio to a difference
+
+Let $\widehat L_L$ and $\widehat L_Q$ be the maximized likelihoods. Since the expanded model can reproduce the restricted fit,
+
+$$
+\widehat L_Q\geq\widehat L_L.
+$$
+
+The likelihood-ratio statistic is
+
+$$
+\begin{aligned}
+\Lambda
+&=-2\log\left(\frac{\widehat L_L}{\widehat L_Q}\right)\\
+&=-2(\log\widehat L_L-\log\widehat L_Q)\\
+&=2(\ell_Q-\ell_L).
+\end{aligned}
+$$
+
+When the expanded model adds regular parameters and the usual large-sample conditions hold,
+
+$$
+\Lambda\overset{\cdot}{\sim}\chi^2_{k_Q-k_L}
+$$
+
+under the restricted model. The degrees of freedom equal the difference in freely estimated regular parameters.
+
+For these Gaussian fits, $M_L$ estimates $\beta_0$, $\beta_1$, and the common
+residual scale $\sigma$, so $k_L=3$. Model $M_Q$ estimates those same quantities plus
+$\beta_2$, so $k_Q=4$. The scale appears in both counts and cancels in the
+difference: $k_Q-k_L=4-3=1$.
+
+## Fitting the Provo models
+
+The code reads the tracked position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means.
+
+```{r}
+#| label: provo-likelihood-ratio
+#| message: false
+#| warning: false
+
+provo <- utils::read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+
+linear_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+quadratic_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits + I(cloze_surprisal_bits^2),
+  data = provo
+)
+stopifnot(identical(
+  rownames(model.frame(linear_fit)),
+  rownames(model.frame(quadratic_fit))
+))
+
+linear_log_likelihood <- as.numeric(logLik(linear_fit))
+quadratic_log_likelihood <- as.numeric(logLik(quadratic_fit))
+lr_statistic <- 2 * (
+  quadratic_log_likelihood - linear_log_likelihood
+)
+lr_df <- attr(logLik(quadratic_fit), "df") -
+  attr(logLik(linear_fit), "df")
+lr_p_value <- pchisq(
+  lr_statistic, df = lr_df, lower.tail = FALSE
+)
+
+likelihood_comparison <- data.frame(
+  model = c("Linear", "Quadratic"),
+  n_positions = nrow(provo),
+  log_likelihood = c(
+    linear_log_likelihood, quadratic_log_likelihood
+  ),
+  likelihood_parameters = c(
+    attr(logLik(linear_fit), "df"),
+    attr(logLik(quadratic_fit), "df")
+  )
+)
+likelihood_comparison
+
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 200
+  )
+)
+grid$linear <- predict(linear_fit, grid)
+grid$quadratic <- predict(quadratic_fit, grid)
+
+ggplot2::ggplot(
+  provo,
+  ggplot2::aes(cloze_surprisal_bits, mean_log_ffd)
+) +
+  ggplot2::geom_point(size = 0.75, alpha = 0.22, color = "grey25") + # dqr-allow: algorithm-setting
+  ggplot2::geom_line(
+    data = grid,
+    ggplot2::aes(y = linear, linetype = "Linear"),
+    linewidth = 0.7,
+    color = "grey25"
+  ) +
+  ggplot2::geom_line(
+    data = grid,
+    ggplot2::aes(y = quadratic, linetype = "Quadratic"),
+    linewidth = 0.7,
+    color = "#2B6CB0"
+  ) +
+  ggplot2::scale_linetype_manual(
+    values = c("Linear" = 2, "Quadratic" = 1)
+  ) +
+  ggplot2::labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first-fixation duration",
+    linetype = "Mean model"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The common analysis table has `r format(nrow(provo), big.mark = ",")` positions from `r length(unique(provo$Text_ID))` passages. The linear and quadratic log likelihoods are `r sprintf("%.3f", linear_log_likelihood)` and `r sprintf("%.3f", quadratic_log_likelihood)`. Thus,
+
+$$
+\Lambda
+=
+2\left(`r sprintf("%.3f", quadratic_log_likelihood)`-
+`r sprintf("%.3f", linear_log_likelihood)`\right)
+=
+`r sprintf("%.3f", lr_statistic)`.
+$$
+
+The expanded model adds `r lr_df` likelihood parameter, giving $p = `r sprintf("%.4f", lr_p_value)`$ under the usual $\chi^2$ approximation. The plot keeps the raw position summaries visible with both fitted mean functions. The curvature is slight, which makes the criterion comparisons on the following pages substantively readable.
+
+The formula-to-code bridge is exact: `logLik(linear_fit)` and
+`logLik(quadratic_fit)` are $\ell_L$ and $\ell_Q$; their doubled difference is
+`lr_statistic`; the difference between their `df` attributes is $k_Q-k_L$; and
+`pchisq(..., lower.tail = FALSE)` computes the upper reference tail. The printed
+table exposes both likelihoods and both parameter counts before the tail area is
+interpreted.
+
+## Interpreting the restriction narrowly
+
+The null hypothesis is
+
+$$
+H_0:\beta_2=0.
+$$
+
+Rejecting this restriction suggests that the quadratic term improves fitted likelihood conditional on this response, sample, and Gaussian specification. It does not show that the quadratic model is true, that cloze surprisal causes fixation-duration differences, or that readers internally represent `OrthoMatchModel`.
+
+The LRT also does not evaluate a new passage. All positions contribute to fitting and comparison, and the response has already been aggregated across readers. The result concerns fitted position summaries under a nested mean restriction.
+
+## When the reference distribution may fail
+
+The $\chi^2$ approximation assumes that the null value is an interior, regular point and that parameters are sufficiently identified. Testing a random-effect variance against zero violates this condition because zero is a boundary. Mixture models can lose component identification under a null restriction. In such cases, a simulation-based reference distribution or a method derived for the boundary problem may be needed.
+
+Wilks' approximation also relies on a sufficiently informative sample and on a
+likelihood that represents the dependence in the observations. Here positions from
+the same passage may remain dependent, while the Gaussian likelihood treats the
+aggregated position residuals as conditionally independent with a common scale. The
+large number of positions does not repair a misspecified independence unit. Thus the
+reference tail is a teaching approximation for this fixed position table.
+
+The likelihood difference remains a description of fitted improvement when these conditions fail. What becomes unreliable is the simple $\chi^2$ calibration.
+
+## Likelihood comparison and predictive validation
+
+The LRT uses the same responses to estimate and compare the models. Cross-validation asks how the complete procedures predict responses excluded from fitting. A quadratic term can pass an LRT while changing held-out prediction only slightly, or a proxy can improve prediction without supporting its proposed mechanism. These are different pieces of evidence.
+
+## Checking the nested comparison
+
+1. Which parameter restriction makes the quadratic model reduce to the linear model?
+2. Why can the expanded model not have a lower maximized likelihood?
+3. Why must both fits use the same position rows and response scale?
+4. Why does the reported tail probability not evaluate an omitted passage?
+
+<details>
+<summary>Answers</summary>
+
+1. Setting $\beta_2=0$ removes the quadratic term.
+2. The quadratic model contains every linear fit as a special case.
+3. Otherwise the likelihood difference would mix model flexibility with a change in
+   observations or measurement scale.
+4. Every passage contributes positions to both fitted likelihoods; no passage is
+   held out.
+
+</details>
+
+## Recap and forward link
+
+1. One Provo row is an aggregate of logged reader fixations at a content-word
+   position.
+2. Nesting adds one mean parameter, not a new scale parameter.
+3. The chi-squared tail depends on regularity and the declared position-level
+   likelihood.
+
+The [previous page](comparing-predictive-loss.qmd#megaorientation-measurement-dossier)
+evaluated unseen verbs. The [next page](information-criteria.qmd#information-criteria-compared)
+applies two different penalties to these same Provo fits.

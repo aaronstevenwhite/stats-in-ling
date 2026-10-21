@@ -7,7 +7,17 @@ execute:
   message: false
 ---
 
-The **normal distribution** is a symmetric location-scale family. Its parameters should be estimated from the linguistic measurement at hand, and its shape should be compared with those observations rather than assumed from the name of the variable.
+The [**normal distribution**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) is a symmetric location-scale family. Its parameters should be estimated from the linguistic measurement at hand, and its shape should be compared with those observations rather than assumed from the name of the variable.
+
+Why use it as a reference for F1? A continuous measurement perturbed by many
+small additive sources may be approximately symmetric within a sufficiently
+homogeneous speaker group. That argument assumes independent observations,
+one stable location and scale within group, and tails adequately represented
+by a symmetric bell shape. F1 is positive while the normal support is all real
+numbers, so the approximation is defensible only when negligible fitted mass
+falls below zero and the observed residual shape is compatible with the model.
+
+We define the location–scale density, estimate it separately by speaker group, and then check its support and shape assumptions against the observed /i/ F1 values.
 
 ## Definition
 
@@ -54,6 +64,11 @@ $$
 
 We return to the [Hillenbrand et al. vowel data introduced earlier](continuous-random-variables.qmd). Each speaker produced one /hVd/ token for each vowel, so restricting to /i/ leaves one F1 measurement per speaker. The complete teaching table is appropriate for F1 because that source column has no natural missing values.
 
+The /i/ restriction avoids mixing vowel categories, and separate speaker-group
+fits avoid forcing boys, girls, men, and women to share one acoustic location
+and scale. These choices describe observed design strata; they do not make the
+groups population samples.
+
 ```{r}
 #| label: fit-hillenbrand-normal
 library(ggplot2)
@@ -98,6 +113,22 @@ $$
 \widehat\sigma^2=\frac1n\sum_{i=1}^n(x_i-\widehat\mu)^2.
 $$
 
+The normal log likelihood, up to an additive constant, is
+
+$$
+\ell(\mu,\sigma^2)
+=-\frac n2\log\sigma^2
+-\frac{1}{2\sigma^2}\sum_i(x_i-\mu)^2.
+$$
+
+Setting the derivative with respect to $\mu$ to zero gives
+$\sum_i(x_i-\widehat\mu)=0$, hence $\widehat\mu=\bar x$. Substituting that
+value and setting the derivative with respect to $\sigma^2$ to zero gives the
+$1/n$ mean squared deviation above. The $1/(n-1)$ sample variance is a separate
+unbiased estimator, not the normal MLE. In the code, the split F1 rows supply
+the realized $x_i$, `mu` is $\widehat\mu$, and `sigma^2` is
+$\widehat\sigma^2$.
+
 The group-specific estimates are computed above rather than selected to illustrate location or spread.
 
 ```{r}
@@ -113,6 +144,30 @@ ggplot(i_tokens, aes(f1_hz)) +
   theme_classic(base_size = 12)
 ```
 
+A histogram overlay can hide tail and quantile discrepancies. The following
+normal-quantile diagnostic standardizes within group and compares ordered
+residuals with standard-normal quantiles.
+
+```{r}
+#| label: plot-hillenbrand-normal-qq
+#| fig-cap: "Normal-quantile diagnostics for group-standardized /i/ F1 measurements. Systematic curvature would indicate a mismatch in distribution shape."
+i_tokens$standardized_residual <- ave(
+  i_tokens$f1_hz,
+  i_tokens$speaker_type,
+  FUN = function(x) {
+    sigma_mle <- sqrt(mean((x - mean(x))^2))
+    (x - mean(x)) / sigma_mle
+  }
+)
+
+ggplot(i_tokens, aes(sample = standardized_residual)) +
+  stat_qq(color = "grey45") +
+  stat_qq_line(color = "#8B1A1A") +
+  facet_wrap(~speaker_type, scales = "free", ncol = 2) +
+  labs(x = "Standard-normal quantile", y = "Standardized observed quantile") +
+  theme_classic(base_size = 12)
+```
+
 The overlays provide a descriptive reference. They do not establish normal sampling, and the source design supports claims about these recorded /hVd/ productions rather than spontaneous speech.
 
 ## Check your understanding
@@ -121,6 +176,8 @@ The overlays provide a descriptive reference. They do not establish normal sampl
 2. Why does the MLE for $\sigma^2$ divide by $n$ rather than $n-1$?
 3. Standardize the adult-men measurements with their fitted parameters and inspect the resulting histogram.
 4. Which source restriction makes the within-facet observations nonrepeated by speaker?
+5. What pattern in the quantile plot would challenge the normal reference even
+   if the histogram overlay looked adequate?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -129,7 +186,13 @@ The overlays provide a descriptive reference. They do not establish normal sampl
 2. The normal MLE divides by $n$ because maximizing the likelihood estimates mean squared deviation directly; division by $n-1$ is a separate unbiasedness correction. <!-- dqr-allow: empirical-answer -->
 3. Standardizing adult-men values as $(F1-342.688889)/27.915596$ produces values with empirical mean zero and population standard deviation one while retaining the histogram's observed shape. <!-- dqr-allow: empirical-answer -->
 4. Restricting each facet to one vowel category leaves one measurement per speaker, so no speaker is repeated within a facet. <!-- dqr-allow: empirical-answer -->
+5. Systematic curvature or extreme points far from the reference line would
+   indicate tail or shape discrepancies hidden by histogram binning.
 
 </details>
 
-The [chi-squared distribution](chi-squared-distribution.qmd) describes a variance statistic under stronger normal-sampling assumptions.
+The normal family provides a symmetric additive-error reference on the real
+line. Its MLE variance uses $n$, not the unbiased $n-1$ denominator, and
+residual quantiles assess the fitted shape beyond what a histogram overlay can
+show. The [chi-squared distribution](chi-squared-distribution.qmd) next
+describes a variance statistic under stronger normal-sampling assumptions.

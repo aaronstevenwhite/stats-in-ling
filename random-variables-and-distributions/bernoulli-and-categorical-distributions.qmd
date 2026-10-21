@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-A corpus annotation can record a label, such as an interrogative lemma, or a binary property, such as whether the token is an object. These outcomes require two closely related distributions: the **categorical distribution** for a finite label inventory and the **Bernoulli distribution** for a binary indicator.
+A corpus annotation can record a label, such as an interrogative lemma, or a binary property, such as whether the token is an object. These outcomes require two closely related distributions: the [**categorical distribution**](https://mc-stan.org/docs/functions-reference/categorical-distribution.html) for a finite label inventory and the [**Bernoulli distribution**](https://bruno.nicenboim.me/bayescogsci/ch-intro.html) for a binary indicator.
+
+We begin with the token-level annotation table, model the full lemma inventory categorically, and then collapse the relation label to a Bernoulli indicator while tracking what information that collapse removes.
 
 ## Turkish interrogative arguments
 
@@ -45,6 +47,12 @@ lemma_counts
 relation_counts
 ```
 
+The first source row is the *kim* subject token displayed in the [canonical
+Turkish dossier](../foundations/possibilities-and-events.qmd#outcomes-and-the-sample-space).
+Its categorical lemma value is *kim*. Recoding its relation answers a distinct
+binary question: `nsubj` becomes `object = 0`, while an `obj` row becomes
+`object = 1`. Zero here is a linguistic alternative, not missingness.
+
 ## Categorical outcomes
 
 Let $L$ record interrogative lemma and let $\mathcal L$ be its finite support. A categorical probability vector $\boldsymbol\pi=(\pi_1,\ldots,\pi_K)$ satisfies $\pi_k\geq0$ and $\sum_k\pi_k=1$. We write
@@ -61,6 +69,13 @@ $$
 \widehat\pi_k=\frac{n_k}{n}.
 $$
 
+To derive this result, the categorical log likelihood is
+$\ell(\boldsymbol\pi)=\sum_k n_k\log\pi_k$ with
+$\sum_k\pi_k=1$. Adding a Lagrange multiplier gives
+$n_k/\pi_k=\lambda$ for every $k$. Summing
+$\pi_k=n_k/\lambda$ over categories yields $\lambda=n$, and thus
+$\widehat\pi_k=n_k/n$.
+
 The extract contains `r nrow(questions)` tokens. Its most frequent lemma is *`r lemma_counts$lemma[which.max(lemma_counts$count)]`*, with empirical mass `r sprintf("%.3f", max(lemma_counts$probability))`.
 
 ## Binary outcomes
@@ -74,6 +89,13 @@ O\sim\operatorname{Bernoulli}(p),
 $$
 
 The fitted value is $\widehat p=n^{-1}\sum_i o_i$, computed here as `r sprintf("%.3f", mean(questions$object))`. This is a corpus proportion, not an estimate from independent sentence sampling.
+
+The Bernoulli log likelihood is
+$\ell(p)=(\sum_i o_i)\log p+(n-\sum_i o_i)\log(1-p)$. Setting its derivative to
+zero gives $\widehat p=(\sum_i o_i)/n$. This binary coding is justified only
+because the question contrasts the two retained source relations. Collapsing a
+genuinely three-way lemma question to one versus other would answer a different
+question.
 
 ```{r}
 #| label: plot-ud-categorical
@@ -100,6 +122,8 @@ The categorical model preserves which lemma occurred; the Bernoulli mapping coll
 2. Define a Bernoulli indicator for lemma *ne* and compute its empirical $p$.
 3. Explain why treating the `object` indicator as a Bernoulli variable does not make the rows independent.
 4. Which information is lost when `dependency_relation` replaces the three-level lemma?
+5. A student codes *ne* as one and every other lemma as zero, then calls the
+   result the lemma distribution. Which information has been collapsed?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -108,7 +132,13 @@ The categorical model preserves which lemma occurred; the Bernoulli mapping coll
 2. For $I_{\textit{ne}}=\mathbb{1}\{L=\textit{ne}\}$, the empirical Bernoulli parameter is $p=147/167=0.880240$. <!-- dqr-allow: empirical-answer -->
 3. Bernoulli coding specifies two possible row values but does not make rows independent, because multiple tokens can come from the same sentence and register. <!-- dqr-allow: empirical-answer -->
 4. Replacing the three-level lemma with dependency relation discards which of *hangi*, *kim*, or *ne* the token instantiates. <!-- dqr-allow: empirical-answer -->
+5. The binary variable preserves only *ne* versus non-*ne* and can no longer
+   distinguish *hangi* from *kim*.
 
 </details>
 
-The [next page](bernoulli-distribution.qmd) develops the Bernoulli expectation and variance for the same object indicator.
+A categorical variable retains one of $K$ labels, whereas a Bernoulli variable
+retains the answer to one binary question. Under the stated row weighting, the
+MLE in either case is an empirical relative frequency. The [next
+page](bernoulli-distribution.qmd) develops the Bernoulli expectation and
+variance.

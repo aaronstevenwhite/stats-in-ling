@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-**Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use
+**Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use the location-scale specification stated below.
+
+This page first states separate equations for conditional location and scale, then fits them to grouped item summaries and interprets the two coefficient sets on their own terms.
 
 $$
 Y_{ij}\sim\mathcal N(\mu_i,\sigma_i^2),
@@ -31,6 +33,8 @@ $$
 
 The log link keeps every fitted standard deviation positive.
 
+The normal choice assumes that retained correct log response times are conditionally symmetric with a mean and scale captured by these equations. Trial independence makes the grouped likelihood a product. Those assumptions are conveniences that make the item summaries sufficient; they may fail when the omitted participant structure induces dependence or heavier tails.
+
 ## A likelihood for grouped item summaries
 
 The course table does not retain the individual correct trials used in this sequence. For item $i$, it retains their count $n_i$, mean $\overline y_i$, and variance $s_i^2$. The identity
@@ -42,6 +46,14 @@ $$
 $$
 
 allows the Gaussian likelihood to be evaluated exactly from these sufficient summaries, conditional on the independence approximation.
+
+To derive the identity, add and subtract the item mean:
+
+$$
+y_{ij}-\mu_i=(y_{ij}-\overline y_i)+(\overline y_i-\mu_i).
+$$
+
+After squaring and summing, the cross-product vanishes because $\sum_j(y_{ij}-\overline y_i)=0$. The first squared term is $(n_i-1)s_i^2$ and the second is $n_i(\overline y_i-\mu_i)^2$. Thus the grouped likelihood is algebraically equal to the row likelihood only under the declared Gaussian common-within-item mean and scale.
 
 ```{r}
 #| label: fit-mald-distributional-regression
@@ -143,6 +155,21 @@ coefficient_table
 model_comparison
 ```
 
+`X_mu` maps the four mean coefficients to $\mu_i`; `Z_frequency` maps an intercept and centered-frequency coefficient to $\log\sigma_i`. The optimizer parameter vector thus contains the mean coefficients first and the scale coefficients second. Weighted least squares supplies stable mean starting values, pooled residual sums of squares supply the scale start, and the added zero initializes no frequency change in scale.
+
+BFGS is a numerical choice: it builds a local inverse-Hessian approximation from likelihood gradients. `maxit` caps work and `reltol` declares a relative stopping threshold. A zero convergence code reports numerical stabilization, not model adequacy. The requested Hessian supplies a local curvature check:
+
+```{r}
+#| label: check-mald-distributional-curvature
+data.frame(
+  minimum_hessian_eigenvalue = min(eigen(
+    frequency_scale_fit$hessian,
+    symmetric = TRUE,
+    only.values = TRUE
+  )$values)
+)
+```
+
 The frequency coefficient in the mean equation is `r sprintf("%.4f", frequency_scale_fit$par[[2]])`; the frequency coefficient in the log-scale equation is `r sprintf("%.4f", tail(frequency_scale_fit$par, 1))`. Thus greater observed frequency is associated with both a lower item mean and a lower fitted conditional spread in this grouped specification.
 
 Allowing frequency-dependent scale changes AIC from `r sprintf("%.2f", model_comparison$aic[[1]])` to `r sprintf("%.2f", model_comparison$aic[[2]])`. This comparison uses the same grouped Gaussian likelihood and the same item summaries.
@@ -195,7 +222,7 @@ ggplot(mald, aes(log_frequency_subtlex, sd_log_rt)) +
 
 The likelihood treats retained correct trials as conditionally independent. Because the summaries omit participant identifiers, the fitted scale may combine trial noise with participant heterogeneity and cannot recover participant effects. The model demonstrates separate mean and scale equations; it is not a replacement for the crossed analysis used in the MALD paper.
 
-## Check your understanding
+## Recap and check your understanding
 
 1. Why is log used for the scale equation?
 2. Which sufficient summaries enter the grouped likelihood?

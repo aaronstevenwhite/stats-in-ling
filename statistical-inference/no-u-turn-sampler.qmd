@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-A static HMC transition requires a fixed number of leapfrog steps. The **No-U-Turn Sampler (NUTS)** chooses trajectory length during each transition. Hoffman and Gelman ([2014](https://jmlr.org/papers/v15/hoffman14a.html)) introduced the original algorithm; Stan uses a multinomial variant described in its [reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html).
+A static HMC transition requires a fixed number of leapfrog steps. The [**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) chooses trajectory length during each transition. Hoffman and Gelman ([2014](https://jmlr.org/papers/v15/hoffman14a.html)) introduced the original algorithm; Stan uses a multinomial variant described in its [reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html).
+
+We first follow the doubling and stopping logic that constructs a NUTS trajectory, then inspect actual tree lengths from the passage-level Student-t fit, and finally distinguish adaptive path selection from a guarantee that the chosen geometry is adequate.
 
 ## Growing and stopping a trajectory
 
@@ -29,9 +31,20 @@ $$
 
 When one becomes negative, momentum at that endpoint points back across the path. Stan also checks completed subtrees. It selects one eligible state with weights related to $\exp\{-H(q,\rho)\}$, rather than automatically taking the final endpoint.
 
+A one-dimensional schematic makes the doubling rule concrete:
+
+| tree depth | intended leapfrog states | question before further growth |
+|---:|---:|---|
+| 0 | 1 | Is this state eligible? | <!-- dqr-allow: algorithm-setting -->
+| 1 | 2 | Do the endpoint momenta still point along the span? | <!-- dqr-allow: algorithm-setting -->
+| 2 | 4 | Has either completed subtree turned? | <!-- dqr-allow: algorithm-setting -->
+| 3 | 8 | Would another doubling reverse direction or encounter an energy failure? | <!-- dqr-allow: algorithm-setting -->
+
+Suppose $q^-<q^+$. If the right-end momentum becomes negative, then $(q^+-q^-)M^{-1}\rho^+<0$: the path at the right endpoint is moving back toward the left. Internal tree states helped construct this one transition; counting them all as posterior draws would overweight a single trajectory. Stan's multinomial selection instead chooses one eligible state using energy-related weights.
+
 ## Actual passage-level Student-t model tree lengths
 
-The production passage-level Student-t fit used four chains, 750 warmup iterations, 1,000 retained iterations, `adapt_delta = 0.90`, and `max_treedepth = 10`. The code imports the original 55 passage summaries and the frozen draw object produced by the exact Stan program on the [next page](stan.qmd).
+The production passage-level Student-t fit used four chains, 750 warmup iterations, 1,000 retained iterations, `adapt_delta = 0.90`, and `max_treedepth = 10`. The code imports the original 55 passage summaries and a frozen draw object from the exact program documented on the [Stan page](stan.qmd#the-complete-program). Thus this section previews stored diagnostics; the next page supplies the program and cache provenance on which they depend.
 
 ```{r}
 #| label: load-provo-nuts-diagnostics
@@ -86,6 +99,17 @@ The maximum observed tree depth is `r max(diagnostics$treedepth__)`, and the max
 
 NUTS chooses trajectory length within a transition. Warmup adaptation separately learns the step size and mass matrix. Increasing `max_treedepth` only permits more work; it does not repair inaccurate integration, poor geometry, or weak identification.
 
+The target acceptance setting `.90` asks adaptation to favor smaller, more accurate leapfrog steps than a lower target would. The depth cap of 10 permits at most a large binary tree before stopping computation. Both are workflow settings, not model assumptions; repeated saturation or divergences would motivate diagnosis rather than automatic increases.
+
+## Recap and forward link
+
+1. Doubling tree depth grows one transition's candidate trajectory exponentially.
+2. Endpoint and subtree checks stop growth when the path begins to reverse.
+3. Multinomial selection retains one eligible state; internal tree states are not extra draws.
+4. Depth and target-acceptance settings regulate computation but do not repair model geometry by themselves.
+
+The [Stan page](stan.qmd#the-complete-program) gives the exact program and sampling call that generated these diagnostics.
+
 ## Check your understanding
 
 1. What doubles when tree depth increases by one?
@@ -102,5 +126,3 @@ NUTS chooses trajectory length within a transition. Warmup adaptation separately
 4. Repeated saturation indicates that the allowed trajectory length is truncating exploration, though it does not identify whether the cause is geometry, step size, or the depth cap. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [Stan page](stan.qmd) shows the exact passage-level Student-t program and sampling call that generated these diagnostics.

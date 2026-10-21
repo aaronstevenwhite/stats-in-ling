@@ -9,6 +9,8 @@ execute:
 
 The fitted Provo regression slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a repeated-sampling model.
 
+This page first derives the conventional OLS covariance, then separates uncertainty about a conditional mean from uncertainty about a new response.
+
 ## Conventional OLS uncertainty
 
 Write the linear model in matrix form:
@@ -26,6 +28,27 @@ $$
 =(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf Y.
 $$
 
+Write
+
+$$
+\mathbf A=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top.
+$$
+
+Conditional on the observed design matrix, $\widehat{\boldsymbol\beta}=\mathbf A\mathbf Y$. The covariance propagation rule from [standard errors](../statistical-inference/standard-errors.qmd) gives
+
+$$
+\begin{aligned}
+\operatorname{Var}[\widehat{\boldsymbol\beta}\mid\mathbf X]
+&=\mathbf A\operatorname{Var}[\mathbf Y\mid\mathbf X]\mathbf A^\top\\
+&=\mathbf A(\sigma^2\mathbf I)\mathbf A^\top\\
+&=\sigma^2
+(\mathbf X^\top\mathbf X)^{-1}
+\mathbf X^\top\mathbf X
+(\mathbf X^\top\mathbf X)^{-1}\\
+&=\sigma^2(\mathbf X^\top\mathbf X)^{-1}.
+\end{aligned}
+$$
+
 Because a linear transformation of a normal vector is normal,
 
 $$
@@ -41,6 +64,24 @@ s^2=\frac{\sum_i e_i^2}{n-p}
 $$
 
 gives the conventional covariance estimate. Here $p$ is the number of fitted coefficients, including the intercept.
+
+Why divide by $n-p$ rather than $n$? Fitting $p$ linearly independent coefficients imposes $p$ constraints on the residual vector. Under the Gaussian linear model,
+
+$$
+\frac{\operatorname{SSE}}{\sigma^2}\sim\chi^2_{n-p},
+$$
+
+and thus $\mathbb{E}[\operatorname{SSE}]=(n-p)\sigma^2$. Hence $s^2=\operatorname{SSE}/(n-p)$ is unbiased for $\sigma^2$ under these assumptions.
+
+For coefficient $j$, normality of the numerator and independence of the Gaussian coefficient estimator from $s^2$ yield the [Student-$t$](../random-variables-and-distributions/student-t-distribution.qmd) pivot
+
+$$
+\frac{\widehat\beta_j-\beta_j}
+{s\sqrt{[(\mathbf X^\top\mathbf X)^{-1}]_{jj}}}
+\sim t_{n-p}.
+$$
+
+A two-sided confidence interval adds and subtracts the appropriate $t_{n-p}$ critical value. Its repeated-sampling interpretation is the one developed on the [confidence-interval page](../statistical-inference/confidence-intervals.qmd); it is not a posterior probability for the fixed coefficient.
 
 ```{r}
 #| label: compute-provo-regression-uncertainty
@@ -84,6 +125,8 @@ data.frame(
 
 The conventional slope standard error is `r sprintf("%.6f", conventional_se[["cloze_surprisal_c"]])`; the passage-clustered HC1 sensitivity estimate is `r sprintf("%.6f", cluster_se[["cloze_surprisal_c"]])`. The latter allows arbitrary residual dependence within the observed passages while treating passages as independent clusters.
 
+The clustered estimator replaces the model-based middle covariance with a sum of passage-level score outer products, then surrounds that empirical middle by the same design “bread.” Intuitively, positions in one passage may move together, so the 55 passage score totals, not 1,593 position rows, supply cluster replication. HC1 applies a finite-sample scaling; it does not make 55 selected passages a random sample of every English text.
+
 This sensitivity calculation does not recover reader variation. The raw readers were removed by aggregation, so neither uncertainty estimate substitutes for a participant-by-item model.
 
 ## Mean and response uncertainty
@@ -105,6 +148,8 @@ s^2\left\{1+\mathbf x_0^\top(\mathbf X^\top\mathbf X)^{-1}\mathbf x_0\right\}.
 $$
 
 Thus a prediction interval is wider than a confidence interval for the mean.
+
+`predict.lm(..., interval="confidence")` implements the first variance and uses the $t_{n-p}$ critical value. `interval="prediction"` adds the new residual variance represented by the extra 1. Both intervals rely on the linear mean, independent Gaussian errors, and common residual variance for their exact finite-sample form.
 
 ```{r}
 #| label: plot-provo-regression-uncertainty
@@ -156,7 +201,7 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
-## Check your understanding
+## Recap and check your understanding
 
 1. Which assumption yields the factor $\sigma^2\mathbf I$?
 2. Why does the response prediction variance contain an extra $1$?
