@@ -9,7 +9,12 @@ execute:
 
 A [**divergent transition**](https://mc-stan.org/docs/reference-manual/mcmc.html) occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same passage-level Student-t model used throughout this sequence.
 
-We first connect divergence to Hamiltonian energy error, then contrast the production fit with a controlled stress computation, and finally develop a response sequence for diagnosing a divergence without treating a tuning change as automatic repair.
+The target geometry comes from the log [posterior](posterior-distributions.qmd), whose data contribution is the [likelihood](maximum-likelihood.qmd#probability-and-likelihood). [Correlation](../random-variables-and-distributions/correlation.qmd) can orient a narrow region, while [effective sample size](effective-sample-size.qmd#from-autocorrelation-to-ess) assesses dependence among retained draws; neither diagnostic substitutes for checking divergences in parameter space.
+
+We first connect divergence to Hamiltonian energy error, then compare adapted
+chains with deliberately coarse unadapted transitions, and finally develop a
+response sequence for diagnosing a divergence without treating a tuning
+change as automatic repair.
 
 ## Energy error and geometry
 
@@ -30,6 +35,16 @@ $$
 
 The HMC correction accepts with probability $\min\{1,\exp(-\Delta H)\}$. Small numerical errors are corrected by this accept--reject step. A divergence flags an energy error large enough that the discrete trajectory may have failed to represent the local geometry reliably.
 
+An **interior point** lies away from the boundary of the parameter space, so a
+sufficiently small move is possible in every coordinate direction. A target is
+locally **regular** when its log density is finite and smooth enough near that
+point for local slopes and curvature to describe nearby change. The
+[derivative page defines those slopes](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change),
+and the [posterior-grid page defines curvature through the
+Hessian](beyond-conjugacy.qmd#hessian-as-local-curvature). These conditions can
+fail or become numerically strained near a boundary, a sharp corner, or a
+region where curvature changes rapidly.
+
 Rapidly changing curvature can make one step size inaccurate in a narrow region even if it works elsewhere. In a hierarchical model, for instance,
 
 $$
@@ -46,11 +61,21 @@ $$
 
 The two forms imply the same conditional distribution for $u_j$ at fixed $\tau$, but expose different numerical coordinates.
 
-## Production and stress computations
+## Adapted and deliberately coarse transitions
 
-The production passage-level Student-t fit uses adapted NUTS. A deliberately coarse run uses the same complete passage set, likelihood, priors, and data-derived initial region, but disables warmup and adaptation, uses a unit metric, fixes step size at 0.03, and caps tree depth at 7. This run demonstrates a numerical warning; it is not a second inferential fit and is not evidence of a defect in the production model.
+The four chains examined on the preceding pages use NUTS after warmup has
+adapted the step size and mass matrix. For comparison, we also generate
+transitions for the same passage set, likelihood, priors, and initial region
+after disabling adaptation, using a unit metric, fixing the step size at
+0.03, and capping tree depth at 7. These deliberately coarse transitions let
+us see the warning under unfavorable numerical settings; we do not use them
+for posterior summaries.
 
-Each degradation has a role: disabling warmup prevents step-size and mass adaptation; the unit metric ignores posterior scale and correlation; the fixed step size is not tuned to the target; and the depth cap limits trajectory work. Together they create a diagnostic stress test while holding the statistical model fixed.
+Each change has a specific consequence. Without warmup, the step size and
+mass matrix cannot adapt. The unit metric ignores posterior scale and
+correlation, the fixed step size may be too large for the target, and the
+depth cap limits trajectory work. The statistical model stays fixed while
+the numerical approximation changes.
 
 ```{r}
 #| label: load-provo-divergences
@@ -62,25 +87,25 @@ cache <- readRDS(
   "data/provo/provo-stan-draw-cache.rds"
 )
 
-production_diagnostics <- as.data.frame(
+adapted_diagnostics <- as.data.frame(
   as_draws_df(cache$production_diagnostics)
 )
-stress_diagnostics <- as.data.frame(as_draws_df(cache$stress_diagnostics))
-stress_parameters <- as.data.frame(as_draws_df(subset_draws(
+coarse_diagnostics <- as.data.frame(as_draws_df(cache$stress_diagnostics))
+coarse_parameters <- as.data.frame(as_draws_df(subset_draws(
   cache$stress_draws, variable = c("mu", "sigma")
 )))
-stress <- merge(
-  stress_parameters,
-  stress_diagnostics[, c(".chain", ".iteration", "divergent__")],
+coarse_transitions <- merge(
+  coarse_parameters,
+  coarse_diagnostics[, c(".chain", ".iteration", "divergent__")],
   by = c(".chain", ".iteration")
 )
 
 divergence_summary <- data.frame(
-  fit = c("production adapted NUTS",
-          "coarse unadapted stress computation"),
-  draws = c(nrow(production_diagnostics), nrow(stress_diagnostics)),
-  divergences = c(sum(production_diagnostics$divergent__),
-                  sum(stress_diagnostics$divergent__))
+  transitions = c("adapted NUTS chains",
+                  "deliberately coarse unadapted transitions"),
+  draws = c(nrow(adapted_diagnostics), nrow(coarse_diagnostics)),
+  divergences = c(sum(adapted_diagnostics$divergent__),
+                  sum(coarse_diagnostics$divergent__))
 )
 divergence_summary$rate <- divergence_summary$divergences /
   divergence_summary$draws
@@ -93,12 +118,12 @@ divergence_summary
 
 ```{r}
 #| label: plot-provo-stress-divergences
-#| fig-cap: "The coarse, unadapted stress computation. Accent points mark divergent transitions; this run is not the production fit."
+#| fig-cap: "Deliberately coarse, unadapted transitions for the passage-level model. Accent points mark divergences; these transitions are not used for posterior summaries."
 background_opacity <- .35
 divergent_opacity <- .75
-ggplot(stress, aes(mu, sigma)) +
+ggplot(coarse_transitions, aes(mu, sigma)) +
   geom_point(color = "grey68", alpha = background_opacity, size = .75) +
-  geom_point(data = subset(stress, divergent__ == 1),
+  geom_point(data = subset(coarse_transitions, divergent__ == 1),
              color = "#8B1A1A", alpha = divergent_opacity, size = 1.1) +
   coord_cartesian(xlim = c(-.015, .035), ylim = c(.025, .070)) +
   labs(x = "Passage-level contrast (mu)",
@@ -106,11 +131,22 @@ ggplot(stress, aes(mu, sigma)) +
   theme_classic(base_size = 12)
 ```
 
-The production fit has `r divergence_summary$divergences[1]` divergences. The intentionally coarse stress computation has `r divergence_summary$divergences[2]` among `r divergence_summary$draws[2]` transitions. The contrast shows what the diagnostic looks like when integration is degraded while the data and posterior remain fixed.
+The adapted chains have `r divergence_summary$divergences[1]` divergences. The
+deliberately coarse calculation has `r divergence_summary$divergences[2]`
+among `r divergence_summary$draws[2]` transitions. The comparison shows the
+diagnostic that appears when integration is degraded while the data and
+posterior remain fixed.
 
 ## Responding to a real divergence
 
-First locate the marked draws in theoretically relevant parameter pairs. Then inspect parameter identification, predictor scales, and parameterization. Increasing `adapt_delta` usually reduces step size and may repair modest integration error; reparameterization may be needed when curvature changes substantially. Refit and recheck all diagnostics.
+First locate the marked draws in theoretically relevant parameter pairs. Then
+inspect parameter identification, predictor scales, and parameterization.
+Recall that [identification asks whether the observable distribution
+distinguishes parameter values](../experimental-design/index.qmd#what-you-should-already-know);
+weak identification can create a long or narrow posterior ridge. Increasing
+`adapt_delta` usually reduces step size and may repair modest integration
+error; reparameterization may be needed when curvature changes substantially.
+Refit and recheck all diagnostics.
 
 The response sequence is thus: (i) locate the divergences, (ii) inspect scaling, identification, and parameterization, (iii) rescale or reparameterize when warranted, (iv) refit, and (v) recheck divergences, $\widehat R$, ESS, tree depth, and predictive behavior. Raising `adapt_delta` is one possible intervention within that sequence, not a substitute for it.
 
@@ -119,16 +155,19 @@ Filtering divergent iterations is never a repair. And a run with no divergence r
 ## Recap and forward link
 
 1. Divergences flag large numerical energy error in particular target regions.
-2. The stress run degrades computation while holding the model and data fixed.
+2. The deliberately coarse transitions change the numerical approximation
+   while holding the model and data fixed.
 3. Localized warnings may bias summaries even when their overall percentage is small.
 4. Repair requires diagnosis, refitting, and rechecking rather than filtering transitions.
 
-The [pairs-plot page](parameter-pair-plots.qmd#locating-the-stress-warning) shows where the stress divergences occur in joint parameter space.
+The [pairs-plot page](parameter-pair-plots.qmd#locating-the-stress-warning)
+shows where the coarse-transition divergences occur in joint parameter space.
 
 ## Check your understanding
 
 1. Which numerical quantity fails to remain approximately stable during a divergence?
-2. Why is the stress run not evidence of a defective passage-level Student-t model?
+2. Why do the deliberately coarse transitions tell us about computation
+   rather than about a defect in the passage-level Student-t model?
 3. Why might localized divergences matter even when their percentage is small?
 4. When might reparameterization be more useful than only increasing `adapt_delta`?
 
@@ -136,7 +175,9 @@ The [pairs-plot page](parameter-pair-plots.qmd#locating-the-stress-warning) show
 <summary>Answers</summary>
 
 1. The Hamiltonian, or total energy $H(q,\rho)$, fails to remain approximately stable. <!-- dqr-allow: empirical-answer -->
-2. The run deliberately disables adaptation and uses a coarse unit metric while holding the data and posterior fixed; it demonstrates numerical failure, not a defective model. <!-- dqr-allow: empirical-answer -->
+2. The calculation deliberately disables adaptation and uses a coarse unit
+   metric while holding the data and posterior fixed; it demonstrates
+   numerical failure under those settings rather than a defective model. <!-- dqr-allow: empirical-answer -->
 3. A small rate can be concentrated in a narrow, scientifically important posterior region, biasing summaries that depend on that region. <!-- dqr-allow: empirical-answer -->
 4. Reparameterization is more useful when posterior curvature changes sharply, as in funnel-like geometry that no single smaller step size handles efficiently. <!-- dqr-allow: empirical-answer -->
 

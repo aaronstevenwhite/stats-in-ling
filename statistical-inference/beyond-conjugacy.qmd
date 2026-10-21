@@ -7,33 +7,67 @@ execute:
   message: false
 ---
 
-Conjugacy identifies a normalized posterior by matching a familiar density. Many useful likelihood-prior combinations do not provide that match. We now fix one empirical posterior that every remaining computation page will target.
+[Conjugacy](conjugate-priors.qmd#what-conjugacy-buys-and-what-it-does-not) is the algebraic relationship in which a likelihood and prior yield a posterior in a recognizable density family. Their parameter-dependent product is the posterior kernel. Its integral over the parameter space is the normalizing constant, the positive quantity by which we divide the kernel to obtain a density that integrates to one. Many useful likelihood-prior combinations do not provide a familiar expression for that constant. We now fix one empirical posterior that every remaining computation page will target.
 
-We do this in four steps. First, we reconstruct the path from a reader's eye movement to one passage-level observation. Second, we explain why a Student-t likelihood and these particular priors provide a useful teaching model. Third, we derive the posterior density from the likelihood and priors. Finally, we approximate its normalizing constant on a grid. The order matters: the computation is meaningful only after the data and model have been specified.
+We do this in four steps. First, we reconstruct the path from a reader's eye movement to one passage-level observation. Second, we compare a normal likelihood with heavier-tailed alternatives and explain why we choose a Student-t likelihood with these priors for the present analysis. Third, we derive the posterior density from the likelihood and priors. Finally, we approximate its normalizing constant on a grid. The order matters: the computation is meaningful only after the data and model have been specified.
 
 ## From an eye movement to a modeled observation {#provo-data-ladder}
 
 The [Provo Corpus](https://osf.io/sjefs/) contains eye-tracking measurements and predictability norms for 55 English passages. Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) describe the resource and its original measurements. The release is CC BY 4.0.
 
-Suppose a reader encounters a word in one of these passages. The corpus treats the region occupied by that word as an *interest area*. A **first-fixation duration (FFD)** is the duration, in milliseconds, of the first recorded fixation in that interest area. It is an early and local measure: gaze duration instead sums the fixations in the first run through the word, while total reading time also includes later returns. We use FFD here because it supplies a relatively direct word-level duration for the teaching contrast. This choice does not make FFD a complete measure of comprehension.
+Suppose a reader encounters a word in one of these passages. The corpus treats the region occupied by that word as an *interest area*. A **first-fixation duration (FFD)** is the duration, in milliseconds, of the first recorded fixation in that interest area. It is an early and local measure: gaze duration instead sums the fixations in the first run through the word, while total reading time also includes later returns. We choose FFD here because it supplies a relatively direct word-level duration for the present contrast. This choice does not make FFD a complete measure of comprehension.
 
-The source article illustrates the corpus with the fragment “With schools still closed, cars still buried and streets still,” followed by the target verb *blocked*. This is useful because it makes the different measurements concrete. The target has a position in a particular passage, a part-of-speech label, a word length, several cloze-based predictability measures, and one FFD for each reader who fixated it. A reader who skipped the word on the first pass does not contribute a positive FFD.
+### Cloze predictability measures {#provo-cloze-measures}
 
-The notes-owned table retains the following position-level quantities:
+In a **cloze task**, a norming participant sees a passage fragment with the
+next word withheld and supplies a continuation. Suppose the withheld target is
+*blocked*. An exact spelling match asks whether the response is *blocked*;
+a part-of-speech match asks whether the response has the same broad
+part-of-speech class as *blocked* even when it is a different word. The source
+authors fit models to these response-level matches. `OrthoMatchModel` is the
+fitted probability of an exact orthographic, or spelling, match, while
+`POSMatchModel` is the fitted probability of a broad part-of-speech match.
+These fitted probabilities summarize the source cloze model rather than raw
+response proportions.
+
+The corpus also supplies `LSA_Response_Match_Score`. **Latent semantic
+analysis (LSA)** represents words in a space learned from patterns of word
+co-occurrence; words used in similar contexts tend to lie nearer one another
+in that space. The stored score averages the source LSA similarity between the
+cloze responses and the target. It is a graded semantic-similarity summary,
+whereas the orthographic and part-of-speech measures begin with binary matches.
+
+The source article illustrates the corpus with the fragment “With schools still closed, cars still buried and streets still,” followed by the target verb *blocked*. The target has a position in a particular passage, a part-of-speech label, a word length, the three predictability measures just defined, and one FFD for each reader who fixated it. A reader who skipped the word on the first pass does not contribute a positive FFD.
+
+The prepared table retains the following position-level quantities:
 
 | Column | Meaning |
 |---|---|
 | `Text_ID`, `Word_Number` | The passage and the word position within that passage. Together they form the stable position key. |
 | `Word_Length`, `Word_POS`, `Word_In_Sentence_Number` | The number of letters, the broad part-of-speech class, and the position within the sentence. |
-| `OrthoMatchModel` | A fitted cloze probability for an exact orthographic match. It is not a language-model probability. |
+| `OrthoMatchModel` | The fitted cloze probability for an exact orthographic match. |
 | `POSMatchModel` | A fitted cloze probability that a response has the target's broad part of speech. |
-| `LSA_Response_Match_Score` | The mean semantic-similarity score between cloze responses and the target. |
+| `LSA_Response_Match_Score` | The mean source LSA similarity between cloze responses and the target. |
 | `mean_log_ffd` | The mean of the logged positive FFDs supplied by readers at this position. It is not the log of the arithmetic mean FFD. |
 | `n_fixations` | The number of positive reader-level FFDs entering that mean. |
 
+We will call `mean_log_ffd` the **fixation-contingent mean log FFD**. The name
+keeps the selection event inside the estimand: it averages logged durations over
+readers who supplied a retained positive fixation at that position. Predictability
+may affect both whether a word is fixated and how long the first fixation lasts.
+The present response models the second quantity after conditioning on the first;
+it contains no zero or placeholder for a skipped word.
+
+| Stage | Quantity retained for this analysis |
+|:--|:--|
+| Word encounter | A reader may skip the interest area or fixate it. |
+| Positive-duration branch | The first positive fixation supplies one FFD. |
+| Position summary | Logged FFDs are averaged over the readers on that branch. |
+| Passage summary | Position summaries are averaged within noun and verb positions, then subtracted. |
+
 The data ladder has four levels. The source begins with reader-by-word records. The preparation retains complete content-word records with positive FFD, logs each duration, and averages the logged durations over the observed readers at each word position. It then averages those position summaries separately over nouns and verbs within each passage. The final subtraction produces one contrast for each passage.
 
-Thus the course table contains one summary per passage, derived from 1,593 retained content-word positions. The position summaries were already aggregated across readers, so they are not participant trials. For passage $j$, let $\mathcal N_j$ and $\mathcal V_j$ be its retained noun and verb positions and let $d_{ji}$ be the position-level mean log FFD. We define
+Thus the prepared passage table contains one summary per passage, derived from 1,593 retained content-word positions. The position summaries were already aggregated across readers, so they are not participant trials. For passage $j$, let $\mathcal N_j$ and $\mathcal V_j$ be its retained noun and verb positions and let $d_{ji}$ be the position-level mean log FFD. We define
 
 $$
 y_j=
@@ -46,11 +80,18 @@ For instance, the first passage contributes 33 retained positions, including 16 
 
 ## Why aggregate? {#why-aggregate-provo}
 
-The [first treatment of aggregation](../foundations/linguistic-data.qmd#what-aggregation-removes) stressed that a summary both answers a question and removes variation. Here aggregation provides a two-parameter location-scale target that can be normalized on a grid and then reused when we introduce importance sampling, Markov chains, Hamiltonian Monte Carlo, and Stan. Giving each passage one contrast also prevents passages with more retained noun or verb positions from automatically receiving more weight.
+The [first treatment of aggregation](../foundations/linguistic-data.qmd#what-aggregation-removes) stressed that a summary both answers a question and removes variation. Here aggregation provides a two-parameter location-scale target that can be normalized on a grid and then reused when we introduce importance sampling, [Markov chains](markov-chains.qmd), Hamiltonian Monte Carlo, and Stan. A Markov chain is a sequence of dependent states whose next-state distribution depends on the current state; its full treatment comes later. Giving each passage one contrast also prevents passages with more retained noun or verb positions from automatically receiving more weight.
 
 But this convenience has a cost. The passage summaries remove reader variation, word-position variation, reader-by-word-class variation, and information about how precisely each passage contrast was measured. Passages with different noun counts, verb counts, and contributing fixation counts are treated as equally precise observations. A trial-level hierarchical model could represent those sources of variation, but it would answer a richer question and would no longer provide the two-dimensional target needed for the computational sequence.
 
-The resulting 55-observation analysis thus describes the unweighted distribution of these passage summaries, conditional on positive FFDs. It is not participant-level inference, a causal effect of part of speech, or inference from a probability sample of English texts.
+The resulting analysis assigns equal model weight to 55 passage summaries, each
+built from fixation-contingent position means. Reader-level distributions and
+their unequal contribution counts have already been removed. Part of speech was
+observed rather than assigned, so the noun--verb difference is descriptive. And
+the table contains the 55 passages used in the experiment. The corpus
+construction process does not supply a sampling frame of English texts.
+The model's center therefore concerns the unweighted distribution of these 55
+constructed contrasts.
 
 ```{r}
 #| label: load-provo-passage-target
@@ -108,7 +149,7 @@ provo[
 
 ## Why use a Student-t likelihood? {#a-robust-location-scale-model}
 
-The [Student-t distribution page](../random-variables-and-distributions/student-t-distribution.qmd#construction) used a Student-t distribution as the sampling distribution of a standardized sample mean under a normal model. The role here is different. We use a Student-t distribution as an observation model for the 55 passage contrasts themselves.
+The [Student-t distribution page](../random-variables-and-distributions/student-t-distribution.qmd#construction) used a Student-t distribution as the sampling distribution of a standardized sample mean under a normal model. The role here is different. We use a Student-t distribution as an observation model for the 55 passage contrasts themselves. For fixed observed contrasts, recall that the [likelihood](maximum-likelihood.qmd#probability-and-likelihood) is the model density viewed as a function of the unknown parameters.
 
 The basic idea is to estimate a common center while allowing an unusually large passage contrast to have less influence than it would under a normal likelihood. More specifically, the passage-level model uses
 
@@ -125,14 +166,16 @@ $$
 \sigma\sim\operatorname{HalfNormal}(0,2s_y),
 $$
 
-where $s_y$ is the observed standard deviation of the 55 contrasts. Thus both prior scales are computed as `r sprintf("%.6f", prior_mu_sd)`. This is an empirically calibrated teaching prior, not a confirmatory analysis. The fixed four degrees of freedom make the observation model less sensitive to an extreme passage than a normal likelihood would be.
+where $s_y$ is the observed [standard deviation](../random-variables-and-distributions/standard-deviation.qmd#definition) of the 55 contrasts. Thus both prior scales are computed as `r sprintf("%.6f", prior_mu_sd)`. Because the same outcomes determine the prior scales and enter the likelihood, we interpret the posterior conditionally on this data-dependent calibration; it cannot be presented as an analysis whose prior commitments were specified before these outcomes were inspected. The fixed four degrees of freedom make the observation model less sensitive to an extreme passage than a normal likelihood would be.
 
 This choice makes six assumptions that the notation can otherwise hide:
 
-1. Conditional on $\mu$ and $\sigma$, the passage contrasts are independent.
+1. Conditional on $\mu$ and $\sigma$, the passage contrasts are [independent](../foundations/independence.qmd#why-the-characterizations-are-equivalent), so their joint density factorizes.
 2. The passages share one location, one scale, and one tail parameter.
 3. The distribution is symmetric around $\mu$.
-4. The parameter $\sigma$ is the Student-t scale. With four degrees of freedom, the standard deviation is $\sigma\sqrt{4/(4-2)}$, not $\sigma$.
+4. The parameter $\sigma$ gives the Student-$t$ scale. With four degrees of
+   freedom, the standard deviation equals $\sigma\sqrt{4/(4-2)}$, which is
+   larger than $\sigma$.
 5. No passage-level predictor explains systematic differences among the contrasts.
 6. Each aggregate is treated as observed without a passage-specific measurement-error term.
 
@@ -140,13 +183,13 @@ These assumptions are working simplifications. The histogram below lets us inspe
 
 ### Why four degrees of freedom? {#why-four-degrees-of-freedom}
 
-The value four is a teaching choice, not a quantity implied by the Provo Corpus. It gives the likelihood finite variance but substantially heavier tails than a normal distribution. Fixing it also leaves only $\mu$ and $\sigma$ unknown, which makes a two-dimensional grid possible. A smaller value would allow still heavier tails; a larger value would approach the normal model. Thus any substantive conclusion should be checked for sensitivity to this choice.
+We could estimate the degrees of freedom, fix a small value, or use the normal model obtained as the degrees of freedom increase. We choose four for the present analysis because it gives the likelihood finite variance while retaining substantially heavier tails than a normal distribution. Fixing it also leaves only $\mu$ and $\sigma$ unknown, which makes a two-dimensional grid possible. A smaller value would allow still heavier tails; a larger value would approach the normal model. The Provo Corpus does not determine the value four, so the sensitivity calculation below compares it with three, seven, and the normal limit.
 
-### Why these priors? {#provo-teaching-priors}
+### Why these priors? {#provo-priors}
 
 The prior for $\mu$ is centered at zero because zero represents no average noun-minus-verb contrast. Its scale, $2s_y$, is broad relative to the observed contrast distribution. The half-normal prior for $\sigma$ enforces positive scale and downweights implausibly large between-passage dispersion.
 
-A potential worry is that $s_y$ comes from the same outcomes used in the likelihood. That worry is correct. These are data-calibrated teaching priors, chosen to keep the computational example on the observed scale; they should not be presented as beliefs specified before seeing the data. The following simulation makes their implications visible before the posterior is computed.
+A potential worry is that $s_y$ comes from the same outcomes used in the likelihood. That worry is correct. We choose these data-calibrated priors to keep the analysis on the observed scale; they should not be presented as beliefs specified before seeing the data. The following [prior-predictive simulation](prior-predictive-distributions.qmd) draws parameters from the priors and then draws a new contrast from the observation model, making their implications visible before the posterior is computed.
 
 ```{r}
 #| label: check-provo-prior-predictive
@@ -246,7 +289,59 @@ $$
 
 The denominator is where conjugacy fails: the numerator does not match a familiar normalized two-parameter density. But the numerator still defines an unnormalized posterior.
 
-Let $\eta=(\mu,\log\sigma)$. The unnormalized log posterior on this unconstrained scale is
+Before writing the posterior in the coordinates used by the computation, we
+need to account for a change in scale. The [density-rescaling
+page](../random-variables-and-distributions/beta-distribution.qmd#density-rescaling)
+established the basic requirement behind a one-dimensional change of variables:
+when a coordinate map stretches a short interval, the density must compensate
+so that the corresponding interval keeps the same probability. We now apply
+that requirement to the positive scale parameter.
+
+Write $\lambda=\log\sigma$, so that $\sigma=\exp(\lambda)$. Recall that a
+[derivative is a local rate of
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
+Here $\mathrm d\sigma/\mathrm d\lambda$ is the local stretch factor: it
+describes how much a short interval of width $\Delta\lambda$ changes when
+mapped to the $\sigma$ scale. For the exponential map,
+
+$$
+\frac{\mathrm d\sigma}{\mathrm d\lambda}
+=
+\exp(\lambda)
+=
+\sigma.
+$$
+
+Thus a short interval of width $\Delta\lambda$ maps approximately to an interval of width
+
+$$
+\Delta\sigma
+\approx
+\sigma\,\Delta\lambda.
+$$
+
+The probability assigned to the two corresponding intervals must agree:
+
+$$
+f_{\lambda}(\lambda)\Delta\lambda
+\approx
+f_{\sigma}(\sigma)\Delta\sigma
+\approx
+f_{\sigma}(\sigma)\sigma\Delta\lambda.
+$$
+
+Canceling $\Delta\lambda$ gives
+
+$$
+f_{\lambda}(\lambda)
+=
+f_{\sigma}(\sigma)\sigma.
+$$
+
+This factor of $\sigma$ is the one-dimensional change-of-variables adjustment, or **Jacobian**, for $\sigma=\exp(\lambda)$. On the log scale, multiplication by $\sigma$ becomes addition of $\log\sigma=\lambda$. Equal-width grid cells in $\lambda$ correspond to increasingly wide intervals in $\sigma$, so the correction preserves their probability mass. The $+\log\sigma$ term does not come from the likelihood or either prior; it comes from expressing posterior mass on the new coordinate scale. The Stan program later lets Stan apply the same correction during its internal transform, so the model code does not add it manually.
+
+We can now write the posterior in the computational coordinates
+$\eta=(\mu,\lambda)=(\mu,\log\sigma)$. The unnormalized log posterior is
 
 $$
 \begin{aligned}
@@ -262,19 +357,8 @@ $$
 \end{aligned}
 $$
 
-The final term is the Jacobian for $\sigma=\exp(\eta_2)$. The Stan program later samples $\sigma$ directly and lets Stan handle its internal transform, so it does not add this term manually.
-
-To see why the Jacobian appears, write $\lambda=\log\sigma$. Then $\sigma=\exp(\lambda)$ and
-
-$$
-\frac{\mathrm d\sigma}{\mathrm d\lambda}
-=
-\exp(\lambda)
-=
-\sigma.
-$$
-
-Changing variables thus multiplies the density by $\sigma$ and adds $\log\sigma=\lambda$ to its logarithm. This addition does not come from the likelihood or either prior; it comes from expressing posterior mass on a different coordinate scale.
+The last term is now accounted for before it enters the computation: it is the
+log of the local stretch factor derived above.
 
 The mathematical terms and code correspond as follows:
 
@@ -287,7 +371,96 @@ The mathematical terms and code correspond as follows:
 
 ## Approximating the posterior on a grid {#provo-posterior-grid}
 
-A rectangular grid needs both a center and an extent. We first locate the posterior mode numerically. The inverse Hessian at that mode supplies a local covariance approximation, which we use only to construct the grid. Extending seven local standard deviations in each direction is a computational choice; the later boundary-mass check asks whether appreciable normalized weight remains on the edge. If it does, the grid is too narrow even if the optimizer converged.
+### The Hessian as local curvature {#hessian-as-local-curvature}
+
+A [matrix represents a linear map, and an inverse matrix reverses that map
+when the inverse exists](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance).
+We use both ideas in the local approximation below.
+
+A rectangular grid needs both a center and an extent. We use the posterior
+**mode**, the parameter pair at the highest point of the posterior density, as
+the center. The optimizer locates this pair by following local slopes.
+
+The [derivative page](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+defined a derivative as a local slope. With two parameters, the gradient
+collects one slope for each coordinate. The **Hessian** collects the local
+rates at which those slopes change: its diagonal entries record curvature
+along each coordinate, and its off-diagonal entries record how the slope in
+one coordinate changes as the other coordinate changes.
+
+Near a smooth mode, the negative log posterior often resembles a bowl. A
+narrow, sharply curved direction rises quickly from the bottom, while a broad,
+gently curved direction rises slowly. The Hessian of the negative log
+posterior records those local curvatures. Inverting that matrix reverses the
+scale: sharp curvature becomes a small local variance and gentle curvature a
+large local variance. The resulting **inverse-Hessian approximation** acts
+like a local [covariance
+matrix](../random-variables-and-distributions/covariance.qmd#definition),
+including an off-diagonal term for the local orientation of the two
+coordinates.
+
+This approximation describes only the neighborhood of the mode. It can be
+misleading for a skewed, multimodal, or weakly identified posterior. We use it
+only to propose the grid's extent, then check whether appreciable normalized
+weight remains along the grid boundary. Extending seven local standard
+deviations in each direction supplies the initial extent; nonnegligible
+boundary mass would tell us to widen it even if the optimizer converged.
+
+The contour diagrams show the connection between curvature and local spread.
+Each curve joins points at the same increase in negative log density above a
+mode at the origin. Closely spaced contours mark a sharp direction; widely
+spaced contours mark a gentle direction. Rotating which coordinate is sharp
+rotates the long direction of the local covariance approximation.
+
+```{r}
+#| label: plot-hessian-curvature
+#| fig-cap: "Two quadratic negative-log-density surfaces with different directional curvature. Tighter contours indicate greater curvature and therefore a smaller inverse-Hessian variance in that direction."
+#| fig-alt: "Two contour panels centered at zero. In the first, contours are narrow horizontally and broad vertically, showing sharp curvature in mu and gentle curvature in log sigma. In the second, the orientation reverses. The long contour direction corresponds to the larger local variance after the Hessian is inverted."
+curvature_grid <- expand.grid(
+  mu_offset = seq(-2, 2, length.out = 161L),
+  log_sigma_offset = seq(-2, 2, length.out = 161L)
+)
+
+sharp_mu <- transform(
+  curvature_grid,
+  case = "Sharp in mu; gentle in log sigma",
+  rise = 0.5 * ((mu_offset / 0.45)^2 + (log_sigma_offset / 1.25)^2)
+)
+sharp_log_sigma <- transform(
+  curvature_grid,
+  case = "Gentle in mu; sharp in log sigma",
+  rise = 0.5 * ((mu_offset / 1.25)^2 + (log_sigma_offset / 0.45)^2)
+)
+curvature_examples <- rbind(sharp_mu, sharp_log_sigma)
+
+ggplot(
+  curvature_examples,
+  aes(mu_offset, log_sigma_offset, z = rise)
+) +
+  geom_contour(breaks = c(0.5, 1, 2, 4, 8), color = "#2C7FB8") + # dqr-allow: symbolic-derivation
+  geom_point(
+    data = data.frame(
+      mu_offset = 0, # dqr-allow: symbolic-derivation
+      log_sigma_offset = 0, # dqr-allow: symbolic-derivation
+      case = unique(curvature_examples$case)
+    ),
+    aes(mu_offset, log_sigma_offset),
+    inherit.aes = FALSE,
+    color = "#8B1A1A", size = 1.7
+  ) +
+  facet_wrap(~case) +
+  coord_fixed() +
+  labs(
+    x = "Change in mu from the mode",
+    y = "Change in log sigma from the mode"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(strip.background = element_blank())
+```
+
+We chose these fixed quadratic surfaces to expose the geometry. The computation
+below obtains local curvature from the fitted Provo posterior and then checks
+the resulting grid against posterior mass at its boundaries.
 
 ```{r}
 #| label: fit-provo-grid-posterior
@@ -370,11 +543,47 @@ rbind(
 )
 ```
 
-The `321` by `321` grid has equal spacing in both coordinates. Each raw kernel value approximates density at one grid point, and a Riemann approximation to the absolute normalizing constant would multiply the sum by the common cell area. Because that same area appears in every normalized grid weight, it cancels when the weights are divided by their sum. The normalized weights can thus approximate posterior expectations even though the code does not report the absolute value of the normalizer.
+### Riemann sums as area approximations {#riemann-sums-as-area-approximations}
+
+An integral adds density over a continuous region. A **Riemann sum** replaces
+that region with many small cells, evaluates the density at one point in each
+cell, multiplies density height by cell area, and adds the resulting
+approximate probability masses. In one dimension the cells are narrow
+intervals; on this two-dimensional parameter grid they are rectangles with
+area
+
+$$
+\Delta\mu\,\Delta\log\sigma.
+$$
+
+Thus an approximation to the normalizing integral is
+
+$$
+Z
+\approx
+\sum_{g}
+\widetilde f(\eta_g\mid\mathbf y)
+\Delta\mu\,\Delta\log\sigma,
+$$
+
+where $g$ indexes grid cells. Making the cells smaller tends to improve this
+approximation when the density is sufficiently smooth and the grid covers the
+region carrying appreciable mass.
+
+The `321` by `321` grid has equal spacing in both coordinates, so every cell
+has the same area. That common factor appears in both the numerator and the
+sum used to normalize the weights, and therefore cancels. The normalized
+weights can approximate posterior
+[expectations](../random-variables-and-distributions/expected-values.qmd#expectation-as-a-probability-weighted-average),
+probability-weighted averages over the grid, even though the code does not
+report the absolute value of $Z$.
 
 ### Sensitivity to the fixed tail parameter
 
-The next calculation repeats the identical grid weighting with three heavy-tailed likelihoods and a normal limit. It is a sensitivity check, not an attempt to estimate $\nu$.
+The next calculation repeats the identical grid weighting with three
+heavy-tailed likelihoods and a normal limit. We hold $\nu$ fixed at each
+listed value and compare the resulting posteriors; we do not estimate $\nu$
+from these calculations.
 
 ```{r}
 #| label: check-provo-tail-sensitivity
@@ -470,7 +679,10 @@ $$
 \frac{\widetilde f(\eta_b\mid\mathbf y)}{\widetilde f(\eta_a\mid\mathbf y)},
 $$
 
-because $Z$ cancels. A missing closed-form normalizer is thus a computational problem, not an undefined posterior, provided $0<Z<\infty$.
+because $Z$ cancels. Thus we may still define the posterior when
+$0<Z<\infty$ even if no closed-form expression for $Z$ is available. The
+remaining problem is computational: we must approximate the required
+integrals or ratios.
 
 ## Check your understanding
 
@@ -478,7 +690,7 @@ because $Z$ cancels. A missing closed-form normalizer is thus a computational pr
 2. Why is `mean_log_ffd` not the log of an arithmetic mean duration?
 3. Why does the passage-level Student-t model not support participant-level inference?
 4. Which assumption permits the likelihood to factor over passages?
-5. Why is four degrees of freedom a teaching choice rather than an estimate from the corpus?
+5. Why do we fix four degrees of freedom for this analysis, and what alternatives does the sensitivity calculation represent?
 6. Which term is the Jacobian in the log target, and why does it appear?
 7. Why does the normalized grid-weight calculation not need an explicit cell-area factor?
 8. Why can later algorithms use the unnormalized target?
@@ -490,15 +702,17 @@ because $Z$ cancels. A missing closed-form normalizer is thus a computational pr
 2. The preparation first logs each positive reader-level duration and then averages those logged values. In general, $\overline{\log Y}\neq\log\overline Y$. <!-- dqr-allow: empirical-answer -->
 3. Reader trials were already aggregated into position and passage summaries, so participant identities and participant-level variation cannot be recovered. <!-- dqr-allow: empirical-answer -->
 4. Conditional independence of the 55 passage contrasts, given $\mu$ and $\sigma$, permits the likelihood product. <!-- dqr-allow: empirical-answer -->
-5. The corpus does not determine four degrees of freedom. Fixing four provides finite variance, heavy tails, and a two-dimensional teaching posterior. <!-- dqr-allow: empirical-answer -->
+5. The corpus does not determine four degrees of freedom. We fix four to retain finite variance and heavy tails while leaving only $\mu$ and $\sigma$ unknown; the sensitivity calculation compares heavier tails, lighter tails, and the normal limit. <!-- dqr-allow: empirical-answer -->
 6. The final $+\log\sigma$ term is the Jacobian for the transformation $\sigma=\exp(\eta_2)$. It converts density on the positive $\sigma$ scale to density on the unconstrained $\log\sigma$ scale. <!-- dqr-allow: empirical-answer -->
 7. Every grid point represents the same cell area, so that common factor cancels when the weights are normalized by their sum. <!-- dqr-allow: empirical-answer -->
 8. Density ratios and gradients do not require the common normalizing constant $Z$; it cancels or differentiates away. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-## Summing up
+## What carries forward
 
-The page established four results. First, one modeled observation is a passage-level contrast built through two stages of aggregation. Second, the Student-t likelihood is a robust symmetric working model whose four degrees of freedom are fixed for teaching convenience. Third, the priors are data-calibrated teaching priors and should be interpreted on that basis. Fourth, the posterior follows from likelihood times priors, with an additional Jacobian only when the scale parameter is represented on the log scale.
+1. Each $y_j$ already averages over retained reader fixations and word positions. The posterior for $\mu$ therefore describes the center of 55 equally weighted passage contrasts, conditional on positive FFD, rather than a reader-level noun--verb effect.
+2. The $t_4$ likelihood limits the influence of an extreme passage, while the data-calibrated priors place both parameters on the observed scale. Every later approximation inherits those modeling choices; changing the tail parameter, the aggregation, or the prior calibration changes the posterior target.
+3. Likelihood times priors gives an integrable kernel. The grid converts that kernel into normalized weights, and the Jacobian appears only because the computation expresses positive $\sigma$ through $\log\sigma$. Later algorithms may avoid evaluating $Z$ explicitly because ratios or gradients remove the common constant, but they still target the same density.
 
-The [Monte Carlo page](monte-carlo-integration.qmd#expectations-as-integrals) next uses independent draws from this normalized grid to approximate posterior expectations. The live possibility is to replace the aggregated target with a reader-by-word hierarchical model; doing so would improve the measurement model but would also change the inferential target and the computational problem.
+The [Monte Carlo page](monte-carlo-integration.qmd#expectations-as-integrals) next uses independent draws from this normalized grid to approximate posterior expectations. A reader-by-word hierarchical model remains a live possibility. It would retain variation removed by the passage summaries, while also changing both the inferential target and the computational problem.

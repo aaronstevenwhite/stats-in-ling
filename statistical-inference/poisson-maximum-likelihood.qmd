@@ -7,15 +7,18 @@ execute:
   message: false
 ---
 
-The Bernoulli likelihood represented one case label per token. A different question asks how many annotated personal pronouns occur in one BOUN sentence. The response is now a nonnegative count, including sentences with no qualifying pronoun.
+The Bernoulli likelihood represented one case label per token. A different question asks how many **case-annotated personal-pronoun tokens satisfying the course filter** occur in one BOUN sentence. The response is now a nonnegative count, including sentences with no token tagged `UPOS=PRON`, `PronType=Prs`, and an attested `Case` value. The [BOUN sample-to-claim map](populations-and-samples.qmd#boun-sample-to-claim-map) explains how sampled sentences become these filtered token rows.
 
 The [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd#definition-and-fit) is a useful first count model when sentences have a common exposure and pronoun-occurrence opportunities can be treated as approximately independent with a stable rate. Those assumptions are provisional here: sentences differ in length and construction, and sentence counts may share document and register contexts. A defining implication is $\mathbb{E}[Y_i]=\operatorname{Var}[Y_i]=\lambda$, which gives us a direct adequacy check.
 
-We first construct one count per BOUN sentence, then derive the Poisson maximum-likelihood estimator, and finally compare the fitted mean with the empirical variance before deciding how much the working model can support.
+Sentences with no qualifying token are part of the count distribution and
+contribute $e^{-\lambda}$ to the likelihood. Reconstructing those zeros before
+the derivation makes visible both the estimator and the assumption checked by the
+empirical variance.
 
 ## Constructing the sentence counts
 
-The full UD Turkish BOUN 2.18 release defines the sentence total used below. The pronoun extract identifies every sentence with at least one selected token; subtracting those distinct identifiers from the release total reconstructs the zero count exactly. The zero rows lack recoverable document or register identifiers, so the analysis cannot model those sources of structure.
+The full UD Turkish BOUN 2.18 release defines the sentence total used below. The pronoun extract identifies every sentence with at least one qualifying token; subtracting those distinct identifiers from the release total reconstructs the zero count exactly. A reconstructed zero means that the sentence contains no token satisfying the filter. It need not mean that the sentence contains no personal-pronoun expression under another annotation or linguistic analysis. The zero rows lack recoverable document or register identifiers, so the analysis cannot model those sources of structure.
 
 ```{r}
 #| label: build-ud-sentence-counts
@@ -39,7 +42,16 @@ stopifnot(
 
 ## Deriving the Poisson estimator
 
-Suppose, as a working model, that
+For fixed observed counts, the [likelihood](maximum-likelihood.qmd#probability-and-likelihood)
+is the model mass viewed as a function of the unknown parameter. Maximizing it
+yields a maximum-likelihood estimator. An estimator is the random function of a
+sample before observation; its realized numerical value is an estimate of a fixed
+model or population quantity, as developed on the [estimator-properties
+page](properties-of-estimators.qmd#estimators-are-random-variables).
+
+Suppose, as a working model, that the sentence counts are
+[independent](../foundations/independence.qmd#why-the-characterizations-are-equivalent)
+and identically distributed:
 
 $$
 Y_i\mathrel{\overset{\mathrm{IID}}{\sim}}\operatorname{Poisson}(\lambda).
@@ -117,7 +129,7 @@ data.frame(
 )
 ```
 
-The fitted mean is `r sprintf("%.4f", lambda_hat)` pronouns per sentence. But the empirical variance is `r sprintf("%.4f", empirical_variance)`, producing a variance-to-mean ratio of `r sprintf("%.3f", variance_to_mean)` rather than the Poisson value of one.
+The fitted mean is `r sprintf("%.4f", lambda_hat)` qualifying annotated tokens per sentence. But the empirical variance is `r sprintf("%.4f", empirical_variance)`, producing a variance-to-mean ratio of `r sprintf("%.3f", variance_to_mean)` rather than the Poisson value of one.
 
 ```{r}
 #| label: plot-ud-sentence-poisson
@@ -127,7 +139,7 @@ ggplot(count_grid, aes(count)) +
   geom_line(aes(y = fitted_probability), color = "#8B1A1A", linewidth = 0.8) +
   geom_point(aes(y = fitted_probability), color = "#8B1A1A", size = 1.5) +
   scale_x_continuous(breaks = count_grid$count) +
-  labs(x = "Annotated personal pronouns per sentence", y = "Proportion of BOUN sentences") +
+  labs(x = "Case-annotated personal-pronoun tokens satisfying the course filter per sentence", y = "Proportion of BOUN sentences") +
   theme_classic(base_size = 12)
 ```
 

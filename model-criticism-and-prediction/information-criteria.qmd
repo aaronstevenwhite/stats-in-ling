@@ -2,7 +2,7 @@
 title: "Penalizing in-sample fit"
 ---
 
-The [likelihood-ratio page](likelihood-ratio-tests.qmd) fixed a Provo position table and two nested Gaussian mean models. Information criteria use those same likelihoods but replace null-hypothesis calibration with a penalty for estimated flexibility. This lets the penalty, rather than a change in data or response, explain any disagreement.
+The [likelihood-ratio page](likelihood-ratio-tests.qmd) fixed a Provo position table and two nested Gaussian mean models. Recall that a [likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood) holds the observations fixed and varies the model parameters; its maximized value is obtained by evaluating it at the maximum-likelihood estimate. Information criteria use those same likelihoods but replace null-hypothesis calibration with a penalty for estimated flexibility. This lets the penalty, rather than a change in data or response, explain any disagreement.
 
 The [**optimism of training error**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is the fact that performance on observations used for fitting tends to be better than expected performance on new observations. An [**information criterion**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) estimates a correction by combining fitted likelihood with a complexity penalty. Its score is relative to compatible candidates; the absolute value has no standalone linguistic unit.
 
@@ -15,7 +15,7 @@ We first derive the distinct penalties used by AIC and BIC, then observe their d
 
 ## Information criteria compared {#information-criteria-compared}
 
-## AIC: fit plus a parameter-count penalty
+### AIC: fit plus a parameter-count penalty
 
 Let $\ell$ be maximized log likelihood and $k$ the number of likelihood parameters. The [**Akaike information criterion (AIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
 
@@ -29,8 +29,46 @@ $$
 
 Greater maximized log likelihood lowers the first term; additional parameters increase the second. Lower AIC is preferred. The penalty is motivated as an approximation to relative expected predictive discrepancy, not as a significance threshold.
 
-The factor 2 can be motivated by a local expansion. Under a regular correctly
-specified model, the maximum-likelihood estimate varies approximately as
+The factor 2 can be motivated by a local expansion. We do not need this derivation
+to calculate AIC; we use it to explain why the parameter-count correction has this
+form. Recall that a [derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+measures local change. A **second-order expansion** approximates a curved function
+near a chosen point using its value, its local slope, and its local curvature. The
+[Hessian](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+collects that curvature when the function has several parameters.
+
+Start with one parameter. Near its target $\theta_0$, suppose the new-data log
+likelihood loses approximately
+
+$$
+\frac12 nI(\theta_0)(\widehat\theta-\theta_0)^2
+$$
+
+units because we estimated $\theta$ rather than knowing $\theta_0$. The estimator's
+approximate variance is $1/[nI(\theta_0)]$, so the expected doubled loss is <!-- dqr-allow: symbolic-derivation -->
+
+$$
+nI(\theta_0)\,
+\mathbb{E}[(\widehat\theta-\theta_0)^2]
+\approx
+nI(\theta_0)\frac{1}{nI(\theta_0)}
+=1.
+$$
+
+The same fitted parameter also makes the training log likelihood look about one
+half-unit better than performance on an independent sample. The two half-unit
+effects together give about one log-likelihood unit of optimism per fitted
+parameter, or a penalty of two on the $-2\ell$ scale. The matrix argument below
+repeats this one-parameter calculation in $k$ parameter directions at once.
+
+For this argument, a **regular model** has a smooth likelihood near the target,
+allows small parameter moves in every direction, and maps nearby distinct parameter
+values to distinct nearby distributions. The last requirement is
+**identification**: different parameter values must imply different distributions
+of the observations. **Correct specification** adds the assumption that the
+distribution generating the observations belongs to the model family. Under these
+conditions, the
+maximum-likelihood estimate varies approximately as
 
 $$
 \widehat\theta-\theta_0
@@ -38,15 +76,25 @@ $$
 \operatorname{Normal}\left(0,\frac{1}{n}I(\theta_0)^{-1}\right).
 $$
 
+The dotted distribution sign says that this normal approximation improves as the
+sample size grows; this limiting comparison is an **asymptotic approximation**.
+The matrix $I(\theta_0)$ is the **information matrix**: it records how sharply the
+expected log likelihood curves around $\theta_0$ in each parameter direction. Sharp
+curvature supplies more information, so its inverse approximates the covariance of
+the estimator.
+
 A second-order expansion of new-data log likelihood around $\theta_0$ contains the
-quadratic term
+following **quadratic form**:
 
 $$
 n(\widehat\theta-\theta_0)^T I(\theta_0)
 (\widehat\theta-\theta_0).
 $$
 
-Its expectation is
+A quadratic form has the pattern $\mathbf v^T A\mathbf v$: it returns one number
+that measures the displacement $\mathbf v$ using the directions and weights in
+$A$. Here the displacement is the estimation error and the weights come from
+information. Its expectation is
 
 $$
 \operatorname{tr}\left[
@@ -55,13 +103,22 @@ nI(\theta_0)\frac{I(\theta_0)^{-1}}{n}
 =\operatorname{tr}(I_k)=k.
 $$
 
+The **trace** $\operatorname{tr}(A)$ adds the diagonal entries of a square matrix.
+The identity matrix $I_k$ has $k$ ones on its diagonal, so
+$\operatorname{tr}(I_k)=k$. Here
+[expectation](../random-variables-and-distributions/expected-values.qmd) averages the
+expansion over repeated new samples generated under the regular model. The
+derivation also treats the declared observation contributions as independent;
+[independence](../foundations/independence.qmd) is thus an assumption of the
+approximation rather than a fact supplied by the row count.
+
 Fitting and evaluating on the same observations gains about $k$ log-likelihood
 units relative to evaluation on new observations. On the $-2\ell$ scale, correcting
 that optimism adds approximately $2k$. This argument depends on a regular,
 identified likelihood and an effective observation unit compatible with its
 information calculation.
 
-## BIC: a different penalty and motivation
+### BIC: a different penalty and motivation
 
 The [**Bayesian information criterion (BIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
 
@@ -77,8 +134,32 @@ $$
 p(y\mid M)=\int L(\theta;y)\pi(\theta\mid M)\,\mathrm d\theta.
 $$
 
-A Laplace approximation expands the log integrand around its interior mode. If the
-observed information grows like $nI(\widehat\theta)$, then
+This integral averages the likelihood over the prior. It is a model-level normalizing quantity, rather than the parameter [posterior distribution](../statistical-inference/posterior-distributions.qmd) obtained after conditioning on $y$.
+
+The one-dimensional picture comes first. If an integrand has height $h$ at a sharp
+peak and effective width $w$, its area is approximately height times width,
+$h\times w$. Greater curvature means a narrower peak. When log curvature grows in
+proportion to $n$, the width shrinks in proportion to $n^{-1/2}$, so
+
+$$
+\log(\text{area})
+\approx
+\log h-\frac12\log n+\text{a bounded term}.
+$$
+
+A [**Laplace approximation**](https://doi.org/10.1080/01621459.1986.10478240)
+makes this argument precise by replacing a sharply
+peaked integrand near its **mode**,
+the parameter value where that integrand is largest, with a normal-shaped curve
+having the same local curvature, then integrates that simpler curve. The mode must
+be **interior**, meaning that small moves on either side remain
+inside the parameter space; a boundary mode would have a different local shape.
+
+The following multivariable display is an optional proof sketch. Suppose the
+**observed information**, the curvature computed from the realized sample, grows
+like $nI(\widehat\theta)$. The
+[Hessian geometry visual](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+shows the curvature object used in it.
 
 $$
 \begin{aligned}
@@ -93,16 +174,24 @@ $$
 \end{aligned}
 $$
 
-Multiplying by $-2$ and dropping candidate-specific terms treated as bounded gives
+For a square matrix, the **determinant** $|A|$ measures how the matrix scales
+multidimensional volume. The
+[Hessian geometry visual](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+shows how curvature in several directions determines the width of a local
+normal approximation; the determinant combines those directional widths into one
+volume factor. The notation
+$O(1)$ collects terms that remain bounded as $n$ grows, whereas the displayed
+$\log n$ term grows with the sample size. Multiplying by $-2$ and dropping
+candidate-specific terms treated as bounded gives
 $-2\ell+k\log n$. This approximation assumes, among other things, identifiable
 regular parameters, a locally positive smooth prior, and an information scale that
 really grows with the declared $n$.
 
-Repeated linguistic data can make the meaning of $n$ delicate. The Provo teaching table contains position summaries rather than reader-level observations, so its criterion calculation uses the number of retained positions. It cannot convert those positions into independent readers or passages.
+Repeated linguistic data can make the meaning of $n$ delicate. The prepared Provo table contains position summaries rather than reader-level observations, so we use the number of retained positions in the criterion calculation. That operation cannot convert the positions into independent readers or passages.
 
 ## The Provo criterion disagreement
 
-The code reloads the [Provo table introduced on the preceding page](likelihood-ratio-tests.qmd#provo-measurement-dossier), refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the residual scale parameter.
+The code reloads the [Provo table introduced on the preceding page](likelihood-ratio-tests.qmd#provo-measurement-dossier), refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the [residual scale](../regression-models/residuals.qmd), the fitted spread of observed-minus-fitted responses around the conditional mean.
 
 The bookkeeping differs from the grouping structure:
 

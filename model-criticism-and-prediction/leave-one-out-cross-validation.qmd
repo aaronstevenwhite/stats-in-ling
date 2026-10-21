@@ -2,7 +2,7 @@
 title: "Leaving out one unit at a time"
 ---
 
-The [information-criteria page](information-criteria.qmd) approximated predictive discrepancy without constructing omitted-data predictions. [**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage.
+The [information-criteria page](information-criteria.qmd) approximated predictive discrepancy without constructing omitted-data predictions. The earlier [cross-validation page](cross-validation.qmd#the-algorithm) rotated larger folds; [**leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) instead makes one unit the test set at a time. The word *one* matters: here the operation removes one aggregated Provo content-word position, refits on the remaining position summaries, and predicts the removed response. Other positions from the same passage and the reader-aggregated information in every retained row remain available, so the resulting target is conditional prediction for one position within this table.
 
 We first define the leave-one-position rotation, derive exact omitted-data predictions for the two conjugate Provo models, and then make the omitted unit, prior calibration, and overlapping training sets explicit before checking the complete computation.
 
@@ -32,17 +32,26 @@ $$
 
 Each response is absent from its own fit. The fits still overlap extensively, so they are not independent replications of the study.
 
+This dependence statement uses [independence](../foundations/independence.qmd) in its probabilistic sense: overlapping training sets share nearly all their random inputs. The average score remains a defined estimator, but its variation cannot be calculated by pretending the $N$ fitted scores came from $N$ independent studies.
+
 ## Exact Bayesian LOO for the Provo models
 
 We use the same [Provo position table and Gaussian mean models](likelihood-ratio-tests.qmd#provo-measurement-dossier) as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted.
 
-The source paper reports excluding fixations shorter than 80 ms and longer than 800 ms. Their log-scale midpoint sets the prior intercept mean; slope means are zero. The expected residual variance treats four standard deviations as spanning those study bounds, and each coefficient's conditional prior variance multiplier is derived from the same span. The inverse-gamma shape is a fixed computational setting, and its rate follows from the declared residual-variance mean.
+The source paper reports excluding fixations shorter than 80 ms and longer than 800 ms. Their log-scale midpoint sets the prior intercept mean; slope means are zero. The expected residual variance treats four [standard deviations](../random-variables-and-distributions/standard-deviation.qmd) as spanning those study bounds. A residual is the observed response minus its fitted conditional mean, as defined on the [residual page](../regression-models/residuals.qmd). Each coefficient's conditional prior variance multiplier is derived from the same span. The inverse-gamma shape is a fixed computational setting, and its rate follows from the declared residual-variance mean.
 
-This prior is calibrated to study-level measurement bounds, not to the observed Provo response values. It is a teaching prior, not a prior proposed by Luke and Christianson.
+The prior uses study-level measurement bounds while leaving the observed Provo
+response values out of its calibration. Recall that a
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+holds the observed responses fixed and treats their joint density as a function of
+the unknown parameters. We choose the normal-inverse-gamma family because, together
+with the Gaussian likelihood, it lets us derive every leave-one-out posterior and
+predictive distribution in closed form. Luke and Christianson did not propose this
+prior as part of their analysis.
 
 ## Normal-inverse-gamma posterior and predictive update {#normal-inverse-gamma-posterior-and-predictive-update}
 
-For a training response vector $y$ and design matrix $X$, the parameterization used
+For a training response vector $y$ and [design matrix](../regression-models/design-matrices.qmd), whose columns encode the intercept and cloze-surprisal terms, the parameterization used
 in the code is
 
 $$
@@ -59,16 +68,30 @@ $$
 where the inverse-gamma density is proportional to
 $(\sigma^2)^{-(a_0+1)}\exp(-d_0/\sigma^2)$. Before observing a training set,
 $Y$ and the eventual estimator are random; after conditioning on the realized
-training vector $y$, $(b_n,V_n,a_n,d_n)$ are posterior hyperparameter estimates.
+training vector $y$, $(b_n,V_n,a_n,d_n)$ are the posterior hyperparameters
+determined by that training vector.
 
-Combining the likelihood and conditional normal prior yields the quadratic form
+Combining the likelihood and conditional normal prior yields a **quadratic form**,
+a scalar expression in which a vector appears on both sides of a matrix. In this
+case, each term measures a squared discrepancy, with the matrix determining how
+discrepancies in different coefficient directions are weighted:
 
 $$
 (y-X\beta)^T(y-X\beta)
 +(\beta-b_0)^TV_0^{-1}(\beta-b_0).
 $$
 
-Completing the square gives
+**Completing the square** rewrites the same quadratic as a squared distance from a
+new center plus a remainder that no longer depends on $\beta$. In one dimension,
+for $A>0$,
+
+$$
+Ax^2-2bx=A\left(x-\frac{b}{A}\right)^2-\frac{b^2}{A}.
+$$
+
+The matrix calculation has the same pieces. The scalar $A$ becomes
+$V_0^{-1}+X^TX=V_n^{-1}$, and the scalar $b$ becomes
+$V_0^{-1}b_0+X^Ty=V_n^{-1}b_n$. Thus the new center $A^{-1}b$ becomes $b_n$:
 
 $$
 (\beta-b_n)^TV_n^{-1}(\beta-b_n)
@@ -88,9 +111,13 @@ y^Ty+b_0^TV_0^{-1}b_0-b_n^TV_n^{-1}b_n
 \end{aligned}
 $$
 
-Thus $\beta\mid\sigma^2,y$ is normal with mean $b_n$ and covariance
+Thus $\beta\mid\sigma^2,y$ is normal with mean $b_n$ and [covariance](../random-variables-and-distributions/variance-and-covariance.qmd)
 $\sigma^2V_n$, while $\sigma^2\mid y$ is inverse-gamma with shape $a_n$ and rate
-$d_n$. At a held-out row vector $x_i^T$, first integrate $\beta$:
+$d_n$. At a held-out row vector $x_i^T$, we first **integrate out** $\beta$.
+Integrating out, also called
+[marginalizing](../random-variables-and-distributions/marginal-distributions.qmd),
+averages a conditional distribution over the uncertainty in an unobserved quantity;
+the result no longer conditions on a particular value of that quantity:
 
 $$
 Y_i\mid\sigma^2,y_{-i}
@@ -101,7 +128,12 @@ x_i^Tb_n,\
 \right).
 $$
 
-Integrating $\sigma^2$ against its inverse-gamma posterior gives
+We then marginalize $\sigma^2$ by averaging the displayed normal distribution over
+its inverse-gamma posterior. Some values of $\sigma^2$ in that average produce a
+narrow normal and others produce a wide normal. The wide members give the mixture
+more probability far from its center than a normal distribution with one fixed
+variance would have. These are the heavier tails of the resulting Student-$t$
+distribution. This second average gives
 
 $$
 Y_i\mid y_{-i}
@@ -122,8 +154,10 @@ $\mathbb{E}[\sigma^2]=(\log(800/80)/4)^2$. Choosing $a_0=3$ gives the inverse-ga
 a finite mean and variance, and setting
 $d_0=2\mathbb{E}[\sigma^2]$ recovers that declared mean because
 $\mathbb{E}[\sigma^2]=d_0/(a_0-1)$. Finally, the diagonal of $V_0$ makes the
-conditional coefficient scale commensurate with the same log span. These are
-regularizing teaching choices, not estimates from the position responses.
+conditional coefficient scale commensurate with the same log span. We set these
+regularizing hyperparameters before fitting. The position responses then update
+the resulting prior through the likelihood; they do not determine the prior
+hyperparameters themselves.
 
 ```{r}
 #| label: provo-exact-loo
@@ -272,7 +306,7 @@ The raw points and LOO predictive means remain on the same axes. This matters be
 
 ## What one means here
 
-One omitted unit is a content-word position summary. Other positions from the same passage remain in the training data, and the response already averages over readers. The target is thus one position summary conditional on the remaining position table. It is not a new passage, reader, participant response, or word type.
+One omitted unit is a content-word position summary. Removing it leaves other positions from the same passage in training, and each retained response still averages over readers. The omission operation thus evaluates conditional prediction for one aggregated position. Evaluating a new passage would require moving every position from that passage across the boundary together, while evaluating a new reader would require the reader-level data that this table no longer contains.
 
 The distinction persists even though every position receives an out-of-sample prediction. Summing pointwise scores within a passage would not retroactively remove that passage from fitting. A passage target requires leave-one-passage-out validation from the start.
 

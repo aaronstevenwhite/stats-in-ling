@@ -2,7 +2,13 @@
 title: "Comparing nested likelihoods"
 ---
 
-The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) compared parameter values within one model. A likelihood-ratio test compares two models when one is a restricted version of the other. Across five pages, one response table and two nested Gaussian models stay fixed while the comparison criterion changes.
+The earlier [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+compared parameter values within one model. A likelihood-ratio test compares two
+models when one is a restricted version of the other. Across five pages, one
+response table and two nested Gaussian models stay fixed while the comparison
+criterion changes. Later comparisons use [cross-validation](cross-validation.qmd),
+which estimates predictive performance by fitting without the held-out unit rather
+than calibrating a nested-model test statistic.
 
 We begin with the Provo measurement dossier, derive the likelihood-ratio statistic from a restriction, fit the nested models, and then separate its reference-distribution assumptions and narrow evidential claim from later predictive comparisons.
 
@@ -17,24 +23,25 @@ reading time, which also includes later rereading. We use FFD because it supplie
 early, word-local measure that aligns directly with the cloze value at a position.
 That choice does not establish that FFD isolates one cognitive stage.
 
-The tracked course table retains complete content-word positions from all passages and averages first-fixation duration across readers at each position. One row is thus a position summary, not one reader's fixation. The analyses below cannot recover reader-level dependence from that aggregation.
+The prepared position table retains complete content-word positions from all passages and averages first-fixation duration across readers at each position. One row is thus a position summary, not one reader's fixation. The analyses below cannot recover reader-level dependence from that aggregation.
 
 More precisely, the preparation retains raw rows with complete focal fields,
 positive FFD, and `Word_Content_Or_Function == "Content"`; takes the natural log of
 each retained reader-level FFD; and averages those log durations by passage and word
-number. Aggregation gives one response per contextual position for the teaching
-likelihood. It removes reader variation, unequal reader-by-word responses, and the
+number. We use one aggregated response per contextual position so that surprisal and
+duration refer to the same word location. This operation removes reader variation,
+unequal reader-by-word responses, and the
 within-position precision information beyond the retained `n_fixations` count. A raw
 hierarchical model would answer a richer question.
 
-The first course-facing row is position `1-2`: `Word_Unique_ID = QID1`, passage 1,
+The first prepared row is position `1-2`: `Word_Unique_ID = QID1`, passage 1,
 word number 2, a three-character verb. Its `OrthoMatchModel` value is 0.390221218,
 its mean log FFD is 5.167650878, and 60 positive fixations contribute. The notes table <!-- dqr-allow: empirical-answer -->
 does not retain passage text or the surface word, and the raw reader-level rows are
 not distributed with it. Thus an exact passage excerpt or individual fixation row
 cannot be reconstructed here without returning to the licensed source release; the
-position identifiers are the most concrete observation available in the tracked
-course data.
+position identifiers are the most concrete observation available in the prepared
+position table.
 
 Let $y_i$ be mean log first-fixation duration and let
 
@@ -52,7 +59,7 @@ M_Q &: y_i=\beta_0+\beta_1x_i+\beta_2x_i^2+\epsilon_i,
 \end{aligned}
 $$
 
-Setting $\beta_2=0$ in $M_Q$ gives $M_L$, so $M_L\subset M_Q$. This nesting statement also requires identical response rows, response distribution, variance specification, and likelihood definition.
+Setting $\beta_2=0$ in $M_Q$ gives $M_L$, so $M_L\subset M_Q$. This nesting statement also requires identical response rows, response distribution, [variance](../random-variables-and-distributions/variance-and-covariance.qmd) specification, and likelihood definition. The position-level likelihood further treats residual contributions as conditionally [independent](../foundations/independence.qmd) given the fitted parameters.
 
 Before sampling, $Y_i$ is the random position-level mean log FFD described by the
 Gaussian model. The table supplies its realized value $y_i$. The parameters
@@ -80,7 +87,12 @@ $$
 \end{aligned}
 $$
 
-When the expanded model adds regular parameters and the usual large-sample conditions hold,
+The reference distribution requires the added coefficients to behave as
+**regular parameters**. Locally, we must be able to move each parameter slightly in
+either direction, the likelihood must change smoothly, and distinct nearby values
+must imply distinct distributions of the observations. This last property is
+**identification**. Under those conditions and the remaining large-sample
+assumptions,
 
 $$
 \Lambda\overset{\cdot}{\sim}\chi^2_{k_Q-k_L}
@@ -89,13 +101,13 @@ $$
 under the restricted model. The degrees of freedom equal the difference in freely estimated regular parameters.
 
 For these Gaussian fits, $M_L$ estimates $\beta_0$, $\beta_1$, and the common
-residual scale $\sigma$, so $k_L=3$. Model $M_Q$ estimates those same quantities plus
+[residual](../regression-models/residuals.qmd) scale $\sigma$, which describes spread around the fitted conditional mean, so $k_L=3$. Model $M_Q$ estimates those same quantities plus <!-- dqr-allow: symbolic-derivation -->
 $\beta_2$, so $k_Q=4$. The scale appears in both counts and cancels in the
 difference: $k_Q-k_L=4-3=1$.
 
 ## Fitting the Provo models
 
-The code reads the tracked position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means.
+The code reads the prepared position table, constructs surprisal, fits both models to exactly the same rows, computes the LRT, and plots every position with both fitted means.
 
 ```{r}
 #| label: provo-likelihood-ratio
@@ -194,7 +206,7 @@ $$
 `r sprintf("%.3f", lr_statistic)`.
 $$
 
-The expanded model adds `r lr_df` likelihood parameter, giving $p = `r sprintf("%.4f", lr_p_value)`$ under the usual $\chi^2$ approximation. The plot keeps the raw position summaries visible with both fitted mean functions. The curvature is slight, which makes the criterion comparisons on the following pages substantively readable.
+The expanded model adds `r lr_df` likelihood parameter, giving $p = `r sprintf("%.4f", lr_p_value)`$ under the usual $\chi^2$ approximation. The plot keeps the raw position summaries visible with both fitted mean functions. The slight curvature anticipates why the following criteria may assign only a small gain to the expanded model.
 
 The formula-to-code bridge is exact: `logLik(linear_fit)` and
 `logLik(quadratic_fit)` are $\ell_L$ and $\ell_Q$; their doubled difference is
@@ -217,14 +229,26 @@ The LRT also does not evaluate a new passage. All positions contribute to fittin
 
 ## When the reference distribution may fail
 
-The $\chi^2$ approximation assumes that the null value is an interior, regular point and that parameters are sufficiently identified. Testing a random-effect variance against zero violates this condition because zero is a boundary. Mixture models can lose component identification under a null restriction. In such cases, a simulation-based reference distribution or a method derived for the boundary problem may be needed.
+The $\chi^2$ approximation assumes that the null value is an **interior point**:
+small moves on both sides must stay within the allowed parameter space. It also
+requires regularity and enough identification for the likelihood to distinguish the
+nearby parameter values. When many values yield nearly the same likelihood, the
+parameter is **weakly identified**, and the quadratic approximation behind the
+reference distribution may be poor. A later chapter defines a
+[random effect](../regression-models/fixed-and-random-effects.qmd) as a group-indexed
+deviation drawn from a population distribution. Testing the variance of such
+deviations against zero violates regularity because zero is a boundary. Mixture
+models can likewise lose component identification under a null restriction. In
+such cases, a simulation-based reference distribution or a method derived for the
+boundary problem may be needed.
 
 Wilks' approximation also relies on a sufficiently informative sample and on a
 likelihood that represents the dependence in the observations. Here positions from
 the same passage may remain dependent, while the Gaussian likelihood treats the
 aggregated position residuals as conditionally independent with a common scale. The
-large number of positions does not repair a misspecified independence unit. Thus the
-reference tail is a teaching approximation for this fixed position table.
+large number of positions does not repair a misspecified independence unit. Thus we
+use the reference tail as a working approximation whose validity depends on those
+position-level independence and Gaussian assumptions.
 
 The likelihood difference remains a description of fitted improvement when these conditions fail. What becomes unreliable is the simple $\chi^2$ calibration.
 

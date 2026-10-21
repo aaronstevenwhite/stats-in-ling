@@ -9,6 +9,8 @@ execute:
 
 [Stan](https://mc-stan.org/) samples a posterior after the analyst declares data, parameters, and density contributions. The passage-level Student-t program below corresponds exactly to the robust model introduced on the [nonconjugate-posterior page](beyond-conjugacy.qmd#a-robust-location-scale-model).
 
+The [posterior-distribution page](posterior-distributions.qmd) defined the target as a prior updated by a likelihood. Stan's model block adds those [likelihood](maximum-likelihood.qmd#probability-and-likelihood) and prior log-density contributions; its sampler then uses [Monte Carlo](monte-carlo-integration.qmd#expectations-as-integrals) transitions to approximate the resulting conditional distribution. The vectorized observation statement below asserts conditional [independence](../foundations/independence.qmd) of passage summaries given the parameters.
+
 We first translate the mathematical model into a complete Stan program, then prepare the observed passage contrasts and fit that exact target, and finally verify the factorization and inspect adequacy before treating the draws as inferential output.
 
 ## The complete program
@@ -47,7 +49,7 @@ generated quantities {
 
 The data block contains the 55 observed passage contrasts and the empirically calibrated prior scales. The parameters block declares the unknown location and positive scale. In the model block, each tilde statement adds a log-density contribution to Stan's `target`; it does not simulate a value.
 
-The half-normal prior is represented by the lower bound on `sigma` together with a zero-centered normal density. Stan transforms this constrained parameter internally and applies the required Jacobian on its unconstrained sampling scale.
+The half-normal prior is represented by the lower bound on `sigma` together with a zero-centered normal density. Stan samples an unconstrained internal value $\lambda$ and maps it to the positive parameter by $\sigma=\exp(\lambda)$. Recall from the [density-rescaling derivation](../random-variables-and-distributions/beta-distribution.qmd#density-rescaling) that a Jacobian compensates for the way a coordinate transformation changes short interval widths. Here $\mathrm d\sigma/\mathrm d\lambda=\exp(\lambda)=\sigma$, so equal-width intervals in $\lambda$ represent unequal-width intervals in $\sigma$. Stan preserves their probability mass by adding $\log\sigma$ to the log density internally; we must not add that term again in the model block.
 
 | Mathematical object | Stan statement | Meaning |
 |---|---|---|
@@ -80,7 +82,7 @@ str(stan_data)
 
 ## Fitting the exact model
 
-The reference run uses four data-scaled initial values constructed from the posterior grid covariance shown on the [mass-matrix page](mass-matrix-geometry.qmd). The code below reconstructs those values from the observed Provo contrasts rather than relying on an undeclared helper.
+The reference run uses four data-scaled initial values constructed from the posterior grid covariance shown on the [mass-matrix page](mass-matrix-geometry.qmd). Recall that [covariance](../random-variables-and-distributions/variance-and-covariance.qmd) is the expected product of centered quantities and records joint scale and orientation. The code below reconstructs those values from the observed Provo contrasts rather than relying on an undeclared helper.
 
 ```{r}
 #| label: construct-provo-stan-initial-values
@@ -150,7 +152,14 @@ do.call(rbind, initial_values(stan_offsets))
 
 The sampling call is then fully specified by the observed data, the program, and these initial values.
 
-Four chains provide independent starting trajectories for between-chain comparison. The 750 warmup iterations adapt step size and mass geometry; the 1,000 retained iterations per chain determine the available Monte Carlo information. `adapt_delta = .90` favors relatively accurate integration, while `max_treedepth = 10` bounds work per transition. These are declared computational choices and must be judged using the diagnostics that follow.
+Four chains provide independent starting trajectories for between-chain
+comparison. The 750 warmup iterations adapt step size and mass geometry; the
+1,000 retained iterations per chain determine the available Monte Carlo
+information. `adapt_delta = .90` favors relatively accurate integration,
+while `max_treedepth = 10` bounds work per transition. How can we tell whether
+these settings worked well enough for this posterior? The following pages use
+the retained chains to ask whether they reached the same region, moved through
+it efficiently, and followed its geometry accurately.
 
 ```{r}
 #| label: show-provo-stan-fit
@@ -177,7 +186,9 @@ fit <- model$sample(
 )
 ```
 
-The evaluated page reads the frozen draw object from that exact run. The cache key includes the Provo checksum, Stan-program checksum, CmdStan version, algorithm settings, and initialization specification, so changed inputs cannot silently reuse these draws.
+The summaries below use the 4,000 retained draws from these four chains. We
+will summarize $\mu$, $\sigma$, and $\exp(\mu)$, while retaining chain identity
+for the convergence checks on the following pages.
 
 ```{r}
 #| label: summarize-provo-stan-fit
@@ -202,7 +213,7 @@ stopifnot(max(fit_summary$rhat) < 1.01,
 fit_summary
 ```
 
-The fitted mean of $\mu$ is `r sprintf("%.6f", fit_summary$mean[fit_summary$variable == "mu"])`, and the geometric-scale ratio has mean `r sprintf("%.6f", fit_summary$mean[fit_summary$variable == "geometric_duration_ratio"])`. These are passage-level Student-t model summaries, not participant-level duration effects.
+The fitted mean of $\mu$ is `r sprintf("%.6f", fit_summary$mean[fit_summary$variable == "mu"])`, and the geometric-scale ratio has mean `r sprintf("%.6f", fit_summary$mean[fit_summary$variable == "geometric_duration_ratio"])`. Because the model receives one aggregated contrast per passage, these summaries describe the passage-level Student-t distribution. Estimating participant-level duration effects would require the raw reader observations and a model containing participant variation.
 
 ## Factorization and adequacy
 
