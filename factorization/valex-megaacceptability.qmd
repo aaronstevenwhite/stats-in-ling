@@ -8,7 +8,9 @@ The PHOIBLE sequence used factorization to reconstruct hidden cells. We test whe
 
 The official [MegaAcceptability archive](https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip) is CC BY-SA 4.0, and its internal README identifies the release as v1.2. It contains judgments for English clause-embedding verbs in semantically bleached frames. [White and Rawlins (2020)](https://doi.org/10.5334/gjgl.1001) constructed lists in which each verb and frame appeared at most once, collected ordinal responses from participants reporting native American English, and modeled the relation between corpus frequencies and acceptability. The teaching analysis uses their empirical target but simplifies the model so that PCA is the only representational change.
 
-## Defining the linguistic objects
+We audit both measurement systems, define the competing raw and PCA predictors, keep representation choices inside training data, and then evaluate held-out verbs before examining the selected rank and predictive limits.
+
+## VALEX-MegaAcceptability measurement dossier
 
 The retained overlap contains one VALEX row per matched verb and one MegaAcceptability response profile per matched verb. If $c_{vj}$ is the automatically acquired count for verb $v$ in VALEX dimension $j$, define the within-verb proportion
 
@@ -30,6 +32,14 @@ z_{qi}
 $$
 
 These values are averaged within verb-frame cells to form a response matrix $\mathbf Y$ with one verb per row and one experimental frame per column. Zero is the training-fitted participant origin, not a boundary between grammatical and ungrammatical sentences. This transformation is a fold-fitted approximation to the paper's ordinal normalization.
+
+The raw course bundle retains the verb, schematic experimental frame, participant,
+and numeric response, but not the fully lexicalized sentence string or the wording
+of the scale endpoints. We thus do not invent either. The recorded response scale
+runs from 1 to 7, with larger values treated as greater acceptability. The frame
+notation is read compositionally: `NP` is a noun phrase, `S` a finite clause, `VP`
+a verb phrase, `Ved` the target verb in past-tense form, and bracketed material
+marks a controlled semantic or morphosyntactic feature.
 
 ## Reading and checking the analysis inputs
 
@@ -86,6 +96,81 @@ c(
 
 The empirical objects contain `r nrow(P)` matched verbs, `r ncol(P)` observed VALEX dimensions, `r length(unique(mega$frame))` experimental frames, and `r format(nrow(mega), big.mark = ",")` retained responses from `r length(unique(mega$participant))` participants.
 
+The verb *accept* supplies a concrete cross-resource record.
+
+```{r}
+accept_counts <- data.frame(
+  verb = "accept",
+  VALEX_frame = c("(VSUBCAT NP)-7", "(VSUBCAT SCOMP)-26"),
+  gloss = c(
+    "verb with a noun-phrase complement",
+    "verb with a finite sentential complement"
+  ),
+  count = c(
+    valex[valex$verb == "accept", "(VSUBCAT NP)-7"],
+    valex[valex$verb == "accept", "(VSUBCAT SCOMP)-26"]
+  )
+)
+
+accept_items <- mega |>
+  dplyr::filter(verb == "accept") |>
+  dplyr::slice(1:2)
+
+example_response <- accept_items |>
+  dplyr::slice(1)
+participant_rows <- mega |>
+  dplyr::filter(participant == example_response$participant)
+participant_mean_example <- mean(participant_rows$response)
+participant_sd_example <- sqrt(mean(
+  (participant_rows$response - participant_mean_example)^2
+))
+example_response$illustrative_within_participant_z <-
+  (example_response$response - participant_mean_example) /
+  participant_sd_example
+
+example_cell <- mega |>
+  dplyr::mutate(
+    illustrative_z = ave(
+      response,
+      participant,
+      FUN = function(x) (x - mean(x)) / sqrt(mean((x - mean(x))^2))
+    )
+  ) |>
+  dplyr::filter(
+    verb == example_response$verb,
+    frame == example_response$frame
+  ) |>
+  dplyr::summarise(
+    verb = dplyr::first(verb),
+    frame = dplyr::first(frame),
+    participant_responses = dplyr::n(),
+    illustrative_aggregated_z = mean(illustrative_z)
+  )
+
+knitr::kable(accept_counts)
+knitr::kable(accept_items)
+knitr::kable(example_response)
+knitr::kable(example_cell)
+```
+
+The first table gives two observed corpus counts: one nominal-complement frame and
+one finite-clause frame. The second gives two observed MegaAcceptability item
+schemas and their raw participant responses. The third shows the arithmetic of
+within-participant normalization for one recorded response, and the fourth averages
+those normalized responses into one verb-by-frame target cell. These illustrative
+normalizations use the full retained bundle only to expose the data ladder; the
+actual evaluation refits each participant's origin and scale inside the relevant
+training split.
+
+Every retained verb has a response in every one of the 50 experimental frame
+columns after aggregation, so the course outcome matrix has no missing verb-frame
+cells. VALEX zeros are observed automatic counts rather than missing values. The
+information removed by aggregation is participant-level variation, item-list
+variation, and the ordinal response distribution within a verb-frame cell. We
+aggregate because the teaching target is multivariate held-out-verb prediction;
+a participant-by-item model would preserve more variation and answer a richer
+measurement question.
+
 ## Stating the competing procedures
 
 The direct multivariate ridge model uses the complete VALEX proportion matrix. With an unpenalized intercept implemented by training centering, it solves
@@ -100,6 +185,59 @@ $$
 -\mathbf P_{\mathcal T}\mathbf B\right\|_F^2
 +\lambda\|\mathbf B\|_F^2.
 $$
+
+After centering predictors and outcomes, write the objective as
+
+$$
+Q(\mathbf B)
+=
+\|\mathbf Y-\mathbf X\mathbf B\|_F^2
++\lambda\|\mathbf B\|_F^2.
+$$
+
+Its matrix derivative is
+
+$$
+\frac{\partial Q}{\partial\mathbf B}
+=
+-2\mathbf X^{\mathsf T}(\mathbf Y-\mathbf X\mathbf B)
++2\lambda\mathbf B.
+$$
+
+Setting it to zero gives
+
+$$
+(\mathbf X^{\mathsf T}\mathbf X+\lambda\mathbf I)\widehat{\mathbf B}
+=
+\mathbf X^{\mathsf T}\mathbf Y,
+$$
+
+and thus
+
+$$
+\widehat{\mathbf B}_{\lambda}
+=
+(\mathbf X^{\mathsf T}\mathbf X+\lambda\mathbf I)^{-1}
+\mathbf X^{\mathsf T}\mathbf Y.
+$$
+
+If \(\mathbf X=\mathbf U\mathbf D\mathbf V^{\mathsf T}\), substitution yields
+
+$$
+\widehat{\mathbf B}_{\lambda}
+=
+\mathbf V
+\operatorname{diag}\left(
+\frac{d_k}{d_k^2+\lambda}
+\right)
+\mathbf U^{\mathsf T}\mathbf Y.
+$$
+
+This is the code path in `ridge_prediction()`: `component_outcome` is
+\(\mathbf U^{\mathsf T}\mathbf Y\), `shrinkage` stores
+\(d_k/(d_k^2+\lambda)\), and the test scores supply
+\(\mathbf X_{\mathrm{test}}\mathbf V\). Increasing \(\lambda\) shrinks weak
+singular directions more strongly.
 
 The factor procedure fits PCA only to training predictor rows,
 
@@ -125,7 +263,27 @@ ridge_candidates <- c(0.01, 0.1, 0.2, 0.5, 1, 2, 5, 10) # dqr-allow: algorithm-s
 rank_candidates <- c(2L, 5L, 10L, 20L, 30L, 40L, 50L) # dqr-allow: algorithm-setting
 ```
 
+The penalty grid spans nearly unpenalized through visibly regularized fits on the
+training-centered scale. The rank grid is dense at low dimension and extends to
+`r max(rank_candidates)`, just below the `r length(unique(mega$frame))` response-frame targets; it tests substantial compression
+without pretending to enumerate every possible rank. Outer folds hold out verbs
+because the scientific target is a new lexical predicate, and every frame for a
+verb moves with it. Five repetitions of ten-fold outer cross-validation reduce
+dependence on one fold assignment while leaving about 90% of verbs for each fit.
+Five inner folds provide a tractable repeated selection calculation inside each
+outer training set.
+
+Ties are resolved toward the larger ridge penalty, and factor ties then favor the
+smaller rank, as the `order()` calls show. The five registered outer seeds and
+derived inner seeds reproduce procedural randomization; they are not tuned
+empirical quantities.
+
 The validated predictions keep the default page render short. The complete R teaching implementation is below. It uses base R's seeded shuffling, so it implements the registered split logic without reproducing NumPy's exact fold membership. The displayed audit results remain those of the registered procedure and the checked files above. Setting `eval: true` reruns fold construction, participant normalization, nested selection, and outer prediction from the two raw course inputs; it does not read the frozen prediction files.
+
+This separation matters. The frozen files reproduce the registered analysis and
+its exact NumPy splits. The unevaluated R block is a pedagogical reconstruction of
+the procedure; turning it on demonstrates the algorithm but does not reproduce the
+registered fold identities or replace the frozen empirical result.
 
 ```{r}
 #| eval: false
@@ -541,4 +699,31 @@ The teaching analysis differs from the paper in three declared ways. It uses raw
 5. Why does selecting the largest candidate rank not identify a grammatical dimensionality?
 6. What does the negative compression contrast rule out, and what remains a live possibility?
 
-The live empirical question is which theory-guided representation of communicativity, argument structure, or event structure can improve held-out prediction without discarding the useful direct distributional signal.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. A VALEX row is a within-verb distribution of automatically acquired frame
+   counts; it does not separate verb senses.
+2. Proportions remove total count and target allocation across frames.
+3. Using a test verb's responses to normalize its participants would leak target
+   information into preprocessing.
+4. Outcomes, held-out verbs, ridge family, and squared loss remain fixed.
+5. It shows that the largest tested compression retained predictive value, not that
+   grammar has fifty dimensions.
+6. It counts against this shallow PCA compression for this held-out-verb target;
+   theory-guided representations remain live possibilities.
+
+</details>
+
+## Recap
+
+1. The data ladder runs from automatic VALEX counts and participant judgments to
+   fold-normalized verb-by-frame targets.
+2. Ridge follows from a penalized least-squares objective, and its SVD form exposes
+   componentwise shrinkage.
+3. Verb blocking and nested refitting keep every representational and tuning choice
+   inside training data.
+
+The live empirical question is which theory-guided representation of
+communicativity, argument structure, or event structure can improve held-out
+prediction without discarding the useful direct distributional signal.

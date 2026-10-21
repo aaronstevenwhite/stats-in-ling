@@ -5,7 +5,7 @@ execute:
   message: false
 ---
 
-The Nettle language-rate model makes the log-base requirement visible: the primary fit uses natural-log area as a fixed exposure offset, while the diagnostic inserts the source's base-10 column directly. <!-- dqr-allow: reference-metadata --> Because the upstream course repository states no license, the fallback below downloads and verifies the exact source.
+The Nettle language-rate model asks whether expected language density changes with mean growing season. The [data dossier and raw Algeria row](poisson-regression.qmd) define the country, count, climate, and area fields; the [offset page](exposure-offsets.qmd) states the fixed proportional-area assumption. We proceed from model to coefficient, uncertainty, model criticism, and scope. <!-- dqr-allow: reference-metadata --> Because the upstream course repository states no license, the fallback below downloads and verifies the exact source.
 
 ```{r}
 #| label: load-nettle-application
@@ -36,6 +36,25 @@ data.frame(
 )
 ```
 
+The primary model is
+
+$$
+Y_i\mid\lambda_i\sim\operatorname{Poisson}(\lambda_i),
+\qquad
+\log\lambda_i=\log A_i+\beta_0+\beta_1\operatorname{MGS}_i.
+$$
+
+Thus $\exp(\widehat\beta_1)$ is the fitted multiplicative change in expected languages per square kilometer for one additional month of mean growing season. A Wald interval on the log-rate scale becomes a rate-ratio interval after exponentiation.
+
+```{r}
+#| label: nettle-rate-ratio-uncertainty
+#| echo: true
+b <- coef(summary(correct))["mean_growing_season_months", ]
+link_interval <- b["Estimate"] + qnorm(c(.025, .975)) * b["Std. Error"]
+data.frame(estimate = exp(b["Estimate"]), lower = exp(link_interval[1]),
+           upper = exp(link_interval[2]))
+```
+
 The mismatch changes the coefficient because it no longer encodes $\lambda_i=A_i r_i$ with an exposure coefficient of one.
 
 ```{r}
@@ -57,3 +76,23 @@ ggplot(nettle, aes(mean_growing_season_months, observed_rate)) +
 ```
 
 The fitted positive association answers a conditional, descriptive question under a fixed-area-exposure assumption. Countries are not experimental units assigned to climates; area is not literally observation time; and Nettle's original specification estimated its coefficient. None of these fits supports a causal ecological claim.
+
+The Poisson variance restriction should also be checked rather than assumed. Pearson dispersion and the most influential countries diagnose different problems: variance misspecification versus sensitivity to particular design points.
+
+```{r}
+#| label: nettle-poisson-checks
+#| echo: true
+pearson_dispersion <- sum(residuals(correct, type = "pearson")^2) /
+  df.residual(correct)
+cooks <- cooks.distance(correct)
+data.frame(pearson_dispersion,
+           most_influential_country = nettle$country[which.max(cooks)],
+           maximum_cooks_distance = max(cooks))
+```
+
+## Recap and check
+
+1. What happens if base-10 log area is inserted as a natural-log offset? The fixed coefficient no longer represents proportional exposure, and the climate estimate changes.
+2. Does a positive fitted rate ratio establish a climate effect? No. It is a descriptive association under the distribution, mean, exposure, and independence assumptions.
+
+The [overdispersion page](count-overdispersion.qmd) interprets the Pearson statistic and routes different failures to different models.

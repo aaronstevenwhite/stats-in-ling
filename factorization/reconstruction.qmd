@@ -59,7 +59,19 @@ This descriptive quantity assesses cells used in fitting. It is not held-out per
 
 ## Reconstructing partially observed inventories
 
-Let $\mathbf x_i^*$ be a held-out inventory row in which hidden cells have been replaced by their training-column means. Their centered values are thus zero. For rank $K$,
+Let \(\mathcal O_i\) and \(\mathcal M_i\) be the visible and masked columns of a
+held-out inventory. Let $\mathbf x_i^*$ be its mean-filled row:
+
+$$
+x_{ij}^*
+=
+\begin{cases}
+x_{ij},&j\in\mathcal O_i,\\
+\widehat\mu_j,&j\in\mathcal M_i.
+\end{cases}
+$$
+
+The centered masked cells are thus zero. For rank $K$,
 
 $$
 \widehat{\mathbf t}_i^{(K)}
@@ -78,14 +90,36 @@ $$
 \mathbf V_K\widehat{\mathbf t}_i^{(K)}.
 $$
 
-This projection uses the observed cells to estimate a score. It is not a binary generative model, so fitted values may lie outside the unit interval. We clip them only when computing a probability loss.
+Coordinate \(k\) of the score makes the information set explicit:
+
+$$
+\widehat t_{ik}
+=
+\sum_{j\in\mathcal O_i}
+(x_{ij}-\widehat\mu_j)v_{jk}
++
+\sum_{j\in\mathcal M_i}
+0\cdot v_{jk}.
+$$
+
+This is the **one-step mean-filled projection**. It is not the score that would be
+available from the complete row, and it is not an iterative optimum over the
+missing cells. Every visible retained segment remains available; only the six
+masked cells are replaced by their training means.
+
+The projection is not a binary generative model, so fitted values may lie outside
+the unit interval. The code projects them to the interval, with a \(10^{-6}\)
+inset retained from the original audited procedure. Clipping can improve squared
+error against binary cells, but it does not turn the values into calibrated
+probabilities. We thus call the score **balanced squared reconstruction loss**,
+not Brier loss.
 
 ## Building the split and masks
 
 ```{r}
 library(ggplot2)
 
-balanced_brier <- function(truth, prediction) {
+balanced_squared_loss <- function(truth, prediction) {
   prediction <- pmin(pmax(prediction, 1e-6), 1 - 1e-6)
   loss <- (truth - prediction)^2
   listed <- as.logical(truth)
@@ -175,7 +209,7 @@ candidate_ranks <- c(0L, 1L, 2L, 3L, 5L, 8L, 12L, 16L,
 validation_loss <- vapply(candidate_ranks, function(rank) {
   prediction <- reconstruct(X, validation, training_mean, decomposition$v, rank)
   truth <- X[validation$rows, , drop = FALSE][validation$mask]
-  balanced_brier(truth, prediction[validation$mask])
+  balanced_squared_loss(truth, prediction[validation$mask])
 }, numeric(1))
 selected_rank <- candidate_ranks[[which.min(validation_loss)]]
 
@@ -188,14 +222,32 @@ test_truth <- X[test$rows, , drop = FALSE][test$mask]
 c(
   selected_rank = selected_rank,
   hidden_test_cells = sum(test$mask),
-  baseline_balanced_brier =
-    balanced_brier(test_truth, test_baseline[test$mask]),
-  low_rank_balanced_brier =
-    balanced_brier(test_truth, test_prediction[test$mask])
+  baseline_balanced_squared_loss =
+    balanced_squared_loss(test_truth, test_baseline[test$mask]),
+  low_rank_balanced_squared_loss =
+    balanced_squared_loss(test_truth, test_prediction[test$mask])
 )
 ```
 
-Validation selects rank `r selected_rank`. Only after that choice is fixed do we compute test loss. The segment-prevalence baseline has balanced Brier loss `r round(balanced_brier(test_truth, test_baseline[test$mask]), 4)`, whereas the low-rank reconstruction has loss `r round(balanced_brier(test_truth, test_prediction[test$mask]), 4)`.
+Validation selects rank `r selected_rank`. Only after that choice is fixed do we compute test loss. The segment-prevalence baseline has balanced squared reconstruction loss `r round(balanced_squared_loss(test_truth, test_baseline[test$mask]), 4)`, whereas the low-rank reconstruction has loss `r round(balanced_squared_loss(test_truth, test_prediction[test$mask]), 4)`.
+
+The formula-to-code map is:
+
+| Mathematical step | Code |
+|---|---|
+| replace \(j\in\mathcal M_i\) by \(\widehat\mu_j\) | `observed[evaluation$mask] <- mean_matrix[evaluation$mask]` |
+| center the partly observed row | `sweep(observed, 2, mean, "-")` |
+| compute \(\widehat{\mathbf t}_{i,K}\) | `centered %*% directions` |
+| reconstruct with \(\mathbf V_K^{\mathsf T}\) | `%*% t(directions)` |
+| return to the cell scale | `prediction + mean_matrix` |
+
+The three listed and three not-listed masked cells give the two database statuses
+equal representation within every held-out inventory while leaving nearly all
+retained columns visible. The number six is a teaching choice: a larger mask would
+ask about reconstruction from less inventory information. The rank grid is dense
+at small values and coarser at larger values to cover simple and moderately rich
+representations at manageable cost. Seeds fix the Glottocode selection,
+macroarea-balanced split, and masks; none changes the meaning of a cell.
 
 ## Showing raw hidden cells and predictions
 
@@ -223,7 +275,8 @@ The raw points show all `r sum(test$mask)` hidden test cells. The separated dist
 
 ## Estimating the test gain
 
-Balanced Brier loss gives listed and not-listed cells equal total weight:
+Balanced squared reconstruction loss gives listed and not-listed cells equal total
+weight:
 
 $$
 L_{\mathrm{bal}}
@@ -239,8 +292,8 @@ The following bootstrap resamples complete inventory records, preserving all six
 test_cells <- which(test$mask, arr.ind = TRUE)
 cell_gain <- split(seq_along(test_truth), test_cells[, "row"])
 gain_by_inventory <- vapply(cell_gain, function(index) {
-  balanced_brier(test_truth[index], test_baseline[test$mask][index]) -
-    balanced_brier(test_truth[index], test_prediction[test$mask][index])
+  balanced_squared_loss(test_truth[index], test_baseline[test$mask][index]) -
+    balanced_squared_loss(test_truth[index], test_prediction[test$mask][index])
 }, numeric(1))
 
 set.seed(20261021L)
@@ -264,7 +317,30 @@ The result supports a narrow conclusion: structure learned from training invento
 1. Why are hidden cells filled with training-column means before projection?
 2. Which cells estimate a held-out inventory's scores?
 3. Why is observed reconstruction error not held-out prediction error?
-4. Why does balanced Brier loss weight the two cell statuses equally?
+4. Why does balanced squared reconstruction loss weight the two cell statuses equally?
 5. What is the unit resampled by the bootstrap?
 
-The [next page](choosing-components.qmd) isolates the validation step that selected the retained rank without inspecting test loss.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Mean filling makes their centered contribution exactly zero.
+2. All unmasked cells in the held-out inventory estimate its score.
+3. Training reconstruction evaluates cells used to fit directions; this task hides
+   cells in unseen rows.
+4. The balanced squared loss gives listed and not-listed masked cells equal total
+   weight.
+5. The bootstrap resamples complete inventory records with their six cells intact.
+
+</details>
+
+## Recap
+
+1. The held-out score is a one-step projection from a partly observed row.
+2. Clipped SVD reconstructions are bounded real-valued scores, not calibrated
+   probabilities.
+3. The mask, loss weighting, candidate ranks, and split define the matrix-completion
+   target.
+
+The [next page](choosing-components.qmd#separating-fitting-selection-and-evaluation)
+isolates the validation step that selected the retained rank without inspecting
+test loss.

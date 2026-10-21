@@ -68,6 +68,56 @@ stopifnot(
 )
 ```
 
+## Three coordinate systems
+
+The same F1-F2 token can occupy three coordinate systems:
+
+| Representation | Coordinate | Substantive commitment |
+|---|---|---|
+| Raw hertz | \(F_{ij}\) | A one-hertz difference has the same numerical meaning across speakers, and features with larger hertz spreads contribute more. |
+| Global standardization | \((F_{ij}-\bar F_j)/s_j\) | The complete sample supplies one shared origin and unit for each formant. |
+| Within-speaker standardization | \((F_{isj}-\bar F_{sj})/s_{sj}\) | A token is located relative to the complete observed vowel space of its own speaker. |
+
+To make the change concrete, consider the first *heed* and *hid* productions by
+speaker 1. Their observed coordinates and distances are computed from the rows
+above.
+
+```{r}
+hand_rows <- c(1L, 3L)
+hand_coordinates <- dplyr::bind_rows(lapply(
+  names(representations),
+  function(name) {
+    coordinates <- representations[[name]][hand_rows, , drop = FALSE]
+    data.frame(
+      representation = name,
+      token = vowels$token_id[hand_rows],
+      coordinate_1 = coordinates[, 1],
+      coordinate_2 = coordinates[, 2],
+      distance = c(
+        sqrt(sum((coordinates[1, ] - coordinates[2, ])^2)),
+        NA_real_
+      )
+    )
+  }
+))
+knitr::kable(hand_coordinates, digits = 3)
+```
+
+For each representation, the displayed distance is
+
+$$
+\sqrt{(x_{11}-x_{21})^2+(x_{12}-x_{22})^2}.
+$$
+
+The arithmetic is unchanged across rows of the table; only the coordinates
+supplied to it change. Raw hertz preserves between-speaker anatomy and recording
+scale. Global standardization equalizes the two sample-wide formant spreads but
+retains between-speaker shifts. Within-speaker standardization removes each
+speaker's observed location and scale, which may reduce anatomy-related
+differences but can also remove stable sociolinguistic variation. We use the last
+geometry because the teaching question concerns relative locations within an
+observed speaker's vowel space.
+
 ## Euclidean distance
 
 For two rows $\mathbf{x}_i$ and $\mathbf{x}_{i'}$ with $p$ features, [**Euclidean distance**](https://online.stat.psu.edu/stat505/Lesson14) is
@@ -202,6 +252,13 @@ Within-speaker standardization uses a speaker's complete unlabeled 20-token pane
 
 This distinction follows the [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd#the-prediction-information-set). The analysis does not predict one isolated token from a speaker with no calibration data. It also leaves dependence among the 20 transformed rows unmodeled.
 
+This is the **calibration-panel target**: transfer to a new speaker whose complete,
+unlabeled twenty-token panel is available to define that speaker's origin and
+scale. A deployable first-token target would instead require a transformation
+estimated without the rest of that speaker's panel, perhaps from training speakers
+or from external anatomical information. The two targets supply different
+information at prediction time.
+
 ## Scaling does not establish relevance
 
 Standardization gives each chosen coordinate a comparable observed spread. It does not make F1 and F2 equally reliable, independent, or exhaustive. A duplicated feature would receive double influence, while an omitted dynamic or F3 measurement receives none.
@@ -216,4 +273,26 @@ Thus, Euclidean distance remains conditional on the representation. A high-quali
 4. Which information from a held-out speaker defines the validation coordinate system?
 5. Why do post-fit intended-vowel matches not constitute label leakage?
 
-Euclidean distance combines feature differences under a declared coordinate system. The [next page](k-means.qmd) uses the speaker-relative geometry to estimate centroids without using the intended-vowel labels.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The code table identifies the nearest row separately under each representation.
+2. Scaling changes the coordinate differences that Euclidean distance squares and
+   adds.
+3. One unit is one within-speaker sample standard deviation for that formant.
+4. All twenty unlabeled measurements define the held-out speaker's means and scales.
+5. The labels are inspected only after distances have been constructed and neighbors
+   selected.
+
+</details>
+
+## Recap
+
+1. Distance is inseparable from the coordinate system supplied to it.
+2. Within-speaker standardization targets relative vowel-space position and removes
+   both anatomy-related and potentially meaningful stable variation.
+3. Later validation concerns a complete calibration panel, not an isolated first
+   token.
+
+The [next page](k-means.qmd#assignments-centroids-and-loss) uses this declared
+speaker-relative geometry to estimate centroids without intended-vowel labels.

@@ -7,6 +7,8 @@ execute:
 
 Ordinary linear regression lets a conditional mean range over the real line and treats residual variance as constant. A binary linguistic response violates both commitments. We can see the problem in the **SuperTelicity cloze data** of White, Cao, Grimm, and Glass's working manuscript, *The preservation of telicity under sense locality* (n.d.). The credential-gated source repository is pinned at commit `e45277ce466719c1a03629f6ccf1e12db9904421`; the immutable [CC BY-SA teaching table](../data/supertelicity/supertelicity-cloze.csv) makes the analyzed data public with sentence text removed. Each row records one participant's choice of *in* or *for* after an event description. It is not an independent participant-level summary.
 
+The prompt supplies an event description followed by a temporal-phrase choice. `prep_in=1` means that the participant selected *in*; `prep_in=0` means that the participant selected *for*. `numeral` and `time_unit` record the magnitude selected with that phrase, and `log_duration_minutes` converts it to natural-log minutes. The teaching table cannot display the source sentence because text was deliberately removed, so the notes show an actual nontext row rather than fabricating a stimulus.
+
 ```{r}
 #| label: load-supertelicity
 #| echo: true
@@ -21,6 +23,15 @@ c(rows = nrow(st), duration_rows = nrow(st_duration),
   sentences = length(unique(st$sentence_id)))
 ```
 
+```{r}
+#| label: inspect-one-supertelicity-row
+st[1L, c(
+  "participant_id", "sentence_id", "verb", "verb_type",
+  "contentfulness", "clause_type", "preposition", "prep_in", "numeral",
+  "time_unit", "log_duration_minutes"
+)]
+```
+
 The duration comparison uses only rows with a selected temporal magnitude. Thus it describes `r nrow(st_duration)` of the `r nrow(st)` cloze choices; missing durations keep it from representing the full experiment.
 
 ## The support problem in observed data
@@ -32,6 +43,23 @@ $$
 \qquad
 \operatorname{Var}[Y_i\mid\mathbf x_i]=\pi_i(1-\pi_i).
 $$
+
+These identities follow directly from the [Bernoulli distribution](../random-variables-and-distributions/bernoulli-distribution.qmd). Conditional on the predictors,
+
+$$
+\mathbb{E}[Y_i\mid\mathbf x_i]
+=0(1-\pi_i)+1(\pi_i)=\pi_i,
+$$
+
+and, because $Y_i^2=Y_i$ for a zero--one variable,
+
+$$
+\operatorname{Var}[Y_i\mid\mathbf x_i]
+=\mathbb{E}[Y_i^2\mid\mathbf x_i]-\mathbb{E}[Y_i\mid\mathbf x_i]^2
+=\pi_i-\pi_i^2.
+$$
+
+This is the **support-and-variance problem**: the mean must remain between zero and one, and the conditional variance changes with that mean.
 
 A linear probability model, $\pi_i=\mathbf x_i^\mathsf T\boldsymbol\beta$, does not constrain $\pi_i$ to $[0,1]$. A logit model instead sets $\operatorname{logit}(\pi_i)=\mathbf x_i^\mathsf T\boldsymbol\beta$.
 
@@ -80,3 +108,20 @@ ggplot() +
 Points are observed bin proportions; grey lines are linear-probability fits; blue lines are logistic fits. The fitted linear means range from `r round(min(grid$linear), 3)` to `r round(max(grid$linear), 3)`, leaving the probability scale. The logistic curves remain inside it.
 
 This is also a variance problem: Bernoulli variance is determined by the mean, rather than by one constant residual variance. A generalized linear model repairs both pieces by choosing a response family with the right support and a link that constrains the mean. These population fits expose that architecture; they do not reproduce the manuscript's Bayesian mixed model or account for repeated participants and sentences.
+
+## Recap and check your understanding
+
+1. Why does binary support motivate a Bernoulli response but not uniquely select the logit link?
+2. What population does the duration-complete subset omit?
+3. Why does a different variance at different fitted probabilities not count as an extra nuisance in a Bernoulli model?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Bernoulli supplies the zero--one sampling distribution. Several one-to-one links, including logit and probit, can map an unconstrained predictor to a probability. <!-- dqr-allow: conceptual-answer -->
+2. It omits cloze responses for which no temporal magnitude was retained, so its target is conditional on duration availability. <!-- dqr-allow: conceptual-answer -->
+3. The Bernoulli model fixes the conditional variance at $\pi_i(1-\pi_i)$ once the mean is specified. Mean-dependent variance is part of the family, not a separate constant residual parameter. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](link-functions.qmd) asks why the logit is useful without pretending that response support uniquely determines it.

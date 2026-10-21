@@ -102,7 +102,8 @@ def main() -> None:
     parser.add_argument(
         "--source",
         type=Path,
-        default=repository / "decks/random-variables-and-distributions/data/cmudict-0.7b",
+        required=True,
+        help="Path to an unmodified CMUdict 0.7b source file.",
     )
     parser.add_argument(
         "--output",

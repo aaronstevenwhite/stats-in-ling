@@ -6,6 +6,12 @@ The values of the naturally missing Hillenbrand formant cells are unavailable. N
 
 **Holdout validation by artificial masking** turns observed cells into artificial missing cells, fits the imputation without those values, and compares their reconstructions with the values set aside. This applies [training and test separation](../model-criticism-and-prediction/training-and-test-data.qmd) to matrix cells. The masking creates known targets while preserving the rule that a target cannot guide its own prediction.
 
+We define the reconstruction error, recreate disjoint validation and test masks, select rank without leakage, and then interpret the final error for the artificial-mask target.
+
+::: {.callout-note title="Validation--test separation (VTS)"}
+The validation masks choose the rank. The test masks estimate error only after that choice is fixed. If a test error changes the rank grid, preprocessing, or algorithm, the test set has become another validation set and a new untouched test is required.
+:::
+
 ## Defining the validation error
 
 Let $O$ be the naturally observed cells and let $M_r\subset O$ be the cells hidden in mask replicate $r$. After fitting without $M_r$, the reconstruction of cell $(i,j)$ is $\widehat y_{ij}^{(-M_r)}$. Its mean squared reconstruction error is
@@ -32,6 +38,8 @@ $$
 $$
 
 where $\widehat s_j^{(-M_r)}$ is estimated after masking. Test results are then reported in hertz separately for F2 and F3.
+
+This is the same training/test idea developed on the [canonical prediction page](../model-criticism-and-prediction/training-and-test-data.qmd): a datum used to choose among models cannot also provide an untouched estimate of the chosen model's error. The difference here is that the held-out units are cells rather than rows.
 
 ## Loading the matrix and the imputation function
 
@@ -155,6 +163,8 @@ pca_impute <- function(
 
 Seeds `20261018` through `20261025` identify eight validation masks, each hiding 5% of observed cells within every fallible column. Seeds `20261026` through `20261029` identify four test masks, each hiding 1.25% per fallible column. Masks are created sequentially so that their targets are disjoint.
 
+Masking within every fallible column prevents a large column from supplying nearly all targets. The larger validation fraction makes rank differences estimable, while the smaller test fraction leaves the within-token information pattern close to the intended isolated-cell use. Eight and four repeats reduce dependence on one random draw, though four test repeats remain too few for a precise sampling distribution. The fixed seeds make this particular design auditable rather than intrinsically optimal.
+
 ```{r}
 #| label: create-hillenbrand-masks
 
@@ -255,6 +265,8 @@ Every artificial target is thus an observed value in the source table, and no ta
 ## Selecting rank without test leakage
 
 The validation fits remove both the current validation mask and the entire test union. Thus no test value contributes to a validation prediction, a column center or scale, a component direction, or the selected rank.
+
+The test fits have a different visibility rule. Fit $r$ hides its own test mask $M_r$ and the naturally missing cells; test cells assigned to the other three test replicates remain observed. This targets reconstruction of one sparse isolated-cell mask at a time. Hiding the full test union during every test fit would answer a harder, more densely missing prediction question.
 
 ```{r}
 #| label: fit-hillenbrand-validation-ranks
@@ -402,6 +414,56 @@ stopifnot(
 test_summary
 ```
 
+The aggregation above pools cells. To expose split-to-split and linguistic variation, we also summarize RMSE within each registered test replicate and, for the selected rank, within each vowel. The interval uses variability across the four registered replicates, so it is a descriptive stability interval rather than a population confidence interval.
+
+```{r}
+#| label: stratify-hillenbrand-test-error
+
+replicate_error <- stats::aggregate(
+  error_hz ~ rank + formant + replicate,
+  test_predictions,
+  function(x) sqrt(mean(x^2))
+)
+names(replicate_error)[4] <- "rmse_hz"
+
+test_stability <- do.call(
+  rbind,
+  lapply(split(replicate_error,
+               interaction(replicate_error$rank,
+                           replicate_error$formant,
+                           drop = TRUE)),
+         function(x) {
+           data.frame(
+             rank = unique(x$rank),
+             formant = unique(x$formant),
+             mean_rmse_hz = mean(x$rmse_hz),
+             lower_descriptive_hz = mean(x$rmse_hz) -
+               1.96 * stats::sd(x$rmse_hz) / sqrt(nrow(x)),
+             upper_descriptive_hz = mean(x$rmse_hz) +
+               1.96 * stats::sd(x$rmse_hz) / sqrt(nrow(x))
+           )
+         })
+)
+rownames(test_stability) <- NULL
+
+vowel_error <- stats::aggregate(
+  error_hz ~ formant + vowel,
+  subset(test_predictions, rank == selected_rank),
+  function(x) c(cells = length(x), rmse_hz = sqrt(mean(x^2)))
+)
+vowel_error <- data.frame(
+  formant = vowel_error$formant,
+  vowel = vowel_error$vowel,
+  vowel_error$error_hz,
+  row.names = NULL
+)
+
+test_stability
+vowel_error
+```
+
+The first table shows whether the aggregate conclusion is stable across masks. The second identifies vowel categories for which an overall F2 or F3 RMSE may be unrepresentative. Small within-vowel cell counts should be read as diagnostics, not as ranked claims about the vowel inventory.
+
 On `r test_summary$heldout_cells[test_summary$rank == selected_rank & test_summary$formant == "f2"]` untouched F2 cells, rank `r selected_rank` has RMSE `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == selected_rank & test_summary$formant == "f2"])` Hz, compared with `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == 0L & test_summary$formant == "f2"])` Hz for the column-mean reference. On the same number of F3 cells, the corresponding RMSEs are `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == selected_rank & test_summary$formant == "f3"])` and `r sprintf("%.2f", test_summary$rmse_hz[test_summary$rank == 0L & test_summary$formant == "f3"])` Hz. Mean signed error under rank `r selected_rank` is `r sprintf("%.2f", test_summary$mean_error_hz[test_summary$rank == selected_rank & test_summary$formant == "f2"])` Hz for F2 and `r sprintf("%.2f", test_summary$mean_error_hz[test_summary$rank == selected_rank & test_summary$formant == "f3"])` Hz for F3.
 
 ```{r}
@@ -456,6 +518,16 @@ An overall error may still hide poor reconstruction for a vowel, speaker group, 
 4. Which prediction target is represented by leaving other measurements from the same token available?
 5. What does low error under these masks fail to establish about the natural omissions?
 
+**Answers.** (1) Their values are unobserved, so no residual can be formed. (2) Column centers and scales, singular vectors, reconstructions, and rank-dependent predictions are all estimated after masking. (3) Otherwise a test value could affect preprocessing or rank choice before being used to assess the selected procedure. (4) It represents transductive interpolation of an isolated cell when the token's other measurements remain visible. (5) It does not show that natural omissions follow the random mask design, nor that their reconstruction is unbiased.
+
 Holdout validation by artificial masking evaluates an imputation procedure on observed values made unavailable during fitting. Under the registered masks, rank `r selected_rank` predicts held-out F2 and F3 cells more accurately than the column-mean reference. This result supports one cell-reconstruction target; it does not turn predictions for naturally missing cells into measurements.
+
+## Recap
+
+1. Validation masks select rank, while disjoint test masks assess the fixed procedure.
+2. Every center, scale, component direction, and prediction is recomputed without the target cells available to that fit.
+3. Pooled, replicate-level, and vowel-level errors answer complementary stability questions.
+4. Artificial masks validate interpolation under their own design, not the untestable values or mechanism of natural missingness.
+5. The next module begins by defining annotations as measurements through the [Turkish PropBank dossier](../custom-models/annotations-as-measurements.qmd#turkish-propbank-measurement-dossier).
 
 [Previous: Iterative PCA imputation](pca-imputation.qmd) · [Next: Custom models](../custom-models/index.qmd)

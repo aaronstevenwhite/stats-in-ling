@@ -5,7 +5,9 @@ execute:
   message: false
 ---
 
-A deviance residual assigns each observation a signed share of model deviance. For Bernoulli logistic regression,
+A deviance residual assigns each observation a signed share of model deviance. For Bernoulli logistic regression, its form is stated below.
+
+This page first derives that signed contribution for a binary row and then aggregates the SuperTelicity residual pattern by verb while preserving the distinction between display summaries and sampling units.
 
 $$
 r_i^{D}=\operatorname{sign}(y_i-\widehat\pi_i)
@@ -14,6 +16,18 @@ r_i^{D}=\operatorname{sign}(y_i-\widehat\pi_i)
 $$
 
 with zero-times-log-zero terms defined as zero. We compute these residuals from the SuperTelicity interaction fit.
+
+The [deviance page](deviance.qmd) defines deviance as twice the log-likelihood gap from the saturated fit. For one Bernoulli row, substitution gives two simple cases:
+
+$$
+d_i=
+\begin{cases}
+2\log(1/\widehat\pi_i), & y_i=1,\\
+2\log[1/(1-\widehat\pi_i)], & y_i=0.
+\end{cases}
+$$
+
+The residual is $\operatorname{sign}(y_i-\widehat\pi_i)\sqrt{d_i}$. The sign restores whether the observed value lies above or below its fitted mean; the square root makes squared residuals add to deviance.
 
 ```{r}
 #| label: fit-deviance-residuals
@@ -28,6 +42,25 @@ st$deviance_residual <- residuals(fit, type = "deviance")
 c(sum_squared = sum(st$deviance_residual^2), model_deviance = deviance(fit),
   minimum = min(st$deviance_residual), maximum = max(st$deviance_residual))
 ```
+
+```{r}
+#| label: one-deviance-residual-by-hand
+#| echo: true
+i <- 1L
+manual_d <- if (st$prep_in[i] == 1) {
+  2 * log(1 / st$fitted[i])
+} else {
+  2 * log(1 / (1 - st$fitted[i]))
+}
+data.frame(y = st$prep_in[i], fitted = st$fitted[i],
+  raw = st$prep_in[i] - st$fitted[i],
+  pearson = (st$prep_in[i] - st$fitted[i]) /
+    sqrt(st$fitted[i] * (1 - st$fitted[i])),
+  deviance_manual = sign(st$prep_in[i] - st$fitted[i]) * sqrt(manual_d),
+  deviance_R = st$deviance_residual[i])
+```
+
+Raw residuals measure response-scale difference. Pearson residuals divide that difference by the Bernoulli standard deviation. Deviance residuals instead encode a signed likelihood loss. These quantities answer different questions and need not rank rows identically.
 
 The squared residuals sum to the model deviance. Binary row residuals are necessarily discrete-looking because each row contains only zero or one. Aggregating by verb is useful for calibration display, though the aggregation is not the likelihood that was fit.
 
@@ -45,3 +78,12 @@ ggplot(by_verb, aes(fitted, prep_in)) +
 ```
 
 Large gaps identify verbs for inspection, not automatically erroneous observations. They may indicate omitted lexical structure, dependence, or a mean specification that is too coarse. Because verbs, sentences, and participants recur, residual patterns should motivate a richer model rather than deletion based on a fixed threshold.
+
+The verb proportions are a display summary, not new independent observations. Their uncertainty depends on the number of trials and the repeated participant/sentence structure, so distance from the diagonal alone is not a calibrated test.
+
+## Recap and check
+
+1. Why can binary row residuals not form a smooth cloud around zero? Each observed row is only zero or one.
+2. Does a large deviance residual prove a bad data point? No. It marks a large fitted likelihood loss and can instead reveal omitted structure or dependence.
+
+The [Poisson pages](poisson-regression.qmd) next apply related diagnostics to counts, where row outcomes have more than two possible values.

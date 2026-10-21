@@ -7,7 +7,11 @@ execute:
   message: false
 ---
 
-A **posterior predictive check** compares an observed feature with the same feature in data generated from the fitted model. It criticizes one implication of the passage-level Student-t model rather than assigning a global fit label.
+A [**posterior predictive check**](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html) compares an observed feature with the same feature in data generated from the fitted model. It criticizes one implication of the passage-level Student-t model rather than assigning a global fit label.
+
+This is the predictive averaging introduced on the [posterior-predictive page](predictive-distributions.qmd#two-sources-of-posterior-predictive-variation), now applied to the Provo model through [generated quantities](generated-quantities.qmd#three-passage-level-student-t-model-outputs).
+
+We first define replication under the fitted Student-t model, then compare observed data with its predictive density, and finally inspect four targeted discrepancies whose failures would identify particular model implications rather than a single global fit verdict.
 
 ## Replication under the fitted passage-level Student-t model
 
@@ -27,6 +31,8 @@ Y_j^{\mathrm{rep},(s)}
 $$
 
 Each replicate preserves the observed number of passage summaries. It does not regenerate reader trials or make the passages a probability sample of English texts.
+
+For one retained draw, the algorithm is concrete: (i) take its paired values $(\mu^{(s)},\sigma^{(s)})$; (ii) generate 55 conditionally independent $t_4$ passage contrasts; (iii) collect those values as one complete replicated dataset $\mathbf y^{\mathrm{rep},(s)}$; and (iv) compute the same discrepancy on that replicate and on $\mathbf y$. Repeating these steps over posterior draws creates a predictive distribution of discrepancies.
 
 ```{r}
 #| label: prepare-provo-posterior-predictive-check
@@ -71,6 +77,8 @@ ppc_summary
 
 The next figure keeps the observed histogram and rug visible. The line is the posterior-median predictive density, and the band is its central 90% interval across an evenly spaced subset of posterior draws.
 
+This band is **pointwise in density**: at each horizontal value, it summarizes the density heights obtained across posterior draws. It is not a 90% interval containing future observations, nor is it a simultaneous band covering an entire density curve. A predictive interval for one future $Y$ would instead use quantiles of replicated response values.
+
 ```{r}
 #| label: plot-provo-posterior-predictive-density
 #| fig-cap: "Observed 55-passage contrasts with the fitted posterior-predictive density and its central 90% pointwise band."
@@ -106,6 +114,8 @@ ggplot(data.frame(contrast = y), aes(contrast)) +
 
 A discrepancy $T(\mathbf y)$ must be applied identically to observed and replicated data. Here we inspect mean, standard deviation, maximum absolute contrast, and proportion positive. The last two are not direct sufficient statistics for the fitted location and scale, so they can expose tail or sign-pattern failures.
 
+These four functions were chosen to probe different model implications: location, spread, an extreme magnitude, and sign balance. They do not exhaust the implications students might care about. For instance, a scientifically motivated passage covariate could reveal systematic misfit even when all four marginal summaries look typical.
+
 ```{r}
 #| label: plot-provo-posterior-predictive-discrepancies
 #| fig-cap: "Posterior-predictive distributions for four passage-level discrepancies. Each accent line is the corresponding observed value."
@@ -133,6 +143,15 @@ ggplot(ppc_long, aes(value)) +
 ```
 
 All four observed values lie within their central 95% predictive intervals. This result says only that the fitted passage-level Student-t model does not miss these four passage-level features grossly. It does not validate the aggregation scheme, the empirically calibrated priors, participant-level generalization, or unexamined discrepancies.
+
+## Recap and forward link
+
+1. A posterior predictive replicate uses one joint parameter draw to generate one complete dataset.
+2. Observed and replicated data must pass through the same discrepancy function.
+3. A pointwise density band is not an interval for a future observation.
+4. Passing selected checks rules out only gross misfit for those selected implications.
+
+This completes the computational return to the response scale. A next analysis could restore reader- and word-level structure and then choose discrepancies for those richer modeled units.
 
 ## Check your understanding
 

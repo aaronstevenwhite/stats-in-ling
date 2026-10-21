@@ -8,6 +8,10 @@ This module uses two annotation resources, one of them non-English. The natural-
 
 The Turkish PropBank project site applies CC BY-NC-SA 4.0 to resources built in the project, while the repository's short license header names the Turkish frame files specifically. The course extract follows the project-wide noncommercial statement, but the narrower repository header should not be read as a separate license grant for every crowd export.
 
+The collection moves from UDS response generation to joint factorization, annotator effects, recovery, and posterior checking, then uses gated responses and Turkish role judgments to test the same measurement discipline under different protocols.
+
+Here are the two measurement records before the inventory. UDS item `ewt-test-963%%ewt-test-963-semantics-pred-6` anchors token 6, *exhibited*, in the sentence “His artworks were selected and exhibited in British Museum in 2002.” The graph-to-sentence mapping follows the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html), and the sentence comes from the pinned [UD English EWT 1.2 test source](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). Its three released natural-parts responses are 0, 1, and 0. The Turkish row `item_00001` records worker `worker_087` judging predicate lemma `başla`, sense 1, candidate role `A1`, with the adjudicated description `neye başladığı`; the worker agrees with adjudication. Sentence and candidate spans were removed from the teaching extract, so this row cannot support a fuller source-text example.
+
 ```{r}
 #| label: custom-model-index
 #| message: false
@@ -47,6 +51,14 @@ stopifnot(
 )
 
 measurement_inventory
+
+uds[uds$item_id == "ewt-test-963%%ewt-test-963-semantics-pred-6",
+    c("item_id", "graph_id", "node_id", "annotator_id", "natural_parts")]
+turkish[turkish$item_id == "item_00001" &
+          turkish$worker_id == "worker_087",
+        c("item_id", "worker_id", "predicate_lemma", "sense_id",
+          "adjudicated_label", "role_group", "adjudicated_role_description",
+          "correct")]
 ```
 
 The two response variables answer different questions. UDS records whether an annotator answered yes to one natural-parts gate. Turkish PropBank records whether an individual role-description selection agrees with the project's adjudication. Neither response is an independently observed linguistic truth.
@@ -64,3 +76,17 @@ The [UDS measurement-model capstone](uds-measurement-model.qmd) combines the lik
 The UDS item is a predicate node anchored in sentence context, not a context-free verb lemma. The Turkish PropBank item is one predicate-specific argument candidate, not an abstract thematic-role type. Keeping those units distinct fixes the product terms in the likelihood and the populations represented by the random effects.
 
 These joint models depend on previously introduced [response distributions](../regression-models/generalized-linear-models.qmd), [grouped variation](../regression-models/random-effects.qmd), [posterior computation](../statistical-inference/markov-chain-monte-carlo.qmd), and [posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd). The sequence contributes the protocol-specific joint distribution and the checks needed to interpret its latent quantities.
+
+The local reminders are these. A Bernoulli likelihood represents a binary recorded response; a logit link maps an additive real-valued predictor to a probability. A random effect represents a population distribution over group-specific deviations and induces dependence among rows sharing a group. Markov chain Monte Carlo approximates a posterior with correlated draws, while a posterior predictive check compares statistics of replicated responses with the same statistics of the observed responses.
+
+## Check the measurement claim
+
+1. Why is the UDS item not the lemma *exhibit*? **Answer:** the item is one predicate node anchored in one sentence and graph; the same lemma in another context is a different item.
+2. What does `correct = 1` mean in the Turkish row? **Answer:** the worker's selected role description agrees with project adjudication. It does not independently prove that the adjudication is linguistically correct.
+3. Why must the two resources have different likelihood indexes? **Answer:** their realized units differ: UDS rows cross predicate nodes with annotators, whereas Turkish rows cross argument-candidate items with workers.
+
+## Recap and route through the module
+
+1. An annotation is the output of a named measurement protocol, not direct access to a linguistic property.
+2. UDS and Turkish PropBank supply different units, prompts, and recorded responses.
+3. The module proceeds from the [UDS data-generating process](generative-stories.qmd#uds-measurement-dossier), through joint factorization and recovery, to the Turkish measurement model, annotator effects, the full UDS model, and the gated extension.

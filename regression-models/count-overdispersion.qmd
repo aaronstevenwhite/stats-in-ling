@@ -5,7 +5,9 @@ execute:
   message: false
 ---
 
-Poisson regression requires conditional mean and variance to be equal. **Overdispersion** occurs when the remaining variation is larger than that requirement permits. We diagnose it in the Nettle teaching model with Pearson residuals.
+Poisson regression requires conditional mean and variance to be equal. **Overdispersion** occurs when the remaining variation is larger than that requirement permits. We diagnose it in the Nettle teaching model with [Pearson residuals](residuals.qmd) and use the [model-criticism logic](checking-linear-regression.qmd): a diagnostic identifies an assumption under strain, not a unique replacement model.
+
+We first compute the diagnostic against the fitted Poisson means, then compare mechanisms that could produce the same excess variation.
 
 ```{r}
 #| label: load-nettle-dispersion
@@ -36,6 +38,16 @@ dispersion
 The estimator is
 
 $$
+
+The numerator is the sum of squared standardized residuals because a Poisson row has model variance $\widehat\lambda_i$:
+
+$$
+r_i^P=\frac{y_i-\widehat\lambda_i}{\sqrt{\widehat\lambda_i}},
+\qquad
+\sum_i(r_i^P)^2=\sum_i\frac{(y_i-\widehat\lambda_i)^2}{\widehat\lambda_i}.
+$$
+
+The denominator $n-p$ accounts approximately for the $p$ fitted mean parameters. Under a correctly specified independent Poisson model, the numerator is approximately chi-squared with $n-p$ degrees of freedom, so the ratio fluctuates around one rather than equaling one exactly.
 \widehat\phi=\frac{1}{n-p}\sum_i
 \frac{(y_i-\widehat\lambda_i)^2}{\widehat\lambda_i}.
 $$
@@ -54,4 +66,32 @@ ggplot(nettle, aes(fitted, pearson)) +
   theme_classic()
 ```
 
-Overdispersion may arise from omitted heterogeneity, dependence, an inadequate mean formula, or a different count distribution. It is a diagnosis, not a mechanism. The next page changes the variance used for uncertainty while retaining the fitted mean.
+```{r}
+#| label: observed-versus-fitted-count-variance
+#| echo: true
+nettle$fitted_bin <- cut(nettle$fitted,
+  unique(quantile(nettle$fitted, seq(0, 1, length.out = 6))),
+  include.lowest = TRUE)
+variance_by_bin <- aggregate(cbind(language_count, fitted) ~ fitted_bin, nettle,
+  function(z) c(mean = mean(z), variance = var(z), n = length(z)))
+variance_by_bin
+```
+
+These bins are descriptive. A within-bin observed variance much larger than its fitted mean is compatible with overdispersion, but sparse bins and a changing mean can also produce gaps.
+
+Overdispersion may arise from omitted heterogeneity, dependence, an inadequate mean formula, or a different count distribution. It is a diagnosis, not a mechanism.
+
+| Possible source | Evidence to inspect | Corresponding next model |
+|---|---|---|
+| Mean formula too coarse | residual trend against climate or area | revise predictors or functional form |
+| Unobserved unit heterogeneity | extra variance without a known cluster | negative-binomial mixture |
+| Known clustered dependence | repeated observations within a group | random effects or clustered uncertainty |
+| Mean plausible, variance scaled | coefficient estimates stable but SEs too small | quasi-Poisson uncertainty |
+| More zeros than a single count process predicts | zero frequency and process knowledge | hurdle or zero-inflated model |
+
+## Recap and check
+
+1. Does $\widehat\phi=2$ prove a negative-binomial data-generating process? No. Several failures can inflate the same statistic.
+2. Must a correct Poisson fit produce exactly one? No. The statistic has sampling variation around one.
+
+The [quasi-Poisson page](quasi-poisson.qmd) changes uncertainty while retaining the fitted mean; the [negative-binomial page](negative-binomial-regression.qmd) changes the conditional variance model.

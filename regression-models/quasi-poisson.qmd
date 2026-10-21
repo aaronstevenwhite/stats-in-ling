@@ -5,13 +5,36 @@ execute:
   message: false
 ---
 
-Quasi-Poisson regression keeps the Poisson mean function but allows
+Quasi-Poisson regression keeps the Poisson mean function but allows the scaled variance relation stated below.
+
+This page first derives the dispersion adjustment, then checks what changes in the Nettle coefficient estimates and what remains outside a full likelihood model.
 
 $$
 \operatorname{Var}[Y_i\mid\mathbf x_i]=\phi\mu_i.
 $$
 
 It thus changes uncertainty, not fitted means. The Nettle data show the distinction directly.
+
+For a mean model $\mu_i(\boldsymbol\beta)$ and variance function $V(\mu_i)=\mu_i$, the quasi-score is
+
+$$
+\mathbf U_Q(\boldsymbol\beta)
+=
+\sum_i
+\frac{y_i-\mu_i}{\phi\mu_i}
+\frac{\partial\mu_i}{\partial\boldsymbol\beta}.
+$$
+
+With the log link, $\partial\mu_i/\partial\boldsymbol\beta=\mu_i\mathbf x_i$, so
+
+$$
+\mathbf U_Q(\boldsymbol\beta)
+=
+\frac{1}{\phi}
+\sum_i\mathbf x_i(y_i-\mu_i).
+$$
+
+The Poisson score is the same sum without the constant $1/\phi$. Multiplying a score by a nonzero constant does not change its root. This is why the Poisson and quasi-Poisson coefficient estimates agree for the same mean specification.
 
 ```{r}
 #| label: load-and-fit-quasi
@@ -46,6 +69,8 @@ data.frame(
 
 The MGS coefficient and every fitted rate are identical, while the standard error expands from `r round(summary(poisson_fit)$coefficients[2L, 2L], 4)` to `r round(summary(quasi_fit)$coefficients[2L, 2L], 4)`. The estimated dispersion is `r round(summary(quasi_fit)$dispersion, 2)`.
 
+The covariance estimate is multiplied by $\widehat\phi$, so each standard error is multiplied by $\sqrt{\widehat\phi}$. This connects the variance repair to the [standard-error definition](../statistical-inference/standard-errors.qmd). The fitted mean does not move because the quasi-score root does not move.
+
 ```{r}
 #| label: plot-quasi-shared-fit
 #| echo: true
@@ -64,3 +89,29 @@ ggplot(nettle, aes(mean_growing_season_months, rate)) +
 ```
 
 Quasi-likelihood does not define a complete probability mass function, so ordinary likelihood comparisons such as AIC are unavailable. It repairs the variance used for standard errors, not omitted structure, country dependence, or the exposure assumption.
+
+| Repair | Mean structure | Variance or dependence | Full likelihood? |
+|---|---|---|---|
+| revise predictors/link | changes | implied by chosen family | yes, if a family is specified |
+| quasi-Poisson | same Poisson mean | $\phi\mu$ | no |
+| negative binomial | may be the same | $\mu+\mu^2/\theta$ | yes |
+| random effects | conditional mean gains group terms | induces marginal dispersion and dependence | yes |
+
+Thus quasi-Poisson is useful when the mean equation is the target and a proportional variance correction is defensible. It is not a generative account of the extra variation.
+
+## Recap and check your understanding
+
+1. Why do Poisson and quasi-Poisson coefficients agree here?
+2. By what factor do quasi-Poisson standard errors change?
+3. Why is ordinary AIC unavailable?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Their score equations differ only by the constant $1/\phi$, so they have the same root for a fixed mean model. <!-- dqr-allow: conceptual-answer -->
+2. Covariances are multiplied by $\widehat\phi$ and standard errors by $\sqrt{\widehat\phi}$. <!-- dqr-allow: conceptual-answer -->
+3. AIC requires a maximized probability likelihood, while quasi-Poisson specifies mean and variance without a complete PMF. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](zero-inflated-counts.qmd) asks whether unusual zero frequency needs a distinct zero-generating state.

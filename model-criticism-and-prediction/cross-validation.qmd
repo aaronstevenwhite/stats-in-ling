@@ -6,13 +6,15 @@ The [training-and-test page](training-and-test-data.qmd) separated one training 
 
 The output is one out-of-fold prediction for every observation. Each prediction comes from a fit that excluded that response. This does not make its reader or story new as well; the fold construction determines which units cross the training-test boundary.
 
+We first derive the fold rotation, then choose and implement a validation unit in Natural Stories, and finally examine preprocessing, fold count, score dependence, and split checks that determine what the resulting out-of-fold loss estimates.
+
 ::: {.callout-note title="Reading: Nicenboim, Schad, and Vasishth, Chapter 14"}
 [Nicenboim, Schad, and Vasishth, *Cross-validation*, in *An Introduction to Bayesian Data Analysis for Cognitive Science*](https://bruno.nicenboim.me/bayescogsci/ch-cv.html).
 
 Read the chapter opening and Section 14.2 through Equation 14.6. These passages distinguish training data from held-out data and derive the rotation used here.
 :::
 
-## The algorithm
+## The algorithm {#the-algorithm}
 
 Partition observation indices into disjoint folds $F_1,\ldots,F_K$. For fold $k$:
 
@@ -33,9 +35,31 @@ $$
 
 where $\widehat f_{-k}$ is fit without fold $k$. The fitted model changes across folds, but the procedure remains fixed.
 
+For a five-observation, two-fold rotation, take
+$F_1=\{1,3,5\}$ and $F_2=\{2,4\}$. The first fit uses observations 2 and 4 and
+produces predictions for 1, 3, and 5. The second fit uses 1, 3, and 5 and produces
+predictions for 2 and 4. Thus every observation is scored once, but no prediction is
+made by a fit that used its response. This small rotation is exactly what the loop
+below performs on five much larger folds.
+
+## The validation unit {#the-validation-unit}
+
+The [VTS](index.qmd#validation-target-specification) distinguishes three objects that
+are easy to collapse. A **fold** is a computational container. A **held-out unit** is
+the empirical object that must move together. A **score-aggregation unit** is what
+receives equal weight in the final loss. On this page, individual response rows are
+both the held-out and score units, while a fold contains many such rows. Participants
+and stories can cross the boundary, so neither is new.
+
+Five random row folds are used because the lesson needs repeated training-test
+rotation at manageable cost, not because five is a property of Natural Stories.
+Random row assignment is appropriate only for the narrow target of another retained
+response from represented readers and stories. The seed makes the teaching split
+reproducible.
+
 ## Random-row validation in Natural Stories
 
-The following code independently loads the [corrected Natural Stories data](prediction-targets.qmd#natural-stories), assigns retained responses to five random folds with the frozen seed, fits the same standardized regression inside each fold, and stores every held-out prediction. Predictor moments are recomputed from the training rows of each fold.
+The following code independently loads the [corrected Natural Stories data](prediction-targets.qmd#natural-stories-measurement-dossier), assigns retained responses to five random folds with the frozen seed, fits the same standardized regression inside each fold, and stores every held-out prediction. Predictor moments are recomputed from the training rows of each fold.
 
 ```{r}
 #| label: natural-row-cv
@@ -119,6 +143,19 @@ ggplot2::ggplot(
 
 The five fold RMSEs range from `r sprintf("%.4f", min(fold_scores$rmse_log_rt))` to `r sprintf("%.4f", max(fold_scores$rmse_log_rt))`. Every held-out fold contains responses from all `r unique(fold_scores$held_out_stories)` stories and `r paste(range(fold_scores$held_out_participants), collapse = " to ")` represented participants. The estimand is thus a new retained response when its story and reader remain represented in training.
 
+The subscripts in the displayed estimator correspond to the loop as follows:
+
+| formula | code |
+|:--|:--|
+| fold $F_k$ | `row_fold == fold` |
+| training complement $-k$ | `train <- !test` |
+| $\widehat f_{-k}$ | `fit` after fold-local standardization |
+| $\widehat f_{-k}(x_i)$ | `prediction[test]` |
+| $L(y_i,\widehat y_i)$ | `error^2` or `abs(error)` |
+
+The printed fold rows summarize these stored pointwise losses. They do not replace
+the prediction vector or become independent replicates.
+
 The stored prediction vector is more useful than the fold means alone. It permits prespecified inspection by response range, story, reader, or linguistic category and permits paired model comparisons on identical rows. A category discovered only after inspecting its errors supplies exploratory evidence.
 
 ## Every fitted decision stays inside the loop
@@ -146,4 +183,23 @@ Predictive differences should instead be returned to the groups specified by the
 3. Why does this random-row procedure not evaluate a reader or story absent from fitting?
 4. Why are the five fold scores not independent experiments?
 
-$K$-fold CV rotates training and test roles to obtain one held-out prediction per response. The [previous page](bias-variance-tradeoff.qmd) described repeated training samples; the [next page](grouped-cross-validation.qmd) keeps complete participants and stories together when those groups must be absent during fitting.
+<details>
+<summary>Answers</summary>
+
+1. Its response belongs to the test fold and is excluded from that fold's fit.
+2. Predictor centers, predictor scales, and regression coefficients are re-estimated.
+3. Other rows from the same reader and story remain in training.
+4. The fitted training sets overlap, reusing most of the same observations.
+
+</details>
+
+## Recap and forward link
+
+1. Each response is scored by a fit that excluded it.
+2. $K$ controls a computational rotation rather than the empirical unit.
+3. All fitted decisions stay inside the fold.
+
+The [previous page](bias-variance-tradeoff.qmd#deriving-the-decomposition)
+described repeated training samples; the [next page](grouped-cross-validation.qmd#participant-and-story-validation-targets)
+keeps complete participants and stories together when those groups must be absent
+during fitting.

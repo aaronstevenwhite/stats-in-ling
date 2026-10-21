@@ -5,6 +5,8 @@ execute: {warning: false, message: false}
 
 The chapter on [independent sampling](../statistical-inference/independent-sampling.qmd) separated the number of recorded observations from the assumptions that make those observations independent. Linguistic experiments commonly contain repeated participants and items, so rows inherit dependence from the design.
 
+This page first inventories repetition in MALD, then writes the independence claim, distinguishes crossed from nested units, and aligns each dependence source with a model term.
+
 We examine that structure in the **MALD connected-trial extract**. MALD is an auditory lexical-decision database described by Tucker et al. ([2019](https://doi.org/10.3758/s13428-018-1056-1)); the later [MALD 1.1 release](https://doi.org/10.7939/r3-kh0r-r116) expanded the participant inventory. The paper reports 231 listeners, whereas release 1.1 contains 440. These totals describe different versions and should not be combined.
 
 ## Examining repetition in the MALD table
@@ -36,6 +38,19 @@ structure_summary <- c(
 )
 structure_summary
 ```
+
+The first retained source row makes these fields concrete:
+
+```{r}
+#| label: inspect-one-mald-trial
+mald_all[1L, c(
+  "participant_id", "session_id", "run_id", "trial_order", "item",
+  "rt_ms", "correct", "frequency_subtlex", "duration_ms", "n_phones",
+  "n_syllables"
+)]
+```
+
+`participant_id` names the listener; `run_id` names that listener's run; `trial_order` locates the trial within the run; `item` is the spoken word; `rt_ms` is onset-to-response time; and `correct` records the lexical decision's accuracy. Frequency, acoustic duration, phone count, and syllable count belong to the word and thus repeat whenever that word is presented. The connected subset was selected by participant and word identifiers without examining response time or correctness. The later correct-only latency restriction is thus an analysis choice, not a selection rule used to build the incidence graph.
 
 The latency analysis retains correct responses, as in Tucker et al.'s source analysis. This restriction leaves `r format(nrow(mald), big.mark = ",")` trials from `r length(unique(mald$participant_id))` participants and `r format(length(unique(mald$item)), big.mark = ",")` spoken words. It does not make the retained rows independent.
 
@@ -78,7 +93,7 @@ That claim is implausible here for two distinct reasons. Responses from one part
 
 ## Distinguishing crossed and nested units
 
-Participant and word are **crossed** because participants respond to many words and words receive responses from multiple participants. A nested structure would instead require each lower-level unit to belong to only one higher-level unit. For instance, runs belong to participant sessions in the MALD release; a run identifier does not migrate between participants.
+Participant and word are [**crossed**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) because participants respond to many words and words receive responses from multiple participants. A nested structure would instead require each lower-level unit to belong to only one higher-level unit. For instance, runs belong to participant sessions in the MALD release; a run identifier does not migrate between participants.
 
 The distinction can be checked from the incidence table rather than inferred from column order:
 
@@ -93,6 +108,23 @@ crossing_check <- c(
 crossing_check
 ```
 
+For intuition, the following small incidence table marks whether each of the first five participants contributed a retained correct response to each of the first eight displayed words:
+
+```{r}
+#| label: show-mald-incidence-example
+example_participants <- unique(mald$participant_id)[seq_len(5L)]
+example_items <- unique(mald$item)[seq_len(8L)]
+xtabs(
+  ~ participant_id + item,
+  data = subset(
+    mald,
+    participant_id %in% example_participants & item %in% example_items
+  )
+)
+```
+
+Rows and columns both contain multiple marks. That pattern is crossing. A nested design would place every lower-level unit in exactly one higher-level row or column.
+
 ## Matching dependence to the claim
 
 A participant-population claim requires replication across participants. An item-population claim requires replication across words. A claim about both requires a design and analysis that preserve both sources. More trials from the same participants or words improve estimates for those units but do not add participant or word replication.
@@ -100,3 +132,20 @@ A participant-population claim requires replication across participants. An item
 Averaging trials within participants would preserve participant replication while discarding word variation and within-participant trial predictors. Averaging within words would do the reverse. Mixed-effects models retain trial-level responses while representing both shared sources.
 
 Before fitting one, record four facts: (i) what one response row represents, (ii) which sampled units recur, (iii) whether those units are crossed or nested, and (iv) the populations across which the linguistic association should generalize. The [next page](fixed-and-random-effects.qmd) translates those design facts into population coefficients and group distributions.
+
+## Recap and check your understanding
+
+1. Why are two trials from one listener not independent merely because they have different row numbers?
+2. Why are participant and word crossed rather than nested?
+3. What changes if trials are averaged within words?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The trials may share a persistent listener baseline and other unmeasured listener properties. Conditional independence is a model claim, not a property of a spreadsheet. <!-- dqr-allow: conceptual-answer -->
+2. Participants respond to multiple words, and words receive responses from multiple participants. Neither unit belongs to only one level of the other. <!-- dqr-allow: conceptual-answer -->
+3. Word averaging preserves word replication but removes participant identities, participant variation, and within-participant predictors. The estimand becomes item-level. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [fixed-and-random-effects page](fixed-and-random-effects.qmd) next turns this dependence inventory into explicit population and group-level terms.

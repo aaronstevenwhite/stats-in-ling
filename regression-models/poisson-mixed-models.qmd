@@ -5,6 +5,8 @@ execute: {warning: false, message: false}
 
 We now combine [Poisson regression](poisson-regression.qmd), an [exposure offset](exposure-offsets.qmd), and a [random intercept](random-intercepts.qmd) in an analysis of aligned linguistic graphs.
 
+We proceed from observation and target to conditional model, fit the paired UCCA counts, and then separate conditional from marginal rate predictions.
+
 Sulem, Abend, and Rappoport's [French-English UCCA study](https://aclanthology.org/W15-3502/) compares independently annotated passages from *Twenty Thousand Leagues Under the Sea*. The annotation follows [Universal Conceptual Cognitive Annotation](https://aclanthology.org/P13-1023/) (UCCA). A UCCA Scene contains a Process or State main relation; it is not simply a finite clause or verb token.
 
 The current v2 release differs from the older version summarized in the paper. The analysis below is thus a new paired analysis of the graph-aware v2 table, not a reproduction of the paper's reported passage averages.
@@ -12,6 +14,20 @@ The current v2 release differs from the older version summarized in the paper. T
 ## Stating the observation and target
 
 One row is one complete passage graph in English or French. `pair_id` joins the aligned translations. `word_count` is the number of annotated words, and `scene_count` counts distinct nodes with an outgoing Process or State edge. A remote reference to an existing node does not create another Scene.
+
+The teaching extract does not redistribute passage text or graph XML. It does preserve graph-aware counts, so the first aligned pair can be read without inventing a sentence:
+
+```{r}
+#| label: inspect-one-ucca-pair
+ucca_preview <- read.csv("data/ucca-french-english/passage-counts.csv")
+ucca_preview[ucca_preview$pair_id == ucca_preview$pair_id[[1L]], c(
+  "pair_id", "language", "release_passage_id", "word_count",
+  "scene_count", "scene_count_primary_main_relation", "remote_edge_count",
+  "participant_primary_edge_count", "participant_remote_edge_count"
+)]
+```
+
+To count Scenes in a graph, inspect every foundational node and mark it once if it has an outgoing Process (`P`) or State (`S`) edge. A node with both a primary mention and a remote reference is still one node and thus one Scene. The count rule is node-based, not a count of verbs, clauses, or `P`/`S` edge tokens.
 
 The target is the French-to-English Scene-rate ratio within this release, conditional on aligned passage-pair heterogeneity. It is a rate per annotated word, not a contrast in raw counts.
 
@@ -108,6 +124,18 @@ c(
 )
 ```
 
+The mathematical pieces map to the fitting call as follows:
+
+| Model term | R formula term | Role |
+|---|---|---|
+| $Y_{pl}$ | `scene_count` | observed Scene count |
+| $\beta_0+\beta_1\operatorname{French}_{pl}$ | `language` | population log-rate contrast |
+| $\log W_{pl}$ | `offset(log(word_count))` | fixed one-for-one exposure adjustment |
+| $b_p$ | `(1 \| pair_id)` | aligned-pair deviation |
+| Poisson with log link | `family = poisson(link = "log")` | conditional count distribution and mean map |
+
+`nAGQ=1` requests the Laplace approximation used by `glmer`; it is a computational approximation to integrating over pair effects, not a scientific assumption about language. The [Laplace page](laplace-approximation.qmd) explains its mode-and-curvature construction. `bobyqa` is the declared derivative-free optimizer used for the outer likelihood problem.
+
 Holding the passage-pair effect fixed, the fitted French Scene rate is `r sprintf("%.3f", french_english_rate_ratio)` times the fitted English rate per annotated word. The comparison is multiplicative because the model uses a log link.
 
 ## Showing observed counts and fitted rates
@@ -170,3 +198,20 @@ $$
 This statement concerns a passage pair with a given deviation. A prediction for a new pair must average over the fitted pair distribution. The [next page](overdispersion-and-random-effects.qmd) shows why that averaging produces marginal variance greater than the marginal mean even though the conditional response remains Poisson.
 
 Language is a fixed within-pair description of this translation release, not a random sample of languages. The corpus contains consecutive material from one novel, one translation, and one annotation history. The fitted rate ratio may summarize that selected corpus; it cannot be promoted to a population claim about French and English.
+
+## Recap and check your understanding
+
+1. Why does a remote edge not create another Scene?
+2. What comparison is made by the language coefficient after the offset is included?
+3. Does `nAGQ=1` mean that the data contain one quadrature point?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. A remote edge refers to an already existing node. Scene counting marks distinct nodes with an outgoing Process or State edge. <!-- dqr-allow: conceptual-answer -->
+2. It compares French and English Scene rates per annotated word while holding the aligned-pair deviation fixed. <!-- dqr-allow: conceptual-answer -->
+3. No. It selects a Laplace approximation for integrating model random effects; it is a fitting setting. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [overdispersion-and-random-effects page](overdispersion-and-random-effects.qmd) next separates conditional Poisson variation from the marginal dispersion induced by group heterogeneity.

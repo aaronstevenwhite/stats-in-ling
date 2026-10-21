@@ -7,13 +7,28 @@ execute:
   message: false
 ---
 
-The binomial distribution describes independent draws. A fixed sample drawn **without replacement** from a finite linguistic resource has less variation because each selected entry changes the composition of the remaining population. The **hypergeometric distribution** represents that design.
+The binomial distribution describes independent draws. A fixed sample drawn [**without replacement**](https://openstax.org/books/introductory-statistics-2e/pages/4-5-hypergeometric-distribution) from a finite linguistic resource has less variation because each selected entry changes the composition of the remaining population. The [**hypergeometric distribution**](https://openstax.org/books/introductory-statistics-2e/pages/4-5-hypergeometric-distribution) represents that design.
+
+We define the finite Turkish morphology population and its fixed sample, derive the without-replacement mass and moments, and then contrast their variance with an independent-draw binomial reference.
 
 ## A finite Turkish morphology population
 
 We use the Turkish UniMorph release pinned at commit [6c179ac](https://github.com/unimorph/tur/tree/6c179ace7d2f3d7f3484020e5304c1544d07bb6b). Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) describe the morphological-reinflection task and Turkish expansion; Batsuren et al. ([2022](https://aclanthology.org/2022.lrec-1.89/)) describe the type-level UniMorph representation. The data are CC BY-SA 3.0.
 
 The course population retains the distinct Turkish verb lemmas with one form in the feature cell `V;IND;PST;3;SG;POS;DECL`. The pinned README says that verbs were generated semi-automatically and partially checked by a native speaker; unverified noun and adjective material is excluded. The two-character `past_suffix` is a course-derived orthographic ending, not a UniMorph morpheme boundary.
+
+One population row maps the lemma *göndermek* ‘to send’ to *gönderdi* under the
+feature bundle `V;IND;PST;3;SG;POS;DECL`, which denotes a positive declarative
+third-person singular past indicative verb. The derived ending is *di*, so
+`t_initial = 0`. In the fixed sample, *hata yapmak* maps to *hata yaptı* and has
+the derived ending *tı*, so `t_initial = 1`. These are lemma–form records, not
+corpus occurrences.
+
+The sample file is a simple random sample of 120 distinct rows drawn without
+replacement from all 588 population rows, using seed 414. The size 120 is a
+fixed teaching design choice rather than a data-derived optimum. Because the
+population is finite and each row can appear at most once, drawing one lemma
+changes the composition available for the next draw.
 
 ```{r}
 #| label: load-unimorph-hypergeometric
@@ -74,6 +89,11 @@ $$
 
 The numerator counts samples containing $x$ focal entries and $n-x$ other entries; the denominator counts all size-$n$ samples.
 
+More explicitly, choose $x$ of the $K$ focal rows and $n-x$ of the $N-K$
+nonfocal rows. Multiplying those counts enumerates samples with exactly $x$
+focal rows. Dividing by the $\binom Nn$ equally likely size-$n$ subsets turns
+that count into a probability.
+
 Its expectation is the same as that of a binomial count with $p=K/N$, but its variance contains the **finite-population correction**:
 
 $$
@@ -84,6 +104,11 @@ $$
 \operatorname{Var}[X]
 =n\frac KN\left(1-\frac KN\right)\frac{N-n}{N-1}.
 $$
+
+The correction is below one because the draw indicators are negatively
+associated: selecting a focal row removes it and makes later focal selections
+slightly less likely. The binomial variance omits this depletion because its
+draws have constant success probability.
 
 For the fixed sample, the expected number of *t*-initial endings is `r sprintf("%.3f", hyper_mean)`. The without-replacement variance is `r sprintf("%.3f", hyper_variance)`, smaller than the independent-draw variance of `r sprintf("%.3f", binomial_variance)`.
 
@@ -116,6 +141,8 @@ The finite population is the pinned lexicon cell, not Turkish usage. The distrib
 2. Explain why the two models have the same expectation but different variances.
 3. What happens to the correction as $n/N$ approaches one?
 4. Why would a corpus-token claim be unsupported by this population?
+5. A student fits a binomial model directly to `sample_120`. Which assumption
+   of that model conflicts with the sampling protocol?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -124,7 +151,13 @@ The finite population is the pinned lexicon cell, not Turkish usage. The distrib
 2. Both models have $\mathbb{E}[X]=nK/N=40.816327$, but sampling without replacement multiplies the binomial variance by the finite-population correction 0.797274. <!-- dqr-allow: empirical-answer -->
 3. As $n/N$ approaches one, $(N-n)/(N-1)$ approaches zero and the sampling variance collapses because nearly the whole finite population is observed. <!-- dqr-allow: empirical-answer -->
 4. The population consists of 588 distinct UniMorph verb lemmas in one feature cell, not tokens sampled from Turkish usage, so it cannot support a corpus-token claim. <!-- dqr-allow: empirical-answer -->
+5. The rows were sampled without replacement, so the indicators do not have a
+   constant independent success probability across draws.
 
 </details>
 
-The next two pages return to CMUdict to model waiting counts.
+The population in this analysis is the census of 588 resource-defined
+lemma–form rows, from which 120 rows were sampled without <!-- dqr-allow: empirical-answer -->
+replacement. The hypergeometric variance records the resulting finite-
+population dependence. The next two pages return to CMUdict and model ordered
+waiting counts.

@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-Leverage measures unusual predictor position. **Influence** asks how much the fitted result changes when an observation, or a scientifically meaningful group of observations, is removed.
+Leverage measures unusual predictor position. [**Influence**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) asks how much the fitted result changes when an observation, or a scientifically meaningful group of observations, is removed.
+
+This page first combines leverage and residual size through Cook's distance, then contrasts row deletion with deletion of the passage groups that structure the Provo data.
 
 ## Cook's distance and grouped deletion
 
@@ -19,6 +21,18 @@ D_i
 \frac{e_i^2}{ps^2}
 \frac{h_{ii}}{(1-h_{ii})^2}.
 $$
+
+Cook's distance can also be read as the scaled change in the fitted vector:
+
+$$
+D_i
+=
+\frac{
+\sum_j(\widehat y_j-\widehat y_{j(i)})^2
+}{ps^2},
+$$
+
+where $\widehat y_{j(i)}$ is the fitted value after deleting row $i$. The closed form above avoids $n$ separate refits by combining the row's residual with its leverage. The [leverage page](leverage-and-influence.qmd) supplies the design component; the residual supplies disagreement with the fitted mean.
 
 Large residuals and high leverage can jointly produce a large $D_i$. But the Provo regression retains passages as a grouping unit, so deleting one position is not the only relevant perturbation. We also refit after deleting each whole passage.
 
@@ -67,6 +81,16 @@ stopifnot(nrow(passage_deletion) == length(unique(provo$Text_ID)))
 passage_deletion[order(-passage_deletion$absolute_change), ][1:6, ]
 ```
 
+The most influential individual position and its retained measurement fields are:
+
+```{r}
+#| label: inspect-most-influential-provo-position
+provo[which.max(provo$cooks_distance), c(
+  "position_id", "Text_ID", "Word_Number", "Word_POS", "Word_Length",
+  "mean_log_ffd", "cloze_surprisal_bits", "cooks_distance"
+)]
+```
+
 The largest whole-passage deletion changes the slope by `r sprintf("%.6f", passage_deletion$slope_change[which.max(passage_deletion$absolute_change)])` log milliseconds per bit. This change is computed by removing passage `r most_influential_passage`, not by inventing a perturbation.
 
 ```{r}
@@ -98,7 +122,9 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
 
 The two lines remain close. That stability is specific to the fitted Provo regression slope under these passage deletions. It does not show that the missing reader-level grouping is unimportant.
 
-## Check your understanding
+Deleting the most influential passage is a sensitivity analysis: it asks whether one grouped source carries the slope. It is not a data-cleaning instruction. A deletion would require separate evidence that the measurement or inclusion rule was wrong. The relevant generalization target is new passages, so whole-passage perturbations complement the row-level Cook calculation.
+
+## Recap and check your understanding
 
 1. Why does Cook's distance combine residual size and leverage?
 2. Which deletion unit matches the remaining Provo regression grouping structure?

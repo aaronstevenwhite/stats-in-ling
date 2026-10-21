@@ -6,6 +6,8 @@ execute:
 
 The [within-cluster loss](within-cluster-loss.qmd) measures distance from each token to its assigned centroid. It does not ask whether the token is nearly as close to another fitted group. A [**silhouette width**](https://doi.org/10.1016/0377-0427(87)90125-7) compares within-cluster cohesion with the nearest alternative.
 
+We derive the token-level score, reconstruct one observed value from distances, compare candidate cluster counts, and then delimit what the average silhouette can establish.
+
 ## Loading and fitting the observed partitions
 
 ```{r}
@@ -101,6 +103,26 @@ s(i)=\frac{b(i)}{a(i)}-1,
 $$
 
 which lies between minus one and zero. Negative values indicate that another fitted cluster is closer on average under the declared geometry.
+
+Before using all `r format(nrow(vowels), big.mark = ",")` rows, consider three clusters on a line:
+\(A=\{0,2\}\), \(B=\{5,7\}\), and \(C=\{10,12\}\). For the token \(x=2\) <!-- dqr-allow: symbolic-derivation -->
+assigned to \(A\),
+
+$$
+\begin{aligned}
+a(i)&=|2-0|=2,\\ % dqr-allow: symbolic-derivation
+d(i,B)&=\frac{|2-5|+|2-7|}{2}=4,\\ % dqr-allow: symbolic-derivation
+d(i,C)&=\frac{|2-10|+|2-12|}{2}=9,\\ % dqr-allow: symbolic-derivation
+b(i)&=\min\{4,9\}=4,\\ % dqr-allow: symbolic-derivation
+s(i)&=\frac{4-2}{\max\{2,4\}}=0.5. % dqr-allow: symbolic-derivation
+\end{aligned}
+$$
+
+The third cluster matters because it must be checked, even though cluster \(B\)
+is the nearest alternative and determines the result. If \(A\) contained only
+the token \(2\), \(a(i)\) would have no within-cluster partner; the standard
+singleton convention sets \(s(i)=0\) rather than treating perfect isolation as
+evidence of perfect cohesion.
 
 ## Reconstructing one observed silhouette
 
@@ -212,6 +234,11 @@ ggplot2::ggplot(
 
 The mean silhouette is largest at $K=`r best_silhouette$k`$, where it equals `r round(best_silhouette$mean_silhouette, 3)`. The ten-centroid partition has mean silhouette `r round(silhouette_summary$mean_silhouette[silhouette_summary$k == 10], 3)`, while its post-fit ARI against intended vowels is `r round(silhouette_summary$adjusted_rand_index[silhouette_summary$k == 10], 3)`, the largest in this fitted grid at $K=`r best_external$k`$.
 
+We use the mean because the candidate score is intended to give every fitted
+token equal additive weight, including tokens with strongly negative widths. A
+median would instead describe the typical token and could hide a minority of poor
+assignments. The table retains both summaries so that this choice remains visible.
+
 This disagreement is the empirical lesson. Silhouette rewards cohesion and separation under the fitted geometry; intended-vowel ARI evaluates agreement with external experimental metadata. The two criteria answer different questions.
 
 ## Limits of the score
@@ -219,6 +246,10 @@ This disagreement is the empirical lesson. Silhouette rewards cohesion and separ
 Silhouettes inherit the distance, scaling, and fitted partition. Compact groups separated by gaps tend to score well, while systematically overlapping categories may not. A singleton cluster conventionally receives silhouette zero because within-cluster cohesion cannot be estimated from a pair.
 
 Thus, the candidate with the largest mean silhouette is best only among the fitted partitions under this score. It does not establish the number of phonological categories.
+
+Moreover, silhouette reuses the training distances that helped form the partition.
+It is an intrinsic diagnostic, not held-out prediction. The next page changes the
+information set by estimating centers without the scored speaker.
 
 ## Checking cohesion and separation
 
@@ -228,4 +259,25 @@ Thus, the candidate with the largest mean silhouette is best only among the fitt
 4. Which $K$ maximizes alignment with withheld intended-vowel metadata?
 5. Why can both answers be correct for their respective targets?
 
-A silhouette diagnoses a fitted partition under the same geometry used to form it. The [speaker-blocked validation page](unsupervised-validation.qmd) instead asks how centroids estimated from other speakers reconstruct a complete unseen speaker panel.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The displayed \(a(i)\) and \(b(i)\) values are the within and nearest-alternative
+   averages substituted into the formula.
+2. Only the closest competitor determines whether the current assignment is locally
+   well separated.
+3. The maximum row of `mean_silhouette` answers the intrinsic question.
+4. The maximum row of `adjusted_rand_index` answers the external-alignment question.
+5. The criteria target different consequences of the same partition.
+
+</details>
+
+## Recap
+
+1. A silhouette compares cohesion with the nearest competing group.
+2. Mean and median aggregation weight difficult tokens differently.
+3. Silhouette is an in-sample geometric diagnostic, not a held-out claim.
+
+The [speaker-blocked validation page](unsupervised-validation.qmd#the-calibration-panel-target)
+instead asks how centroids estimated from other speakers reconstruct a complete
+unseen-speaker panel.

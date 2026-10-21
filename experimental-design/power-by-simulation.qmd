@@ -6,7 +6,11 @@ execute:
 
 The preceding pages established the ManyBabies 1 design: register varies within infant, orders vary between infants, paired stimuli recur across infants, and infants are nested within laboratories. A design simulation should reproduce those units. Drawing independent looking times would answer a different question, no matter how many draws were used.
 
+The [random-intercept derivation](../regression-models/random-intercepts.qmd#deriving-the-induced-covariance) showed why shared intercepts induce dependence: two trials from the same infant share the same infant term, and two infants from the same laboratory share the same laboratory term. The [fixed-and-random-effects page](../regression-models/fixed-and-random-effects.qmd#beginning-with-the-scientific-target) explains the distinct population-average and grouping roles used below.
+
 We begin again from the [released ManyBabies trial table](units-of-assignment.qmd). Nothing on this page is imported from a reference output or a preceding page.
+
+We calibrate a hierarchical data-generating process from that table, generate new trials under the recorded unit structure, and then connect the estimated rejection rate to its Monte Carlo uncertainty and target population.
 
 ```{r}
 manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
@@ -75,6 +79,10 @@ $$
 
 where $l$ indexes laboratory, $i$ infant, $p$ paired stimulus, and $t$ trial position. The random intercepts and residual are normally distributed with their own variances.
 
+Each term has one job. $\beta_0$ is the expected log looking time for ADS at the centered trial position. $\beta_{\mathrm{IDS}}$ is the modeled IDS-minus-ADS log contrast. $\beta_t$ represents a linear change over trial position. The laboratory, infant, and stimulus intercepts induce dependence among rows that share those units, while $\epsilon$ is trial-level residual variation.
+
+The generator assumes exchangeable normal intercepts within each grouping factor, normally distributed residuals, a linear position effect, constant variance, and no random register slopes. It also treats the observed log-transformed included outcomes as the calibration target. These are modeling assumptions, not consequences of the design.
+
 ```{r}
 model_data <- observed
 model_data$ids <- as.integer(model_data$register == "IDS")
@@ -109,6 +117,8 @@ knitr::kable(variance_components, digits = 5)
 ```
 
 The estimated IDS coefficient is `r sprintf("%.6f", fixed_effects$estimate[fixed_effects$term == "ids"])` on the log-looking-time scale. This compact model is not the paper's confirmatory model. The published analyses included a cross-laboratory meta-analysis and richer trial-level predictors; the planned random-effects structure was pruned when it did not converge. Here the model has one job: calibrate an explicit teaching simulation.
+
+Using the fitted IDS coefficient asks a conditional question: what detection rate would this planned analysis have if the future effect equaled the estimate from this release and the remaining fitted assumptions held? It does not identify a smallest effect of scientific interest, and reusing an estimate from the same release does not turn the simulation into new evidence.
 
 ## Raw summaries and the fitted model
 
@@ -217,6 +227,8 @@ $$
 
 Increasing $S$ reduces numerical uncertainty about the simulation result. It does not add infants or laboratories to the planned experiment.
 
+With only $S=200$ studies per scenario, the worst-case MCSE occurs near $\widehat p=.5$ and is about $\sqrt{.25/200}=.035$. Thus a nominal two-MCSE error bar can be roughly seven percentage points wide. This is adequate for a teaching comparison but may be too imprecise for a final design decision near a power threshold.
+
 ## Simulating the ManyBabies structure
 
 The generator assigns each simulated infant one empirical order template, samples complete IDS-ADS stimulus pairs, draws laboratory, infant, stimulus-pair, and residual terms from the fitted standard deviations, and fits the same model. The design grid varies one dimension at a time around a baseline.
@@ -245,6 +257,8 @@ knitr::kable(designs)
 ```
 
 The baseline uses `r designs$labs[designs$scenario == "baseline"]` laboratories, `r designs$infants_per_lab[designs$scenario == "baseline"]` infants per laboratory, and `r designs$usable_trials_per_infant[designs$scenario == "baseline"]` usable trials per infant. The effect and variance values come from the empirical fit; the grid values are planning choices.
+
+The grid uses 4, 8, and 16 laboratories to represent halving and doubling an eight-laboratory baseline; 12, 24, and 48 infants per laboratory do the same around 24; and 4, 8, and 16 usable trials span one quarter, one half, and all of the planned trial positions. These values make one-factor-at-a-time contrasts easy to read. They are not optimized recommendations and should be replaced by feasible values for an actual study.
 
 ```{r}
 #| output: false
@@ -443,6 +457,8 @@ knitr::kable(simulation_display, digits = 3)
 
 The table reports `r simulations_per_scenario` simulations per scenario at seed `r simulation_seed`. The same simulated noise is evaluated with a zero IDS coefficient to estimate Type I error and with the fitted coefficient to estimate detection and coverage. Singular fits remain in the summary as a design diagnostic rather than being silently discarded.
 
+The Wald decision uses $|\widehat\beta_{\mathrm{IDS}}/\widehat{\operatorname{SE}}|>z_{.975}$, equivalently asking whether the approximate two-sided interval excludes zero. The zero-effect calculation checks whether this rule rejects too often under the generator's null case. A singular fit indicates that at least one fitted random-effect dimension is effectively on a boundary; its frequency is part of the procedure's behavior, not a row to hide.
+
 The [**power curve**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=187) shows how detection changes when one design dimension changes. The error bars are twice the estimated Monte Carlo standard error.
 
 ```{r}
@@ -508,6 +524,8 @@ ggplot2::ggplot(
 
 The fitted effect is an estimate from the same release used for calibration. It is not a smallest effect of linguistic interest. The generator also omits age, method, language community, condition slopes, nonnormal tails, and the observed missingness process. Thus the plotted values are conditional results for this generator and analysis, not guarantees for a future study.
 
+Each omission corresponds to a possible sensitivity analysis. Age or community heterogeneity may change the fixed contrast; method and laboratory practice may change both mean and variance; random condition slopes may weaken the information supplied by repeated trials; nonnormal tails may alter Wald behavior; and the [retention process](exclusion-rules.qmd#retention-enters-the-estimand) may change which outcomes enter the analysis.
+
 A production design analysis should vary the target IDS effect and the omitted assumptions. It should also decide whether inference concerns these eight stimuli or a broader population of speech materials. Adding infants cannot substitute indefinitely for broadening a stimulus sample when the scientific claim concerns new materials.
 
 ::: {.callout-note title="Audit the hierarchical simulation"}
@@ -518,4 +536,24 @@ A production design analysis should vary the target IDS effect and the omitted a
 5. Which omitted process would you vary first for a planned replication?
 :::
 
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The fitted fixed effects, laboratory/infant/stimulus standard deviations, and residual standard deviation calibrate the generator.
+2. Sampling complete pairs preserves one IDS and one ADS realization of the same paired stimulus identity.
+3. MCSE measures numerical uncertainty in the estimated detection proportion across finitely many simulated studies.
+4. The fitted effect is inserted into a generator calibrated from the original release; simulated detections add no new observed infants or trials.
+5. A defensible first sensitivity target is the missingness process, because the released analysis conditions on retained outcomes and the generator currently assumes complete planned simulated rows.
+
+</details>
+
 Simulation-based design analysis evaluates a complete procedure under stated assumptions. Here the procedure preserves laboratories, infants, paired stimuli, order templates, and trial position, then fits the same model used for calibration. The result is useful because every numerical assumption is either estimated from ManyBabies 1 or identified as a planning choice.
+
+## Recap and forward link
+
+1. Power is conditional on a complete generator, analysis rule, effect size, and design.
+2. Random intercepts reproduce laboratory, infant, and stimulus dependence.
+3. Monte Carlo error, Type I error, coverage, failed fits, and singular fits all belong in the design report.
+4. A production analysis should vary scientifically relevant effects and omitted processes rather than treat one fitted generator as truth.
+
+This completes the design sequence by returning the proposed future analysis to the units, allocation, counterbalancing, and retention decisions developed on the preceding pages.

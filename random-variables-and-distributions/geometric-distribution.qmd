@@ -7,7 +7,13 @@ execute:
   message: false
 ---
 
-The CMUdict sequence introduced pronunciation entries and their phone counts. We now ask how many consonants precede the first vowel phone in each entry. This is a **waiting count**: the number of failures before the first success.
+The [CMUdict dossier](why-random-variables.qmd#the-pronunciation-entry-outcomes)
+introduced complete ordered phone sequences. We now ask how many consonants
+precede the first vowel phone in each entry. Calling a vowel a “success” is a
+coding choice for this question, not an evaluation of the phone; consonants are
+the preceding “failures.” This is a **waiting count**.
+
+We derive the waiting-count mass function, estimate its success parameter from CMUdict, and then compare its constant-hazard assumption with the observed phone sequences.
 
 ## Definition
 
@@ -69,6 +75,13 @@ $$
 
 Each CMUdict row is a dictionary pronunciation entry, not a running-speech token. The [earlier introduction](why-random-variables.qmd) links the 0.7b release and states the dependence among alternate pronunciations.
 
+For instance, the entry `"CLOSE-QUOTE` has sequence `K L OW1 Z K W OW1 T`.
+The first vowel is `OW1`, after `K L`, so its realized waiting count is $x=2$.
+The geometric process would treat those ordered positions as repeated trials
+with independent outcomes, one constant vowel probability, and no change in
+the remaining wait after any consonant. That last property is memorylessness;
+English phonotactics gives no reason to expect it literally.
+
 ```{r}
 #| label: fit-cmudict-geometric
 library(ggplot2)
@@ -102,6 +115,18 @@ data.frame(p_hat, empirical_mean = mean(wait), empirical_variance,
 
 The maximum-likelihood estimate is $\widehat p=1/(1+\overline X)$, computed as `r sprintf("%.3f", p_hat)`. The fitted mean thus matches the empirical mean. But the fitted variance is `r sprintf("%.3f", fitted_variance)`, while the empirical population variance is only `r sprintf("%.3f", empirical_variance)`.
 
+For observed waits $x_1,\ldots,x_n$, independence gives
+
+$$
+L(p)=\prod_{i=1}^n(1-p)^{x_i}p,
+\qquad
+\ell(p)=\left(\sum_i x_i\right)\log(1-p)+n\log p.
+$$
+
+Setting $\ell'(p)=n/p-(\sum_i x_i)/(1-p)=0$ gives
+$\widehat p=n/(n+\sum_i x_i)=1/(1+\overline x)$, which is the expression used
+in code.
+
 ```{r}
 #| label: plot-cmudict-geometric
 #| fig-cap: "Observed consonant waiting-count mass and fitted geometric mass. The fitted family matches the mean but greatly overstates the spread."
@@ -123,6 +148,8 @@ The geometric process assumes independent phone positions with one constant vowe
 2. Derive $\widehat p=1/(1+\overline X)$ from the geometric log likelihood.
 3. Which aspect of the plot reveals underdispersion relative to the fitted family?
 4. Why are pronunciation alternatives not independent word types?
+5. A student interprets “success” as a claim that vowels are preferable to
+   consonants. What does success mean in this model?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -131,7 +158,14 @@ The geometric process assumes independent phone positions with one constant vowe
 2. Differentiating $\ell(p)=n\log p+(\sum_i x_i)\log(1-p)$ and setting the derivative to zero gives $n/p-\sum_i x_i/(1-p)=0$, hence $\widehat p=1/(1+\overline X)$. <!-- dqr-allow: empirical-answer -->
 3. The observed distribution is much more concentrated at wait 1, with variance 0.321470 versus the fitted 2.031825, which shows underdispersion relative to the geometric family. <!-- dqr-allow: empirical-answer -->
 4. Pronunciation alternatives are clustered within an orthographic word, so they are neither distinct word types nor independent lexical observations. <!-- dqr-allow: empirical-answer -->
+5. Success names the event that ends the waiting count, here encountering the
+   first vowel. It carries no evaluative meaning.
 
 </details>
 
-The [negative-binomial distribution](negative-binomial-distribution.qmd) generalizes the waiting count to a later success.
+The response here is the ordered number of failures before the first vowel.
+The geometric family treats the phone trials as independent and memoryless
+with constant $p$; its MLE matches the mean, while the variance exposes the
+lack of fit. The [negative-binomial
+distribution](negative-binomial-distribution.qmd) moves the stopping point to a
+later success.

@@ -6,6 +6,8 @@ We can now combine the [UDS response process](generative-stories.qmd), its [join
 
 The model is narrower than the event-structure representation in [Gantt, Glass, and White (2022)](https://aclanthology.org/2022.tacl-1.2/). It does not model conditional follow-up questions or confidence. And it treats an item as one predicate node in sentence context, not as a verb lemma or context-free event type.
 
+We write the complete model, inspect its posterior population and item summaries, check partial pooling and replicated responses, and then compare the fitted item scale with the released normalized values before stating the remaining limits.
+
 ## Loading measurements and posterior draws
 
 ```{r}
@@ -54,9 +56,14 @@ design_summary <- data.frame(
 )
 
 knitr::kable(design_summary)
+
+uds[uds$item_id == "ewt-test-963%%ewt-test-963-semantics-pred-6",
+    c("graph_id", "node_id", "annotator_id", "natural_parts")]
 ```
 
 Only the raw binary responses enter the likelihood. The released normalized value is retained for an external comparison after fitting.
+
+The displayed rows anchor *exhibited* in “His artworks were selected and exhibited in British Museum in 2002.” The graph-to-sentence mapping follows the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html), and the sentence comes from the pinned [UD English EWT 1.2 test source](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). Its responses 0, 1, and 0 are three measurements of one predicate node under the natural-parts prompt, not three context-free labels for the lemma *exhibit*.
 
 ## Writing the complete model
 
@@ -106,6 +113,68 @@ $$
 $$
 
 is item $i$'s yes probability with the annotator effect fixed at zero. It is not the probability obtained by integrating over an annotator population.
+
+The zero-sum transformation introduces mild dependence among the realized effects: if one centered $u_i$ increases while the raw-vector mean is held fixed, other centered effects must offset it. The non-centered raw variables remain convenient sampling coordinates, while the centered effects give $\alpha$ a finite-sample origin. This is an identification convention, not evidence that the sampled population has exactly zero empirical mean.
+
+For observed responses $\mathbf y$, the posterior comes from Bayes' rule:
+
+$$
+\begin{aligned}
+p(&\alpha,\boldsymbol u,\boldsymbol a,
+\sigma_{\mathrm{item}},\sigma_{\mathrm{annotator}}\mid\mathbf y)
+\propto{}&
+\prod_{(i,j)\in\mathcal O}
+p(y_{ij}\mid\alpha,u_i,a_j)\\
+&\times p(\alpha)
+p(\boldsymbol u\mid\sigma_{\mathrm{item}})
+p(\boldsymbol a\mid\sigma_{\mathrm{annotator}})
+p(\sigma_{\mathrm{item}})
+p(\sigma_{\mathrm{annotator}}).
+\end{aligned}
+$$
+
+The omitted proportionality constant is the integral of the numerator over every unknown parameter. Stan does not calculate that integral directly. It generates correlated draws whose long-run distribution is the posterior; posterior medians, intervals, and predictions below are functions evaluated across those joint draws.
+
+The prior choices encode regularization. The intercept prior permits a broad range of baseline probabilities without concentrating on the boundary. The half-normal scale priors favor smaller heterogeneity but leave room for large item or annotator differences. Standard-normal deviations define exchangeable, symmetric, light-tailed group populations. A potential worry is that “weakly regularizing” means inconsequential. It does not: with only two or three responses per item, prior scale choices can affect item shrinkage.
+
+Before conditioning on the observed responses, their combined implications can be inspected by prior prediction.
+
+```{r}
+#| label: uds-prior-predictive
+
+set.seed(20261102L)
+prior_predictive <- do.call(
+  rbind,
+  lapply(seq_len(400L), function(draw) {
+    prior_alpha <- stats::rnorm(1L, 0, 2.5) # dqr-allow: algorithm-setting
+    prior_sigma_item <- abs(stats::rnorm(1L, 0, 2)) # dqr-allow: algorithm-setting
+    prior_sigma_annotator <- abs(stats::rnorm(1L, 0, 2)) # dqr-allow: algorithm-setting
+    prior_item <- stats::rnorm(length(uds_cache$item_levels))
+    prior_item <- prior_sigma_item * (prior_item - mean(prior_item))
+    prior_annotator <- stats::rnorm(length(uds_cache$annotator_levels))
+    prior_annotator <- prior_sigma_annotator *
+      (prior_annotator - mean(prior_annotator))
+    prior_rep <- stats::rbinom(
+      nrow(uds), 1,
+      stats::plogis(
+        prior_alpha + prior_item[uds$item_index] +
+          prior_annotator[uds$annotator_index]
+      )
+    )
+    data.frame(draw = draw, yes_rate = mean(prior_rep))
+  })
+)
+
+data.frame(
+  statistic = "Prior predictive yes rate",
+  t(stats::quantile(
+    prior_predictive$yes_rate,
+    c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
+  ))
+)
+```
+
+This check asks whether the prior admits plausible and implausible response matrices before the data are used. A broad interval is not automatically desirable; if substantive knowledge rules out its extremes, the priors should be revised before fitting.
 
 ## Fitting the released responses
 
@@ -185,6 +254,10 @@ released_chain_fits <- lapply(seq_len(4L), run_one_chain)
 
 Rendering reads 400 evenly spaced draws from the audited 3,200-draw posterior. The compact cache is a teaching artifact from the full fit, not an independent refit.
 
+Four chains permit between-chain convergence checks. The 800 warmup iterations adapt the Hamiltonian trajectory and mass matrix; the 800 retained iterations per chain form the full posterior sample. `adapt_delta = 0.95` requests smaller integration steps to reduce divergences in the hierarchical geometry. These settings are justified only together with the reported $\widehat R$, effective sample sizes, and divergence count; revisit [checking Markov chains](../statistical-inference/checking-markov-chains.qmd) and the [No-U-Turn sampler](../statistical-inference/no-u-turn-sampler.qmd).
+
+The cache keeps every eighth row beginning with full-posterior row 4. This deterministic thinning reduces repository size and preserves each selected row as one joint draw across population, item, and annotator arrays. It does not create independent draws or improve the effective sample size of the original chains.
+
 ## Population summaries
 
 ```{r}
@@ -222,6 +295,36 @@ The intercept should not be read as the logit of the raw yes proportion. The raw
 
 item_summary <- uds_cache$item_summary
 
+first_item_zero_annotator <- stats::plogis(
+  uds_cache$population_draws[, "alpha"] +
+    uds_cache$item_effect_draws[, 1]
+)
+first_item_average_annotator <- vapply(
+  seq_len(nrow(uds_cache$population_draws)),
+  function(draw) {
+    mean(stats::plogis(
+      uds_cache$population_draws[draw, "alpha"] +
+        uds_cache$item_effect_draws[draw, 1] +
+        uds_cache$annotator_effect_draws[draw, ]
+    ))
+  },
+  numeric(1)
+)
+
+first_item_probability_comparison <- data.frame(
+  item_id = uds_cache$item_levels[1],
+  estimand = c(
+    "Annotator effect fixed at zero",
+    "Averaged across the 12 fitted annotator effects"
+  ),
+  posterior_median = c(
+    stats::median(first_item_zero_annotator),
+    stats::median(first_item_average_annotator)
+  )
+)
+
+knitr::kable(first_item_probability_comparison, digits = 3)
+
 ggplot2::ggplot(
   item_summary,
   ggplot2::aes(
@@ -245,6 +348,8 @@ ggplot2::ggplot(
 ```
 
 Most raw item proportions occur at a few fractions because each item has two or three responses. Posterior probabilities occupy a continuous range and move raw endpoints toward the fitted population. This shrinkage reflects both sparse item measurement and the annotator composition of each item.
+
+The displayed first-item comparison keeps two estimands apart. Fixing $a_j=0$ evaluates a coordinate-defined reference annotator. Averaging `plogis(alpha + u_i + a_j)` over the 12 fitted annotator effects integrates over this finite observed annotator set. Because the inverse logit is nonlinear, that average need not equal `plogis(alpha + u_i)`. Neither quantity is a context-free lexical probability.
 
 ## Checking replicated response matrices
 
@@ -272,10 +377,22 @@ posterior_predictive <- do.call(
       uds$item_index,
       reorder = FALSE
     )
+    annotator_sums <- rowsum(
+      replicated,
+      uds$annotator_index,
+      reorder = FALSE
+    )
+    annotator_counts <- rowsum(
+      rep(1L, nrow(uds)),
+      uds$annotator_index,
+      reorder = FALSE
+    )
     data.frame(
       draw = draw,
       yes_rate = mean(replicated),
-      mixed_item_rate = mean(item_sums > 0 & item_sums < item_counts)
+      mixed_item_rate = mean(item_sums > 0 & item_sums < item_counts),
+      unanimous_yes_item_rate = mean(item_sums == item_counts),
+      annotator_rate_sd = stats::sd(annotator_sums / annotator_counts)
     )
   })
 )
@@ -294,6 +411,21 @@ observed_statistics <- c(
   yes_rate = mean(uds$natural_parts),
   mixed_item_rate = mean(
     observed_item_sums > 0 & observed_item_sums < observed_item_counts
+  ),
+  unanimous_yes_item_rate = mean(
+    observed_item_sums == observed_item_counts
+  ),
+  annotator_rate_sd = stats::sd(
+    as.numeric(rowsum(
+      uds$natural_parts,
+      uds$annotator_index,
+      reorder = FALSE
+    )) /
+      as.numeric(rowsum(
+        rep(1L, nrow(uds)),
+        uds$annotator_index,
+        reorder = FALSE
+      ))
   )
 )
 
@@ -311,6 +443,22 @@ ppc_summary <- rbind(
     observed = observed_statistics[["mixed_item_rate"]],
     t(stats::quantile(
       posterior_predictive$mixed_item_rate,
+      c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
+    ))
+  ),
+  data.frame(
+    statistic = "Items with unanimous yes responses",
+    observed = observed_statistics[["unanimous_yes_item_rate"]],
+    t(stats::quantile(
+      posterior_predictive$unanimous_yes_item_rate,
+      c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
+    ))
+  ),
+  data.frame(
+    statistic = "SD of annotator yes rates",
+    observed = observed_statistics[["annotator_rate_sd"]],
+    t(stats::quantile(
+      posterior_predictive$annotator_rate_sd,
       c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
     ))
   )
@@ -339,10 +487,23 @@ ppc_plot_data <- rbind(
   data.frame(
     statistic = "Items with both responses",
     value = posterior_predictive$mixed_item_rate
+  ),
+  data.frame(
+    statistic = "Items with unanimous yes responses",
+    value = posterior_predictive$unanimous_yes_item_rate
+  ),
+  data.frame(
+    statistic = "SD of annotator yes rates",
+    value = posterior_predictive$annotator_rate_sd
   )
 )
 ppc_observed <- data.frame(
-  statistic = c("Overall yes rate", "Items with both responses"),
+  statistic = c(
+    "Overall yes rate",
+    "Items with both responses",
+    "Items with unanimous yes responses",
+    "SD of annotator yes rates"
+  ),
   observed = unname(observed_statistics)
 )
 
@@ -365,7 +526,7 @@ ggplot2::ggplot(ppc_plot_data, ggplot2::aes(value)) +
   ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
 ```
 
-Both observed summaries fall inside their predictive intervals. The second check matters because a model might reproduce the overall rate while predicting too little or too much within-item disagreement.
+All four observed summaries are compared with their predictive intervals. Mixed and unanimous-yes item rates probe two parts of within-item response composition, while the standard deviation of annotator rates probes between-annotator spread. A model may reproduce the overall rate while missing any of these structures.
 
 ## Comparing with the released normalized values
 
@@ -407,6 +568,16 @@ A potential worry is that passing two posterior predictive checks makes the mode
 3. Why can a unanimous item have a posterior probability below one?
 4. Which response features do the two predictive checks target?
 5. Which measurements remain blocked?
+
+**Answers.** (1) It is an output of another measurement procedure and would double-use information if inserted as a response here. (2) Shared paths through a connected incidence graph help separate item and annotator locations. (3) Two or three unanimous responses do not determine a probability, and partial pooling retains uncertainty. (4) The checks target the overall rate, mixed and unanimous-yes item composition, and dispersion across annotator rates. (5) Audited raw confidence and the conditional similarity, duration, and dynamicity responses remain blocked.
 :::
+
+## Recap
+
+1. The posterior is the product of the observed-pair likelihood and explicit priors, normalized over all unknown quantities and approximated by joint MCMC draws.
+2. Prior prediction checks regularization before the data, while posterior prediction checks consequences after fitting.
+3. Zero-sum, non-centered effects identify a coordinate system and support computation; they do not turn latent effects into observed properties.
+4. A zero-annotator probability differs from an average over annotators because the inverse logit is nonlinear.
+5. The next page extends the response process with the [gate-and-branch protocol](gated-annotations.qmd#the-observed-protocol), while keeping unavailable branch data outside the empirical likelihood.
 
 [Previous: Annotator effects](annotator-effects.qmd) · [Next: Gated annotations](gated-annotations.qmd)

@@ -6,6 +6,10 @@ The Turkish PropBank analysis separated agreement from adjudication. We now retu
 
 We represent this pattern with an annotator-specific intercept. It describes a stable upward or downward shift in log odds under this instrument. It is not a measure of annotator quality or proof of a context-independent bias.
 
+Before loading fitted summaries, state the model they summarize. For each observed pair, $Y_{ij}$ is Bernoulli with $\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j$. The prior model is $\alpha\sim\mathcal N(0,2.5^2)$, positive item and annotator scales have half-normal $\mathcal N^+(0,2^2)$ priors, and standardized group deviations are normal before the zero-sum transformation. Thus the cache contains posterior summaries from a named likelihood and prior, not stand-alone “adjusted scores.”
+
+We add and identify the annotator intercept, compare posterior effects with raw response rates, and then delimit which forms of annotator variation this location term cannot represent.
+
 ## Loading raw responses and fitted summaries
 
 ```{r}
@@ -33,6 +37,21 @@ stopifnot(
 )
 
 annotator_summary <- uds_cache$annotator_summary
+
+alpha_median <- stats::median(uds_cache$population_draws[, "alpha"])
+annotator_probability_example <- transform(
+  annotator_summary[1, c(
+    "annotator_id", "annotator_effect_median",
+    "observed_proportion", "responses"
+  )],
+  population_log_odds = alpha_median,
+  conditional_log_odds = alpha_median + annotator_effect_median,
+  conditional_probability_at_zero_item = stats::plogis(
+    alpha_median + annotator_effect_median
+  )
+)
+
+knitr::kable(annotator_probability_example, digits = 3)
 ```
 
 The raw rate for annotator $j$ is
@@ -74,6 +93,8 @@ $$
 
 A positive $a_j$ raises the log odds of a yes response for every item judged by annotator $j$; a negative value lowers them. The effect is shared across responses, so it is not trial noise.
 
+The normal population model supplies partial pooling and encodes exchangeability: before seeing responses, annotator labels do not predict which deviation is larger. This is plausible for anonymized workers sampled under one protocol, but it would be questionable if recorded training groups or response strategies implied distinct populations. The additive intercept also assumes the same shift for every item.
+
 ## Fixing the coordinate system
 
 The decomposition is not identified without a reference. For any constant $c$,
@@ -92,9 +113,13 @@ $$
 
 This convention fixes the latent origin. It does not assert that an annotator with effect zero has no response behavior. Under the convention, $\operatorname{logit}^{-1}(\alpha+u_i)$ is the item probability with the annotator effect fixed at zero.
 
+The printed row above shows the scale conversion. Starting from the posterior median population log odds, add the annotator's posterior median $a_j$, then apply `plogis()` to obtain a conditional probability at $u_i=0$. This plug-in calculation is a bridge between scales, not a posterior interval: a full probability summary applies the transformation to every joint draw.
+
 ## Raw rates and posterior effects
 
 The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Exact binomial intervals summarize each raw rate; posterior intervals summarize each annotator-specific intercept.
+
+The raw intervals are [Clopper--Pearson intervals](../statistical-inference/exact-binomial-intervals.qmd). They condition on the annotator's realized item set and treat those binary responses as the binomial sample. They do not adjust for which items were assigned, and they are not intervals for $a_j$.
 
 ```{r}
 #| label: prepare-uds-annotator-plot
@@ -175,11 +200,23 @@ Annotators may differ in response consistency, interpretation, or use of an orde
 
 Item and annotator effects would be perfectly confounded if each item were judged by only one annotator. The UDS teaching extract instead forms one connected bipartite graph across `r length(unique(uds$item_id))` items and `r length(unique(uds$annotator_id))` annotators. Connectivity supplies paths of shared judgments, though sparse responses still limit the precision of individual item effects.
 
+A disconnected incidence graph would permit separate shifts within each component, so one global annotator coordinate system would not be informed by the likelihood. Connectivity is thus a design requirement for separating the two crossed locations. It does not by itself guarantee precise recovery; the [parameter-recovery study](parameter-recovery.qmd#evaluating-parameter-recovery) checks the remaining finite-data problem.
+
 ::: {.callout-note title="Check the annotator location"}
 1. What response pattern does a positive $a_j$ represent?
 2. Why do raw annotator rates mix response behavior with item composition?
 3. What do the zero-sum constraints identify?
 4. Which annotator differences remain outside this model?
+
+**Answers.** (1) A positive $a_j$ represents a stable increase in yes-response log odds across that annotator's assigned items. (2) Raw rates change with both response behavior and which items were assigned. (3) The constraints choose one origin for the otherwise shift-invariant item/annotator decomposition. (4) Differences in consistency, item sensitivity, threshold use, and item-specific interactions remain outside a location-only model.
 :::
+
+## Recap
+
+1. The cached effects summarize a Bernoulli--logit likelihood with explicit regularizing priors.
+2. A normal annotator population supplies exchangeability and partial pooling; the connected design helps separate annotator and item locations.
+3. Log-odds effects become conditional probabilities only after adding the other predictor terms and applying the inverse logit.
+4. Raw Clopper--Pearson intervals and posterior effect intervals have different targets and conditioning assumptions.
+5. The next page assembles these pieces in the [complete UDS measurement model](uds-measurement-model.qmd#writing-the-complete-model).
 
 [Previous: Annotations are measurements](annotations-as-measurements.qmd) · [Next: Measuring natural-parts judgments](uds-measurement-model.qmd)

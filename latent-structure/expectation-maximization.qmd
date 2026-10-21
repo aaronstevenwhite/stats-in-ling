@@ -6,6 +6,8 @@ execute:
 
 If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html) alternates those two calculations when neither side is known.
 
+We derive both updates from the complete-data formulation, implement them on the acoustic vectors, and then check the component update, likelihood path, and dependence on local solutions.
+
 ## Loading the acoustic vectors
 
 ```{r}
@@ -110,6 +112,35 @@ $$
 
 The expectation step replaces each missing hard label with a probability vector under the current fit.
 
+The word *expectation* refers to a particular conditional expectation, not to an
+average of the acoustic values:
+
+$$
+\begin{aligned}
+Q(\boldsymbol\theta\mid\boldsymbol\theta^{(t)})
+&=
+\mathbb{E}_{\mathbf Z\mid\mathbf X,\boldsymbol\theta^{(t)}}
+\left[
+\ell_{\mathrm{complete}}(\boldsymbol\theta)
+\right]\\
+&=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+\mathbb{E}[I_{ik}\mid\mathbf x_i,\boldsymbol\theta^{(t)}]
+\left[
+\log\pi_k+\log\mathcal N(\mathbf x_i;\boldsymbol\mu_k,\boldsymbol\Sigma_k)
+\right]\\
+&=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+r_{ik}^{(t)}
+\left[
+\log\pi_k+\log\mathcal N(\mathbf x_i;\boldsymbol\mu_k,\boldsymbol\Sigma_k)
+\right].
+\end{aligned}
+$$
+
+The second line uses linearity of expectation, and the third uses the Bernoulli
+indicator mean \(\mathbb{E}[I_{ik}\mid\cdot]=r_{ik}^{(t)}\).
+
 ## The maximization step
 
 The effective token count for component $k$ is
@@ -150,6 +181,74 @@ r_{ik}^{(t)}
 $$
 
 The transparent implementation below uses diagonal, component-specific covariance matrices, the `VVI` family in `mclust` terminology. It is intentionally distinct from the central ten-component `EVI` fit: the page exposes each update rather than reproducing that restricted optimizer.
+
+## Deriving the maximization updates
+
+For the mixing weights, retain the part of \(Q\) that contains \(\pi_k\) and impose
+\(\sum_k\pi_k=1\) with a Lagrange multiplier \(\eta\):
+
+$$
+\mathcal L_{\pi}
+=
+\sum_{k=1}^{K}N_k^{(t)}\log\pi_k
++\eta\left(\sum_{k=1}^{K}\pi_k-1\right).
+$$
+
+Differentiating one weight at a time gives
+
+$$
+\frac{\partial\mathcal L_{\pi}}{\partial\pi_k}
+=
+\frac{N_k^{(t)}}{\pi_k}+\eta=0,
+\qquad
+\pi_k=-\frac{N_k^{(t)}}{\eta}.
+$$
+
+Summing over \(k\) and using
+\(\sum_kN_k^{(t)}=\sum_i\sum_kr_{ik}^{(t)}=N\) gives
+\(\eta=-N\), and thus \(\pi_k^{(t+1)}=N_k^{(t)}/N\).
+
+For the mean, the terms that vary with \(\boldsymbol\mu_k\) are
+
+$$
+-\frac12\sum_{i=1}^{N}r_{ik}^{(t)}
+(\mathbf x_i-\boldsymbol\mu_k)^{\mathsf T}
+\boldsymbol\Sigma_k^{-1}
+(\mathbf x_i-\boldsymbol\mu_k).
+$$
+
+Their gradient is
+
+$$
+\boldsymbol\Sigma_k^{-1}
+\sum_{i=1}^{N}r_{ik}^{(t)}
+(\mathbf x_i-\boldsymbol\mu_k).
+$$
+
+Setting it to zero and multiplying by \(\boldsymbol\Sigma_k\) yields
+
+$$
+\sum_i r_{ik}^{(t)}\mathbf x_i
+-N_k^{(t)}\boldsymbol\mu_k=0,
+$$
+
+which gives the responsibility-weighted mean displayed above. Finally, maximizing
+the Gaussian covariance terms gives the responsibility-weighted residual
+cross-product divided by \(N_k^{(t)}\). Under the diagonal `VVI` restriction, the
+off-diagonal entries are fixed at zero, so coordinate \(j\) updates as
+
+$$
+\sigma_{kj}^{2(t+1)}
+=
+\frac{\sum_i r_{ik}^{(t)}
+(x_{ij}-\mu_{kj}^{(t+1)})^2}
+{N_k^{(t)}}.
+$$
+
+`VVI` allows both diagonal volume and shape to vary by component. The central
+`EVI` model instead constrains the determinant to be equal across components while
+allowing diagonal shape to vary. Thus the implementation below teaches the update
+logic but does not reproduce the central covariance constraint.
 
 ## Implementing EM on the observed vectors
 
@@ -280,6 +379,21 @@ knitr::kable(start_summary, digits = 6)
 
 All six observed-data traces are non-decreasing within numerical tolerance, but their final log likelihoods differ. The best three starts finish at `r round(max(start_summary$final_log_likelihood), 3)`, while the weakest finishes at `r round(min(start_summary$final_log_likelihood), 3)`. This is direct evidence of local-solution sensitivity in the PB52 fit.
 
+K-means supplies separated initial means rather than arbitrary points, but it does
+not remove local-optimum sensitivity. Six starts make that sensitivity visible
+without turning the lesson into a large search. The 500-iteration limit is a
+computational ceiling, \(10^{-9}\) is a strict relative-change tolerance, and
+\(10^{-4}\) is a numerical variance floor in standardized units. None of these
+values is a fact about vowels.
+
+The trace is evaluated before the M-step because the same log component densities
+produce the responsibilities used in that iteration. The convergence comparison
+thus asks whether successive pre-update parameter states have nearly the same
+observed likelihood; the returned parameters have undergone the corresponding
+final M-step. A production implementation would usually recompute the final
+likelihood after that update. Here the trace is used to diagnose ascent rather
+than to report a maximized likelihood to extra precision.
+
 ## Verifying one component update
 
 ```{r}
@@ -372,4 +486,27 @@ Several starts remain necessary because monotonic ascent can lead to distinct lo
 5. What do the distinct final likelihoods show?
 6. Why is the variance floor computational rather than linguistic evidence?
 
-EM alternates conditional membership calculation with responsibility-weighted parameter updates. The [next page](choosing-a-mixture.qmd) compares declared component counts and covariance families while keeping the feature representation fixed.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The E-step calculates conditional component probabilities for every token.
+2. `colSums(responsibility)` instantiates \(N_k\).
+3. Each mean is the responsibility-weighted sum divided by its effective count.
+4. Exact updates cannot decrease the observed-data likelihood from the same start.
+5. Distinct endpoints show local-solution sensitivity.
+6. The floor prevents numerical covariance collapse; it is not measured from the
+   speech-production process.
+
+</details>
+
+## Recap
+
+1. The E-step is the conditional expectation of the complete-data log likelihood.
+2. The M-step follows from constrained weight optimization and weighted Gaussian
+   derivatives.
+3. Monotonic ascent, multiple starts, and variance floors address different
+   computational issues.
+
+The [next page](choosing-a-mixture.qmd#bic-and-its-sign-convention) compares
+declared component counts and covariance families while keeping the feature
+representation fixed.

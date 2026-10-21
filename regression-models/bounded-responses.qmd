@@ -7,7 +7,11 @@ execute:
 
 A slider response on $[0,1]$ is bounded, can use exact endpoints, and may have a nonconstant variance. We use the public **MegaNegRaising** release described by An and White ([2020 paper](https://aclanthology.org/2020.scil-1.45/); [CC BY-SA data and documentation](https://megaattitude.io/projects/mega-negraising/)). The archive filename says v1, while its internal README identifies v1.1, released 2020-08-29.
 
+This page first defines the two recorded measures and the balanced teaching subset, then uses the observed endpoints and variance pattern to test what a Gaussian benchmark misses.
+
 Each raw row contains paired judgments: how likely matrix negation conveys embedded negation and how easy it is to imagine someone uttering the matrix-negated sentence. An and White call the ease response acceptability while noting the simplification. We use the prespecified balanced teaching subset: native-American-English responses to past-tense active and passive eventive infinitivals, first- and third-person subjects, and the verbs present in all four cells.
+
+The first slider targets the **neg-raising inference**: how strongly a matrix-negated sentence supports interpreting the embedded proposition as negated. The second records how easy it is to imagine someone producing that sentence. The released teaching table scales both responses to $[0,1]$, with zero and one as selectable endpoints. The balanced extract omits sentence text and the original verbal endpoint labels, so the page does not reconstruct either. The linked paper and project documentation remain the source for the complete prompt.
 
 ```{r}
 #| label: load-meganegraising-bounds
@@ -33,6 +37,18 @@ summary_table <- data.frame(
 summary_table
 ```
 
+One actual retained response is:
+
+```{r}
+#| label: inspect-one-meganegraising-row
+mnr[1L, c(
+  "participant", "verb", "frame", "voice", "subject", "negraising",
+  "acceptability"
+)]
+```
+
+This row is one participant's paired measurement, not a verb mean. `frame`, `voice`, and `subject` identify the sentence template; `negraising` and `acceptability` are the two recorded slider locations. The balanced subset requires each retained verb to occur in all four voice-by-subject cells. That restriction supports those contrasts but changes the verb population to the upstream acceptability-selected, fully crossed subset.
+
 An ordinary Gaussian model assigns positive probability outside the response support. We fit the neg-raising benchmark with participant and verb intercepts, then calculate that illegal probability from its fitted population means and residual standard deviation.
 
 ```{r}
@@ -51,6 +67,17 @@ mnr$illegal_probability <- pnorm(0, mnr$gaussian_mean, sigma_hat) +
 c(fixed_effects = lme4::fixef(gaussian),
   average_illegal_probability = mean(mnr$illegal_probability))
 ```
+
+For a fitted Gaussian mean $\widehat\mu_i$ and residual SD $\widehat\sigma$, the illegal predictive mass for row $i$ is
+
+$$
+\Phi\left(\frac{0-\widehat\mu_i}{\widehat\sigma}\right)
++
+1-
+\Phi\left(\frac{1-\widehat\mu_i}{\widehat\sigma}\right).
+$$
+
+The code computes these two tails with `pnorm()` and then averages them across fitted population means. This **endpoint-mass problem** is not merely that the Gaussian curve extends slightly beyond the plot: the model assigns positive probability to impossible responses while assigning probability zero to the exact endpoints.
 
 ```{r}
 #| label: plot-bounded-responses
@@ -76,3 +103,20 @@ ggplot(mnr, aes(negraising)) +
 The Gaussian benchmark assigns `r scales::percent(mean(mnr$illegal_probability), accuracy = .01)` of its predictive mass outside $[0,1]$. The endpoint bars are genuine data, not rounding errors.
 
 The source paper uses the ease response to weight a KL loss in a latent lexical-and-structural model with participant-specific scale and shift terms. Our subset remains acceptability-selected upstream, but we never filter individual trials by ease. The benchmark is thus diagnostic, not a reproduction of that analysis.
+
+## Recap and check your understanding
+
+1. Why is an exact response of zero different from a small positive response?
+2. Which probability does the Gaussian benchmark assign to an exact endpoint?
+3. What population restriction is introduced by retaining verbs in all four cells?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Zero is a selectable endpoint in the measurement procedure, not an approximation to an interior value. <!-- dqr-allow: conceptual-answer -->
+2. A continuous Gaussian assigns probability zero to any exact point, including zero and one, while also assigning positive mass outside the legal interval. <!-- dqr-allow: conceptual-answer -->
+3. The target is limited to upstream-selected verbs represented in every voice-by-subject cell, not all clause-embedding verbs. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](why-not-beta-sliders.qmd) asks why ordinary beta regression still cannot represent the endpoint observations.

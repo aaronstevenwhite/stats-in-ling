@@ -6,6 +6,14 @@ The event-structure annotations in [Universal Decompositional Semantics (UDS)](h
 
 A **data-generating process (DGP)** is an ordered account of the random choices and deterministic mappings that could produce an observation. We begin with the observed binary gate because the local extract contains its raw responses. The conditional follow-up responses and raw confidence judgments are not present in an audited form, so this analysis does not invent them.
 
+We audit the measurement record, trace the observed response process, write its random steps one at a time, and then use one released item to mark the boundary of the supported DGP.
+
+## UDS measurement dossier {#uds-measurement-dossier}
+
+The item is a predicate node in sentence context. Item `ewt-test-963%%ewt-test-963-semantics-pred-6` anchors *exhibited* in “His artworks were selected and exhibited in British Museum in 2002.” The mapping uses the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html) and the pinned [UD English EWT 1.2 test sentence](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). An annotator answers whether the event described by the highlighted predicate has natural subparts. The local `natural_parts` field codes no as 0 and yes as 1.
+
+The full protocol branches after that gate. A yes response reveals questions about similarity among the parts and their typical duration; a no response reveals questions about dynamicity and whole-event duration. Duration uses ordered anchors ranging from effectively no time through seconds, minutes, longer calendar units, and effectively forever. Those branch responses are not present as audited raw fields in this extract. The empirical model on this page thus concerns only the binary gate, while [gated annotations](gated-annotations.qmd#the-observed-protocol) returns to the full symbolic protocol.
+
 ## Inspecting the observed response process
 
 ```{r}
@@ -40,6 +48,9 @@ response_summary <- data.frame(
 )
 
 knitr::kable(response_summary)
+
+uds[uds$item_id == "ewt-test-963%%ewt-test-963-semantics-pred-6",
+    c("split", "graph_id", "node_id", "annotator_id", "natural_parts")]
 ```
 
 The extract contains `r format(response_summary$responses, big.mark = ",")` responses to `r format(response_summary$items, big.mark = ",")` predicate nodes from `r response_summary$annotators` anonymized annotators. Of these responses, `r response_summary$yes` are yes and `r response_summary$no` are no. The item identifier joins a graph identifier to a predicate-node identifier; it is not a verb lemma.
@@ -110,6 +121,20 @@ $$
 
 The arrows describe an order of generation, not a chronology in the annotator's mind. The response is the only observed quantity in this sequence. The probability and both deviations are model quantities.
 
+Each choice encodes a substantive assumption. Bernoulli sampling matches one binary gate response. The logit link keeps $\pi_{ij}$ in $(0,1)$ while allowing item and annotator contributions to add on the log-odds scale. Normal, mean-zero deviations treat the observed items and annotators as exchangeable draws around population locations, with symmetric light-tailed variation. Additivity assumes no item--annotator interaction beyond those two locations. Finally, responses are conditionally independent given $u_i$, $a_j$, and $\alpha$; marginally, rows sharing an item or annotator remain dependent.
+
+These assumptions may fail. A few annotators might use the gate in qualitatively different ways, item difficulty might have heavy tails, or particular annotators might react differently to particular event types. Later posterior predictive checks can expose some consequences, but they cannot prove the latent decomposition uniquely correct.
+
+The observed/model ledger is thus:
+
+| Quantity | Status | Meaning |
+|---|---|---|
+| $Y_{ij}$ | observed for $(i,j)\in\mathcal O$ | recorded no/yes gate response |
+| item and annotator IDs | observed design | which effects are shared across rows |
+| $\pi_{ij}$ | model-implied | conditional yes probability |
+| $u_i,a_j$ | latent | item and annotator log-odds deviations |
+| $\alpha,\sigma_{\text{item}},\sigma_{\text{annotator}}$ | unknown parameters | population location and variation |
+
 ## Grounding the indices in an observed item
 
 The following code chooses the first predicate node in file order that received both response values and prints its recorded rows. Selection depends on response pattern here only to make disagreement visible; it is not part of the teaching extract's construction or any fitted model.
@@ -142,8 +167,17 @@ Thus this DGP is deliberately a model of the observed natural-parts gate. It is 
 2. Why do the rows for one item share $u_i$ but not $a_j$?
 3. Why is an item identifier not a verb-lemma identifier?
 4. Which response branches remain outside this model?
+
+**Answers.** (1) Only $Y_{ij}$, along with its item and annotator identifiers, is recorded directly. (2) Rows for one predicate node share the same item deviation, while annotator IDs may differ. (3) The graph and node IDs anchor a predicate occurrence in context, so lemma identity alone does not determine the item. (4) Part similarity and part duration after yes, and dynamicity and event duration after no, remain outside the empirical gate model.
 :::
 
 A DGP orders the random choices and mappings that connect a linguistic target to an annotation. The next page translates this sequence into [one joint distribution](writing-a-joint-model.qmd).
+
+## Recap
+
+1. The recorded variable is a binary response to a context-anchored predicate-node prompt.
+2. The DGP separates that response from its latent probability and from item and annotator deviations.
+3. Bernoulli sampling, a logit link, normal exchangeable effects, additivity, and conditional independence are assumptions that require checks.
+4. The [joint-factorization section](writing-a-joint-model.qmd#translating-steps-into-factors) next converts these steps into one probability expression without adding unobserved pairs.
 
 [Previous: Custom models](index.qmd) · [Next: Writing a joint model](writing-a-joint-model.qmd)

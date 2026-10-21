@@ -2,7 +2,7 @@
 title: "Pareto-smoothed importance sampling leave-one-out cross-validation"
 ---
 
-The [exact LOO page](leave-one-out-cross-validation.qmd) computed every omitted-position posterior directly under a conjugate Provo model. [**Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)**](https://mc-stan.org/loo/articles/online-only/faq.html) approximates those omitted-data posteriors using draws from the posterior fit to all observations. Because exact values are available here, approximation error becomes observable.
+The [exact LOO page](leave-one-out-cross-validation.qmd) computed every omitted-position posterior directly under a conjugate Provo model. [**Pareto-smoothed importance sampling leave-one-out cross-validation (PSIS-LOO)**](https://mc-stan.org/loo/articles/online-only/faq.html) approximates those omitted-data posteriors using draws from the posterior fit to all observations. Because exact values are available here, approximation error becomes observable. We proceed in three steps: first, we derive the inverse-likelihood ratio; second, we show how Pareto smoothing modifies its tail; finally, we compare the approximation with exact LOO on the same Provo positions.
 
 ## Exact Bayesian leave-one-out prediction
 
@@ -58,11 +58,56 @@ $$
 
 This inverse weighting is both the shortcut and its weakness. A few enormous ratios can make full-posterior draws a poor representation of the omitted posterior.
 
-PSIS fits a generalized Pareto distribution to the largest ratios and replaces extreme values with smoothed ones. The [**Pareto $k$ diagnostic**](https://mc-stan.org/loo/reference/pareto-k-diagnostic.html) reports the fitted tail shape for each position. Large $k$ warns about the approximation; it does not establish that an observation is erroneous or should be removed.
+Normalize the ratios within position $i$:
+
+$$
+w_i^{(s)}
+=
+\frac{r_i^{(s)}}{\sum_{t=1}^S r_i^{(t)}}.
+$$
+
+The importance-sampling estimate of the omitted predictive density is
+
+$$
+\begin{aligned}
+\widehat f(y_i\mid y_{-i})
+&=
+\sum_{s=1}^S w_i^{(s)}f(y_i\mid\theta^{(s)})\\
+&=
+\frac{\sum_s f(y_i\mid\theta^{(s)})/f(y_i\mid\theta^{(s)})}
+{\sum_s 1/f(y_i\mid\theta^{(s)})}\\
+&=
+\left[
+\frac1S\sum_{s=1}^S\frac{1}{f(y_i\mid\theta^{(s)})}
+\right]^{-1}.
+\end{aligned}
+$$
+
+Thus raw importance sampling produces a harmonic-mean form. The same cancellation
+that makes the expression simple makes it sensitive to a draw assigning tiny
+likelihood to $y_i$.
+
+## Pareto-smoothing the importance ratios {#pareto-smoothing-the-importance-ratios}
+
+PSIS orders the raw ratios for position $i$ and treats the largest ratios as a tail
+sample. It fits a generalized Pareto distribution to that tail, replaces the ordered
+extremes with fitted Pareto quantiles, and applies a finite-sample truncation rule so
+one smoothed ratio cannot dominate without bound. The smaller ratios remain
+unchanged. The resulting ratios are normalized and used in the same weighted
+predictive-density calculation.
+
+The fitted tail shape $k$ summarizes how heavy the ratio tail is. In the idealized
+Pareto model, a moment of order $m$ exists only when $k<1/m$: variance requires
+$k<1/2$, while the mean requires $k<1$. The plotted 0.7 line is a practical
+finite-sample warning threshold used by the implementation, not a new moment
+boundary or a data-exclusion rule. A position above it calls for checking exact
+refitting, moment matching, or another validation design.
+
+The [**Pareto $k$ diagnostic**](https://mc-stan.org/loo/reference/pareto-k-diagnostic.html) reports that fitted tail shape for each position. Large $k$ warns about the approximation; it does not establish that an observation is erroneous or should be removed.
 
 ## PSIS and exact LOO on the same Provo positions
 
-The code reloads the [Provo position table](likelihood-ratio-tests.qmd#provo-corpus), reconstructs the fixed study-calibrated priors, draws independently from both conjugate posteriors, and preserves one log-likelihood column per position. It also recomputes exact LOO so the PSIS totals can be checked directly.
+The code reloads the [Provo position table](likelihood-ratio-tests.qmd#provo-measurement-dossier), reconstructs the fixed study-calibrated priors, draws independently from both conjugate posteriors, and preserves one log-likelihood column per position. It also recomputes exact LOO so the PSIS totals can be checked directly. The [normal-inverse-gamma update](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update) supplies `Vn`, `bn`, `an`, and `dn`; this page reuses those quantities rather than defining a second posterior.
 
 ```{r}
 #| label: provo-psis-loo
@@ -270,7 +315,20 @@ ggplot2::ggplot(
 
 The independent posterior draws make the relative effective sample size one for every position. PSIS-LOO gives ELPD `r sprintf("%.3f", psis_summary$psis_elpd_loo[psis_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", psis_summary$psis_elpd_loo[psis_summary$model == "Quadratic"])` for the quadratic model. The differences from exact conjugate LOO are `r sprintf("%.3f", psis_summary$psis_minus_exact[psis_summary$model == "Linear"])` and `r sprintf("%.3f", psis_summary$psis_minus_exact[psis_summary$model == "Quadratic"])`.
 
+The 4,000 draws are a computational accuracy choice: more independent draws reduce
+Monte Carlo variation in the log-mean calculations, while costing memory and time.
+They are not 4,000 new Provo observations. Because `draw_nig()` samples directly and
+independently from the conjugate posterior rather than producing an autocorrelated
+Markov chain, the relative effective sample-size input is `r_eff = 1` for each
+position.
+
 Maximum Pareto $k$ is `r sprintf("%.3f", psis_summary$max_pareto_k[psis_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", psis_summary$max_pareto_k[psis_summary$model == "Quadratic"])` for the quadratic model. `r sum(psis_summary$positions_k_over_threshold)` positions exceed the plotted reference value. Thus the approximation is accurate for this fitted pair, and the exact calculation provides the evidence for saying so.
+
+The formula-to-code map is: each column of `linear_log_lik` or
+`quadratic_log_lik` contains $\log f(y_i\mid\theta^{(s)})$ across draws; `loo::loo()`
+constructs and smooths the inverse-likelihood ratios; `pareto_k_values()` returns one
+tail diagnostic per column; and `exact_nig_loo()` provides the target against which
+the approximation is checked.
 
 ## The pointwise likelihood fixes the target
 
@@ -287,4 +345,24 @@ When $k$ is large, responses include exact refitting, moment matching, or a diff
 3. Why is exact LOO available as a decisive check in this example?
 4. Which prediction target is fixed by one column of the log-likelihood matrix?
 
-PSIS-LOO uses full-posterior draws to approximate omitted-position predictive density and supplies a diagnostic for that approximation. The [previous page](leave-one-out-cross-validation.qmd) computed the exact target; the [next page](waic.qmd) applies a posterior-variance correction to the same pointwise likelihood matrices.
+<details>
+<summary>Answers</summary>
+
+1. Removing $y_i$ divides the full posterior kernel by its likelihood contribution.
+2. It diagnoses whether the importance-ratio tail is too heavy for stable
+   full-posterior reweighting.
+3. Conjugacy supplies the omitted-position Student-$t$ density without numerical
+   refitting.
+4. One aggregated content-word position, conditional on all remaining positions.
+
+</details>
+
+## Recap and forward link
+
+1. Raw LOO importance sampling has a harmonic-mean form.
+2. Pareto smoothing stabilizes the largest ratios and $k$ diagnoses their tail.
+3. A likelihood column fixes the omitted unit.
+
+The [previous page](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update)
+computed the exact target; the [next page](waic.qmd#fitted-posterior-predictive-density)
+applies a posterior-variance correction to the same pointwise likelihood matrices.

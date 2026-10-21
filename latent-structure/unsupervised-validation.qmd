@@ -6,6 +6,20 @@ execute:
 
 A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token.
 
+The **validation-target specification (VTS)** is:
+
+1. **Split unit:** all twenty rows from one speaker move together.
+2. **Score unit:** token losses are averaged within speaker, then speakers receive
+   equal weight.
+3. **Held-out information:** the complete unlabeled speaker panel remains available
+   for within-speaker standardization.
+4. **Fold-local fit:** centroids and assignments are estimated from training speakers
+   only.
+5. **Transfer target:** similarly calibrated speakers from the historical sampling
+   frame, not an isolated first token or a new population of English speakers.
+
+We construct the speaker folds, derive the held-out token loss, and then contrast this calibration-panel target with training reconstruction and other prediction information sets.
+
 ## Reconstructing the rows and speaker folds
 
 ```{r}
@@ -65,6 +79,12 @@ stopifnot(
 ```
 
 The folds are balanced within the paper's men, women, and children speaker groups. All rows from one speaker stay in one fold.
+
+Balancing keeps each fold from accidentally becoming a comparison among the three
+source speaker types, whose raw acoustic locations differ. Five folds leave roughly
+four fifths of the `r dplyr::n_distinct(vowels$speaker)` speakers available for fitting while still producing several
+held-out panels in every source group. The choice is computational and descriptive;
+it is not a claim that five is an optimal number of folds.
 
 ## Predicting a held-out token
 
@@ -179,6 +199,12 @@ knitr::kable(loss_summary, digits = 3)
 
 Each speaker contributes one mean loss at each $K$, so speakers receive equal weight in the displayed uncertainty summary.
 
+The standard error is the sample standard deviation of the `r dplyr::n_distinct(vowels$speaker)` speaker means divided
+by \(\sqrt{\text{`r dplyr::n_distinct(vowels$speaker)`}}\). It describes dispersion across these observed historical speakers
+under this fixed fold construction. It does not account for uncertainty from drawing
+a new population sample, choosing the representation, or rerunning the fold
+assignment.
+
 ```{r}
 #| fig-width: 7
 #| fig-height: 4.2
@@ -228,4 +254,26 @@ This use of test-panel measurements is deliberate rather than hidden [preprocess
 4. Why does lower held-out reconstruction loss favor larger codebooks?
 5. What new-speaker claim does this design not support?
 
-Speaker-blocked reconstruction loss evaluates transfer of a centroid representation to complete unseen-speaker panels. The [next page](gaussian-mixtures.qmd) replaces hard nearest-centroid geometry with a probability model that retains component spread and overlap.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Moving speakers as blocks prevents another production by the test speaker from
+   entering centroid estimation.
+2. The fitted centroids exclude the held-out speaker.
+3. That speaker's complete unlabeled panel supplies its within-speaker means and
+   standard deviations.
+4. More centers increase codebook capacity under squared reconstruction loss.
+5. The design does not support prediction for an isolated first token with no
+   calibration panel.
+
+</details>
+
+## Recap
+
+1. Speaker blocking aligns the split with the dependent observational unit.
+2. The score gives each speaker equal influence after averaging twenty token losses.
+3. The result transfers only to the declared complete-panel information set.
+
+The [next page](gaussian-mixtures.qmd#one-gaussian-component) replaces hard
+nearest-centroid geometry with a probability model that retains component spread
+and overlap.

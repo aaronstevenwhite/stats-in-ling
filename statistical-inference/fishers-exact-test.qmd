@@ -9,6 +9,8 @@ execute:
 
 Fisher's exact test assigns probabilities to contingency tables conditional on their margins. Its reference distribution is hypergeometric, so it is especially natural for a fixed sample drawn without replacement from a finite resource.
 
+We begin with the Turkish morphology table and its sampling design, derive the conditional hypergeometric probability, and then calculate the test while keeping its fixed-margin conditioning separate from a broader superpopulation claim.
+
 ## A Turkish morphology sample
 
 We use the [Turkish UniMorph release](https://github.com/unimorph/tur) pinned at commit `6c179ace7d2f3d7f3484020e5304c1544d07bb6b` and licensed CC BY-SA 3.0. Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) use the resource for morphological reinflection: predicting an inflected form from a lemma and feature bundle. The release describes its Turkish verb paradigms as semi-automatically generated and partially checked by a native speaker; unverified noun and adjective material is excluded from the teaching data.
@@ -50,6 +52,10 @@ $$
 
 where $K$ is the *t*-initial column total, $N-K$ is the *d*-initial total, and $n$ is the front-vowel row total.
 
+To see the counting argument, imagine the $N$ sampled lexeme rows as $K$ *t*-initial rows and $N-K$ *d*-initial rows. A table with $A=a$ chooses $a$ of the $K$ *t*-initial rows and $n-a$ of the $N-K$ *d*-initial rows for the fixed front-vowel margin. There are ${K\choose a}{N-K\choose n-a}$ such choices out of ${N\choose n}$ possible size-$n$ front-vowel sets. This is the [hypergeometric probability](../random-variables-and-distributions/hypergeometric-distribution.qmd#mass-mean-and-variance).
+
+The feasible values run from $\max(0,n-(N-K))$ through $\min(n,K)$. For each feasible $a$, the other three cells are forced by the margins. Thus Fisher's reference distribution enumerates complete tables even though it needs only one free cell.
+
 ```{r}
 #| label: fit-unimorph-fisher
 observed_a <- tab["TRUE", "1"]
@@ -74,6 +80,8 @@ summary
 
 The observed table has conditional probability `r sprintf("%.5f", observed_probability)`. R's two-sided p value sums all fixed-margin tables whose null probability is no greater than the observed table's probability; it is `r sprintf("%.4f", result$p.value)`.
 
+This last convention matters. A two-sided ordering is not unique for a discrete asymmetric reference distribution; `fisher.test()` uses the probability ordering just described, rather than merely doubling one tail.
+
 ```{r}
 #| label: plot-unimorph-fisher
 #| fig-cap: "Observed lexeme counts in the fixed UniMorph sample."
@@ -91,6 +99,15 @@ ggplot(cells, aes(past_initial, stem_vowel, fill = lexemes)) +
 
 The calculation conditions on the sample and margins. Its finite sampling fraction is `r sprintf("%.3f", summary$sampling_fraction)`, so treating these without-replacement rows as independent Bernoulli draws would discard part of the design. The result concerns the resource-defined lexeme population, not Turkish token use.
 
+## Recap and forward link
+
+1. Fixed margins leave one free cell in a two-by-two table.
+2. Combinatorial counting yields a hypergeometric reference probability for that cell.
+3. R's two-sided p value sums tables no more probable than the observed one; it is not the observed-table probability alone.
+4. Exact conditioning does not turn lexeme types into usage tokens.
+
+The [chi-squared page](chi-squared-test.qmd#expected-counts-under-independence) uses the complete 588-lemma resource for the corresponding large-sample calculation.
+
 ## Check your understanding
 
 1. Which margins remain fixed in the Fisher reference distribution?
@@ -101,11 +118,9 @@ The calculation conditions on the sample and margins. Its finite sampling fracti
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. The front/back row totals, the *t*/*d* column totals, and therefore the grand total remain fixed. <!-- dqr-allow: empirical-answer -->
+1. The front/back row totals, the *t*/*d* column totals, and thus the grand total remain fixed. <!-- dqr-allow: empirical-answer -->
 2. The two-sided p value sums the probabilities of all fixed-margin tables no more probable under the null than the observed table. <!-- dqr-allow: empirical-answer -->
 3. One row is one distinct verb lemma paired with the `V;IND;PST;3;SG;POS;DECL` paradigm cell. <!-- dqr-allow: empirical-answer -->
 4. UniMorph rows are lexeme--paradigm types without corpus token frequencies, so the table cannot estimate how often suffixes occur in running text. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [chi-squared page](chi-squared-test.qmd) uses the complete 588-lemma resource to construct the corresponding large-sample reference calculation.

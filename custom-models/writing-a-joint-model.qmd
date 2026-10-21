@@ -6,6 +6,8 @@ The [preceding page](generative-stories.qmd) introduced the UDS natural-parts re
 
 A **joint probability model** assigns one factor to every random step in a data-generating process. This is the [product rule](../foundations/probability-factorization.qmd) applied to the annotation process. The product states which quantities are conditionally independent and which observations share an unobserved item value.
 
+We construct the observed-pair set, translate the item process into factors, fit the item-only model, and then compare raw proportions with fitted probabilities while keeping observations and summaries distinct.
+
 ## Loading the observed-pair set
 
 ```{r}
@@ -58,11 +60,36 @@ $$
 
 The first product generates one item value per predicate node. The second generates each recorded response conditional on the item value named by that row. Repeated occurrences of $\theta_i$ record the fact that responses to one predicate node share information.
 
+The factorization asserts conditional independence explicitly:
+
+$$
+Y_{ij}\perp Y_{i'j'}\mid\boldsymbol\theta
+\quad\text{for distinct observed rows},
+$$
+
+while responses sharing item $i$ are generally dependent after $\theta_i$ is integrated out. Item values are themselves independent draws conditional on $\mu_\theta$ and $\tau_\theta$. These are modeling claims, not consequences of writing products.
+
+For two items, with observed-pair subsets $\mathcal O_1$ and $\mathcal O_2$, the same expression expands to
+
+$$
+\begin{aligned}
+f(&\mathbf y,\theta_1,\theta_2\mid\mu_\theta,\tau_\theta)
+={}&f(\theta_1\mid\mu_\theta,\tau_\theta)
+\prod_{j:(1,j)\in\mathcal O_1}p(y_{1j}\mid\theta_1)\\
+&\times f(\theta_2\mid\mu_\theta,\tau_\theta)
+\prod_{j:(2,j)\in\mathcal O_2}p(y_{2j}\mid\theta_2).
+\end{aligned}
+$$
+
+Lowercase $\mathbf y$ denotes the responses in the realized table; uppercase $\mathbf Y$ denotes the random response matrix before observation. Likewise, the observed-pair set $\mathcal O$ is fixed by the released incidence design. Unobserved item--annotator combinations do not contribute response factors.
+
 The order of multiplication does not describe temporal order. Multiplication is commutative; the conditional arguments carry the dependency claim.
 
 ## Fitting the item-only model
 
 The following fit evaluates the empirical item-only model. It uses every row in $\mathcal O$ and partially pools the `r length(unique(uds$item_id))` item deviations. This is an intermediate analysis: omitting annotator effects is a declared simplification, not a claim that annotators have identical response locations.
+
+The simplification lets us connect the factorization to software before adding a second crossed effect. It is potentially biased when annotators with different response locations see different item compositions: item deviations may then absorb stable annotator differences. The [annotator-effects page](annotator-effects.qmd#adding-one-location-term) repairs that omission.
 
 ```{r}
 #| label: fit-uds-item-only
@@ -116,6 +143,18 @@ knitr::kable(joint_summary, digits = 3)
 
 The integrated log likelihood combines the response factors with the item population rather than treating the fitted item deviations as independent observations. Its numerical value depends on the complete UDS response matrix and the stated item-only model.
 
+More explicitly, `glmer()` maximizes the marginal likelihood
+
+$$
+L(\mu_\theta,\tau_\theta;\mathbf y)
+=\prod_i\int
+f(\theta_i\mid\mu_\theta,\tau_\theta)
+\prod_{j:(i,j)\in\mathcal O}
+p(y_{ij}\mid\theta_i)\,d\theta_i.
+$$
+
+The call `natural_parts ~ 1 + (1 | item_id)` maps the fixed intercept to $\mu_\theta$, the item-intercept standard deviation to $\tau_\theta$, and each binary row to one Bernoulli factor. The `bobyqa` optimizer is a derivative-free default that is often stable for variance parameters; `maxfun = 100000` raises the evaluation budget rather than changing the model. The two `stopifnot()` checks expose optimizer messages and a near-zero variance boundary. For the underlying link, revisit [logistic regression](../regression-models/logistic-regression.qmd); for partial pooling, revisit [random effects](../regression-models/random-effects.qmd). <!-- dqr-allow: algorithm-setting -->
+
 ## Comparing raw summaries with fitted item probabilities
 
 ```{r}
@@ -163,8 +202,18 @@ Each probability factor must correspond to a distinct random quantity in the rec
 3. Why does multiplication order not state the dependency structure?
 4. Why is an item mean not an additional response?
 5. Which simplification does the item-only fit make?
+
+**Answers.** (1) The normal-density product generates one latent $\theta_i$ per item. (2) $\mathcal O$ includes exactly the recorded item--annotator pairs and excludes unrealized combinations. (3) Dependency is expressed by conditional arguments and shared latent quantities, not the written order of factors. (4) The item mean is a deterministic summary of response rows already counted. (5) The fit omits stable annotator-location differences, which items may partly absorb under a sparse crossed design.
 :::
 
 A joint model translates each random step into one probability factor. Before fitting the larger crossed model to released responses, we test whether its parameters can be [recovered under the observed incidence design](parameter-recovery.qmd).
+
+## Recap
+
+1. One latent-density factor belongs to each item and one Bernoulli factor belongs to each observed response row.
+2. Conditional independence holds only after the shared item values are supplied; integrating them induces within-item dependence.
+3. `glmer()` integrates over the item values to evaluate the likelihood for the population location and scale.
+4. The item-only fit is a teaching bridge whose omitted annotator effect is substantive, not merely computational.
+5. The next page begins with the [recovery target and design](parameter-recovery.qmd#loading-the-released-design-and-audited-cache), asking whether the larger crossed model can recover known generating values.
 
 [Previous: Data-generating processes](generative-stories.qmd) · [Next: Parameter recovery](parameter-recovery.qmd)

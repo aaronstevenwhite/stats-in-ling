@@ -76,6 +76,12 @@ z_i
 \right\rVert^2.
 $$
 
+This update is optimal for fixed centroids because token \(i\)'s contribution to
+\(W\) is exactly one of the \(K\) displayed squared distances. Choosing any center
+other than the minimum can only preserve or increase that summand, and the choices
+for different tokens separate. Thus the nearest-center rule minimizes \(W\) over
+all assignments with the centroids held fixed.
+
 For fixed assignments, the update step replaces each centroid with the mean of its assigned rows:
 
 $$
@@ -119,6 +125,21 @@ $$
 
 The coordinatewise mean thus minimizes squared distance for fixed assignments.
 
+For a one-iteration hand calculation, suppose the one-dimensional observations
+are \(-1,1,5\) and the current centers are \(0\) and \(4\). The squared-distance
+pairs are \((1,25)\), \((1,9)\), and \((25,1)\), so the assignment step gives
+\(C_1=\{-1,1\}\) and \(C_2=\{5\}\). The update then gives
+
+$$
+\mu_1^{\mathrm{new}}=\frac{-1+1}{2}=0,
+\qquad
+\mu_2^{\mathrm{new}}=5.
+$$
+
+The first center stays fixed and the second moves from 4 to 5. This small example
+separates the nearest-center comparison from the mean calculation performed after
+the assignments are fixed.
+
 ## Fitting ten centroids
 
 ```{r}
@@ -142,6 +163,16 @@ knitr::kable(fit_summary, digits = 3)
 ```
 
 The fitted loss is `r round(fit_k10$tot.withinss, 3)`. The seed and 100 starts make this calculation reproducible and reduce sensitivity to one initialization. They do not establish a global optimum.
+
+The displayed equations describe Lloyd-style block updates. R's
+`Hartigan-Wong` implementation may move individual observations between clusters
+when doing so reduces the objective, but it targets the same within-cluster sum of
+squares. We use 100 starts because local solutions are plausible in this
+overlapping space, and 200 iterations is a generous computational ceiling rather
+than a mathematical constant. Hartigan-Wong reports an error rather than silently
+returning a final solution when a requested fit cannot maintain nonempty clusters.
+Finally, seed 1952 labels the random initialization sequence for reproducibility;
+it does not make one initialization scientifically privileged.
 
 ## Inspecting one observed assignment
 
@@ -257,4 +288,26 @@ K-means favors compact regions under squared Euclidean distance and assigns ever
 4. Why was $K=10$ fixed before the intended-vowel comparison?
 5. What does the post-fit ARI establish, and what does it leave open?
 
-K-means alternates nearest-centroid assignments with mean updates in the declared acoustic geometry. The [next page](within-cluster-loss.qmd) shows how the fitted compactness changes when the number of centroids changes.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The smallest row in `reference_distances` identifies both the component and the
+   supporting squared distance.
+2. It recomputes each fitted center as the mean of its assigned observed rows.
+3. Multiple starts search more local solutions but cannot enumerate every partition.
+4. It keeps the post-fit comparison with ten elicitation categories separate from
+   component-count selection.
+5. ARI measures agreement between two partitions; it does not establish phonemic
+   identity or perceptual validity.
+
+</details>
+
+## Recap
+
+1. Fixed centroids imply nearest-center assignments.
+2. Fixed assignments imply coordinatewise mean centers.
+3. Alternation decreases the declared loss but may end at a local solution.
+
+The [next page](within-cluster-loss.qmd#loss-at-a-declared-centroid-count) varies
+the number of centroids and asks what the training objective can, and cannot,
+select.

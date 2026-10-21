@@ -33,6 +33,26 @@ candidate_models <- c("EEI", "EVI", "VEV", "VVI")
 candidate_components <- 2:16
 ```
 
+For \(p=2\), write
+\(\boldsymbol\Sigma_k=\lambda_k\mathbf D_k\mathbf A_k\mathbf D_k^{\mathsf T}\),
+where \(\lambda_k\) is volume, \(\mathbf A_k\) is a determinant-one shape,
+and \(\mathbf D_k\) is orientation.
+
+| Family | Volume | Shape | Orientation | Covariance parameters in two dimensions |
+|---|---|---|---|---:|
+| `EEI` | equal | equal | coordinate axes | \(2\) |
+| `EVI` | equal | varying | coordinate axes | \(1+K\) |
+| `VEV` | varying | equal | varying | \(2K+1\) |
+| `VVI` | varying | varying | coordinate axes | \(2K\) |
+
+Thus `EEI`, `EVI`, and `VVI` use diagonal covariances, while `VEV` permits rotated
+ellipses. The 2--16 grid brackets the ten-category teaching fit and permits
+some categories to occupy more than one region without making the candidate
+search unbounded. These four families expose contrasts in volume, shape, and
+orientation while keeping the grid small enough to inspect. Excluding other
+`mclust` families is a teaching-design choice, not evidence that those families
+are implausible.
+
 The covariance families and component range are fixed before intended-vowel agreement is inspected. A candidate specification contains the component count $K$, covariance family $\mathcal C$, and remaining procedure $\mathcal R$:
 
 $$
@@ -125,6 +145,32 @@ knitr::kable(fit_comparison, digits = 3)
 
 The grid selects the `r best_bic$components`-component `r best_bic$covariance_model` model with BIC `r round(best_bic$conventional_bic_smaller_is_better, 3)`. The fixed ten-component `EVI` model has BIC `r round(direct_bic_g10, 3)`. These values are obtained from the fitted likelihoods, parameter counts, and observed token count shown in the table.
 
+The parameter counts can also be reconstructed. Every model has \(K-1\) free
+weights and \(2K\) mean coordinates. In two dimensions, the covariance counts in
+the table give
+
+$$
+\begin{array}{ll}
+q_{\mathrm{EEI}}=(K-1)+2K+2=3K+1, &
+q_{\mathrm{EVI}}=(K-1)+2K+(K+1)=4K,\\
+q_{\mathrm{VEV}}=(K-1)+2K+(2K+1)=5K, &
+q_{\mathrm{VVI}}=(K-1)+2K+2K=5K-1.
+\end{array}
+$$
+
+For the selected row, \(K=`r fit_g14$G`\),
+\(\log L=`r round(fit_g14$loglik, 3)`\),
+\(q=`r fit_g14$df`\), and \(n=`r nrow(X)`\). Substitution gives
+
+$$
+-2(`r round(fit_g14$loglik, 3)`)
++`r fit_g14$df`\log(`r nrow(X)`)
+=
+`r round(direct_bic_g14, 3)`,
+$$
+
+which is the corresponding conventional BIC in the output table.
+
 ```{r}
 #| fig-width: 7
 #| fig-height: 4.5
@@ -176,6 +222,13 @@ The usual BIC approximation presumes an appropriate independence structure. A to
 
 BIC compares only the supplied component counts, covariance families, representation, and fitting controls. It cannot repair omitted F3 information, within-speaker dependence, or an unsuitable Gaussian family. Mixture label permutations and weakly represented components also complicate the regularity assumptions behind simple information-criterion arguments.
 
+There is a deeper approximation limit. The usual BIC derivation uses a regular
+Laplace approximation around an interior, locally identifiable maximum. Finite
+mixtures can violate these conditions because labels can be permuted, a component
+weight can approach zero, and a covariance can approach singularity. BIC remains
+a declared ranking rule for these fitted candidates, but its difference should
+not be read as exact log model evidence.
+
 The selected component count need not equal a phonological inventory. A vowel's productions may occupy several Gaussian regions, while overlapping intended vowels may share one region.
 
 ## Checking the BIC comparison
@@ -187,4 +240,27 @@ The selected component count need not equal a phonological inventory. A vowel's 
 5. Why does the token count not represent independent speakers?
 6. What does the selected component count leave unresolved linguistically?
 
-BIC ranks a declared candidate grid under a token-level likelihood and penalty. The [next page](validating-a-mixture.qmd) compares the fixed K10 and G14 candidates by predictive density on complete held-out speakers.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Insert each fit's `loglik`, `df`, and `r format(nrow(vowels), big.mark = ",")` token contributions into the displayed
+   formula.
+2. `mclust` reports \(2\log L-q\log n\), the negative of the convention used here.
+3. The fourteen-component `EEI` fit minimizes conventional BIC in this grid.
+4. The ten-component `EVI` hard classification has higher post-fit ARI.
+5. Twenty rows come from each speaker, so token contributions are not independent
+   sampled speakers.
+6. A selected density component count does not identify a phonological inventory.
+
+</details>
+
+## Recap
+
+1. A candidate includes component count, covariance family, and fitting procedure.
+2. BIC combines maximized token likelihood with an explicitly reconstructed
+   parameter-count penalty.
+3. Mixture singularities and repeated-speaker dependence limit the usual evidence
+   approximation.
+
+The [next page](validating-a-mixture.qmd#held-out-log-loss) compares the fixed K10
+and G14 candidates by predictive density on complete held-out speakers.

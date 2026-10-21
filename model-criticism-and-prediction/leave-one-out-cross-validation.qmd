@@ -4,6 +4,8 @@ title: "Leaving out one unit at a time"
 
 The [information-criteria page](information-criteria.qmd) approximated predictive discrepancy without constructing omitted-data predictions. [**Leave-one-out cross-validation (LOO-CV)**](https://bruno.nicenboim.me/bayescogsci/ch-cv.html) instead makes one unit the test set at a time. The word *one* matters: here it means one Provo content-word position summary, conditional on all other positions, including positions from the same passage.
 
+We first define the leave-one-position rotation, derive exact omitted-data predictions for the two conjugate Provo models, and then make the omitted unit, prior calibration, and overlapping training sets explicit before checking the complete computation.
+
 ## Defining the rotation
 
 Let the data contain $N$ position summaries. For each position $i$, fit the complete procedure to the data with $i$ removed. Write the fitted predictor as
@@ -32,11 +34,96 @@ Each response is absent from its own fit. The fits still overlap extensively, so
 
 ## Exact Bayesian LOO for the Provo models
 
-We use the same [Provo position table and Gaussian mean models](likelihood-ratio-tests.qmd#provo-corpus) as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted.
+We use the same [Provo position table and Gaussian mean models](likelihood-ratio-tests.qmd#provo-measurement-dossier) as on the preceding pages. The Bayesian calculation fixes a normal-inverse-gamma prior before any position is omitted.
 
 The source paper reports excluding fixations shorter than 80 ms and longer than 800 ms. Their log-scale midpoint sets the prior intercept mean; slope means are zero. The expected residual variance treats four standard deviations as spanning those study bounds, and each coefficient's conditional prior variance multiplier is derived from the same span. The inverse-gamma shape is a fixed computational setting, and its rate follows from the declared residual-variance mean.
 
 This prior is calibrated to study-level measurement bounds, not to the observed Provo response values. It is a teaching prior, not a prior proposed by Luke and Christianson.
+
+## Normal-inverse-gamma posterior and predictive update {#normal-inverse-gamma-posterior-and-predictive-update}
+
+For a training response vector $y$ and design matrix $X$, the parameterization used
+in the code is
+
+$$
+\begin{aligned}
+y\mid\beta,\sigma^2 &\sim
+  \operatorname{Normal}(X\beta,\sigma^2I),\\
+\beta\mid\sigma^2 &\sim
+  \operatorname{Normal}(b_0,\sigma^2V_0),\\
+\sigma^2 &\sim
+  \operatorname{InverseGamma}(a_0,d_0),
+\end{aligned}
+$$
+
+where the inverse-gamma density is proportional to
+$(\sigma^2)^{-(a_0+1)}\exp(-d_0/\sigma^2)$. Before observing a training set,
+$Y$ and the eventual estimator are random; after conditioning on the realized
+training vector $y$, $(b_n,V_n,a_n,d_n)$ are posterior hyperparameter estimates.
+
+Combining the likelihood and conditional normal prior yields the quadratic form
+
+$$
+(y-X\beta)^T(y-X\beta)
++(\beta-b_0)^TV_0^{-1}(\beta-b_0).
+$$
+
+Completing the square gives
+
+$$
+(\beta-b_n)^TV_n^{-1}(\beta-b_n)
++y^Ty+b_0^TV_0^{-1}b_0-b_n^TV_n^{-1}b_n,
+$$
+
+with
+
+$$
+\begin{aligned}
+V_n&=(V_0^{-1}+X^TX)^{-1},\\
+b_n&=V_n(V_0^{-1}b_0+X^Ty),\\
+a_n&=a_0+\frac n2,\\
+d_n&=d_0+\frac12\left(
+y^Ty+b_0^TV_0^{-1}b_0-b_n^TV_n^{-1}b_n
+\right).
+\end{aligned}
+$$
+
+Thus $\beta\mid\sigma^2,y$ is normal with mean $b_n$ and covariance
+$\sigma^2V_n$, while $\sigma^2\mid y$ is inverse-gamma with shape $a_n$ and rate
+$d_n$. At a held-out row vector $x_i^T$, first integrate $\beta$:
+
+$$
+Y_i\mid\sigma^2,y_{-i}
+\sim
+\operatorname{Normal}\left(
+x_i^Tb_n,\
+\sigma^2[1+x_i^TV_nx_i]
+\right).
+$$
+
+Integrating $\sigma^2$ against its inverse-gamma posterior gives
+
+$$
+Y_i\mid y_{-i}
+\sim
+t_{2a_n}\left(
+x_i^Tb_n,
+\sqrt{\frac{d_n}{a_n}(1+x_i^TV_nx_i)}
+\right).
+$$
+
+This is the source of `location`, `scale`, and `degrees` in the loop; the Student-$t$
+predictive distribution is not posited separately.
+
+The prior choices also have a visible calculation. The log-scale study bounds are
+$\log 80$ and $\log 800$. Their midpoint sets the intercept mean, while slope means
+are zero. Treating the span as four residual standard deviations gives
+$\mathbb{E}[\sigma^2]=(\log(800/80)/4)^2$. Choosing $a_0=3$ gives the inverse-gamma
+a finite mean and variance, and setting
+$d_0=2\mathbb{E}[\sigma^2]$ recovers that declared mean because
+$\mathbb{E}[\sigma^2]=d_0/(a_0-1)$. Finally, the diagonal of $V_0$ makes the
+conditional coefficient scale commensurate with the same log span. These are
+regularizing teaching choices, not estimates from the position responses.
 
 ```{r}
 #| label: provo-exact-loo
@@ -175,6 +262,12 @@ ggplot2::ggplot(
 
 Conjugacy gives a Student-$t$ predictive density for every omitted position. Exact ELPD is `r sprintf("%.3f", loo_summary$exact_elpd_loo[loo_summary$model == "Linear"])` for the linear model and `r sprintf("%.3f", loo_summary$exact_elpd_loo[loo_summary$model == "Quadratic"])` for the quadratic model. The corresponding RMSEs are `r sprintf("%.5f", loo_summary$exact_loo_rmse[loo_summary$model == "Linear"])` and `r sprintf("%.5f", loo_summary$exact_loo_rmse[loo_summary$model == "Quadratic"])` on the mean log-duration scale.
 
+The efficient omission algebra reuses full-data sufficient statistics. In iteration
+$i$, `full_xtx - crossprod(xi)` is $X_{-i}^TX_{-i}$,
+`full_xty - drop(xi) * yi` is $X_{-i}^Ty_{-i}$, and
+`full_yty - yi^2` is $y_{-i}^Ty_{-i}$. Substituting those three quantities into the
+displayed update is algebraically identical to rebuilding the reduced design matrix.
+
 The raw points and LOO predictive means remain on the same axes. This matters because a small aggregate advantage can otherwise hide where the two fitted functions differ.
 
 ## What one means here
@@ -198,4 +291,26 @@ The training sets also overlap. Two LOO fits share all but their two distinct om
 3. Why is this not an omitted-passage analysis?
 4. Which part of the prior uses the source-study measurement bounds?
 
-LOO-CV gives every position a prediction from a fit that excluded it. The [previous page](information-criteria.qmd) used an in-sample approximation; the [next page](psis-loo.qmd) approximates these exact Bayesian omitted-position densities using full-posterior draws.
+<details>
+<summary>Answers</summary>
+
+1. One aggregated content-word position.
+2. Every other position, including positions from the same passage, remains
+   available.
+3. The omitted position's passage still contributes other training positions.
+4. The intercept midpoint, expected residual variance, and conditional coefficient
+   scale are calibrated from the 80-to-800-ms bounds.
+
+</details>
+
+## Recap and forward link
+
+1. *One* means one aggregated position.
+2. Completing the normal-inverse-gamma square yields the displayed Student-$t$
+   predictive density.
+3. Full sufficient statistics can be downdated by one row without changing the
+   result.
+
+The [previous page](information-criteria.qmd#information-criteria-compared)
+used in-sample approximations; the [next page](psis-loo.qmd#relating-the-omitted-posterior-to-the-full-posterior)
+approximates these exact omitted-position densities using full-posterior draws.

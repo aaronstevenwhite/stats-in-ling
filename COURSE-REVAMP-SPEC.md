@@ -10,7 +10,7 @@ A topic belongs in the course only when (i) its page has no forward dependency, 
 
 ## Fixed design constraints
 
-The rebuild has ten nonnegotiable constraints.
+The rebuild has eleven nonnegotiable constraints.
 
 1. **Topical organization.** Chapters receive topical titles, not lecture numbers. A class meeting may traverse several short pages, and a page may support more than one meeting.
 2. **One-new-concept rule.** A concept page introduces one principal statistical object or technique. It may use earlier material, but it may not rely on a method introduced later.
@@ -22,7 +22,7 @@ The rebuild has ten nonnegotiable constraints.
 8. **Data-derived quantities.** Symbolic definitions and derivations may remain general. Every displayed probability, expectation, variance, fitted parameter, interval, test statistic, loss, and other worked numerical quantity must be computed from an identified linguistic dataset by visible R code.
 9. **Restrained scientific plots.** Every empirical plot must expose the observations or empirical mass relevant to the claim. When a model and observations share a meaningful scale, the plot must show them together. Graphics use direct axis labels with units, neutral observations, no more than one accent color unless grouping requires more, and only the annotation needed to identify the focal statistic, threshold, held-out boundary, selected rank, or influential observation.
 10. **Paper-first analysis.** Before a dataset can support notes prose, the developer must read its primary paper, release documentation, representation or annotation guidelines, and original analysis code when available. An evidence card then states what the released observations encode, reconciles paper and release counts, records the source pin and license, and bounds the claims that a simplified classroom analysis may support. A source-aligned pilot must pass before a proposed analysis becomes an approved empirical run.
-11. **Established terminology and notation.** Use only terms, abbreviations, and mathematical notation established in the relevant statistical or linguistic literature. Do not coin pedagogical names, labels, acronyms, or symbols. Describe a local limitation or comparison directly when no standard term exists.
+11. **Established technical terminology and named pedagogical objects.** Use established terms, abbreviations, and mathematical notation for statistical and linguistic objects. When a recurring problem, mechanism, phenomenon, or framework needs a local pedagogical name, introduce a transparent term, define it immediately, and then reason over it consistently. Give an abbreviation on first use only when the abbreviation will recur. A local name must not masquerade as an established technical term.
 
 ## Course dependency spine
 
@@ -47,7 +47,7 @@ Model criticism follows regression because residuals and predictions require a f
 Each concept page must do enough work for a student to reconstruct the object, rather than merely recognize its name. The default page thus contains the following moves, with sections merged only when the concept is genuinely small.
 
 1. **Linguistic problem.** Begin with a concrete representational or inferential problem.
-2. **Standard terminology.** Introduce the established name for the object and state what problem it solves. If no established term exists, describe the issue directly without coining a label or abbreviation.
+2. **Standard terminology and local names.** Introduce the established name for the technical object and state what problem it solves. If a recurring local problem or mechanism needs a pedagogical name, define that name explicitly and distinguish it from established terminology.
 3. **Formal statement.** Give the definition, model, or algorithm using only established notation.
 4. **Worked derivation.** Work through the mathematics using quantities computed from the page's linguistic dataset. A symbolic derivation may precede substitution, but a schematic numerical example may not.
 5. **Implementation.** Show all R code needed to load the source, define the analysis subset, transform variables, compute or fit the target, and draw the figure. Connect each step to the formal statement; no page may depend on hidden in-memory state from another page.
@@ -64,11 +64,11 @@ Most pages will likely require 800--1,800 words, though length is not itself a s
 
 ## Build and fit-cache policy
 
-The routine course build is staged by dependency prefix. `scripts/render_staged_notes.py --through linear-regression` renders exactly the notes used by the first four decks; it does not expand the broader `regression-models/*.qmd` project pattern. Each successful staged render writes source and HTML hashes to `decks/note-render-receipts.json`. The slide generator rejects a note whose source or rendered HTML no longer matches that receipt, and the alignment check authenticates the same hashes independently.
+The routine course build renders the notes directly from the project-level Quarto configuration. Project-level `freeze: auto` and knitr caching reuse unchanged computations in the current checkout. Branch-level checks may render a declared list of pages when a full build would be unnecessarily expensive, but that list must come from the public sidebar rather than from a separate presentation layer.
 
 Project-level `freeze: auto` and knitr caching reuse unchanged computations in the current checkout. A model whose cold fit is slow enough to impede routine builds also needs an explicit fit cache. Its signature must include hashes of every input table, the analysis subset, the model formula and fitting controls, the R version, and relevant package versions. A cache is reused only when the complete signature matches.
 
-When a full-data fit remains too slow for classroom development, the teaching analysis may use a fixed subset only if the sampling unit preserves the dependence structure needed by the model. The selection rule must be fixed without looking at the modeled response, and the notes and slides must state (i) the full and retained sample sizes, (ii) the retained groups and design cells, (iii) the computational reason for the subset, and (iv) the narrower population to which its estimates apply. Row-wise convenience samples that break speakers, items, languages, or lexical paradigms are not permitted. A teaching subset does not convert its estimates into full-data estimates or reproduce the original paper's analysis.
+When a full-data fit remains too slow for classroom development, the teaching analysis may use a fixed subset only if the sampling unit preserves the dependence structure needed by the model. The selection rule must be fixed without looking at the modeled response, and the notes must state (i) the full and retained sample sizes, (ii) the retained groups and design cells, (iii) the computational reason for the subset, and (iv) the narrower population to which its estimates apply. Row-wise convenience samples that break speakers, items, languages, or lexical paradigms are not permitted. A teaching subset does not convert its estimates into full-data estimates or reproduce the original paper's analysis.
 
 ## Application and dataset ledger
 

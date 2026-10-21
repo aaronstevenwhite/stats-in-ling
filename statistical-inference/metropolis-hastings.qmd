@@ -9,6 +9,8 @@ execute:
 
 The [MCMC page](markov-chain-monte-carlo.qmd) used a random-walk transition without yet deriving its correction. The **Metropolis--Hastings (MH) algorithm** accepts or rejects proposals so that the passage-level Student-t posterior remains stationary.
 
+We begin by deriving the proposal correction and detailed-balance argument, apply the resulting random-walk sampler to the passage-level target, and then read its acceptance and movement patterns as properties of a transition rule rather than evidence that every finite run has converged.
+
 ## Proposal and acceptance
 
 At current state $\eta^{(s)}$, draw a proposal
@@ -42,6 +44,26 @@ $$
 $$
 
 Rejected current states must remain in the chain. Removing them would change the proportion of time spent in each posterior region.
+
+Why does the correction work? For two states $a$ and $b$, define the accepted probability flow from $a$ to $b$ as
+
+$$
+\pi(a)q(b\mid a)\alpha(a,b),
+\qquad
+\alpha(a,b)=\min\left\{1,
+\frac{\pi(b)q(a\mid b)}{\pi(a)q(b\mid a)}
+\right\}.
+$$
+
+This flow equals
+
+$$
+\min\{\pi(a)q(b\mid a),\pi(b)q(a\mid b)\},
+$$
+
+which is symmetric in $a$ and $b$. The reverse flow is identical. This **detailed-balance** relation is sufficient for $\pi$ to be stationary.
+
+For a numerical step, suppose `log_target(proposal) - current_log_target = -0.7`. Then the acceptance probability is $\exp(-0.7)\approx .497$. The code compares `log(runif(1))` with `min(0, -0.7)`; this log-scale comparison avoids computing a possibly unstable density ratio.
 
 ## Fitting the passage-level Student-t model
 
@@ -138,7 +160,18 @@ ggplot(saved, aes(iteration, mu, group = factor(chain), color = factor(chain))) 
 
 The post-warmup acceptance rates lie between `r sprintf("%.3f", min(mh_summary$acceptance))` and `r sprintf("%.3f", max(mh_summary$acceptance))`. Proposal scale changes efficiency: very small moves are accepted often but explore slowly, while very large moves are often rejected. A correctly formed MH ratio preserves the same target across these choices.
 
+The proposal factor $2.38^2/d$ is a widely used random-walk efficiency heuristic for approximately regular $d$-dimensional targets; here $d=2$. It changes how quickly the chain explores, not the posterior being targeted, and it should be checked rather than treated as a theorem for every target.
+
 Acceptance is a randomized computational decision, not a significance test. It says nothing by itself about whether noun and verb reading times differ or whether the passage-level Student-t model represents participant-level variation.
+
+## Recap and forward link
+
+1. The Hastings ratio corrects both target-density and proposal-direction imbalances.
+2. Detailed balance gives a local flow argument for target stationarity.
+3. A rejected proposal repeats the current state and must remain in the chain.
+4. Proposal scaling affects efficiency, not the target model.
+
+The [HMC page](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy) replaces random-walk proposals with gradient-directed trajectories through the same target.
 
 ## Check your understanding
 
@@ -156,5 +189,3 @@ Acceptance is a randomized computational decision, not a significance test. It s
 4. Very small proposals are often accepted but move only short distances, producing high autocorrelation and slow exploration. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [HMC page](hamiltonian-monte-carlo.qmd) replaces random-walk proposals with gradient-directed trajectories through this same target.

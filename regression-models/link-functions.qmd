@@ -5,7 +5,9 @@ execute:
   message: false
 ---
 
-A **link function** maps a constrained conditional mean to the real-valued linear predictor. We continue with SuperTelicity, where the response is an *in* choice and the first-use source and design are introduced on the [preceding page](why-generalized-linear-models.qmd).
+A [**link function**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) maps a constrained conditional mean to the real-valued linear predictor. We continue with SuperTelicity, where the response is an *in* choice and the first-use source and design are introduced on the [preceding page](why-generalized-linear-models.qmd).
+
+This page addresses the **link-choice problem**. A valid link must be one-to-one on the mean space, but the support of that space does not select a unique link. For a Bernoulli mean, the logit, probit, and complementary log-log links are all valid. They instead encode different assumptions about how a real-valued predictor approaches zero and one.
 
 ```{r}
 #| label: load-and-fit-link
@@ -26,6 +28,16 @@ g(\pi_i)=\log\frac{\pi_i}{1-\pi_i}=\eta_i,
 \qquad
 g^{-1}(\eta_i)=\frac{1}{1+e^{-\eta_i}}=\pi_i.
 $$
+
+The inverse follows by exponentiating: $e^{\eta}=\pi/(1-\pi)$, so $e^\eta(1-\pi)=\pi$ and hence $\pi=e^\eta/(1+e^\eta)$. The logit is especially convenient because a coefficient is a log odds ratio. The probit instead uses $\Phi^{-1}(\pi)$, whereas the complementary log-log link $\log[-\log(1-\pi)]$ is asymmetric.
+
+```{r}
+#| label: compare-valid-bernoulli-links
+#| echo: true
+p <- sort(unique(aggregate(prep_in ~ verb_type, st, mean)$prep_in))
+data.frame(probability = p, logit = qlogis(p), probit = qnorm(p),
+           complementary_log_log = log(-log(1 - p)))
+```
 
 The link acts on the conditional mean, not on the observed zeros and ones. The fitted SuperTelicity model supplies actual values on both scales.
 
@@ -72,4 +84,22 @@ ggplot() +
 
 The model is additive in $\eta_i$ but curved in $\pi_i$. A constant coefficient is a constant change in log odds, not in probability. The link changes neither the Bernoulli support nor the observed response. It connects the linear predictor to the family mean.
 
-For count means the analogous construction uses $\log\lambda_i=\eta_i$ and $\lambda_i=e^{\eta_i}>0$. Thus the choice of link follows the support of the conditional mean. It is not a device for making a histogram look normal.
+For instance, the same one-unit logit coefficient has different response-scale consequences at different baselines.
+
+```{r}
+#| label: baseline-dependent-probability-change
+#| echo: true
+baseline <- observed$prep_in
+data.frame(baseline,
+  after_one_log_odds_unit = plogis(qlogis(baseline) + 1),
+  probability_change = plogis(qlogis(baseline) + 1) - baseline)
+```
+
+For count means the analogous construction uses $\log\lambda_i=\eta_i$ and $\lambda_i=e^{\eta_i}>0$. Thus support constrains a link choice, but it does not determine that choice. A link is not a device for making a histogram look normal.
+
+## Recap and check
+
+1. Does a Bernoulli response force the logit link? No. It forces predicted means into $(0,1)$; scientific and computational considerations distinguish valid links.
+2. If a logit coefficient is one, is the probability change one? No. The coefficient is a one-unit log odds change, and the corresponding probability change depends on the baseline.
+
+The [GLM template](generalized-linear-models.qmd) next keeps the response distribution, linear predictor, and link separate.

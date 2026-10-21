@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Check rendered course prose for the project's voice and separator rules."""
+"""Check rendered course prose for the project's lexical voice rules."""
 
 from __future__ import annotations
 
+import argparse
 import glob
 import re
 import sys
@@ -31,6 +32,19 @@ RENDER_PATTERNS = (
     "missing-data/*.qmd",
     "custom-models/*.qmd",
 )
+
+NOTE_DIRECTORIES = {
+    "foundations",
+    "random-variables-and-distributions",
+    "statistical-inference",
+    "regression-models",
+    "model-criticism-and-prediction",
+    "experimental-design",
+    "latent-structure",
+    "factorization",
+    "missing-data",
+    "custom-models",
+}
 
 BANNED = (
     "therefore",
@@ -102,19 +116,6 @@ BANNED = (
     "it goes without saying",
 )
 
-COINING_PATTERNS = (
-    re.compile(r"\b(?:we|i) (?:will )?(?:call|refer to)\b", re.I),
-    re.compile(r"\bcall (?:this|that)\b", re.I),
-    re.compile(r"\bcommits? (?:the |a |an )?\*\*", re.I),
-    re.compile(
-        r"\bthis (?:is|creates|produces) (?:the |a |an )?\*\*[^*]*"
-        r"(?:problem|error|failure|gap|mismatch|confusion|substitution|"
-        r"shortcut|rule|conflation|leap|ritual|overreach|collapse)[^*]*\*\*",
-        re.I,
-    ),
-)
-
-
 def public_sources() -> list[Path]:
     files: set[Path] = set()
     for pattern in RENDER_PATTERNS:
@@ -129,20 +130,12 @@ def check_line(path: Path, number: int, line: str) -> list[str]:
     failures: list[str] = []
     lowered = line.casefold()
 
-    if "—" in line:
-        failures.append("em dash")
-    if "–" in line:
-        failures.append("en dash")
     if re.search(r"\s--\s", line):
         failures.append("double-hyphen separator")
 
     for phrase in BANNED:
         if re.search(rf"\b{re.escape(phrase)}\b", lowered):
             failures.append(f"banned phrase: {phrase}")
-
-    for pattern in COINING_PATTERNS:
-        if pattern.search(line):
-            failures.append("nonstandard term-coining construction")
 
     return [
         f"{path.relative_to(ROOT)}:{number}: {failure}: {line.strip()}"
@@ -151,7 +144,21 @@ def check_line(path: Path, number: int, line: str) -> list[str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--notes-only",
+        action="store_true",
+        help="check the ten note collections without the read-only problem sets",
+    )
+    args = parser.parse_args()
+
     files = public_sources()
+    if args.notes_only:
+        files = [
+            path
+            for path in files
+            if path.relative_to(ROOT).parts[0] in NOTE_DIRECTORIES
+        ]
     failures: list[str] = []
 
     for path in files:

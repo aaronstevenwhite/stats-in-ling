@@ -5,7 +5,11 @@ execute:
   message: false
 ---
 
-**Ordered-beta regression** represents three observable regions: $Y_i=0$, $0<Y_i<1$, and $Y_i=1$. We fit the same population formula to both MegaNegRaising sliders, as prespecified in the dataset audit.
+[**Ordered-beta regression**](https://doi.org/10.1017/pan.2022.20) represents three observable regions: $Y_i=0$, $0<Y_i<1$, and $Y_i=1$. We fit the same population formula to both MegaNegRaising sliders, as prespecified in the dataset audit.
+
+We first state the endpoint-and-interior likelihood, then fit both slider responses and compare the distinct processes governing endpoint use and interior location.
+
+This model combines the threshold logic from [ordinal regression](ordinal-regression.qmd) with the interior [beta distribution](../random-variables-and-distributions/beta-distribution.qmd). It adds a strong **shared-location assumption**: one predictor value $\eta_i$ simultaneously moves zero use, one use, and the center of interior responses. Separate endpoint logits plus a beta regression would relax that restriction.
 
 ```{r}
 #| label: load-meganegraising-ordered-beta
@@ -37,7 +41,51 @@ Y_i\sim\operatorname{Beta}(\mu_i\phi,(1-\mu_i)\phi),
 \qquad \mu_i=F(\eta_i).
 $$
 
+Let
+
+$$
+p_{0i}=F(\kappa_0-\eta_i),
+\qquad
+p_{1i}=1-F(\kappa_1-\eta_i),
+$$
+
+and $p_{mi}=F(\kappa_1-\eta_i)-F(\kappa_0-\eta_i)$. The contribution of one observed response is
+
+$$
+f(y_i\mid\eta_i,\kappa_0,\kappa_1,\phi)
+=
+\begin{cases}
+p_{0i}, & y_i=0,\\[4pt]
+p_{mi}\,\operatorname{Beta}(y_i\mid\mu_i\phi,(1-\mu_i)\phi),
+& 0<y_i<1,\\[4pt]
+p_{1i}, & y_i=1.
+\end{cases}
+$$
+
+The three regions form a valid distribution because
+
+$$
+p_{0i}
++p_{mi}\int_0^1
+\operatorname{Beta}(y\mid\mu_i\phi,(1-\mu_i)\phi)\,dy
++p_{1i}
+=p_{0i}+p_{mi}+p_{1i}=1.
+$$
+
+The logistic CDF $F$ keeps the ordered probabilities between zero and one and makes the location additive in log odds. It is a choice, not a consequence of bounded support. The precision $\phi$ controls interior beta variance at fixed $\mu_i$; it does not control endpoint mass directly.
+
 The visible likelihood below constrains the cutpoint gap and precision to be positive.
+
+The code-to-model map is:
+
+| Code | Model quantity |
+|---|---|
+| `design %*% beta` | $\eta_i$ |
+| `lower` | $\kappa_0$ |
+| `lower + exp(gap)` | $\kappa_1>\kappa_0$ |
+| `exp(log_precision)` | $\phi>0$ |
+| `p_zero`, `p_middle`, `p_one` | $p_{0i},p_{mi},p_{1i}$ |
+| `dbeta(..., log=TRUE)` | interior conditional density |
 
 ```{r}
 #| label: fit-ordered-beta
@@ -78,6 +126,37 @@ data.frame(response = c("neg-raising", "ease"),
            negative_log_likelihood = c(neg_fit$value, ease_fit$value))
 ```
 
+The starting values place the intercept near the empirical interior location, initialize contrasts at zero, set a finite ordered gap, and set moderate precision. They are computational launch points, not prior information. BFGS constructs an inverse-curvature approximation from successive gradients; `maxit` is an iteration ceiling, and `reltol` is a numerical stopping rule. The `1e-15` bounds prevent floating-point `log(0)` and should never be interpreted as observed pseudo-counts.
+
+The optimizer reports convergence, but a return code alone is not enough. A central finite-difference check evaluates whether the negative-log-likelihood gradient is near zero at the solution, and the Hessian eigenvalues check local positive curvature.
+
+```{r}
+#| label: check-ordered-beta-optimum
+finite_difference_gradient <- function(fit, y, design) {
+  vapply(seq_along(fit$par), function(j) {
+    step <- 1e-5 * max(1, abs(fit$par[[j]]))
+    plus <- minus <- fit$par
+    plus[[j]] <- plus[[j]] + step
+    minus[[j]] <- minus[[j]] - step
+    (
+      ordered_beta_nll(plus, y, design) -
+        ordered_beta_nll(minus, y, design)
+    ) / (2 * step)
+  }, numeric(1))
+}
+
+neg_gradient <- finite_difference_gradient(neg_fit, mnr$negraising, X)
+neg_hessian_eigenvalues <- eigen(
+  neg_fit$hessian,
+  symmetric = TRUE,
+  only.values = TRUE
+)$values
+data.frame(
+  maximum_absolute_gradient = max(abs(neg_gradient)),
+  minimum_hessian_eigenvalue = min(neg_hessian_eigenvalues)
+)
+```
+
 ```{r}
 #| label: ordered-beta-raw-and-fit
 #| echo: true
@@ -113,6 +192,8 @@ display <- merge(raw, fitted_bins, by = c("voice", "subject", "bin"))
 display$bin <- factor(display$bin, levels = bins)
 ```
 
+The ten interior bins are a display choice. They do not enter the likelihood, which uses each interior slider value directly through the beta density.
+
 ```{r}
 #| label: plot-ordered-beta
 #| echo: true
@@ -131,3 +212,22 @@ ggplot(display, aes(bin, group = subject)) +
 The fitted passive coefficient is `r round(beta[[which(colnames(X) == "voicepassive")]], 3)`, a shift on the ordered location scale. Interpretation belongs in the full predictive distribution above, not in that coefficient alone.
 
 These are fixed population fits. They omit participant and verb dependence and do not reproduce An and White's acceptability-weighted latent model. Ease remains a companion response, never a trial-level filter. The ordering also assumes that predictors move endpoint use and interior location through one latent dimension; condition-specific discrepancies in the plot are the relevant check.
+
+## Recap and check your understanding
+
+1. Which likelihood factor is used for an exact zero?
+2. Why does the beta density alone not handle exact endpoints?
+3. What substantive restriction is imposed by using the same $\eta_i$ for endpoint use and interior location?
+4. Does changing the plotting bins change the maximum-likelihood estimate?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. An exact zero contributes the lower endpoint mass $F(\kappa_0-\eta_i)$. <!-- dqr-allow: conceptual-answer -->
+2. A continuous beta distribution assigns probability zero to any exact point and has support only on the open interval. <!-- dqr-allow: conceptual-answer -->
+3. Predictors must move both endpoint probabilities and the interior beta mean along one ordered location dimension. <!-- dqr-allow: conceptual-answer -->
+4. No. Bins summarize fitted and empirical distributions for display; the likelihood uses unbinned responses. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+This closes the generalized-response branch. The [prediction module](../model-criticism-and-prediction/index.qmd) next asks how such fitted restrictions perform on observations that did not determine them.

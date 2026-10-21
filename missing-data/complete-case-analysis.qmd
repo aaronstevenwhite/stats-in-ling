@@ -6,6 +6,14 @@ title: "Complete-case analysis"
 
 The row unit is one speaker-by-vowel token. The exact missing-cell pattern is a property of the released table, not a count reported in the 1995 article. An `NA` means that this release contains no usable numeric estimate in the intended cell; it does not mean 0 Hz, and the release does not name a cell-specific cause.
 
+We define the complete-case rule, locate the unavailable steady measurements, compare the retained and deleted rows, and then state the assumptions under which deletion preserves a target.
+
+## Hillenbrand measurement dossier {#hillenbrand-measurement-dossier}
+
+The elicited forms have the shape /hVd/. Thus the released `ae` token is the vowel /æ/ in /hæd/. `token_id` joins an anonymized speaker code and vowel label; `speaker_type` and `speaker_id` retain the release's grouping and anonymous identity. We preserve those codes rather than infer demographic facts not stated in the local table.
+
+The acoustic columns answer different measurement questions. `duration_ms` is token duration in milliseconds, `f0_hz` is fundamental frequency, and `f1_steady_hz` through `f3_steady_hz` are the first three formant-frequency estimates at the release's visually selected steady-state sample. F1--F3 concern vocal-tract resonances; F0 concerns vocal-fold periodicity. The release also contains trajectory samples for the formants, but the present analysis uses one steady value per formant so that each row has a five-measurement target. This aggregation is part of the measurement protocol: it does not claim that the contour itself is constant.
+
 ## Defining the analysis set
 
 [**Complete-case analysis**](https://stefvanbuuren.name/fimd/sec-MCAR.html), also called listwise deletion, retains only rows observed on every variable required by an analysis. Let $J$ be that set of variables. For token $i$,
@@ -18,10 +26,10 @@ Because each $R_{ij}$ is zero or one, $C_i=1$ only when every required value is 
 
 $$
 \bar Y_{C=1}
-=\frac{\sum_{i=1}^{n}C_iY_i}{\sum_{i=1}^{n}C_i}.
+=\frac{\sum_{i:C_i=1}Y_i}{\sum_{i=1}^{n}C_i}.
 $$
 
-This is a mean over complete rows. It equals the mean over all eligible rows only under additional conditions on the [missingness mechanism](missingness-mechanisms.qmd) and the estimand.
+The restricted sum matters: when $C_i=0$, $Y_i$ may be undefined in the realized table, so the expression must not pretend to multiply an unavailable value by zero. This is a mean over complete rows. It equals the mean over all eligible rows only under additional conditions on the [missingness mechanism](missingness-mechanisms.qmd) and the estimand.
 
 We define $J$ using duration, F0, and the steady F1--F3 measurements.
 
@@ -51,9 +59,15 @@ stopifnot(
   all(table(hill$speaker_id) == 12L),
   sum(hill$complete_steady) == 1617L
 )
+
+hill[hill$token_id == "b01ae",
+     c("token_id", "speaker_type", "speaker_id", "vowel", "ipa",
+       steady_columns, "complete_steady")]
 ```
 
 The analysis retains `r format(sum(hill$complete_steady), big.mark = ",")` of `r format(nrow(hill), big.mark = ",")` recorded tokens and removes `r sum(!hill$complete_steady)`. The complete-case indicator is stored in the table rather than left to a modeling function's implicit row deletion.
+
+The displayed `b01ae` row makes the bridge explicit: all five required cells contain numbers, so each $R_{ij}=1$, their product is $C_i=1$, and the row enters the analysis. A row with either steady F2 or steady F3 equal to `NA` has one factor equal to zero and is excluded.
 
 ## Which steady measurements are absent?
 
@@ -199,6 +213,8 @@ The product is `r scales::percent(retention_comparison$proportion[1], accuracy =
 
 Under MCAR with respect to the variables in a stated analysis, complete rows form a random subset, so familiar complete-case estimates may preserve their full-data targets. MAR does not provide this guarantee automatically. If formant availability depends on observed duration or vowel and these variables are related to the estimand, unadjusted deletion may change the relevant distribution.
 
+MCAR is sufficient here, but it is not necessary for every target. A regression coefficient may remain consistently estimated when completeness is conditionally independent of the response given included predictors and the response model is correctly specified. A marginal mean generally requires an additional model or weighting step if retention varies with those predictors. Thus “complete cases are valid under MAR” is too broad: validity depends on which quantity is being estimated and which variables appear in the analysis.
+
 The condition also depends on the estimand. Missingness in a response and missingness in a predictor do not have identical consequences for every estimate. Thus a report should state which variables define $J$, how many rows remain, and which complete-row population the estimate describes.
 
 Complete-case analysis may be reasonable when missingness is rare, the retained sample remains adequate, and the selection assumptions are plausible for the target. These are substantive conditions, not properties conferred by `complete.cases()`.
@@ -214,6 +230,15 @@ Store the complete-case indicator. Report the variables used to define it, the n
 3. Which observed measurements distinguish the complete and incomplete sets?
 4. Why can those differences expose selection without identifying the missing F2 or F3 values?
 
+**Answers.** (1) Duration, F0, and steady F1--F3 define $J$. (2) The cross-tabulation shows that no token is missing both F2 and F3, a dependence fact that separate totals cannot recover. (3) Duration, F0, F1, and vowel label remain observed on both sides of the split. (4) They can show that retained and excluded rows differ on observed quantities, but they contain no measurement of the unavailable formant cell and thus cannot reveal its value or cause.
+
 Complete-case analysis retains rows observed on every required variable. In the Hillenbrand release, it removes `r sum(!hill$complete_steady)` tokens and changes the observed composition of the analysis set. [Iterative PCA imputation](pca-imputation.qmd) instead predicts missing matrix entries under a low-rank assumption; it changes the modeling assumptions rather than recovering an unobserved measurement.
+
+## Recap
+
+1. One Hillenbrand row is one speaker-by-/hVd/-vowel token, and the five-variable target combines duration, F0, and steady F1--F3.
+2. $C_i$ is the product of measurement-specific availability indicators, while the mean sums $Y_i$ only over realized complete rows.
+3. The 51 excluded rows alter the observed composition, and the consequences depend on the estimand rather than on a mechanism label alone.
+4. The next page builds the [standardized low-rank update](pca-imputation.qmd#defining-the-standardized-update) that predicts F2 and F3 instead of deleting their rows.
 
 [Previous: Missingness mechanisms](missingness-mechanisms.qmd) · [Next: Iterative PCA imputation](pca-imputation.qmd)

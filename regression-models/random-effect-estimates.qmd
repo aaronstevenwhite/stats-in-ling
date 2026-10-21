@@ -3,7 +3,9 @@ title: "Group-specific estimates"
 execute: {warning: false, message: false}
 ---
 
-The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model gives each observed group a partially pooled estimate of its deviation from the population relation. In a frequentist `lme4` fit, `ranef()` reports these values as **conditional modes**.
+The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model gives each observed group a partially pooled estimate of its deviation from the population relation. In a frequentist `lme4` fit, `ranef()` reports these values as [**conditional modes**](https://lme4.github.io/lme4/reference/ranef.html).
+
+This page first defines the optimization target for a conditional mode, then extracts its uncertainty and reconstructs group-specific coefficients without confusing deviations with complete effects.
 
 They are useful summaries of the fitted group structure. They are not raw group means, independently estimated coefficients, or error-free rankings.
 
@@ -31,6 +33,15 @@ $$
 $$
 
 The MALD focal model uses a two-dimensional participant vector, so software performs the corresponding multivariate calculation.
+
+The scalar formula follows by minimizing
+
+$$
+\frac{n_p}{2\sigma^2}(\bar y_p-\beta_0-b_p)^2+
+\frac{b_p^2}{2\tau_p^2}.
+$$
+
+The first term pulls $b_p$ toward the participant's mean deviation; the second pulls it toward the population center. Their curvatures determine both the mode and, under this normal model, its conditional variance $(n_p/\sigma^2+1/\tau_p^2)^{-1}$.
 
 ## Extracting estimates and conditional uncertainty
 
@@ -76,6 +87,15 @@ intercepts$order <- seq_len(nrow(intercepts))
 head(intercepts)
 ```
 
+The main extraction functions answer distinct questions:
+
+| Function | Returned quantity |
+|---|---|
+| `ranef(fit, condVar = TRUE)` | group deviations and their conditional variance |
+| `coef(fit)` | population coefficients plus each group's deviations |
+| `VarCorr(fit)` | fitted population covariance of group deviations |
+| `fixef(fit)` | population coefficients |
+
 The participant-level standard deviation in `VarCorr(fit)` describes variation across the modeled participant population. A row's `conditional_se` instead describes local uncertainty for one participant's conditional mode, conditional on the fitted population parameters. The two quantities answer different questions.
 
 ```{r}
@@ -120,4 +140,24 @@ $$
 
 `ranef(fit)` returns the deviations $\widehat b_{0p}$ and $\widehat b_{1p}$; `coef(fit)` adds the population coefficients. Both depend on the predictor reference points. Here the intercept refers to mean log frequency, mean log duration, and mean trial order because the predictors were standardized.
 
-Testing every conditional mode against zero would replace a population model with many separate hypotheses and would create a multiple-comparison problem. If a particular listener or dialect is a planned scientific target, that target should enter the population relation explicitly. The modes here describe modeled heterogeneity among sampled MALD listeners; they are not independently observed traits. The [next page](random-slopes.qmd) examines the participant-specific frequency associations.
+```{r}
+#| label: one-participant-coefficient-identity
+#| echo: true
+p <- rownames(participant_effects)[1L]
+data.frame(
+  participant = p,
+  population_intercept = fixef(fit)["(Intercept)"],
+  intercept_deviation = participant_effects[p, "(Intercept)"],
+  sum = fixef(fit)["(Intercept)"] + participant_effects[p, "(Intercept)"],
+  coef_result = coef(fit)$participant_id[p, "(Intercept)"]
+)
+```
+
+Testing every conditional mode against zero would replace a population model with many separate hypotheses and would create a multiple-comparison problem. If a particular listener or dialect is a planned scientific target, that target should enter the population relation explicitly. The modes here describe modeled heterogeneity among sampled MALD listeners; they are not independently observed traits.
+
+## Recap and check
+
+1. Does the largest conditional mode identify the fastest listener without uncertainty? No. Modes are shrunken estimates with overlapping conditional uncertainty, so their rank is uncertain.
+2. Is `VarCorr()` the uncertainty for one participant? No. It estimates population variation across groups.
+
+The [next page](random-slopes.qmd) examines the participant-specific frequency associations.

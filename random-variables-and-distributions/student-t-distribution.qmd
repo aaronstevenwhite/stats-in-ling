@@ -9,6 +9,8 @@ execute:
 
 Standardizing a sample mean with an estimated standard deviation adds uncertainty. Under independent normal sampling, the resulting statistic follows a **Student-$t$ distribution**, which has heavier tails than the standard normal.
 
+We construct the $t$ statistic from a normal variable and an estimated variance, connect its degrees of freedom to paired acoustic differences, and then compare its finite-sample tails with the normal limit.
+
 ## Construction
 
 If $Z\sim\mathcal N(0,1)$, $Q\sim\chi^2_\nu$, and $Z$ is independent of $Q$, then
@@ -29,6 +31,29 @@ $$
 T
 =\frac{\overline D-\mu_D}{S_D/\sqrt n}
 \sim t_{n-1}.
+$$
+
+To derive this statistic, normal sampling gives
+
+$$
+Z=\frac{\sqrt n(\overline D-\mu_D)}{\sigma_D}
+\sim\mathcal N(0,1)
+$$
+
+and the [variance construction](chi-squared-distribution.qmd) gives
+
+$$
+Q=\frac{(n-1)S_D^2}{\sigma_D^2}
+\sim\chi^2_{n-1}.
+$$
+
+The sample mean and residual projection are independent under normal sampling,
+so $Z$ and $Q$ are independent. Substitution into $Z/\sqrt{Q/(n-1)}$ cancels
+the unknown $\sigma_D$ and yields
+
+$$
+\frac{Z}{\sqrt{Q/(n-1)}}
+=\frac{\overline D-\mu_D}{S_D/\sqrt n}.
 $$
 
 The centered differences obey
@@ -71,6 +96,11 @@ sd_difference <- sd(paired$difference_hz)
 standard_error <- sd_difference / sqrt(n)
 t_observed <- mean_difference / standard_error
 df <- n - 1L
+null_difference <- 0
+two_sided_p <- 2 * pt(-abs(t_observed), df = df)
+critical_value <- qt(0.975, df = df)
+confidence_interval <- mean_difference +
+  c(-1, 1) * critical_value * standard_error
 
 t_grid <- data.frame(t = seq(-4, 4, length.out = 600L))
 t_grid$t_density <- dt(t_grid$t, df = df)
@@ -84,10 +114,27 @@ stopifnot(
 )
 
 data.frame(n, mean_difference, sd_difference, standard_error,
-           t_observed, df)
+           null_difference, t_observed, df, two_sided_p,
+           interval_lower = confidence_interval[1],
+           interval_upper = confidence_interval[2])
 ```
 
 The observed mean difference is `r sprintf("%.1f", mean_difference)` Hz, with standard error `r sprintf("%.2f", standard_error)` Hz. Relative to a zero-difference reference, the standardized statistic is `r sprintf("%.2f", t_observed)` with `r df` degrees of freedom. This calculation describes the paired measurements; its sampling interpretation still requires the model assumptions above.
+
+The $138$ degrees of freedom come from $n-1=139-1$, not from a chosen tuning
+value. Under the null value $\mu_D=0$, `pt()` computes the two-sided tail area
+`r format(two_sided_p, digits = 3)`. Inverting the central 95% acceptance region
+gives
+
+$$
+\overline d\ \pm\ t_{.975,138}\frac{s_D}{\sqrt{139}},
+$$
+
+or [`r sprintf("%.1f", confidence_interval[1])`,
+`r sprintf("%.1f", confidence_interval[2])`] Hz. This is a frequentist
+sampling interval: no posterior distribution enters its construction. A
+posterior would require a likelihood, a prior, and Bayes' rule for the unknown
+mean and scale.
 
 ```{r}
 #| label: plot-hillenbrand-paired-differences
@@ -98,6 +145,20 @@ ggplot(paired, aes(difference_hz)) +
   geom_vline(xintercept = mean_difference, color = "#8B1A1A", linewidth = 0.8) +
   labs(x = "Within-speaker F1 difference: /ae/ minus /i/ (Hz)",
        y = "Speakers") +
+  theme_classic(base_size = 12)
+```
+
+The reference assumes that the speaker-level differences are independent and
+normally distributed with one mean and variance. A quantile diagnostic checks
+the second part more directly than the histogram alone:
+
+```{r}
+#| label: plot-hillenbrand-paired-qq
+#| fig-cap: "Normal-quantile diagnostic for the 139 paired F1 differences. Systematic departure from the line would challenge the exact t reference."
+ggplot(paired, aes(sample = difference_hz)) +
+  stat_qq(color = "grey45") +
+  stat_qq_line(color = "#8B1A1A") +
+  labs(x = "Standard-normal quantile", y = "Observed F1-difference quantile") +
   theme_classic(base_size = 12)
 ```
 
@@ -118,6 +179,8 @@ ggplot(t_grid, aes(t)) +
 2. Why is the speaker, rather than the vowel token, the paired unit?
 3. Compare `dt()` and `dnorm()` farther into the tails.
 4. What assumption is needed to interpret the displayed $t$ density as the statistic's sampling distribution?
+5. Why is the displayed confidence interval not a 95% posterior credible
+   interval for $\mu_D$?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -126,7 +189,15 @@ ggplot(t_grid, aes(t)) +
 2. The speaker is the paired unit because each difference combines that speaker's /ae/ and /i/ tokens; the two vowel tokens are the measurements being paired. <!-- dqr-allow: empirical-answer -->
 3. Farther from zero, the $t_{138}$ density and tail probabilities exceed their standard-normal counterparts because estimating scale produces heavier tails. <!-- dqr-allow: empirical-answer -->
 4. The $t_{138}$ density is a sampling reference for the paired Hillenbrand F1 statistic only if the speaker-level differences are independent normal draws, or an approximation is justified. <!-- dqr-allow: empirical-answer -->
+5. It is obtained by inverting a sampling distribution under candidate fixed
+   values of $\mu_D$. No prior or posterior distribution on $\mu_D$ was
+   specified.
 
 </details>
 
-The [inverse-transform page](inverse-transform-sampling.qmd) returns to the empirical Turkish interrogative-lemma distribution and shows how to sample from it.
+The $t$ statistic divides an independent normal mean component by a
+chi-squared scale component, with $n-1=138$ degrees of freedom after one mean is
+estimated. Its tail areas and inverted intervals come from a sampling
+reference, not a posterior. The [inverse-transform
+page](inverse-transform-sampling.qmd) next turns a CDF into a sampling
+algorithm.

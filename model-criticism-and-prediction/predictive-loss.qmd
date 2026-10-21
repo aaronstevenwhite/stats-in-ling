@@ -6,6 +6,8 @@ The [training-and-test page](training-and-test-data.qmd) produced predictions fo
 
 A [**loss function**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) $L(y,\widehat y)$ assigns a nonnegative cost to predicting $\widehat y$ when the observed response is $y$. The [**predictive risk**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is expected loss on new responses from the population under study. A held-out mean loss estimates that expectation for the split and averaging unit stated by the analysis.
 
+We first compare squared and absolute loss, then show why row- and participant-weighted averages define different targets, and finally mark the gap between lower predictive loss and an explanation of the linguistic process.
+
 ## Squared and absolute loss
 
 The [**squared-error loss**](https://wanghemath.github.io/Book-ProbabilityStatisticalTheory/chapters/chapter-13-point-estimation2.html) is
@@ -42,9 +44,38 @@ $$
 
 Absolute loss grows linearly, and the conditional median is its optimal point prediction. Reporting RMSE and MAE can expose sensitivity to large errors, but the analysis should still designate a primary loss before comparing models.
 
-## Computing loss for held-out Natural Stories readers
+These optimal summaries follow from the loss, rather than from a convention. Let
+$a$ be a proposed point prediction and let
+$\mu(x)=\mathbb{E}[Y\mid X=x]$. For squared loss,
 
-The code reconstructs participant fold 1 from the [Natural Stories run](prediction-targets.qmd#natural-stories), fits the same fold-local regression, and computes the errors. It then averages squared and absolute loss in two ways: once over response rows and once within readers before averaging readers.
+$$
+\begin{aligned}
+\mathbb{E}[(Y-a)^2\mid X=x]
+&=\mathbb{E}[(Y-\mu(x)+\mu(x)-a)^2\mid X=x]\\
+&=\operatorname{Var}[Y\mid X=x]
+  +2(\mu(x)-a)\mathbb{E}[Y-\mu(x)\mid X=x]
+  +(\mu(x)-a)^2\\
+&=\operatorname{Var}[Y\mid X=x]+(\mu(x)-a)^2.
+\end{aligned}
+$$
+
+The cross-product vanishes because the conditional deviation has mean zero. Only
+the final term depends on $a$, and it is minimized at $a=\mu(x)$. For a continuous
+conditional distribution with CDF $F$, the slope of absolute-loss risk is
+
+$$
+\frac{\mathrm d}{\mathrm da}\mathbb{E}[|Y-a|\mid X=x]
+=F(a\mid x)-[1-F(a\mid x)]
+=2F(a\mid x)-1.
+$$
+
+The slope changes sign at $F(a\mid x)=1/2$, so a conditional median minimizes
+absolute loss. If the distribution has a flat median interval, every point in that
+interval is optimal.
+
+## The averaging unit is part of the target {#the-averaging-unit-is-part-of-the-target}
+
+The code reconstructs participant fold 1 from the [Natural Stories dossier](prediction-targets.qmd#natural-stories-measurement-dossier), fits the same fold-local regression, and computes the errors. Its [VTS](index.qmd#validation-target-specification) splits by participant, retains lexical predictors, refits transformations and coefficients, and targets similarly sampled readers of the represented stories. It then averages squared and absolute loss in two ways: once over response rows and once within readers before averaging readers.
 
 ```{r}
 #| label: natural-predictive-loss
@@ -114,6 +145,7 @@ participant_mae <- aggregate(
   list(participant_id = held_out_participant),
   mean
 )
+mean_participant_rmse <- mean(sqrt(participant_mse$x))
 
 loss_summary <- data.frame(
   averaging_unit = c("response row", "participant"),
@@ -174,7 +206,25 @@ ggplot2::ggplot(
 
 The row-weighted RMSE is `r sprintf("%.4f", loss_summary$rmse_log_rt[loss_summary$averaging_unit == "response row"])` and MAE is `r sprintf("%.4f", loss_summary$mae_log_rt[loss_summary$averaging_unit == "response row"])`. Giving each held-out reader equal weight yields RMSE `r sprintf("%.4f", loss_summary$rmse_log_rt[loss_summary$averaging_unit == "participant"])` and MAE `r sprintf("%.4f", loss_summary$mae_log_rt[loss_summary$averaging_unit == "participant"])`. The calculations use the same predictions. They differ because the second estimand first averages loss within each of the `r nrow(participant_mse)` readers.
 
+For the first held-out row, the code subtracts prediction
+`r sprintf("%.5f", prediction[1])` from observed log reading time
+`r sprintf("%.5f", natural$log_rt[test][1])`. The resulting error is
+`r sprintf("%.5f", error[1])`, its squared loss is
+`r sprintf("%.5f", error[1]^2)`, and its absolute loss is
+`r sprintf("%.5f", abs(error[1]))`. These are the quantities stored implicitly in
+`error^2` and `abs(error)` before any averaging occurs.
+
 Changing the averaging unit changes the estimand. Row weighting describes a randomly selected retained response from the fold. Participant weighting describes first selecting uniformly among held-out readers and then averaging that reader's responses. Neither is neutral, and neither becomes a story-level estimate merely because all stories occur in the data.
+
+There are also two distinct ways to report a reader-level root. The primary
+participant-weighted RMSE above is
+$\sqrt{G^{-1}\sum_g\operatorname{MSE}_g}$, which equals
+`r sprintf("%.4f", loss_summary$rmse_log_rt[loss_summary$averaging_unit == "participant"])`.
+Averaging reader-specific RMSEs instead gives
+$G^{-1}\sum_g\sqrt{\operatorname{MSE}_g} = `r sprintf("%.4f", mean_participant_rmse)`$.
+The square root is nonlinear, so these operations need not agree. The former assigns
+equal weight to each reader's mean squared loss before returning to the response
+scale; the latter averages already transformed reader summaries.
 
 ## Loss is not explanatory adequacy
 
@@ -189,4 +239,25 @@ Conversely, a theoretically meaningful coefficient can contribute little to held
 3. Why do row-weighted and participant-weighted losses differ when their prediction vector is identical?
 4. Can a nonzero coefficient fail to improve held-out loss?
 
-A loss function defines the consequence of each error, while the averaging unit determines what receives equal weight. The [previous page](training-and-test-data.qmd) constructed the split. The [next page](bias-variance-tradeoff.qmd) uses an empirically calibrated simulation to separate prediction bias and prediction variance.
+<details>
+<summary>Answers</summary>
+
+1. RMSE, because squaring makes large errors disproportionately influential.
+2. Log reading time, not milliseconds.
+3. Participant weighting gives each reader equal influence, while row weighting
+   gives more influence to readers with more retained responses.
+4. Yes. A nonzero association can be too small, unstable, or redundant with other
+   predictors to improve the chosen held-out loss.
+
+</details>
+
+## Recap and forward link
+
+1. Squared and absolute loss target the conditional mean and median, respectively.
+2. A loss is attached to each realized held-out error before aggregation.
+3. The averaging unit determines which empirical objects receive equal influence.
+
+The [previous page](training-and-test-data.qmd#participant-held-out-validation-target)
+constructed the split. The [next page](bias-variance-tradeoff.qmd#deriving-the-decomposition)
+uses an empirically calibrated simulation to separate prediction bias and prediction
+variance.

@@ -3,7 +3,9 @@ title: "Group heterogeneity and marginal dispersion"
 execute: {warning: false, message: false}
 ---
 
-The [Poisson mixed-model page](poisson-mixed-models.qmd) supplied one source of structured count variation: persistent differences across aligned passage pairs. A Poisson regression without that structure can appear overdispersed because it combines low-rate and high-rate pairs under one mean.
+The [Poisson mixed-model page](poisson-mixed-models.qmd) supplied one source of structured count variation: persistent differences across aligned passage pairs. A Poisson regression without that structure can appear overdispersed because it combines low-rate and high-rate pairs under one mean. The derivation uses the [expectation of a function](../random-variables-and-distributions/expectation-of-functions.qmd) and the distinction between conditional and marginal [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd).
+
+We first state the conditional Poisson claim, then average over the pair distribution, substitute fitted variation, and check which dispersion remains after conditioning.
 
 This extra variation arises after averaging over heterogeneous groups. It is not a new conditional response distribution. The distinction follows from the law of total variance.
 
@@ -59,6 +61,22 @@ $$
 
 Because $b\sim\mathcal N(0,\tau_p^2)$,
 
+$$
+
+This identity follows from the normal moment-generating function $M_B(t)=\exp(t^2\tau_p^2/2)$. Evaluating it at one and two gives
+
+$$
+\mathbb{E}[e^B]=M_B(1)=e^{\tau_p^2/2},
+\qquad
+\mathbb{E}[e^{2B}]=M_B(2)=e^{2\tau_p^2}.
+$$
+
+Thus
+
+$$
+\operatorname{Var}[e^B]
+=e^{2\tau_p^2}-e^{\tau_p^2}
+=e^{\tau_p^2}(e^{\tau_p^2}-1).
 $$
 \operatorname{E}[\exp(b)]
 =\exp\left(\frac{\tau_p^2}{2}\right),
@@ -164,6 +182,8 @@ dispersion_summary <- c(
 dispersion_summary
 ```
 
+The denominator subtracts the fixed-effect count and one fitted variance parameter. In a GLMM, however, the effective degrees of freedom consumed by partially pooled random effects are not exactly one per variance parameter or one per group. The reported Pearson ratio is thus a heuristic residual diagnostic, not a pivot with an exact chi-squared reference distribution.
+
 At the observed-data fit, the population-center mean for an English passage with 100 annotated words is `r sprintf("%.2f", conditional_mean)` Scenes. Averaging over new passage-pair heterogeneity raises the mean to `r sprintf("%.2f", marginal_mean)` and gives marginal variance `r sprintf("%.2f", marginal_variance)`. The resulting marginal variance-to-mean ratio is `r sprintf("%.3f", marginal_variance / marginal_mean)`.
 
 These values describe the fitted Poisson-lognormal model at one actual exposure value. They are not a simulated count example.
@@ -202,4 +222,18 @@ The conditional Pearson ratio is `r sprintf("%.3f", conditional_pearson_ratio)`,
 
 Two sides of the same passage pair share $b_p$. After that effect is averaged out, a high count on one side provides information that the pair has a high baseline, which in turn raises the expectation for the other side. A negative-binomial or observation-level dispersion term can change count variance but does not by itself encode this paired association.
 
+| Quantity | Poisson-lognormal claim | What it describes |
+|---|---|---|
+| Conditional variance | $\operatorname{Var}[Y_{pl}\mid b_p]=\lambda_{pl}(b_p)$ | count variation at a fixed pair deviation |
+| Marginal variance | $m_{pl}+m_{pl}^2[e^{\tau_p^2}-1]$ | variation across new pairs and counts |
+| Cross-row covariance | positive for the two sides sharing $b_p$ | paired dependence after the effect is averaged out |
+
 Random intercepts thus do not repair every dispersion pattern. They are licensed by a known repeated unit and explain one structured source of variation. Remaining conditional underdispersion, omitted predictors, varying associations, or another response family require separate model criticism.
+
+## Recap and check
+
+1. Can conditional Poisson variance coexist with marginal overdispersion? Yes. Averaging over pair heterogeneity adds the second total-variance term.
+2. Does extra marginal variance imply independent rows? No. A shared pair effect also induces cross-row covariance.
+3. Is the printed Pearson denominator exact for this GLMM? No. It is a declared heuristic because random effects use fractional effective information.
+
+The [model-criticism module](../model-criticism-and-prediction/) separates checks of conditional fit, predictive calibration, and dependence.

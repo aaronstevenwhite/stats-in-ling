@@ -6,6 +6,23 @@ execute:
 
 [BIC](choosing-a-mixture.qmd) penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation.
 
+The **validation-target specification (VTS)** is:
+
+1. **Split unit:** all twenty tokens from one speaker move together.
+2. **Score unit:** token log losses are averaged within speaker, then speaker means
+   receive equal weight.
+3. **Held-out information:** the speaker's complete unlabeled panel defines
+   within-speaker F1 and F2 coordinates.
+4. **Fold-local fit:** weights, means, and covariances use training speakers only.
+5. **Transfer target:** predictive density for similarly calibrated speaker panels
+   from the historical sampling frame.
+
+This is the [calibration-panel
+target](unsupervised-validation.qmd#the-calibration-panel-target): the held-out
+speaker supplies an unlabeled coordinate system but never updates the mixture.
+
+We reconstruct those folds, score both fixed mixture candidates by held-out density, and then separate predictive comparison from post-fit label alignment and population transfer.
+
 ## Reconstructing the data and speaker folds
 
 ```{r}
@@ -65,6 +82,29 @@ The folds exclude every one of a held-out speaker's `r unique(as.integer(table(v
 
 ## Held-out log loss
 
+For one held-out token, component \(k\) supplies conditional density
+\(\mathcal N(\mathbf x_i;\widehat{\boldsymbol\mu}_k,
+\widehat{\boldsymbol\Sigma}_k)\). Because the latent component is unobserved, the
+law of total probability gives
+
+$$
+\begin{aligned}
+p_M(\mathbf x_i\mid D_{\mathrm{train}})
+&=
+\sum_{k=1}^{K}
+\mathbb{P}(Z_i=k\mid D_{\mathrm{train}})
+p(\mathbf x_i\mid Z_i=k,D_{\mathrm{train}})\\
+&=
+\sum_{k=1}^{K}
+\widehat\pi_k
+\mathcal N(\mathbf x_i;
+\widehat{\boldsymbol\mu}_k,\widehat{\boldsymbol\Sigma}_k).
+\end{aligned}
+$$
+
+This weighted sum, rather than the density under the winning hard component, is
+what `mclust::dens(..., logarithm = TRUE)` returns.
+
 For a mixture fit to training speakers, the log loss of token $i$ is
 
 $$
@@ -81,6 +121,22 @@ d_i=L_i(B)-L_i(A).
 $$
 
 A negative value favors candidate $B$ for that token. Because speakers are the held-out groups, we first average token losses within speaker and compare the resulting paired speaker means.
+
+For speaker \(s\), let \(n_s\) denote the number of held-out tokens. The aggregation is
+
+$$
+\overline L_s(M)
+=
+\frac{1}{n_s}
+\sum_{i:\operatorname{speaker}(i)=s}
+-\log p_M(\mathbf x_i\mid D_{\mathrm{train}}).
+$$
+
+In these data, every speaker contributes `r unique(as.integer(table(vowels$speaker)))` summands. In the code, `negative_log_predictive_density` creates those summands and
+`group_by(speaker, fold, candidate)` followed by `mean()` creates one
+\(\overline L_s(M)\). Density is primary because a mixture is a probability model
+for acoustic vectors; hard-label accuracy would require a component-to-vowel map
+and would discard overlap.
 
 ## Fitting and scoring both candidates
 
@@ -204,6 +260,13 @@ ggplot2::ggplot(paired_loss, ggplot2::aes(
 
 The figure keeps the 76 paired speaker comparisons visible. Points left of zero favor G14 under predictive density; points right of zero favor K10.
 
+The standard errors in `loss_summary` describe dispersion among the 76 observed
+speaker means under this fixed five-fold assignment. They do not include
+uncertainty from the historical sampling frame, the within-speaker transformation,
+the candidate grid, or repeated fold construction. The paired scatter is thus more
+informative about heterogeneity than a confidence-interval interpretation of those
+bars would be.
+
 ## External alignment after prediction
 
 ```{r}
@@ -247,4 +310,29 @@ The mixture likelihood still treats transformed token rows as conditionally inde
 5. Why can predictive density, BIC, and intended-vowel alignment favor different candidates?
 6. Which first-token prediction is not evaluated here?
 
-Speaker-blocked log loss slightly favors G14 on average, while external alignment favors K10 in every fold. This disagreement is informative because the criteria evaluate different consequences of the same label-blind acoustic fits.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Speaker blocking prevents another token by the held-out participant from entering
+   mixture estimation.
+2. A negative value means G14 assigns the speaker's panel greater predictive density
+   on average.
+3. The reported paired mean identifies the lower held-out log-loss candidate.
+4. K10 has the higher external ARI in every fold.
+5. The three criteria target penalized in-sample density, held-out density, and
+   external partition alignment.
+6. The design does not evaluate a token from a new speaker with no calibration panel.
+
+</details>
+
+## Recap
+
+1. Held-out mixture density sums weighted component densities before taking a log.
+2. Speaker means, not tokens or folds, receive equal weight in the comparison.
+3. Predictive density and vowel-label alignment can favor different candidates
+   without contradiction.
+
+Speaker-blocked log loss slightly favors G14 on average, while external alignment
+favors K10 in every fold. This closes the latent-structure sequence by separating
+the probabilistic validation target from the linguistic interpretation that
+remains open.

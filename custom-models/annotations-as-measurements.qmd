@@ -8,6 +8,14 @@ The project site states that resources built in the project are distributed unde
 
 This release lets us analyze annotations as measurements. One row records whether one worker's selected description matches the final adjudicated description. Agreement with adjudication is observed. The validity of the adjudicated description is not.
 
+We audit that row-level measurement, separate three agreement summaries, fit a crossed item--worker model, and then compare its fitted rates with the raw role-class patterns.
+
+## Turkish PropBank measurement dossier {#turkish-propbank-measurement-dossier}
+
+The row unit is one worker judgment of one predicate-specific argument candidate. `predicate_lemma` and `sense_id` identify the predicate frame, `adjudicated_label` names the final role label, `selected_role_description` records the worker's choice, and `adjudicated_role_description` records the comparison target. `correct` is 1 exactly when those two descriptions match. Core roles are predicate-specific numbered arguments; adjunct descriptions concern more general circumstantial relations. The teaching contrast retains those two groups and excludes `not_argument` and `unresolved` because neither supplies the same core-versus-adjunct target.
+
+For instance, row `item_00001` records worker `worker_087` judging lemma `başla`, sense 1, and adjudicated core label `A1`. Both retained description fields are `neye başladığı`, so `correct = 1`. The privacy extract does not retain the source sentence or candidate span. We can thus inspect the actual retained judgment, but we cannot responsibly reconstruct its full Turkish context or supply a translation as if it came from the release.
+
 ## Loading individual judgments
 
 ```{r}
@@ -49,6 +57,15 @@ stopifnot(
   sum(turkish_analysis$role_group == "core") == 36672L,
   sum(turkish_analysis$role_group == "adjunct") == 16112L
 )
+
+turkish[turkish$item_id == "item_00001" &
+          turkish$worker_id == "worker_087",
+        c("item_id", "worker_id", "predicate_lemma", "sense_id",
+          "adjudicated_label", "role_group",
+          "selected_role_description", "adjudicated_role_description",
+          "correct")]
+
+table(turkish$role_group, useNA = "ifany")
 ```
 
 The binary response is
@@ -118,6 +135,8 @@ $$
 
 The fixed contrast compares adjudicated role classes at zero-valued item and worker intercepts. The crossed terms retain the repeated-measurement structure.
 
+The Bernoulli likelihood matches the binary agreement record, and the logit link maps additive effects to a valid probability. Normal item and worker intercepts assume exchangeable, approximately symmetric log-odds deviations; conditional independence assumes that rows are independent after those shared intercepts and role group are supplied. The additive form excludes role-specific worker effects. These choices follow the crossed measurement structure, but they remain assumptions that a residual or predictive check may challenge. Revisit [logistic regression](../regression-models/logistic-regression.qmd) for the inverse-logit map and [random effects](../regression-models/random-effects.qmd) for partial pooling.
+
 ```{r}
 #| label: fit-turkish-propbank
 #| message: false
@@ -184,11 +203,17 @@ turkish_summary <- merge(
 model_result <- data.frame(
   quantity = c(
     "Adjunct versus core coefficient",
+    "Adjunct versus core odds ratio",
+    "Reference core fitted probability",
+    "Reference adjunct fitted probability",
     "Likelihood-ratio chi-square",
     "Likelihood-ratio degrees of freedom"
   ),
   value = c(
     unname(turkish_fixed[["role_groupadjunct"]]),
+    exp(unname(turkish_fixed[["role_groupadjunct"]])),
+    turkish_fitted$fitted_probability[turkish_fitted$role_group == "core"],
+    turkish_fitted$fitted_probability[turkish_fitted$role_group == "adjunct"],
     turkish_comparison$Chisq[[2]],
     turkish_comparison$Df[[2]]
   )
@@ -196,6 +221,10 @@ model_result <- data.frame(
 
 knitr::kable(model_result, digits = 3)
 ```
+
+The first coefficient is a conditional log-odds difference. Exponentiating gives a conditional odds ratio; applying `plogis()` to the two design rows gives the reference probabilities for zero-valued item and worker intercepts. These are not marginal probabilities averaged over the random-effect populations.
+
+The likelihood-ratio comparison asks whether adding one role-group coefficient improves the nested baseline model fitted to the same rows. Its chi-squared calibration is asymptotic and presumes that both model fits are adequate. It does not compare the validity of core and adjunct adjudications; see [likelihood-ratio tests](../model-criticism-and-prediction/likelihood-ratio-tests.qmd).
 
 ## Showing raw and fitted agreement together
 
@@ -260,11 +289,23 @@ ggplot2::ggplot(
 
 Individual judgments agree with adjudicated core descriptions more often than with adjunct-like descriptions in this extract. The teaching contrast collapses the paper's multi-category role inventory into two release-based groups. It does not reproduce the paper's agreement calculations, estimate worker competence, or validate the final label. Numbered core roles also remain predicate-specific rather than universal thematic categories.
 
+The plot deliberately combines two uncertainty summaries with different targets. The raw interval is an exact binomial interval that treats the displayed group as a simple collection of binary rows; it does not account for repeated items or workers. The crossed-model interval is a large-sample Wald interval for a reference fitted probability, transformed from the linear-predictor scale. Agreement between them is descriptive, not evidence that their assumptions coincide.
+
 ::: {.callout-note title="Check the measurement target"}
 1. What event makes `correct` equal to one?
 2. Why is this response not the paper's Cohen or Fleiss $\kappa$?
 3. Which repeated units enter the crossed model?
 4. Why is the fitted probability not a worker-competence estimate?
+
+**Answers.** (1) `correct = 1` when the selected and adjudicated descriptions match. (2) It is an individual binary comparison to later adjudication, while the reported $\kappa$ statistics use different raters, aggregation, categories, and denominators. (3) Argument-candidate items and workers enter as crossed intercepts. (4) The outcome is agreement under one protocol and one adjudicated target; it does not observe general competence or independent truth.
 :::
+
+## Recap
+
+1. One retained row is one worker's role-description choice for one predicate-specific argument candidate.
+2. Agreement with adjudication, adjudication validity, and published $\kappa$ statistics are different quantities.
+3. The crossed Bernoulli--logit model separates the role-group contrast from repeated item and worker variation under exchangeability and additivity assumptions.
+4. Raw exact intervals and model-based Wald intervals answer different uncertainty questions.
+5. The next page isolates the meaning of an [annotator location effect](annotator-effects.qmd#adding-one-location-term) in the UDS model.
 
 [Previous: Parameter recovery](parameter-recovery.qmd) · [Next: Annotator effects](annotator-effects.qmd)

@@ -6,6 +6,15 @@ The [likelihood-ratio page](likelihood-ratio-tests.qmd) fixed a Provo position t
 
 The [**optimism of training error**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is the fact that performance on observations used for fitting tends to be better than expected performance on new observations. An [**information criterion**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) estimates a correction by combining fitted likelihood with a complexity penalty. Its score is relative to compatible candidates; the absolute value has no standalone linguistic unit.
 
+The [Provo dossier](likelihood-ratio-tests.qmd#provo-measurement-dossier) reminds us
+that one likelihood contribution is an aggregated content-word position. Its mean
+log FFD averages logged reader fixations, and positions remain grouped within 55
+passages. Those facts determine what the criteria can approximate.
+
+We first derive the distinct penalties used by AIC and BIC, then observe their disagreement on the fixed Provo comparison, and finally identify the response, observation unit, and sampling assumptions that neither criterion can choose for us.
+
+## Information criteria compared {#information-criteria-compared}
+
 ## AIC: fit plus a parameter-count penalty
 
 Let $\ell$ be maximized log likelihood and $k$ the number of likelihood parameters. The [**Akaike information criterion (AIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
@@ -20,6 +29,38 @@ $$
 
 Greater maximized log likelihood lowers the first term; additional parameters increase the second. Lower AIC is preferred. The penalty is motivated as an approximation to relative expected predictive discrepancy, not as a significance threshold.
 
+The factor 2 can be motivated by a local expansion. Under a regular correctly
+specified model, the maximum-likelihood estimate varies approximately as
+
+$$
+\widehat\theta-\theta_0
+\ \dot\sim\
+\operatorname{Normal}\left(0,\frac{1}{n}I(\theta_0)^{-1}\right).
+$$
+
+A second-order expansion of new-data log likelihood around $\theta_0$ contains the
+quadratic term
+
+$$
+n(\widehat\theta-\theta_0)^T I(\theta_0)
+(\widehat\theta-\theta_0).
+$$
+
+Its expectation is
+
+$$
+\operatorname{tr}\left[
+nI(\theta_0)\frac{I(\theta_0)^{-1}}{n}
+\right]
+=\operatorname{tr}(I_k)=k.
+$$
+
+Fitting and evaluating on the same observations gains about $k$ log-likelihood
+units relative to evaluation on new observations. On the $-2\ell$ scale, correcting
+that optimism adds approximately $2k$. This argument depends on a regular,
+identified likelihood and an effective observation unit compatible with its
+information calculation.
+
 ## BIC: a different penalty and motivation
 
 The [**Bayesian information criterion (BIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf) is
@@ -30,11 +71,50 @@ $$
 
 where $n$ is the sample size supplied to the approximation. Its penalty grows with $\log n$. BIC is not merely a universally stricter AIC: it arises from a different approximation connected to model evidence under additional assumptions.
 
+Begin with the marginal likelihood for model $M$:
+
+$$
+p(y\mid M)=\int L(\theta;y)\pi(\theta\mid M)\,\mathrm d\theta.
+$$
+
+A Laplace approximation expands the log integrand around its interior mode. If the
+observed information grows like $nI(\widehat\theta)$, then
+
+$$
+\begin{aligned}
+\log p(y\mid M)
+&\approx
+\ell(\widehat\theta)
++\log\pi(\widehat\theta)
++\frac{k}{2}\log(2\pi)
+-\frac12\log|nI(\widehat\theta)|\\
+&=
+\ell(\widehat\theta)-\frac{k}{2}\log n+O(1).
+\end{aligned}
+$$
+
+Multiplying by $-2$ and dropping candidate-specific terms treated as bounded gives
+$-2\ell+k\log n$. This approximation assumes, among other things, identifiable
+regular parameters, a locally positive smooth prior, and an information scale that
+really grows with the declared $n$.
+
 Repeated linguistic data can make the meaning of $n$ delicate. The Provo teaching table contains position summaries rather than reader-level observations, so its criterion calculation uses the number of retained positions. It cannot convert those positions into independent readers or passages.
 
 ## The Provo criterion disagreement
 
-The code reloads the [Provo table introduced on the preceding page](likelihood-ratio-tests.qmd#provo-corpus), refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the residual scale parameter.
+The code reloads the [Provo table introduced on the preceding page](likelihood-ratio-tests.qmd#provo-measurement-dossier), refits the identical linear and quadratic models, and computes both criteria. The likelihood parameter count returned by `logLik()` includes the residual scale parameter.
+
+The bookkeeping differs from the grouping structure:
+
+| model | mean coefficients | likelihood parameters | grouping units retained in the table |
+|:--|--:|--:|:--|
+| linear | 2 | 3, including residual scale | positions nested within 55 passages | <!-- dqr-allow: empirical-answer -->
+| quadratic | 3 | 4, including residual scale | positions nested within 55 passages | <!-- dqr-allow: empirical-answer -->
+
+Thus the calculation uses $n=1{,}593$ position summaries because those are the rows
+whose Gaussian densities are multiplied. It does not claim that 1,593 independent
+passages or readers were observed. Dependence among positions makes the usual
+large-sample motivation questionable even when the software calculation is exact.
 
 ```{r}
 #| label: provo-information-criteria
@@ -109,6 +189,12 @@ ggplot2::ggplot(
 
 Both criteria use the same `r format(nrow(provo), big.mark = ",")` position summaries. AIC prefers the `r criteria$model[which.min(criteria$aic)]` model; the other model is worse by `r sprintf("%.3f", max(criteria$delta_aic))` AIC points. BIC prefers the `r criteria$model[which.min(criteria$bic)]` model; the other model is worse by `r sprintf("%.3f", max(criteria$delta_bic))` BIC points. The empirical disagreement follows from applying different penalties to a modest fitted-likelihood gain.
 
+In the code, `log_likelihood` is $\ell$, `likelihood_parameters` is $k$, and
+`n_positions` is the supplied $n$. `AIC()` computes $-2\ell+2k`; `BIC()` computes
+$-2\ell+k\log n`; and subtracting each column minimum produces the plotted relative
+differences. The table is thus the numerical crosswalk for every term in both
+criteria.
+
 This is more informative than declaring either criterion decisive. The candidates are close enough that a defensible change in approximation can reverse the ordering. The plot shows only each model's distance from the preferred score; it does not add thresholds or labels that the criteria do not supply.
 
 ## Keeping responses and observations fixed
@@ -132,4 +218,24 @@ An information-criterion difference is not a conventional significance threshold
 3. Why must both candidates use the same response rows and response scale?
 4. Which held-out unit is not represented by either criterion calculation?
 
-Information criteria combine fitted likelihood with an approximation-specific complexity penalty. The [previous page](likelihood-ratio-tests.qmd) calibrated the nested restriction; the [next page](leave-one-out-cross-validation.qmd) obtains exact omitted-position predictions under a fixed Bayesian specification.
+<details>
+<summary>Answers</summary>
+
+1. $-2\ell$ rewards fitted likelihood and $2k$ penalizes estimated flexibility.
+2. AIC adds $2k$, while BIC adds $k\log n$ under a different approximation.
+3. Otherwise a score difference would mix the candidate-model difference with a
+   change in the modeled observations.
+4. Neither calculation directly omits a complete passage or reader.
+
+</details>
+
+## Recap and forward link
+
+1. AIC corrects regular training-fit optimism by approximately $2k$.
+2. BIC uses a Laplace approximation with penalty $k\log n$.
+3. The Provo $n$ is the number of aggregated position rows, not the number of
+   independent passages.
+
+The [previous page](likelihood-ratio-tests.qmd#provo-measurement-dossier)
+calibrated the nested restriction; the [next page](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update)
+obtains exact omitted-position predictions under a fixed Bayesian specification.

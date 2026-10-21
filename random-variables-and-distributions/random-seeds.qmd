@@ -7,7 +7,15 @@ execute:
   message: false
 ---
 
-A pseudorandom generator produces a deterministic sequence from an initial state. A **random seed** records that state, allowing a stochastic computation to be reproduced exactly. Reproducing a sequence is not the same as collecting a new linguistic sample.
+A pseudorandom generator produces a deterministic sequence from an initial state. A [**random seed**](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Random.html) records that state, allowing a stochastic computation to be reproduced exactly. Reproducing a sequence is not the same as collecting a new linguistic sample.
+
+The integers used below are arbitrary labels for generator states. Their
+magnitudes have no probabilistic meaning. A generator state determines where
+the next call begins in a deterministic pseudorandom stream; it does not make
+the simulated observations statistically independent of the model that
+generated them.
+
+We rebuild the Turkish lemma sampler, repeat it under matching and different seeds, and then separate computational reproducibility from replication with newly collected linguistic data.
 
 ## Repeating the Turkish lemma sampler
 
@@ -68,6 +76,12 @@ data.frame(
 
 Calling `set.seed()` restores the generator state. The same sampler then consumes the same uniform sequence and returns the same lemma sequence. The second seed changes the Monte Carlo realization but not the target PMF.
 
+Setting the seed *inside* a reusable function has a cost: every call with the
+default seed would return the same draws, even when a caller expects fresh
+Monte Carlo replicates. A more composable design sets the seed once in the
+analysis script and lets the function consume the current stream, or accepts a
+seed only when exact per-call reproduction is explicitly wanted.
+
 ```{r}
 #| label: plot-seed-ud-questions
 #| fig-cap: "Cumulative simulated proportion of ne under two seeds. The horizontal line is the empirical target probability."
@@ -82,12 +96,20 @@ ggplot(paths, aes(draw, cumulative_ne, color = sequence)) +
 
 Both paths fluctuate because each is finite. A seed makes those fluctuations inspectable and debuggable; choosing a different seed is not a robustness analysis by itself. Robustness requires examining the distribution of results across many independently generated sequences or using an exact calculation when one is available.
 
+This fluctuation is [**Monte Carlo error**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html), the gap between a finite simulation
+summary and its target under the simulation model. It is distinct from
+sampling uncertainty in the corpus and from model misspecification. The [later
+Monte Carlo treatment](../statistical-inference/monte-carlo-integration.qmd#two-uncertainties)
+separates these uncertainties formally.
+
 ## Check your understanding
 
 1. Confirm that `draw_a1` and `draw_a2` agree element by element.
 2. Move `set.seed()` outside the function and explain how the behavior changes.
 3. Repeat the final proportion across many seeds and plot its distribution.
 4. Why does setting a seed not address sentence-level dependence in the corpus?
+5. Why can resetting one fixed seed inside every bootstrap replicate invalidate
+   the intended comparison across replicates?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -96,7 +118,14 @@ Both paths fluctuate because each is finite. A seed makes those fluctuations ins
 2. With `set.seed()` outside the function, successive calls consume later parts of the random stream and differ, though rerunning the whole seeded sequence remains reproducible. <!-- dqr-allow: empirical-answer -->
 3. Across seeds 1–1,000 with 250 draws each, the *ne* proportion has mean 0.878912, standard deviation 0.021040, and range 0.804–0.940 around the empirical target 0.880240. <!-- dqr-allow: empirical-answer -->
 4. A seed controls computational reproducibility but does not change the fact that corpus tokens can share sentences, registers, or other sampling units. <!-- dqr-allow: empirical-answer -->
+5. Every replicate would reuse the same pseudorandom choices instead of
+   advancing to a new resample, so the apparent collection of replicates could
+   contain duplicates by construction.
 
 </details>
 
-The [joint-distribution page](joint-probability.qmd) turns from simulation to paired measurements in the English dative data.
+A seed is an arbitrary label for a computational state. Reproducing that state
+does not establish statistical independence, and Monte Carlo error is not the
+same as corpus sampling uncertainty. The [joint-distribution
+page](joint-probability.qmd) now turns from simulation to paired measurements in
+the English dative data.

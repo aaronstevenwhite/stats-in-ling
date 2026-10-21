@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-[Stan](https://mc-stan.org/) samples a posterior after the analyst declares data, parameters, and density contributions. The passage-level Student-t program below corresponds exactly to the robust model introduced on the [nonconjugate-posterior page](beyond-conjugacy.qmd).
+[Stan](https://mc-stan.org/) samples a posterior after the analyst declares data, parameters, and density contributions. The passage-level Student-t program below corresponds exactly to the robust model introduced on the [nonconjugate-posterior page](beyond-conjugacy.qmd#a-robust-location-scale-model).
+
+We first translate the mathematical model into a complete Stan program, then prepare the observed passage contrasts and fit that exact target, and finally verify the factorization and inspect adequacy before treating the draws as inferential output.
 
 ## The complete program
 
@@ -47,6 +49,15 @@ The data block contains the 55 observed passage contrasts and the empirically ca
 
 The half-normal prior is represented by the lower bound on `sigma` together with a zero-centered normal density. Stan transforms this constrained parameter internally and applies the required Jacobian on its unconstrained sampling scale.
 
+| Mathematical object | Stan statement | Meaning |
+|---|---|---|
+| $\mu\sim\operatorname{Normal}(0,s_\mu)$ | `mu ~ normal(0, prior_mu_sd)` | add the location-prior log density |
+| $\sigma\sim\operatorname{HalfNormal}(0,s_\sigma)$ | lower bound plus `sigma ~ normal(...)` | restrict support and add the half-normal shape |
+| $Y_j\mid\mu,\sigma\sim t_\nu(\mu,\sigma)$ | `y ~ student_t(nu, mu, sigma)` | add all 55 conditionally independent likelihood terms |
+| $\exp(\mu)$ | `geometric_duration_ratio = exp(mu)` | transform each joint posterior draw |
+| $\widetilde Y_j$ | `student_t_rng(...)` | simulate one replicated passage contrast |
+| $\log p(y_j\mid\mu,\sigma)$ | `student_t_lpdf(...)` | retain one pointwise log-likelihood contribution |
+
 ## Preparing the observed data
 
 ```{r}
@@ -73,6 +84,7 @@ The reference run uses four data-scaled initial values constructed from the post
 
 ```{r}
 #| label: construct-provo-stan-initial-values
+#| code-fold: true
 log_posterior_eta <- function(eta) {
   mu <- eta[[1L]]
   sigma <- exp(eta[[2L]])
@@ -138,6 +150,8 @@ do.call(rbind, initial_values(stan_offsets))
 
 The sampling call is then fully specified by the observed data, the program, and these initial values.
 
+Four chains provide independent starting trajectories for between-chain comparison. The 750 warmup iterations adapt step size and mass geometry; the 1,000 retained iterations per chain determine the available Monte Carlo information. `adapt_delta = .90` favors relatively accurate integration, while `max_treedepth = 10` bounds work per transition. These are declared computational choices and must be judged using the diagnostics that follow.
+
 ```{r}
 #| label: show-provo-stan-fit
 #| eval: false
@@ -200,6 +214,15 @@ $$
 
 Concise code does not make passages a probability sample or recover reader-level measurements. Stan can correctly sample the declared posterior even when the declared model is scientifically inadequate. Computation, prior implications, posterior prediction, and the correspondence between rows and modeled units require separate checks.
 
+## Recap and forward link
+
+1. The data block contains observed values and fixed constants; the parameters block declares unknowns.
+2. Constraints define support and transformations, while priors define density on that support.
+3. Each model statement corresponds to a prior or likelihood term in the posterior factorization.
+4. Successful sampling validates neither aggregation nor the observation model.
+
+The [trace-plot page](checking-markov-chains.qmd#production-traces) begins the diagnostic sequence using these production draws.
+
 ## Check your understanding
 
 1. Which objects belong in the data block?
@@ -216,5 +239,3 @@ Concise code does not make passages a probability sample or recover reader-level
 4. Stan can sample the declared passage-level posterior correctly even if aggregation discarded readers or the likelihood poorly represents the scientific design. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [trace-plot page](checking-markov-chains.qmd) begins the diagnostic sequence using these production draws.

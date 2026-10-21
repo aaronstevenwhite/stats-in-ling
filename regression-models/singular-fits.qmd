@@ -3,7 +3,9 @@ title: "Singular fits"
 execute: {warning: false, message: false}
 ---
 
-The [random-effects-correlation page](random-effect-correlations.qmd) represented intercept and slope deviations with a covariance matrix. A **singular fit** occurs when the estimated covariance matrix has lower rank than the formula allows.
+The [random-effects-correlation page](random-effect-correlations.qmd) represented intercept and slope deviations with a covariance matrix. A [**singular fit**](https://lme4.github.io/lme4/reference/isSingular.html) occurs when the estimated covariance matrix has lower rank than the formula allows.
+
+We first connect rank to covariance dimensions, then fit a predeclared MALD stress test, inspect the collapsed direction, and separate singularity from optimizer convergence.
 
 ## Rank and covariance dimensions
 
@@ -31,6 +33,8 @@ In a two-dimensional intercept-slope model, singularity can arise when a varianc
 ## Fitting a predeclared MALD stress test
 
 The stress-test model asks participants to vary in an intercept, frequency slope, duration slope, trial-order slope, and frequency-by-duration interaction slope. It also gives words a trial-order slope. The fixed interaction remains in both models because the diagnostic concerns the group covariance structure.
+
+Before fitting, the design audit asks whether each requested slope's predictor varies within its group. Frequency, duration, trial order, and their frequency-by-duration product vary within participants. Trial order varies within words because the same word occurs at different points for different participants. This support is necessary, but it does not guarantee that the data estimate all variances and correlations away from a boundary.
 
 ```{r}
 #| label: mald-singular
@@ -75,6 +79,8 @@ singularity_check <- c(
 )
 singularity_check
 ```
+
+`isSingular(..., tol = 1e-4)` declares a fitted covariance direction effectively zero relative to the fitted scale at that numerical tolerance. It is a diagnostic, not a theorem about the population. A different tolerance can change a borderline flag, so the rotated standard deviations below remain part of the evidence.
 
 The model requesting participant interaction-slope variation is singular. Removing only that unsupported random slope gives the prespecified nonsingular revision. This comparison does not remove the fixed frequency-by-duration interaction or the item trial-order slope.
 
@@ -123,6 +129,15 @@ ggplot(
 
 An optimizer can reach a boundary optimum successfully, producing a singular fit without a convergence failure. Conversely, a nonsingular covariance estimate can accompany an optimizer warning. `isSingular()` and the optimizer diagnostics answer different questions and both should be checked.
 
+`bobyqa` is used because the stress test has many bounded covariance parameters; `maxfun = 200000` gives that optimizer more evaluations than its default. <!-- dqr-allow: algorithm-setting --> Neither choice adds information to the design. A boundary estimate concerns the fitted optimum, a convergence warning concerns whether the optimizer reached an adequate optimum, and nonidentifiability concerns whether distinct parameter values imply indistinguishable behavior. These problems may coincide, but they are not synonyms.
+
 A singular fit should send us back to the design: which predictor contrasts vary within which groups, how many group levels support the covariance, and which population variation the scientific claim requires. Plausible responses include removing an unsupported correlation, removing an unsupported slope, collecting more within-group contrasts, or using a regularized model. These moves encode different population assumptions.
 
-The MALD revision above follows a predeclared design audit: it removes only the collapsed participant interaction slope. It is not a general stepwise-selection recipe, and it should not be used to search for a preferred fixed-effect conclusion. The [next page](generalized-linear-mixed-models.qmd) carries the same group-variation logic to a binary linguistic response.
+The decision sequence is: (i) inventory within-group contrasts before fitting, (ii) inspect convergence and rank separately, (iii) identify the collapsed covariance direction, (iv) apply the prespecified revision tied to the scientific target, and (v) refit and report the changed population assumption. The MALD revision removes only the collapsed participant interaction slope. It is not a general stepwise-selection recipe, and it should not be used to search for a preferred fixed-effect conclusion.
+
+## Recap and check
+
+1. Does a singular fit necessarily mean optimizer failure? No. The optimizer may successfully locate a boundary optimum.
+2. Does increasing `maxfun` repair an unsupported random slope? No. It changes the computational budget, not the information in the design.
+
+The [next page](generalized-linear-mixed-models.qmd) carries the same group-variation logic to a binary linguistic response.

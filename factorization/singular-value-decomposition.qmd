@@ -4,6 +4,8 @@ title: "Singular value decomposition"
 
 One rank-one pattern leaves substantial structure in the centered [PHOIBLE matrix](rank-one-structure.qmd). The singular value decomposition (SVD) expresses that matrix as a sequence of mutually orthogonal rank-one terms, ordered by the centered sum of squares each term represents.
 
+We state the reduced decomposition, expand it into rank-one terms, explain the optimal truncation result, and then compute and interpret the PHOIBLE spectrum with its directional limits.
+
 ## Stating the reduced decomposition
 
 For $\mathbf Z\in\mathbb R^{n\times p}$ with rank $r$, the reduced SVD is
@@ -39,6 +41,29 @@ d_1\ge d_2\ge\cdots\ge d_r>0.
 $$
 
 The vectors $\mathbf u_k$ locate the row objects along component $k$, the vectors $\mathbf v_k$ define the corresponding column directions, and $d_k$ gives the component's strength.
+
+The **full SVD** pads these matrices to square orthogonal bases,
+\(\mathbf U_{\mathrm{full}}\in\mathbb R^{n\times n}\) and
+\(\mathbf V_{\mathrm{full}}\in\mathbb R^{p\times p}\), with additional zero
+singular values. The reduced SVD keeps only the \(r\) nonzero directions needed
+to reconstruct \(\mathbf Z\). These notes use the reduced form because the padded
+null-space directions contribute no fitted matrix.
+
+For the small matrix
+
+$$
+\mathbf Z=
+\begin{bmatrix}
+3&0\\ % dqr-allow: symbolic-derivation
+0&1 % dqr-allow: symbolic-derivation
+\end{bmatrix},
+$$
+
+the SVD has \(\mathbf U=\mathbf V=\mathbf I_2\) and
+\(\mathbf D=\operatorname{diag}(3,1)\). The first term reconstructs only the <!-- dqr-allow: symbolic-derivation -->
+upper-left cell, while the second reconstructs the lower-right cell. The example
+is simple on purpose: it makes the ordered orthogonal contributions visible
+without hiding them inside software.
 
 ## From a matrix product to rank-one terms
 
@@ -92,6 +117,45 @@ $$
 $$
 
 Thus the singular values order components by their contribution to the observed centered matrix.
+
+## Why truncation is the best rank-\(K\) approximation
+
+The squared Frobenius norm of one singular term is
+
+$$
+\begin{aligned}
+\left\|d_k\mathbf u_k\mathbf v_k^{\mathsf T}\right\|_F^2
+&=
+d_k^2
+\operatorname{tr}\left(
+\mathbf v_k\mathbf u_k^{\mathsf T}
+\mathbf u_k\mathbf v_k^{\mathsf T}
+\right)\\
+&=
+d_k^2
+(\mathbf u_k^{\mathsf T}\mathbf u_k)
+(\mathbf v_k^{\mathsf T}\mathbf v_k)\\
+&=d_k^2.
+\end{aligned}
+$$
+
+Distinct singular terms are orthogonal under the Frobenius inner product because
+the corresponding columns of \(\mathbf U\) and \(\mathbf V\) are orthogonal.
+Thus omitting term \(k\) leaves an unavoidable orthogonal squared residual
+\(d_k^2\). A rank-\(K\) matrix can retain at most \(K\) independent directions, so
+retaining the \(K\) largest \(d_k^2\) contributions leaves the smallest possible
+orthogonal residual:
+
+$$
+\min_{\operatorname{rank}(\mathbf B)\le K}
+\|\mathbf Z-\mathbf B\|_F^2
+=
+\sum_{k>K}d_k^2.
+$$
+
+This is the Eckart--Young result in the geometry needed here. It establishes
+optimality for squared cell reconstruction, not for a linguistic interpretation
+or held-out binary prediction.
 
 ## Computing the PHOIBLE decomposition
 
@@ -155,6 +219,17 @@ orthogonality_checks <- c(
 orthogonality_checks
 ```
 
+The R-to-mathematics crosswalk is direct:
+
+| R value | Mathematical object |
+|---|---|
+| `decomposition$u` | \(\mathbf U\) |
+| `diag(decomposition$d)` | \(\mathbf D\) |
+| `decomposition$v` | \(\mathbf V\) |
+| `decomposition$u[, k]` | \(\mathbf u_k\) |
+| `decomposition$d[k]` | \(d_k\) |
+| `decomposition$v[, k]` | \(\mathbf v_k\) |
+
 The empirical training matrix is `r nrow(Z)` by `r ncol(Z)`. The largest absolute departures from the two orthogonality identities are `r format(max(orthogonality_checks), scientific = TRUE, digits = 3)` under this numerical fit.
 
 ## Reading the empirical spectrum
@@ -202,4 +277,26 @@ If singular values are equal or nearly equal, rotations within the corresponding
 4. What does the scree plot summarize, and what does it not select?
 5. Why may an SVD component reverse sign across software runs?
 
-The [next page](principal-component-analysis.qmd) shows why the same right singular vectors are the principal-component directions of the centered PHOIBLE matrix.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. In the reduced form they are \(n\times r\), \(r\times r\), and \(p\times r\).
+2. It is an outer product of two nonzero vectors.
+3. Orthogonal singular terms have squared norms \(d_k^2\), so the Pythagorean
+   identity applies.
+4. It summarizes in-sample centered sum of squares, not predictive rank.
+5. Reversing both singular vectors leaves their outer product unchanged.
+
+</details>
+
+## Recap
+
+1. The reduced SVD expresses the observed matrix as ordered orthogonal rank-one
+   terms.
+2. Each term captures \(d_k^2\) centered sum of squares.
+3. Truncation is optimal for rank-constrained squared reconstruction and no broader
+   target by itself.
+
+The [next page](principal-component-analysis.qmd#beginning-with-variation-around-column-means)
+shows why the same right singular vectors are the principal-component directions
+of the centered PHOIBLE matrix.

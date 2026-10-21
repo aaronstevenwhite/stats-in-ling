@@ -3,7 +3,9 @@ title: "Random-intercept models"
 execute: {warning: false, message: false}
 ---
 
-The [partial-pooling page](random-effects.qmd) gave participants and words deviations from a shared population center. A **random-intercept model** places those deviations inside a regression equation.
+The [partial-pooling page](random-effects.qmd) gave participants and words deviations from a shared population center. A [**random-intercept model**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) places those deviations inside a regression equation. The [structured-data page](structured-data.qmd) shows why MALD rows share participants and spoken words. A normal intercept distribution is a population model for remaining group deviations: it assumes a symmetric, unimodal distribution around zero after included predictors, not that the observed group estimates themselves must look exactly normal.
+
+We first insert one participant deviation and derive its covariance, then add crossed word variation, fit the model, and compare raw with conditionally fitted participant baselines.
 
 ## Inserting a participant deviation
 
@@ -47,6 +49,8 @@ $$
 
 Conditional on $b_p$, the residuals may be independent. Marginally, before the deviation is known, the two responses are associated because they contain the same participant baseline.
 
+Every cancellation uses an assumption: different trial residuals are uncorrelated, residuals are uncorrelated with $b_p$, and the same $b_p$ enters both rows. If residual autocorrelation remains within a participant, the covariance contains more than $\tau_p^2$.
+
 ## Adding the crossed word intercept
 
 MALD trials also repeat spoken words. Give word $w$ a deviation $c_w$:
@@ -87,6 +91,14 @@ variance_components <- as.data.frame(VarCorr(fit))
 variance_components[c("grp", "var1", "vcov", "sdcor")]
 ```
 
+In `lmer` notation, `(1 | participant_id)` inserts $b_p$ and `(1 | item)` inserts $c_w$. Three trial pairs clarify the implied dependence:
+
+| Pair | Shared component | Model covariance |
+|---|---|---:|
+| same participant, different words | $b_p$ | $\tau_p^2$ |
+| different participants, same word | $c_w$ | $\tau_w^2$ |
+| different participants, different words | none | $0$ |
+
 The two grouping terms are crossed because participant and word identifiers recur in many combinations. The formula does not create replication absent from the table; it represents the incidence structure that the table already contains.
 
 ## Comparing raw and conditional participant baselines
@@ -121,4 +133,11 @@ ggplot(pooling, aes(x = raw_mean, y = conditional_mean)) +
   theme_classic()
 ```
 
-The participant intercept represents persistent response-speed differences. It cannot represent participant-specific lexical-frequency associations; that requires a random slope. The [next page](intraclass-correlation.qmd) converts the fitted covariance components into model-implied correlations.
+The participant intercept represents persistent response-speed differences. It cannot represent participant-specific lexical-frequency associations; that requires a random slope.
+
+## Recap and check
+
+1. Does a participant intercept represent every within-listener dependence? No. Serial dependence or listener-specific slopes require additional structure.
+2. Are rows independent after marginalizing over $b_p$? No. Rows sharing the intercept have covariance $\tau_p^2$.
+
+The [next page](intraclass-correlation.qmd) converts the fitted covariance components into model-implied correlations.

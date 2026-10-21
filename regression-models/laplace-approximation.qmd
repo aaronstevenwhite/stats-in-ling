@@ -3,9 +3,11 @@ title: "The Laplace approximation"
 execute: {warning: false, message: false}
 ---
 
-A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. A likelihood for the observed responses must thus average over every possible random-effect value.
+A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. The [marginal-distribution page](../random-variables-and-distributions/marginal-distributions.qmd) reminds us that marginalization sums or integrates a joint distribution over an unobserved quantity. A likelihood for the observed responses must thus average over every possible random-effect value.
 
-This integral usually has no elementary form for a logistic mixed model. The **Laplace approximation** replaces the log integrand with a quadratic near its highest point. We expose that computation with one participant intercept from the SuperTelicity release introduced on the GLMM page.
+This page first identifies that integral, then constructs its local quadratic approximation and compares the approximation with direct integration for the SuperTelicity teaching model.
+
+This integral usually has no elementary form for a logistic mixed model. The [**Laplace approximation**](https://doi.org/10.1080/01621459.1986.10478240) replaces the log integrand with a quadratic near its highest point. We expose that computation with one participant intercept from the SuperTelicity release introduced on the GLMM page.
 
 ## Why the integral appears
 
@@ -25,6 +27,18 @@ f_B(b_p\mid\tau)\,db_p.
 $$
 
 Integration adds support over every intercept value. Selecting only the best-fitting intercept would omit uncertainty about that latent value.
+
+Before observation, $\mathbf Y_p$ and $B_p$ are random. After the responses are recorded, $\mathbf y_p$ is fixed in the likelihood while $b$ indexes possible unobserved intercept values. The integrand is explicitly
+
+$$
+\underbrace{\prod_i
+\pi_i(b)^{y_i}[1-\pi_i(b)]^{1-y_i}}_{	ext{Bernoulli likelihood}}
+\times
+\underbrace{\frac{1}{\tau\sqrt{2\pi}}
+\exp\left(-\frac{b^2}{2\tau^2}\right)}_{	ext{normal group density}}.
+$$
+
+The integral is area. The Laplace approximation estimates that area from two local features: the integrand's height at its mode and its width, which is proportional to $1/\sqrt H$. A high but very narrow peak can thus have less area than a lower, wider peak.
 
 ## Expanding the log integrand
 
@@ -162,9 +176,13 @@ curvature <- sum(mode_probability * (1 - mode_probability)) +
 
 The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below come from the release.
 
+`optimize()` performs a bounded one-dimensional search for the conditional mode. The interval extends six fitted random-effect standard deviations in each direction, which is wide relative to the normal group density while keeping the teaching search finite. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
+
 ## Comparing the exact integral with its local approximation
 
 Numerical integration is stabilized by subtracting the log integrand at the mode before exponentiation.
+
+That subtraction rescales the largest exponentiated value to one and prevents numerical overflow or underflow. Adding `log_height` back after integration restores the original log integral; it does not alter the mathematical target.
 
 ```{r}
 #| label: supertelicity-laplace-summary
@@ -253,4 +271,12 @@ ggplot(
 
 The approximation is a computational method, not a new response model. It does not add a predictor, repair a missing random slope, or make an inappropriate link valid. It tends to be most accurate when the integrand is concentrated and roughly symmetric near its mode; sparse groups, rare responses, boundary variances, or strong asymmetry may make the local quadratic less adequate.
 
-The one-intercept restriction exists only to expose the calculation. The crossed participant, verb, and sentence GLMM remains the scientific teaching model for SuperTelicity.
+In `glmer`, `nAGQ = 1` selects this one-point Laplace calculation. The one-intercept restriction exists only to expose it in one dimension. In the crossed participant, verb, and sentence model, the integral is high-dimensional and can be skewed or weakly concentrated along some covariance directions. Agreement in the selected one-dimensional example thus cannot guarantee equal accuracy in that fitted crossed model.
+
+## Recap and check
+
+1. Why not insert only $\widehat b$ into the conditional likelihood? Doing so retains peak height but discards the width that represents uncertainty over possible random-effect values.
+2. What does subtracting `log_height` change? Only numerical scale; the value is added back on the log scale after integration.
+3. Does `nAGQ = 1` change the Bernoulli response model? No. It chooses an approximation for the same random-effect integral.
+
+The [model-criticism module](../model-criticism-and-prediction/) develops the predictive and diagnostic checks needed when a computationally successful approximation still supports an inadequate model.

@@ -5,7 +5,9 @@ execute:
   message: false
 ---
 
-A count is inseparable from its opportunity window. For Nettle's country data, area is a proposed exposure: larger countries provide more geographic space in which languages are counted. An **offset** fixes the exposure coefficient rather than estimating it.
+A count is inseparable from its opportunity window. The [Poisson-regression page](poisson-regression.qmd) introduces the count family and log link. For Nettle's country data, area is a proposed exposure: larger countries provide more geographic space in which languages are counted. An **offset** fixes the exposure coefficient rather than estimating it.
+
+This page first derives the offset from a rate model, then fits the resulting count mean and checks how the fixed exposure term changes coefficient interpretation.
 
 ```{r}
 #| label: load-nettle-offset
@@ -43,6 +45,15 @@ $$
 
 The offset is $\log A_i$ with coefficient fixed at one.
 
+That fixed coefficient makes a strong proportionality claim. Holding growing season fixed, two otherwise identical countries with areas $A$ and $2A$ have
+
+$$
+\frac{\lambda(2A)}{\lambda(A)}
+=\frac{2A\exp(\eta)}{A\exp(\eta)}=2.
+$$
+
+An offset model thus says twice the area implies twice the expected language count. A free-area model replaces the fixed one by $\gamma\log A_i$; an ordinary area covariate on the unlogged scale instead assumes $\log\lambda_i$ changes linearly per square kilometer. These are different scientific claims.
+
 ```{r}
 #| label: derive-and-fit-offset
 #| echo: true
@@ -50,8 +61,22 @@ nettle$derived_log_area <- log(10) * nettle$log10_area_km2
 stopifnot(max(abs(nettle$derived_log_area - nettle$log_area_km2)) < 1e-10)
 fit <- glm(language_count ~ mean_growing_season_months + offset(derived_log_area),
            poisson(link = "log"), nettle)
+free_area <- glm(language_count ~ mean_growing_season_months + derived_log_area,
+                 poisson(link = "log"), nettle)
+raw_area <- exp(nettle$derived_log_area)
+area_covariate <- glm(language_count ~ mean_growing_season_months + raw_area,
+                      poisson(link = "log"), nettle)
 nettle$fitted_count <- predict(fit, type = "response")
 head(nettle[c("country", "language_count", "fitted_count")])
+```
+
+```{r}
+#| label: compare-area-specifications
+#| echo: true
+data.frame(model = c("log-area offset", "estimated log-area coefficient",
+                     "raw-area covariate"),
+           area_coefficient = c(1, coef(free_area)["derived_log_area"],
+                                coef(area_covariate)["raw_area"]))
 ```
 
 ```{r}
@@ -67,3 +92,12 @@ ggplot(nettle, aes(language_count, fitted_count)) +
 ```
 
 The source `Area` column is base-10 logarithmic. A Poisson log link uses natural logarithms, hence the explicit conversion $\log A_i=\log(10)\log_{10}A_i$. Treating area as exposure assumes proportionality between expected count and area. Nettle's paper estimates the area coefficient, so this fixed-one version is a teaching model rather than a reproduced analysis.
+
+Changing area units does not change the rate ratio for growing season: multiplying every $A_i$ by a constant adds that constant's logarithm to the offset and shifts the intercept. But using `log10(A)` without multiplying by $\log(10)$ changes the fixed exposure coefficient and hence changes the model.
+
+## Recap and check
+
+1. Is “twice the area means twice the expected languages” scientifically defensible here? It is the offset model's assumption, not a fact supplied by the data; comparing the estimated area coefficient makes that assumption inspectable.
+2. Why must the offset use natural logs? `glm(..., family = poisson(link = "log"))` uses the natural-log linear predictor.
+
+The [worked Poisson analysis](poisson-regression-example.qmd) carries the offset model through interpretation and model criticism.

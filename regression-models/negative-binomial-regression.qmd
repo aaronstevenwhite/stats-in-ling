@@ -5,7 +5,9 @@ execute:
   message: false
 ---
 
-The negative-binomial distribution relaxes the Poisson mean–variance equality while retaining nonnegative integer support. We continue with Storme's French liaison counts and use the paper-aligned liaison-by-final-consonant interaction.
+The [negative-binomial distribution](../random-variables-and-distributions/negative-binomial-distribution.qmd) relaxes the Poisson mean–variance equality while retaining nonnegative integer support. We continue with Storme's French liaison counts. The [zero-count page](zero-inflated-counts.qmd) shows that these are release-derived reconstructed counts rather than direct token tallies.
+
+This page first states the alternative variance law, then fits the liaison counts and compares its conditional predictions with the Poisson benchmark.
 
 ```{r}
 #| label: load-storme-nb
@@ -43,6 +45,34 @@ $$
 \operatorname{Var}[Y_i]=\mu_i+\frac{\mu_i^2}{\theta}.
 $$
 
+One route to this variance is a Poisson--gamma mixture. Suppose
+
+$$
+Y_i\mid\Lambda_i\sim\operatorname{Poisson}(\Lambda_i),
+$$
+
+and let the latent rate have
+
+$$
+\mathbb{E}[\Lambda_i]=\mu_i,
+\qquad
+\operatorname{Var}[\Lambda_i]=\frac{\mu_i^2}{\theta}.
+$$
+
+The law of total expectation gives $\mathbb{E}[Y_i]=\mu_i$. The law of total variance gives
+
+$$
+\begin{aligned}
+\operatorname{Var}[Y_i]
+&=\mathbb{E}[\operatorname{Var}[Y_i\mid\Lambda_i]]
++\operatorname{Var}[\mathbb{E}[Y_i\mid\Lambda_i]]\\
+&=\mathbb{E}[\Lambda_i]+\operatorname{Var}[\Lambda_i]\\
+&=\mu_i+\frac{\mu_i^2}{\theta}.
+\end{aligned}
+$$
+
+`MASS::glm.nb()` uses this mean/size parameterization. Larger $\theta$ means less mixing variation; as $\theta\rightarrow\infty$, the variance approaches the Poisson variance $\mu_i$.
+
 The log link keeps $\mu_i$ positive. The additive model's liaison coefficient is a common-ratio restriction:
 
 ```{r}
@@ -54,6 +84,8 @@ c(theta = additive$theta,
 ```
 
 Storme's analysis includes the interaction, so a single common liaison ratio is not the paper-aligned result.
+
+The scientific reason to inspect the interaction is visible before fitting: liaison status may be associated with reconstructed frequency differently for different final consonants. A common additive coefficient forbids that variation. The interaction estimates a separate liaison log ratio by consonant; it should not be included merely because a source analysis included it.
 
 ```{r}
 #| label: interaction-nb-contrasts
@@ -90,3 +122,40 @@ ggplot(sampled, aes(liaison, reconstructed_count)) +
 ```
 
 Liaison cells have higher fitted means for each represented consonant, but the ratios are strongly consonant-specific. The response is reconstructed from frequency values, and lexical rows may remain dependent. Thus this population fit illustrates the paper's formula without reproducing its Bayesian uncertainty or establishing an independent causal liaison effect.
+
+For a model check, compare standardized residual dispersion under the Poisson and negative-binomial fits with the same additive mean formula:
+
+```{r}
+#| label: compare-poisson-negative-binomial-dispersion
+poisson_additive <- glm(
+  reconstructed_count ~ liaison + final_consonant,
+  family = poisson(),
+  data = storme
+)
+data.frame(
+  model = c("Poisson", "negative binomial"),
+  mean_squared_pearson_residual = c(
+    mean(residuals(poisson_additive, type = "pearson")^2),
+    mean(residuals(additive, type = "pearson")^2)
+  )
+)
+```
+
+The comparison asks whether the added variance function better matches residual spread. It does not validate independence or the reconstructed-count measurement.
+
+## Recap and check your understanding
+
+1. What source of variation does the Poisson--gamma mixture add?
+2. What happens as $\theta$ grows?
+3. Why does an interaction replace one liaison ratio with consonant-specific ratios?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. It allows the conditional Poisson rate itself to vary across otherwise modeled rows. <!-- dqr-allow: conceptual-answer -->
+2. Gamma mixing variance shrinks, and the negative-binomial variance approaches the Poisson mean. <!-- dqr-allow: conceptual-answer -->
+3. The liaison coefficient is modified by each liaison-by-consonant interaction term, so exponentiating the relevant sum gives that consonant's ratio. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](bounded-responses.qmd) leaves count support and turns to endpoint-inclusive sliders.

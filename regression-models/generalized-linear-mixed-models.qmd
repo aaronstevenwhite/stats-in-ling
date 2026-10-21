@@ -3,7 +3,9 @@ title: "Generalized linear mixed models"
 execute: {warning: false, message: false}
 ---
 
-The Gaussian pages represented repeated observations with group-specific deviations. A **generalized linear mixed model (GLMM)** keeps that group structure while replacing the Gaussian response with a distribution and link appropriate to the outcome.
+The Gaussian pages represented repeated observations with group-specific deviations. A **generalized linear mixed model (GLMM)** keeps that group structure while replacing the Gaussian response with a distribution and link appropriate to the outcome. The [SuperTelicity dossier](why-generalized-linear-models.qmd), [GLM template](generalized-linear-models.qmd), and [random-intercept derivation](random-intercepts.qmd) supply the three prerequisites: what one binary row measures, how a link connects its mean to predictors, and why repeated units induce dependence.
+
+This page first assembles those pieces into one conditional model, then fits crossed intercepts and distinguishes conditional from population-averaged prediction.
 
 We use the cloze judgments from White, Cao, Grimm, and Glass's working manuscript *The Preservation of Telicity under Sense Locality* (n.d.) and the immutable [CC BY-SA teaching table](../data/supertelicity/supertelicity-cloze.csv) prepared from its credential-gated source release at commit `e45277ce466719c1a03629f6ccf1e12db9904421`. On each trial, a participant selected *in* or *for*, a numeral, and a time unit for an event description. The preposition is a noisy behavioral measure related to telicity; it is not a direct semantic label because temporal modifiers can receive habitual or other interpretations.
 
@@ -43,6 +45,8 @@ p(\mathbf y\mid\boldsymbol\pi)
 $$
 
 The inverse logit keeps every fitted value inside the probability interval. The random intercepts represent which rows share persistent participant, verb, or sentence tendencies.
+
+The participant intercept accounts for repeated choices by a listener, the verb intercept for lexical recurrence across frames, and the sentence intercept for repeated judgments of the same item. Independence among these three distributions is an explicit simplification: the identifiers index distinct populations, and the prepared table does not support cross-population covariance parameters. The teaching formula omits random slopes to keep the crossed Bernoulli model estimable during routine builds; it thus assumes that the verb-type and contentfulness associations do not vary across participants or items.
 
 ## Fitting the crossed-intercept teaching model
 
@@ -91,6 +95,22 @@ data_summary <- c(
 )
 data_summary
 ```
+
+One retained observation and the repetition counts make the unit structure visible:
+
+```{r}
+#| label: supertelicity-glmm-observation-and-repetition
+#| echo: true
+supertelicity[1L, c("participant_id", "verb", "sentence_id", "verb_type",
+                    "contentfulness", "preposition", "prep_in")]
+c(participant_repetitions = max(table(supertelicity$participant_id)),
+  verb_repetitions = max(table(supertelicity$verb)),
+  sentence_repetitions = max(table(supertelicity$sentence_id)))
+```
+
+Sum coding assigns the two verb levels opposite signed values whose column sums are zero; the three contentfulness columns likewise compare levels around the coding center. Consequently, the printed `verb_type1` coefficient is one half of the manner-minus-result log odds contrast at the contentfulness coding center. The explicit `-2` transformation below changes its sign and doubles it to produce result minus manner.
+
+`nAGQ = 1` requests the Laplace approximation: each random-effect integral is approximated locally around its conditional mode. The [Laplace page](laplace-approximation.qmd) derives that approximation. `bobyqa` and `maxfun` govern numerical search; they do not alter the Bernoulli likelihood or compensate for missing random slopes.
 
 The course formula is deliberately smaller than the source analysis, which uses a richer Bayesian random structure involving additional participant, lexical, duration, list, and argument-form terms. This GLMM illustrates the architecture; it does not replace the manuscript's model.
 
@@ -216,6 +236,9 @@ prediction_grid$marginal_probability <- vapply(
   numeric(1)
 )
 
+prediction_grid[1L, c("verb_type", "contentfulness",
+                       "conditional_probability", "marginal_probability")]
+
 ggplot(
   prediction_grid,
   aes(
@@ -238,4 +261,13 @@ ggplot(
 
 Predictions for returning participants or observed lexical material may condition on their fitted deviations. Predictions for new participants or verbs cannot reuse deviations from observed groups. Every response-scale summary should state which target it uses.
 
-The release includes missing numerals on many trials, so this teaching analysis uses the complete binary preposition response rather than conditioning on a selected duration. Together with the restricted random structure and the release/manuscript participant mismatch, this scope keeps the page aligned with what the connected data can support. The [next page](ordinal-mixed-models.qmd) applies the same logic to an ordered response.
+The displayed row computes both targets for one fixed cell: `conditional_probability` applies the inverse logit at zero deviations, whereas `marginal_probability` numerically averages the same inverse link over the fitted random-intercept distribution. Their difference comes from nonlinearity, not from a different coefficient vector.
+
+The release includes missing numerals on many trials, so this teaching analysis uses the complete binary preposition response rather than conditioning on a selected duration. Together with the restricted random structure and the release/manuscript participant mismatch, this scope keeps the page aligned with what the connected data can support.
+
+## Recap and check
+
+1. Does `re.form = NA` average over random effects? No. It sets deviations to zero; averaging requires the integration shown above.
+2. Why are three intercepts present? They correspond to repeated participants, verbs, and sentences in the incidence table. Their inclusion is a design claim, not a generic preference for more terms.
+
+The [next page](ordinal-mixed-models.qmd) applies the same logic to an ordered response.

@@ -4,7 +4,25 @@ execute:
   cache: false
 ---
 
-The [ManyBabies 1 release](units-of-assignment.qmd) is the output of a sequential exclusion pipeline. The paper describes participant rules, session-level errors, trial-level errors, a minimum included looking time, and a laboratory inclusion rule. The official script then completes every retained infant to sixteen possible test-trial rows. Consequently, a row without an included looking time need not represent one single event.
+The [ManyBabies 1 release](units-of-assignment.qmd#assignment-and-measurement-are-different-maps) is the output of a sequential exclusion pipeline. The paper describes participant rules, session-level errors, trial-level errors, a minimum included looking time, and a laboratory inclusion rule. The official script then completes every retained infant to sixteen possible test-trial rows. Consequently, a row without an included looking time need not represent one single event.
+
+The observable flow is
+
+$$
+\text{recruitment}
+\longrightarrow
+\text{participant and laboratory rules}
+\longrightarrow
+\text{session and trial rules}
+\longrightarrow
+\text{minimum-looking-time rule}
+\longrightarrow
+\text{sixteen-row completion}.
+$$
+
+The final table preserves the right-hand consequences of this flow, but it does not contain enough information to reverse every row to its original exclusion cause.
+
+We first define the estimand among retained outcomes, then reconstruct the observable row states and their register margins, and finally state what the release can support without inventing exclusion causes.
 
 ```{r}
 manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
@@ -53,16 +71,32 @@ row_state_counts <- as.data.frame(
 )
 row_state_counts$proportion <- row_state_counts$rows / nrow(manybabies)
 
+row_examples <- do.call(rbind, lapply(unique(row_state), function(state) {
+  index <- which(row_state == state)[1L]
+  data.frame(
+    state,
+    infant_id = manybabies$infant_id[index],
+    trial_number = manybabies$trial_number[index],
+    trial_metadata_observed = manybabies$trial_metadata_observed[index],
+    trial_missing = manybabies$trial_missing[index],
+    looking_time_seconds = manybabies$looking_time_seconds[index]
+  )
+}))
+
 knitr::kable(
   row_state_counts,
   digits = 4,
   format.args = list(big.mark = ",")
 )
+
+knitr::kable(row_examples)
 ```
 
 Across all `r format(nrow(manybabies), big.mark = ",")` possible rows, `r sprintf("%.2f%%", 100 * mean(!manybabies$trial_missing))` retain an included looking time. Restricting the denominator to the `r format(sum(manybabies$trial_metadata_observed), big.mark = ",")` rows with recorded trial metadata raises the retained share to `r sprintf("%.2f%%", 100 * mean(!manybabies$trial_missing[manybabies$trial_metadata_observed]))`.
 
 These states should not be collapsed into a causal explanation. A missing included outcome may follow an error-marked trial, the minimum-looking-time rule, or termination before a later trial. A completed row without metadata records a possible opportunity added by the official completion step. The final RDS does not retain a unique original reason for every missing row.
+
+The examples show why both indicators are required. `trial_metadata_observed` says whether the source trial record supplies its design fields; `trial_missing` says whether an included looking-time response is absent. Neither indicator alone distinguishes all three states.
 
 ## Register and analysis-set margins
 
@@ -169,6 +203,8 @@ ggplot2::ggplot(
 
 The rise over position may reflect termination, attention, procedure, or their combination. The plot alone cannot separate these mechanisms. It also cannot estimate an effect of assigning a testing method because method was not assigned.
 
+In missing-data notation, the release identifies observed outcomes and a retention indicator but not the counterfactual values that would have been recorded after dropout or error. Thus it cannot determine whether retention depends only on observed quantities or also on unobserved looking behavior. The [missingness-mechanisms page](../missing-data/missingness-mechanisms.qmd#separating-observed-and-unobserved-quantities) develops that distinction.
+
 ## Reporting the flow without overreconstruction
 
 A reconstructible design report should distinguish (i) original participant exclusions, (ii) session- or trial-level error decisions, (iii) the minimum-looking-time rule, and (iv) rows created to represent later possible trials. The primary paper and official scripts document the first three stages. The teaching RDS records their final consequences through `trial_missing` and preserves the completion distinction through `trial_metadata_observed`.
@@ -182,4 +218,22 @@ The release cannot be run backward to recover the original cause of every absent
 4. Why can the method-specific curves not be interpreted causally?
 :::
 
-The inclusion and exclusion pipeline defines which infant-trial outcomes enter the comparison. The final page carries this design forward by fitting an empirical model and using its effect and variance estimates to calibrate [power by simulation](power-by-simulation.qmd).
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. $\Delta_{R=1}$ describes retained trial outcomes within each register, not all planned or unobserved outcomes.
+2. The first has source trial design metadata but no included response; the second is a possible opportunity created during row completion.
+3. The retained infant set shrinks, changing both precision and the population represented by the analysis.
+4. Method was not assigned and is linked to laboratory, infant population, age coverage, and implementation.
+
+</details>
+
+The inclusion and exclusion pipeline defines which infant-trial outcomes enter the comparison.
+
+## Recap and forward link
+
+1. Retention is part of the estimand, not a clerical afterthought.
+2. Two indicators distinguish included outcomes, metadata-only trials, and completed opportunities.
+3. The final release cannot identify every missingness mechanism or original exclusion cause.
+
+The final page carries this design forward by fitting an empirical model and using its effect and variance estimates to calibrate [power by simulation](power-by-simulation.qmd#calibrating-a-data-generating-process).

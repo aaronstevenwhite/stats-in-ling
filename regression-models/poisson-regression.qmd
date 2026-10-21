@@ -7,6 +7,8 @@ execute:
 
 Poisson regression models a nonnegative count with a positive conditional mean. We use Nettle's ([1998](https://doi.org/10.1006/jaar.1998.0328)) country-level study of language diversity and climate. One row is one country; the response is its reported language count, mean growing season (MGS) is the ecological predictor, and area measures geographic opportunity. The teaching table comes from [Bodo Winter's course-data repository](https://github.com/bodowinter/applied_statistics_book_data/blob/master/nettle_1999_climate.csv). That repository states no data license, so these notes do not redistribute it.
 
+This page first defines the observed count and its opportunity structure, then constructs the log-mean model and interprets its coefficients as rate multipliers.
+
 ```{r}
 #| label: load-nettle-poisson
 #| echo: true
@@ -28,9 +30,33 @@ if (file.exists(path)) {
   )
 }
 stopifnot(nrow(nettle) == 74L)
+count_fit <- glm(language_count ~ mean_growing_season_months,
+                 family = poisson(link = "log"), data = nettle)
 fit <- glm(language_count ~ mean_growing_season_months + offset(log_area_km2),
            family = poisson(link = "log"), data = nettle)
 ```
+
+The Algeria row makes the units visible. The source stores population and area on a base-ten log scale, while the offset requires a natural logarithm.
+
+```{r}
+#| label: inspect-one-nettle-country
+transform(
+  nettle[nettle$country == "Algeria", c(
+    "country", "log10_population", "log10_area_km2", "log_area_km2",
+    "mean_growing_season_months", "language_count"
+  )],
+  population = 10^log10_population,
+  area_km2 = 10^log10_area_km2
+)
+```
+
+Before using area, the count-only model states
+
+$$
+\log\lambda_i=\beta_0+\beta_1\operatorname{MGS}_i.
+$$
+
+Its mean is an expected language count per country. The offset model below asks a stronger rate question by assuming that expected count is proportional to geographic area.
 
 The model is
 
@@ -44,6 +70,8 @@ $$
 $$
 
 Thus $\lambda_i/A_i=\exp(\beta_0+\beta_1\operatorname{MGS}_i)$ is the fitted language rate per square kilometer.
+
+The [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd) adds more than count support: conditional on the predictors, its variance equals its mean. The log link keeps $\lambda_i$ positive and makes a coefficient additive in log rate, hence multiplicative after exponentiation. Conditional independence also treats country counts as independent once MGS and area are known. Ecological history, contact, and spatial dependence make all three restrictions substantive and checkable.
 
 ```{r}
 #| label: nettle-poisson-summary
@@ -72,3 +100,20 @@ ggplot(nettle, aes(mean_growing_season_months, observed_rate)) +
 ```
 
 A one-month increase in MGS multiplies the fitted rate by `r round(exp(coef(fit)[[2L]]), 3)`, conditional on the teaching specification. Nettle instead estimated the log-area coefficient. Fixing it to one narrows the question and does not reproduce the paper or support a causal ecological claim.
+
+## Recap and check your understanding
+
+1. Which assumption is added when area becomes an offset rather than an estimated predictor?
+2. Why does nonnegative-integer support not establish the Poisson variance restriction?
+3. What does exponentiating the MGS coefficient produce?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The area coefficient is fixed at one on the log scale, so doubling area must double the expected count at fixed MGS. <!-- dqr-allow: conceptual-answer -->
+2. Many count distributions share the same support. Poisson additionally requires conditional mean and variance to be equal. <!-- dqr-allow: conceptual-answer -->
+3. It produces the fitted multiplicative change in expected count or rate for a one-month MGS increase, conditional on the remaining specification. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](exposure-offsets.qmd) examines the proportional-exposure claim directly.

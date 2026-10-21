@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-The uniform reference respected the unit-interval support of Provo modeled predictability but missed its shape. The **beta distribution** retains that support and estimates two shape parameters from the observations.
+The uniform reference respected the unit-interval support of Provo modeled predictability but missed its shape. The [**beta distribution**](https://bruno.nicenboim.me/bayescogsci/ch-introBDA.html) retains that support and estimates two shape parameters from the observations.
+
+We define how those parameters control the density, estimate them from the Provo values, and then compare the fitted beta shape with the uniform reference and the observed distribution.
 
 ## Definition
 
@@ -30,6 +32,20 @@ B(\alpha,\beta)
 $$
 
 It normalizes the numerator to unit area. The first two moments follow from beta-function recurrences:
+
+Using $B(a,b)=\Gamma(a)\Gamma(b)/\Gamma(a+b)$ and
+$\Gamma(z+1)=z\Gamma(z)$,
+
+$$
+\frac{B(\alpha+1,\beta)}{B(\alpha,\beta)}
+=\frac{\alpha}{\alpha+\beta},
+\qquad
+\frac{B(\alpha+2,\beta)}{B(\alpha,\beta)}
+=\frac{\alpha(\alpha+1)}
+{(\alpha+\beta)(\alpha+\beta+1)}.
+$$
+
+These are the recurrence steps used below rather than unproved identities.
 
 $$
 \begin{aligned}
@@ -55,7 +71,23 @@ $$
 {(\alpha+\beta)^2(\alpha+\beta+1)}.
 $$
 
+The variance follows by subtraction:
+
+$$
+\mathbb{E}[X^2]-\mathbb{E}[X]^2
+=\frac{\alpha(\alpha+1)}{(\alpha+\beta)(\alpha+\beta+1)}
+-\frac{\alpha^2}{(\alpha+\beta)^2}
+=\frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)}.
+$$
+
 The sum $\alpha+\beta$ is the **concentration**: at a fixed mean, larger concentration places more density near that mean.
+
+Equivalently, write $m=\alpha/(\alpha+\beta)$ and
+$\phi=\alpha+\beta$, so $\alpha=m\phi$ and $\beta=(1-m)\phi$. The first
+parameter controls the mean and the second controls concentration. If both
+shapes exceed one, the density has an interior mode; if both are below one, it
+is U-shaped; if only $\alpha<1$, it can rise sharply near zero. These cases
+matter because matching the interval alone does not choose a shape.
 
 For an arbitrary finite interval $a<y<b$, the affine transformation
 $Y=a+(b-a)X$ has density
@@ -71,6 +103,19 @@ The factor $1/(b-a)$ is the Jacobian required to preserve total probability.
 ## Maximum-likelihood fit
 
 The page reloads the [Provo word-position table introduced on the preceding page](uniform-distribution.qmd). It optimizes over log shapes so that both fitted parameters remain positive.
+
+For observed first-stage predictions $x_1,\ldots,x_n\in(0,1)$, the log
+likelihood is
+
+$$
+\ell(\alpha,\beta)
+=-n\log B(\alpha,\beta)
++(\alpha-1)\sum_i\log x_i
++(\beta-1)\sum_i\log(1-x_i).
+$$
+
+This is the expression evaluated by `dbeta(..., log = TRUE)` and summed inside
+`beta_nll()`.
 
 ```{r}
 #| label: fit-provo-beta
@@ -115,6 +160,19 @@ data.frame(alpha_hat, beta_hat, fitted_mean, fitted_variance,
            log_likelihood = -beta_fit$value)
 ```
 
+The method-of-moments start solves
+$s^2\approx m(1-m)/(\phi+1)$ for
+$\phi\approx m(1-m)/s^2-1$, then sets $(\alpha,\beta)$ to
+$(m\phi,(1-m)\phi)$. The log transformation keeps both shapes positive during
+BFGS optimization. The grid stops at 0.0001 and 0.9999 because the fitted beta
+density is defined on the open interval and may be unbounded at an endpoint;
+the observed values are checked to lie strictly inside that interval.
+
+The formula-to-code bridge is thus: `sample_mean` estimates $m$,
+`concentration_start` estimates $\phi$, `start` contains log shapes,
+`beta_fit$value` is the negative maximized log likelihood, and `alpha_hat` and
+`beta_hat` transform the optimizer output back to the density parameterization.
+
 The fitted shapes are $\widehat\alpha=$ `r sprintf("%.3f", alpha_hat)` and $\widehat\beta=$ `r sprintf("%.3f", beta_hat)`. They imply mean `r sprintf("%.3f", fitted_mean)` and variance `r sprintf("%.3f", fitted_variance)`.
 
 ```{r}
@@ -140,6 +198,8 @@ The beta density captures the strong concentration near zero much better than th
 2. Fit the beta distribution separately within each `Word_POS` category.
 3. Why are exact zeros or ones incompatible with this beta density?
 4. What uncertainty is absent when we model `OrthoMatchModel` as directly observed?
+5. Why would clipping exact zeroes to 0.0001 change the observation model rather
+   than merely fix a numerical problem?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -148,7 +208,15 @@ The beta density captures the strong concentration near zero much better than th
 2. Separate fits give $(\widehat\alpha,\widehat\beta)=(0.3983,4.6777)$ for adjectives, $(0.3408,1.8735)$ for adverbs, $(0.3620,1.4550)$ for nouns, and $(0.4318,2.1724)$ for verbs. <!-- dqr-allow: empirical-answer -->
 3. The fitted beta density has support $0<x<1$, so exact predictability values of zero or one fall outside its modeled support. <!-- dqr-allow: empirical-answer -->
 4. Treating `OrthoMatchModel` as observed omits the uncertainty from the first-stage model that estimated each predictability value from cloze responses. <!-- dqr-allow: empirical-answer -->
+5. Clipping replaces boundary observations with chosen interior values and
+   changes their likelihood. A boundary-capable model or an explicit
+   measurement process would instead state where zeroes and ones come from.
 
 </details>
 
-The [normal distribution](normal-distribution.qmd) returns to an unbounded reference family for acoustic measurements.
+The beta family combines open unit-interval support with a range of possible
+shapes, and its two parameters can be re-expressed as a mean and a
+concentration. In the current analysis, the likelihood and optimizer operate
+on first-stage predictions rather than raw cloze trials. The [normal
+distribution](normal-distribution.qmd) returns to an unbounded reference family
+for acoustic measurements.

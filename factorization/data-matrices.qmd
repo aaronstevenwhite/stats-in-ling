@@ -6,6 +6,26 @@ title: "Linguistic data matrices"
 
 The course copy is pinned to PHOIBLE 2.0 and follows the release's [download and citation guidance](https://phoible.org/download). It excludes tone entries and rows explicitly marked as marginal, then samples one inventory within each Glottocode. A cell equal to one means that a retained PHOIBLE value row links the inventory to the segment. A zero means **not listed under this preparation rule**. It does not establish that speakers never produce the corresponding phone.
 
+We first audit the source units, then construct and inspect the binary inventory matrix, and finally list the information that this representation retains and discards.
+
+## PHOIBLE measurement dossier
+
+The source has three linked units. `InventoryID` identifies one inventory record
+from one source contribution. A Glottocode identifies a Glottolog doculect and may
+link several alternative inventory records. A segment row supplies the symbol
+linked to an inventory. `macroarea` is metadata joined from Glottolog and used only
+to balance the teaching split; it is not a matrix column.
+
+The preparation samples one inventory per Glottocode so that doculects with many
+contributed inventories do not automatically receive more row weight. This discards
+variation among alternative source inventories for the same Glottocode. Seed
+20260827 fixes which record is selected when several are available; the seed is a
+reproducibility label, not a linguistic variable. Later, a training frequency
+threshold of twenty removes extremely sparse segment columns, while the
+macroarea-stratified 15% validation and 15% test allocations preserve broad area
+coverage. The threshold and split proportions are teaching-design choices, not
+properties of PHOIBLE.
+
 ## Defining the array and its indices
 
 Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is
@@ -116,6 +136,38 @@ c(
 )
 ```
 
+One retained source record can now be traced to one matrix cell.
+
+```{r}
+example_membership <- listed[1, ]
+example_inventory <- selected[
+  match(example_membership$glottocode, selected$glottocode),
+]
+example_segment <- phoible$segments[
+  match(example_membership$segment_id, phoible$segments$segment_id),
+]
+example_cell <- data.frame(
+  inventory_id = example_inventory$inventory_id,
+  glottocode = example_inventory$glottocode,
+  language_name = example_inventory$language_name,
+  source_contribution = example_inventory$inventory_source,
+  macroarea = example_inventory$macroarea,
+  segment = example_segment$segment,
+  row_index = match(example_inventory$glottocode, rownames(X)),
+  column_index = match(example_segment$segment_id, colnames(X)),
+  x_ij = X[
+    example_inventory$glottocode,
+    example_segment$segment_id
+  ]
+)
+knitr::kable(example_cell)
+```
+
+The displayed retained membership supplies \(x_{ij}=1\) at the shown inventory row
+and segment column. A value of zero elsewhere means that this prepared source table
+contains no retained link for that pair. This trace from source identifier to
+\(X_{ij}\) is the canonical cell interpretation used on every later page.
+
 The resulting matrix has `r nrow(X)` inventory records and `r ncol(X)` segment columns. Of its `r format(length(X), big.mark = ",")` cells, `r scales::percent(mean(X), accuracy = 0.1)` are listed. This sparsity is a property of the prepared database matrix, not an estimate of how often phones occur in speech.
 
 ## Seeing rows and columns
@@ -199,4 +251,26 @@ Before factorization, record (i) the row unit, (ii) the row-selection rule, (iii
 4. Which part of the code prevents validation and test inventories from selecting columns?
 5. What would change if the rows were individual PHOIBLE value records?
 
-The [next page](centering-and-scaling.qmd) changes the origin and possible unit of each segment column while keeping these row and column definitions fixed.
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. A retained source membership links inventory row \(i\) to segment column \(j\).
+2. Source incompleteness and preparation choices make nonlisting weaker than
+   phonological absence.
+3. Several source inventories can share one Glottocode.
+4. `training_frequency` uses `training_ids` before `retained_segments` is defined.
+5. Rows would represent membership records rather than complete inventory profiles.
+
+</details>
+
+## Recap
+
+1. Rows are sampled inventory records, columns are training-retained segments, and
+   cells encode retained database links.
+2. One-record sampling, the frequency threshold, and the balanced split discard or
+   reweight information by design.
+3. A zero is “not listed under this preparation,” not “linguistically absent.”
+
+The [next page](centering-and-scaling.qmd) changes the origin and possible unit of
+each segment column while keeping the [canonical cell
+meaning](#phoible-measurement-dossier) fixed.

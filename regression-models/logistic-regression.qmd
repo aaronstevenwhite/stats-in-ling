@@ -5,13 +5,26 @@ execute:
   message: false
 ---
 
-Logistic regression combines a Bernoulli response with the logit link. For the SuperTelicity verb-type contrast,
+Logistic regression combines a Bernoulli response with the logit link. The SuperTelicity verb-type contrast has the specification stated below.
+
+We first construct the Bernoulli likelihood, then fit and interpret the log-odds coefficient, and finally return predictions to the probability scale.
 
 $$
 Y_i\sim\operatorname{Bernoulli}(\pi_i),
 \qquad
 \log\frac{\pi_i}{1-\pi_i}=\beta_0+\beta_1\operatorname{result}_i.
 $$
+
+This model joins four earlier pieces: the [Bernoulli sampling model](why-generalized-linear-models.qmd), [odds and log odds](odds-and-log-odds.qmd), [maximum likelihood](../statistical-inference/maximum-likelihood.qmd), and [IRLS computation](iteratively-reweighted-least-squares.qmd). Conditional on the predictors, the row likelihood and joint likelihood are
+
+$$
+p(y_i\mid\pi_i)=\pi_i^{y_i}(1-\pi_i)^{1-y_i},
+\qquad
+L(\boldsymbol\beta;\mathbf y)=\prod_i
+\pi_i^{y_i}(1-\pi_i)^{1-y_i},
+$$
+
+where $\pi_i=\operatorname{logit}^{-1}(\beta_0+\beta_1\operatorname{result}_i)$. Before observing the data, $Y_i$ is random. After observation, $y_i$ is the fixed zero or one that enters this likelihood.
 
 ```{r}
 #| label: fit-logistic-regression
@@ -32,6 +45,27 @@ e^{\beta_1}
         {\pi_{\mathrm{manner}}/(1-\pi_{\mathrm{manner}})}.
 $$
 
+In this saturated two-group case, let $s_m/n_m$ and $s_r/n_r$ be the observed group proportions. Maximizing each group's binomial likelihood gives $\widehat\pi_m=s_m/n_m$ and $\widehat\pi_r=s_r/n_r$. Treatment coding thus yields
+
+$$
+\widehat\beta_0=\operatorname{logit}(s_m/n_m),
+\qquad
+\widehat\beta_1=\operatorname{logit}(s_r/n_r)-
+\operatorname{logit}(s_m/n_m).
+$$
+
+```{r}
+#| label: derive-two-group-logistic-coefficients
+#| echo: true
+group_counts <- aggregate(prep_in ~ verb_type, st,
+                          function(z) c(successes = sum(z), trials = length(z)))
+manual <- with(group_counts,
+  c(intercept = qlogis(prep_in[1, "successes"] / prep_in[1, "trials"]),
+    result = qlogis(prep_in[2, "successes"] / prep_in[2, "trials"]) -
+      qlogis(prep_in[1, "successes"] / prep_in[1, "trials"])))
+rbind(manual = manual, glm = coef(fit))
+```
+
 The fitted coefficient is `r round(coef(fit)[[2L]], 3)` and its exponential is `r round(exp(coef(fit)[[2L]]), 3)`. The latter is an odds ratio, not a probability ratio.
 
 ```{r}
@@ -50,4 +84,20 @@ ggplot(plot_data, aes(verb_type, value, shape = kind)) +
 
 The two fitted probabilities equal the two observed proportions because this model has one parameter for each group mean. In richer models, interpret coefficients with response-scale predictions because the same log-odds change produces different probability changes at different baselines.
 
+```{r}
+#| label: same-logit-coefficient-different-baselines
+#| echo: true
+b <- unname(coef(fit)[[2L]])
+baseline <- groups$prep_in
+data.frame(baseline, after = plogis(qlogis(baseline) + b),
+           change = plogis(qlogis(baseline) + b) - baseline)
+```
+
 This population model remains a teaching simplification. The SuperTelicity analysis uses a Bayesian logistic mixed model; repeated participants and sentences make the row-independent standard errors here unsuitable for confirmatory inference.
+
+## Recap and check
+
+1. Does $\exp(\beta_1)$ give a probability ratio? No. It gives an odds ratio.
+2. Does a row-independent fit make repeated participants independent? No. That assumption is a limitation of this teaching model, not a feature of the data.
+
+The [worked analysis](logistic-regression-example.qmd) next carries these mechanics through uncertainty and model checking.

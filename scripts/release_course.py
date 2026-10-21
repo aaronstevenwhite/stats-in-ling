@@ -16,8 +16,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "release-schedule.json"
 QUARTO_PATH = ROOT / "_quarto.yml"
-DECK_CONFIG_PATH = ROOT / "decks" / "_quarto.yml"
-DECK_INDEX_PATH = ROOT / "decks" / "index.qmd"
 PLACEHOLDER_FIELD = "course-release-placeholder: true"
 
 
@@ -83,16 +81,6 @@ def source_text(source_branch: str, relative_path: str) -> str:
             f"{relative_path} is not available on the local {source_branch} branch."
         )
     return result.stdout
-
-
-def source_paths(source_branch: str, prefix: str) -> list[str]:
-    result = run_git("ls-tree", "-r", "--name-only", source_branch, "--", prefix)
-    paths = [line for line in result.stdout.splitlines() if line]
-    if not paths:
-        raise ReleaseError(
-            f"No files under {prefix} are available on the local {source_branch} branch."
-        )
-    return paths
 
 
 def module_paths(section_name: str) -> list[str]:
@@ -208,114 +196,6 @@ def write_placeholder(
     destination.write_text(placeholder_text(entry, title), encoding="utf-8")
 
 
-def deck_paths(source_branch: str, entry: dict[str, Any]) -> list[str]:
-    return source_paths(source_branch, f"decks/{entry['id']}")
-
-
-def remove_public_file(relative_path: str, dry_run: bool) -> None:
-    if dry_run:
-        print(f"hide     {relative_path}")
-        return
-    destination = ROOT / relative_path
-    if destination.exists():
-        destination.unlink()
-
-
-def tracked_in_index(relative_path: str) -> bool:
-    result = run_git("ls-files", "--error-unmatch", "--", relative_path, check=False)
-    return result.returncode == 0
-
-
-def deck_config_text(manifest: dict[str, Any], released_ids: set[str]) -> str:
-    render_lines = ["    - index.qmd"]
-    render_lines.extend(
-        f"    - {entry['id']}/index.qmd"
-        for entry in manifest["modules"]
-        if entry["id"] in released_ids
-    )
-    return (
-        "project:\n"
-        "  type: default\n"
-        "  output-dir: ../docs/decks\n"
-        "  render:\n"
-        + "\n".join(render_lines)
-        + "\n\n"
-        "execute:\n"
-        "  enabled: false\n\n"
-        "format:\n"
-        "  revealjs:\n"
-        "    html-math-method: katex\n\n"
-        "resources:\n"
-        "  - shared/bird.svg\n"
-        "  - shared/theme.css\n"
-    )
-
-
-def deck_index_text(manifest: dict[str, Any], released_ids: set[str]) -> str:
-    lines = [
-        "---",
-        'title: "Course slides"',
-        "format:",
-        "  html:",
-        "    theme: lux",
-        "    toc: false",
-        "---",
-        "",
-        "Slide decks become available with their corresponding modules.",
-        "",
-    ]
-    for number, entry in enumerate(manifest["modules"], start=1):
-        title = entry["title"]
-        if entry["id"] in released_ids:
-            description = f"[{title}]({entry['id']}/), {display_date(entry['available_on'])}"
-        else:
-            description = f"{title}, available {display_date(entry['available_on'])}"
-        lines.append(f"{number}. {description}")
-    return "\n".join(lines) + "\n"
-
-
-def set_deck_states(
-    manifest: dict[str, Any], released_ids: set[str], dry_run: bool
-) -> list[str]:
-    source_branch = manifest["source_branch"]
-    changed = ["decks/_quarto.yml", "decks/index.qmd"]
-    for relative_path in source_paths(source_branch, "decks/shared"):
-        write_source_page(source_branch, relative_path, dry_run)
-        changed.append(relative_path)
-    for entry in manifest["modules"]:
-        paths = deck_paths(source_branch, entry)
-        if entry["id"] in released_ids:
-            for relative_path in paths:
-                write_source_page(source_branch, relative_path, dry_run)
-                changed.append(relative_path)
-        else:
-            for relative_path in paths:
-                if tracked_in_index(relative_path):
-                    changed.append(relative_path)
-                remove_public_file(relative_path, dry_run)
-    if dry_run:
-        print("update   decks/_quarto.yml")
-        print("update   decks/index.qmd")
-    else:
-        DECK_CONFIG_PATH.write_text(
-            deck_config_text(manifest, released_ids), encoding="utf-8"
-        )
-        DECK_INDEX_PATH.write_text(
-            deck_index_text(manifest, released_ids), encoding="utf-8"
-        )
-    return changed
-
-
-def released_module_ids(
-    manifest: dict[str, Any], public_branch: str, use_worktree: bool
-) -> set[str]:
-    return {
-        entry["id"]
-        for entry in manifest["modules"]
-        if entry_state(entry, "module", public_branch, use_worktree) == "released"
-    }
-
-
 def set_entry_state(
     manifest: dict[str, Any],
     kind: str,
@@ -371,14 +251,12 @@ def entry_state(
 def render_site(dry_run: bool) -> None:
     if dry_run:
         print("render   quarto render")
-        print("render   quarto render decks")
         return
     print("Rendering the course site. This may take several minutes.")
     subprocess.run(["quarto", "render"], cwd=ROOT, check=True)
-    subprocess.run(["quarto", "render", "decks"], cwd=ROOT, check=True)
 
 
-def commit_release(paths: list[str], message: str, rendered: bool, dry_run: bool) -> None:
+def commit_release(paths: list[str], message: str, dry_run: bool) -> None:
     targets = sorted(set(paths))
     if dry_run:
         print(f"commit   {message}")
@@ -417,12 +295,6 @@ def prepare_public(manifest: dict[str, Any], dry_run: bool) -> list[str]:
                 dry_run,
             )
         )
-    released_ids = {
-        entry["id"]
-        for entry in manifest["modules"]
-        if entry.get("released_by_default")
-    }
-    changed.extend(set_deck_states(manifest, released_ids, dry_run))
     return changed
 
 
@@ -447,7 +319,7 @@ def print_status(manifest: dict[str, Any]) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Release scheduled notes, slides, or assignments from the local source branch."
+            "Release scheduled notes or assignments from the local source branch."
         )
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -508,13 +380,6 @@ def main() -> int:
         kind, entry = find_entry(manifest, args.target)
         released = args.command == "release"
         changed = set_entry_state(manifest, kind, entry, released, args.dry_run)
-        if kind == "module":
-            released_ids = released_module_ids(manifest, public_branch, True)
-            if released:
-                released_ids.add(entry["id"])
-            else:
-                released_ids.discard(entry["id"])
-            changed.extend(set_deck_states(manifest, released_ids, args.dry_run))
         if released and kind == "assignment":
             changed.extend(release_assignment_overview(manifest, entry, args.dry_run))
 
@@ -528,7 +393,6 @@ def main() -> int:
             commit_release(
                 changed,
                 f"{action} {entry['title']}",
-                rendered,
                 args.dry_run,
             )
         if args.push:

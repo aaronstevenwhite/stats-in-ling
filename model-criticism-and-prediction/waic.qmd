@@ -4,6 +4,8 @@ title: "The widely applicable information criterion"
 
 The [PSIS-LOO page](psis-loo.qmd) used full-posterior draws to approximate omitted-position posteriors. The [**widely applicable information criterion (WAIC)**](https://mc-stan.org/loo/reference/waic.html) instead corrects fitted pointwise posterior predictive density using posterior variation. Both calculations require the same pointwise likelihood matrix, but their approximations differ.
 
+We first construct fitted pointwise posterior predictive density, derive the posterior-variance optimism correction, and then compare WAIC with exact LOO on the fixed Provo models before stating which target choices that correction leaves untouched.
+
 ## Fitted posterior predictive density
 
 For observation $i$, the [**log pointwise predictive density (lppd)**](https://mc-stan.org/loo/reference/waic.html) is
@@ -23,6 +25,22 @@ The average integrates the likelihood of $y_i$ over posterior uncertainty. But $
 $$
 \operatorname{lppd}=\sum_{i=1}^N\operatorname{lppd}_i.
 $$
+
+The stable calculation follows from adding and subtracting the largest pointwise log
+likelihood $m_i=\max_s\ell_i^{(s)}$:
+
+$$
+\begin{aligned}
+\log\left[\frac1S\sum_s e^{\ell_i^{(s)}}\right]
+&=\log\left[e^{m_i}\frac1S\sum_s
+e^{\ell_i^{(s)}-m_i}\right]\\
+&=m_i+\log\left[\frac1S\sum_s
+e^{\ell_i^{(s)}-m_i}\right].
+\end{aligned}
+$$
+
+Every exponent in the second line is at most zero, which avoids overflow without
+changing the value. This is `stable_log_mean_exp()` in the code.
 
 ## The pointwise optimism correction
 
@@ -60,9 +78,49 @@ $$
 
 for which smaller is preferred.
 
+## Why posterior variance corrects optimism {#why-posterior-variance-corrects-optimism}
+
+Let $\ell_i=\log f(y_i\mid\theta)$ and define its posterior cumulant-generating
+function as
+
+$$
+K_i(t)=\log\mathbb{E}_{\theta\mid y}[e^{t\ell_i}].
+$$
+
+Then fitted lppd is $K_i(1)$. The raw importance-sampling identity from the
+[PSIS page](psis-loo.qmd#relating-the-omitted-posterior-to-the-full-posterior) gives
+the omitted log predictive density as $-K_i(-1)$. Expanding around $t=0$,
+
+$$
+K_i(t)
+=t\mathbb{E}[\ell_i]
++\frac{t^2}{2}\operatorname{Var}[\ell_i]
++\frac{t^3}{6}\kappa_{3,i}+\cdots.
+$$
+
+Thus
+
+$$
+K_i(1)+K_i(-1)
+=\operatorname{Var}[\ell_i]+
+\text{higher even-order terms}.
+$$
+
+Subtracting the posterior variance from fitted lppd thus supplies the second-order
+approximation $K_i(1)-\operatorname{Var}[\ell_i]\approx-K_i(-1)$. This explains
+both the direction and the pointwise form of the WAIC correction. It also explains
+why large higher-order behavior can make WAIC differ from exact LOO.
+
+The code uses R's `var()`, which divides by $S-1$ and estimates the posterior
+variance from a finite set of draws. This is variation across posterior parameter
+draws for one position, not variance across Provo positions. Treating contributions
+as pointwise also requires the likelihood to factorize at the declared observation
+unit. Here that unit is an aggregated position, even though passage dependence may
+make that factorization scientifically incomplete.
+
 ## WAIC and exact LOO for the Provo models
 
-The code independently reloads the [Provo data](likelihood-ratio-tests.qmd#provo-corpus), reconstructs the fixed conjugate posteriors, and generates the same independent posterior draws used for PSIS. It computes WAIC both manually and with `loo::waic()`, then compares each pointwise WAIC contribution with exact LOO.
+The code independently reloads the [Provo data](likelihood-ratio-tests.qmd#provo-measurement-dossier), reconstructs the fixed conjugate posteriors, and generates the same independent posterior draws used for PSIS. The [normal-inverse-gamma derivation](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update) defines the reused `Vn`, `bn`, `an`, and `dn` quantities. It computes WAIC both manually and with `loo::waic()`, then compares each pointwise WAIC contribution with exact LOO.
 
 ```{r}
 #| label: provo-waic
@@ -283,6 +341,11 @@ ggplot2::ggplot(
 
 WAIC gives ELPD `r sprintf("%.3f", waic_summary$elpd_waic[waic_summary$model == "Linear"])` with $p_{\mathrm{waic}} = `r sprintf("%.3f", waic_summary$p_waic[waic_summary$model == "Linear"])`$ for the linear model. The quadratic values are `r sprintf("%.3f", waic_summary$elpd_waic[waic_summary$model == "Quadratic"])` and $p_{\mathrm{waic}} = `r sprintf("%.3f", waic_summary$p_waic[waic_summary$model == "Quadratic"])`$. The manual pointwise implementation and `loo::waic()` agree to the asserted numerical tolerance.
 
+The mathematics-to-code bridge is visible in `manual_waic()`: matrix column $i$
+contains the $S$ values $\ell_i^{(s)}$; `stable_log_mean_exp` computes
+$\operatorname{lppd}_i$; `var` computes $p_{\mathrm{waic},i}$; and their difference
+is the pointwise ELPD approximation. Summing those rows reproduces the package output.
+
 The figure shows the approximation rather than another abstract score: every point is one Provo position's WAIC contribution minus its exact LOO contribution. Most differences cluster near zero, but the display preserves their relation to modeled cloze surprisal.
 
 ## What the correction does not change
@@ -290,6 +353,13 @@ The figure shows the approximation rather than another abstract score: every poi
 WAIC is tied to the unit represented by one likelihood column. Here that unit is an aggregated content-word position. The correction does not create prediction for a wholly new reader, word type, or passage. Other positions from the same passage remain part of the fitted posterior used to calculate each contribution.
 
 Large posterior variance in a pointwise log likelihood can warn that WAIC is unreliable for that position. The warning concerns the approximation; it does not license discarding a linguistically surprising point. PSIS-LOO is often easier to diagnose because Pareto $k$ targets its importance-sampling approximation directly.
+
+WAIC and LOO are asymptotically connected when the posterior and pointwise
+factorization support the cumulant approximation, including in model classes broader
+than those covered by ordinary parameter-count arguments. In a finite dataset,
+influential positions, heavy posterior tails, dependence within passages, or too few
+draws may separate them. The exact conjugate comparison on this page is thus evidence
+for this application, not a guarantee for every Bayesian model.
 
 Finally, WAIC ranks compatible candidate models. It does not establish that the preferred predictor causes the reading response or explains the linguistic process that produced it.
 
@@ -300,4 +370,25 @@ Finally, WAIC ranks compatible candidate models. It does not establish that the 
 3. Why can $p_{\mathrm{waic}}$ differ from a coefficient count?
 4. What is the empirical unit of one point in the final figure?
 
-WAIC subtracts a posterior-variance correction from fitted pointwise predictive density. The [previous page](psis-loo.qmd) approximated omitted-position posteriors with importance sampling. Return to the [module overview](index.qmd) to place both approximations within the full model-evaluation sequence.
+<details>
+<summary>Answers</summary>
+
+1. The observed $y_i$ helped form the posterior over which its likelihood is
+   averaged.
+2. The posterior variance of the pointwise log likelihood.
+3. It measures effective fitted flexibility and can be fractional or larger than a
+   raw coefficient count.
+4. One aggregated Provo content-word position.
+
+</details>
+
+## Recap and forward link
+
+1. Stable log-mean-exp computes lppd without changing it.
+2. Posterior log-likelihood variance is the second-order optimism correction linking
+   fitted lppd to LOO.
+3. Both methods inherit the likelihood column's position-level target.
+
+The [previous page](psis-loo.qmd#pareto-smoothing-the-importance-ratios)
+used an importance-sampling approximation. Return to the [module VTS](index.qmd#validation-target-specification)
+to place both approximations within the full model-evaluation sequence.

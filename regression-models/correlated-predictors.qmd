@@ -9,6 +9,8 @@ execute:
 
 We now return to the [MALD word-item data](multiple-regression.qmd#mald-word-item-data). A partial coefficient compares items that differ in one predictor while holding the others fixed. **Predictor collinearity** arises when the observed design contains relatively few such comparisons because predictor columns move together.
 
+This page first inspects the observed predictor overlap and then traces its consequences from supported comparisons to coefficient uncertainty and exact nonidentification.
+
 ## Overlap in the MALD item design
 
 Longer spoken words tend to contain more phones and syllables. That empirical relation makes it harder to separate their partial associations with item-mean lexical-decision time.
@@ -30,6 +32,27 @@ stopifnot(
 
 round(correlation_matrix, 3)
 ```
+
+Pairwise correlations summarize one projection of the design, but a partial coefficient is identified by multivariable residual variation. The next code finds an observed 25-ms acoustic-duration band with a large phone-count range and displays its shortest- and longest-phone items. These are approximate “similar duration, different phones” comparisons already present in the data.
+
+```{r}
+#| label: inspect-mald-partial-support
+mald$duration_band_25ms <- 25 * round(mald$duration_ms / 25)
+phone_ranges <- vapply(
+  split(mald$n_phones, mald$duration_band_25ms),
+  function(values) if (length(values) >= 2L) diff(range(values)) else NA_real_,
+  numeric(1)
+)
+support_band <- as.numeric(names(which.max(phone_ranges)))
+support_rows <- subset(mald, duration_band_25ms == support_band)
+support_rows[c(
+  which.min(support_rows$n_phones),
+  which.max(support_rows$n_phones)
+), c("item", "duration_ms", "n_phones", "n_syllables",
+     "frequency_subtlex", "mean_log_rt")]
+```
+
+The rows make the partial comparison imaginable, though they do not hold every other predictor exactly fixed. If a fitted coefficient compares combinations far outside the observed joint support, it is an extrapolation even when every individual predictor lies inside its marginal range.
 
 For centered predictor columns $\mathbf x_j$ and $\mathbf x_k$, the sample correlation is
 
@@ -73,7 +96,9 @@ If two design columns were exact multiples, $\mathbf X^\top\mathbf X$ would be s
 
 A potential worry is that correlation makes multiple regression invalid. Correlation alone does not do that. It changes which partial comparisons the design supports and how precisely they can be estimated. The scientific response is to inspect the overlap and align interpretation with it.
 
-## Check your understanding
+Pairwise correlation can also miss multivariable near-dependence, in which one predictor is well approximated by a combination of several others. The auxiliary regressions on the [VIF page](variance-inflation-factors.qmd) inspect that full declared predictor set.
+
+## Recap and check your understanding
 
 1. Which observed item properties overlap most strongly?
 2. Why does predictor overlap weaken a partial comparison?

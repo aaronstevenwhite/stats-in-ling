@@ -4,11 +4,44 @@ title: "Comparing predictive loss"
 
 The [grouped-validation page](grouped-cross-validation.qmd) returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the new-verb prediction task visible.
 
-## MegaOrientation
+We begin with the MegaOrientation measurement dossier, compare cumulative-link procedures on the same held-out verbs, inspect their descriptive fit to the raw ratings, and then delimit the population and model changes to which the observed gain might transfer.
+
+## MegaOrientation measurement dossier {#megaorientation-measurement-dossier}
 
 [Moon and White (2020)](https://ling.auf.net/lingbuzz/005282/current.pdf) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale. The corrected [MegaOrientation v1.1 release](https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip) changes the released participant and verb inventories after items with irregular-inflection errors were rerun.
 
+For the verb *abhor* in the active-gerund frame, the released pair is “Someone
+abhorred doing something in the future” and “Someone will abhor doing something in
+the past.” Past matrix tense conflicts with the future adverb in the first sentence;
+future-oriented *will* conflicts with the past adverb in the second. The manipulation
+uses that mismatch to force the embedded event toward the adverb's labeled
+orientation. The orientation label is experimental metadata, not a participant
+response.
+
+The five compact `frame_code` values abbreviate these released templates:
+
+| `frame_code` | released frame | plain-language frame |
+|:--|:--|:--|
+| `active_gerund` | `NP _ed VPing` | active matrix predicate with a gerund complement |
+| `active_to_eventive` | `NP _ed to VP[+eventive]` | active *to*-complement with an eventive predicate |
+| `active_to_stative` | `NP _ed to VP[-eventive]` | active *to*-complement with a stative predicate |
+| `passive_to_eventive` | `NP was _ed to VP[+eventive]` | passive eventive *to*-complement |
+| `passive_to_stative` | `NP was _ed to VP[-eventive]` | passive stative *to*-complement |
+
+One actual response row records participant `0` rating the future-oriented *abhor*
+active-gerund sentence as 7. Thus the course-facing row is a
+participant-by-verb-frame-item judgment with an ordered response, not a verb-level
+summary. Version 1.1 reran items affected by irregular-inflection errors, which
+changed the participant and verb inventories; all counts and folds below use the
+corrected release rather than the original paper's v1 counts.
+
 The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. The teaching comparison is narrower. It restricts the release to verbs attested in at least two frames, fits population cumulative-logit models, and holds out every response from a verb together. Thus, the target is an unseen verb within the selected multi-frame inventory, not a reproduction of the paper's latent-type comparison.
+
+Requiring at least two observed frames keeps the transfer question tied to verbs
+represented across frame contexts and prevents the selected inventory from being
+dominated by single-frame verbs. It does not balance the number of judgments or
+frames per verb. The restriction is part of the target population and must not be
+read as evidence about unrestricted English embedding verbs.
 
 The two models are
 
@@ -27,9 +60,32 @@ $$
 
 Equivalently, we can compare the log probability itself, where larger values are better. The sign convention below reports $\log p_{M_1}-\log p_{M_0}$, so positive values favor the interaction.
 
+The [cumulative-logit model](../regression-models/ordinal-regression.qmd#cumulative-logits)
+starts with thresholds $\alpha_1<\cdots<\alpha_6$ and linear predictor $\eta_i$:
+
+$$
+\mathbb{P}(Y_i\leq c\mid x_i)
+=\operatorname{logit}^{-1}(\alpha_c-\eta_i),
+\qquad c=1,\ldots,6.
+$$
+
+Category probabilities follow by subtraction: the first is the first cumulative
+probability, an interior category $c$ has probability
+$\mathbb{P}(Y_i\leq c)-\mathbb{P}(Y_i\leq c-1)$, and category 7 receives one minus
+the sixth cumulative probability. These are the three operations in
+`ordinal_probabilities()`.
+
 ## Held-out-verb comparison
 
 The code loads the tracked response table and frozen verb folds, fits both ordinal models in every fold, and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the `r length(unique(utils::read.csv("data/megaorientation/verb-folds-multiframe.csv")$verb))` verbs, preventing verbs with more judgment rows from receiving greater weight.
+
+Its [VTS](index.qmd#validation-target-specification) splits complete verb types,
+weights verbs equally, retains a held-out verb's frame and forced-orientation labels,
+refits thresholds and coefficients in every fold, and targets unseen verbs in the
+corrected multi-frame inventory. Five folds retain about four fifths of the verbs per
+fit while keeping enough unseen verbs in each score. `maxIter = 200` is a cap on
+optimizer iterations and `gradTol = 1e-3` is the declared convergence tolerance;
+these are computational safeguards, not linguistic parameters.
 
 ```{r}
 #| label: megaorientation-predictive-comparison
@@ -196,6 +252,12 @@ ggplot2::ggplot(
 
 The interaction improves the verb-weighted mean log score by `r sprintf("%.5f", comparison$verb_weighted_gain)`, with a conditional verb-bootstrap interval of [`r sprintf("%.5f", comparison$bootstrap_low)`, `r sprintf("%.5f", comparison$bootstrap_high)`]. The row-weighted gain is `r sprintf("%.5f", comparison$row_weighted_gain)`, and `r comparison$folds_favoring_interaction` of `r nrow(fold_scores)` folds favor the interaction. The gray points show all held-out verb differences; the blue points show fold means.
 
+The 999 bootstrap draws make the resampling calculation reproducible at modest cost;
+they do not remove Monte Carlo error, and 999 has no special statistical status. Each
+draw resamples the stored verb-level differences, so the resulting quantiles are
+conditional on the fitted folds and the observed response rows. They do not repeat
+participant sampling, item construction, model fitting, or the v1.1 correction.
+
 ## Raw responses and the descriptive fit
 
 The predictive comparison uses held-out verbs. A full-data interaction fit serves a different purpose: it lets us check fitted ordinal probabilities against the empirical rating distribution in each represented frame-orientation cell.
@@ -296,4 +358,26 @@ The interaction gain suggests that frame-specific orientation patterns help pred
 3. What does the full-data probability plot check, and what does it not estimate?
 4. Which omitted sources of dependence limit the bootstrap interval?
 
-A paired comparison evaluates two models on identical held-out groups and returns their differences to the unit specified by the scientific claim. The [previous page](grouped-cross-validation.qmd) developed grouped splitting with Natural Stories. The [next page](likelihood-ratio-tests.qmd) begins a five-page Provo sequence using two fixed Gaussian mean models.
+<details>
+<summary>Answers</summary>
+
+1. The difference is interaction minus restricted log probability, and larger log
+   probability is better.
+2. The scientific score unit is a verb, so verbs with more judgments should not
+   receive more weight.
+3. It checks descriptive agreement in represented frame-orientation cells; it does
+   not estimate held-out-verb performance.
+4. Participant, sentence-item, and refitting variation are omitted from the
+   conditional verb bootstrap.
+
+</details>
+
+## Recap and forward link
+
+1. A MegaOrientation row is an ordered participant judgment of a verb-frame sentence.
+2. Cumulative thresholds generate the seven probabilities scored by log loss.
+3. Paired differences return to held-out verbs before averaging.
+
+The [previous page](grouped-cross-validation.qmd#participant-and-story-validation-targets)
+developed grouped splitting with Natural Stories. The [next page](likelihood-ratio-tests.qmd#provo-measurement-dossier)
+begins a five-page Provo sequence using two fixed Gaussian mean models.

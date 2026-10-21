@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-Random-walk MH proposes without consulting the target's local geometry. **Hamiltonian Monte Carlo (HMC)** instead uses the gradient of the passage-level Student-t model log posterior to build a coordinated proposal in $(\mu,\log\sigma)$.
+Random-walk MH proposes without consulting the target's local geometry. [**Hamiltonian Monte Carlo (HMC)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) instead uses the gradient of the passage-level Student-t model log posterior to build a coordinated proposal in $(\mu,\log\sigma)$. The problem is random-walk behavior: many accepted short moves can still take a long time to cross a correlated target. A gradient supplies local information about which directions increase posterior density.
+
+We first define potential, kinetic, and total energy, then derive the leapfrog update that approximately preserves that energy, and finally follow one trajectory through the fitted passage-level target before stating what static HMC leaves unresolved.
 
 ## Potential, kinetic, and total energy
 
@@ -36,6 +38,18 @@ $$
 $$
 
 The first changes position using momentum; the second changes momentum using the local posterior gradient.
+
+In one dimension, imagine a ball moving across a valley whose height is $U(q)$. The slope $\nabla U(q)$ changes momentum, while momentum changes position. For the passage model, the $\mu$ component of the log-target gradient is
+
+$$
+\frac{\partial\log\widetilde f}{\partial\mu}
+=
+\sum_{j=1}^{55}
+\frac{(\nu+1)(y_j-\mu)}{\nu\sigma^2+(y_j-\mu)^2}
+-\frac{\mu}{s_\mu^2}.
+$$
+
+The summation is the Student-t likelihood contribution and the final term is the normal-prior contribution. In the code, this is the first element returned by `gradient_log_target()`.
 
 ## Leapfrog integration
 
@@ -67,9 +81,11 @@ $$
 \right\}.
 $$
 
+Thus one numerical step follows three visible operations: take half a momentum step using the gradient at $q_t$, take one position step using that updated momentum, then take the remaining half momentum step using the gradient at $q_{t+1}$. The code implements the two boundary half steps outside the loop and the intervening full momentum steps inside it.
+
 ## One trajectory through the passage-level Student-t model
 
-The reference trajectory first whitens the grid posterior, then applies 12 leapfrog steps of size 0.20. Every potential and gradient evaluation still uses the observed 55-passage passage-level Student-t model.
+The reference trajectory first whitens the grid posterior, then applies 12 leapfrog steps of size 0.20. Every potential and gradient evaluation still uses the observed 55-passage passage-level Student-t model. Whitening is a coordinate rescaling explained fully on the [mass-matrix page](mass-matrix-geometry.qmd#general-kinetic-energy): it makes the two posterior directions closer to comparable scales before a unit-mass trajectory is taken.
 
 ```{r}
 #| label: provo-hmc-trajectory
@@ -170,6 +186,17 @@ ggplot(grid, aes(mu, sigma, z = relative_density)) +
 
 The energy error is `r sprintf("%.6f", energy_error)` and the corresponding acceptance probability is `r sprintf("%.6f", acceptance_probability)`. These values assess this numerical trajectory; they are not probabilities that the linguistic model is true.
 
+The values $\epsilon=.20$ and $L=12$ are teaching settings chosen to make one stable trajectory visible. They are neither estimated corpus properties nor recommendations for another posterior. Smaller $\epsilon$ usually improves numerical accuracy at greater cost; changing $L$ changes how far one proposal travels.
+
+## Recap and forward link
+
+1. Potential energy is the negative log posterior kernel; momentum is an auxiliary proposal variable.
+2. Gradients steer proposals along local target geometry.
+3. Leapfrog's two half momentum steps make the numerical map reversible and volume preserving.
+4. The accept--reject correction handles finite-step energy error.
+
+The [mass-matrix page](mass-matrix-geometry.qmd#general-kinetic-energy) now develops the whitening transformation used in this demonstration.
+
 ## Check your understanding
 
 1. Which energy contains the posterior kernel?
@@ -186,5 +213,3 @@ The energy error is `r sprintf("%.6f", energy_error)` and the corresponding acce
 4. The final HMC accept--reject step corrects the small Hamiltonian error introduced by numerical leapfrog integration, preserving the target distribution. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [mass-matrix page](mass-matrix-geometry.qmd) examines the whitening transformation used above.

@@ -6,6 +6,26 @@ The UDS event protocol uses the natural-parts response as a gate. A yes displays
 
 The local extract supports numerical analysis of the [observed natural-parts gate](uds-measurement-model.qmd) only. It does not contain audited raw conditional-branch responses, and the available raw confidence serialization conflicts with the documented response scale. This page thus analyzes the gate empirically and keeps the branch model symbolic.
 
+We reconstruct the protocol, factor the gate and branch responses, check the fitted gate alone, and then distinguish conditional branch targets from structural absence.
+
+## The observed protocol {#the-observed-protocol}
+
+The protocol's documented content can be represented as a decision path:
+
+```text
+Natural-parts gate: Does the highlighted predicate's situation have natural parts?
+├── Yes
+│   ├── Are those parts similar to one another?          [binary]
+│   └── How long does a typical part last?               [ordered duration]
+└── No
+    ├── Is the whole situation dynamic?                  [binary]
+    └── How long does the whole situation last?          [ordered duration]
+```
+
+The duration response uses 12 ordered anchors: effectively no time, fractions of a second, seconds, minutes, hours, days, weeks, months, years, decades, centuries, and effectively forever. This diagram renders the documented prompt content; it is not a claim that the unaudited local serialization preserves verbatim prompt strings.
+
+Two hypothetical records make the storage logic concrete. If record A has gate `yes`, similarity `yes`, and typical-part duration `minutes`, all three entries are displayed responses. If record B has gate `no`, dynamicity `yes`, and whole-event duration `hours`, its similarity and part-duration cells are structurally absent. These records illustrate protocol paths only; they are not source examples or rows in the teaching extract. <!-- dqr-allow: symbolic-derivation -->
+
 ## Reproducing the observed gate
 
 ```{r}
@@ -81,6 +101,24 @@ $$
 
 where the follow-up term is meaningful only for records on which the branch is observed. This expression describes a future branch-bearing analysis; it is not evaluated on the present extract.
 
+The negative-gate contribution can also be derived from the sample space. The observed outcome space is the disjoint union
+
+$$
+\{G=0\}\;\cup\;\bigl(\{G=1\}\times\mathcal Y\bigr).
+$$
+
+The first outcome has probability $1-\pi_{ij}$. The second has density $\pi_{ij}f_Y(y\mid\phi_{ij})$. If one temporarily augments a negative-gate record with a placeholder branch variable and integrates it out, its conditional density integrates to one:
+
+$$
+(1-\pi_{ij})\int_{\mathcal Y}
+f_Y(y\mid G_{ij}=0)\,dy
+=1-\pi_{ij}.
+$$
+
+Thus the observed-data likelihood contains no evaluation at a fabricated zero. The integral only shows why an unobserved placeholder contributes a factor of one.
+
+The follow-up family must match each branch's support. Similarity and dynamicity invite Bernoulli models. The 12 ordered duration anchors invite an ordered-logit or ordered-probit model with increasing thresholds; a Gaussian likelihood would ignore their discrete ordered support and unequal verbal meaning. Shared item or annotator effects may connect gate and branch models, but that dependence must be checked with branch-bearing data.
+
 ## Checking only the fitted gate
 
 The following posterior predictive calculation uses the audited binary gate model. It simulates no follow-up values.
@@ -89,24 +127,46 @@ The following posterior predictive calculation uses the audited binary gate mode
 #| label: compute-uds-gate-ppc
 
 set.seed(20261103L)
-gate_ppc <- vapply(
+gate_ppc <- do.call(
+  rbind,
+  lapply(
   seq_len(nrow(uds_cache$population_draws)),
   function(draw) {
     eta <-
       uds_cache$population_draws[draw, "alpha"] +
       uds_cache$item_effect_draws[draw, uds$item_index] +
       uds_cache$annotator_effect_draws[draw, uds$annotator_index]
-    mean(stats::rbinom(
+    replicated <- stats::rbinom(
       nrow(uds),
       size = 1,
       prob = stats::plogis(eta)
-    ))
-  },
-  numeric(1)
+    )
+    item_sums <- rowsum(replicated, uds$item_index, reorder = FALSE)
+    item_counts <- rowsum(
+      rep(1L, nrow(uds)), uds$item_index, reorder = FALSE
+    )
+    data.frame(
+      gate_rate = mean(replicated),
+      mixed_item_rate = mean(item_sums > 0 & item_sums < item_counts)
+    )
+  })
 )
 observed_gate_rate <- mean(uds$natural_parts)
+observed_item_sums <- rowsum(
+  uds$natural_parts, uds$item_index, reorder = FALSE
+)
+observed_item_counts <- rowsum(
+  rep(1L, nrow(uds)), uds$item_index, reorder = FALSE
+)
+observed_mixed_item_rate <- mean(
+  observed_item_sums > 0 & observed_item_sums < observed_item_counts
+)
 gate_interval <- stats::quantile(
-  gate_ppc,
+  gate_ppc$gate_rate,
+  c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
+)
+mixed_interval <- stats::quantile(
+  gate_ppc$mixed_item_rate,
   c(0.025, 0.5, 0.975) # dqr-allow: algorithm-setting
 )
 
@@ -116,10 +176,11 @@ stopifnot(
 )
 
 data.frame(
-  observed = observed_gate_rate,
-  predictive_lower = gate_interval[[1]],
-  predictive_median = gate_interval[[2]],
-  predictive_upper = gate_interval[[3]]
+  statistic = c("Overall yes rate", "Items with both responses"),
+  observed = c(observed_gate_rate, observed_mixed_item_rate),
+  predictive_lower = c(gate_interval[[1]], mixed_interval[[1]]),
+  predictive_median = c(gate_interval[[2]], mixed_interval[[2]]),
+  predictive_upper = c(gate_interval[[3]], mixed_interval[[3]])
 )
 ```
 
@@ -129,7 +190,7 @@ data.frame(
 #| fig-height: 3.6
 #| fig-cap: "Posterior predictive distribution of the observed natural-parts gate rate. The vertical line marks the released rate."
 
-ggplot2::ggplot(data.frame(gate_rate = gate_ppc), ggplot2::aes(gate_rate)) +
+ggplot2::ggplot(gate_ppc, ggplot2::aes(gate_rate)) +
   ggplot2::geom_histogram(
     bins = 25,
     fill = "grey75",
@@ -149,7 +210,7 @@ ggplot2::ggplot(data.frame(gate_rate = gate_ppc), ggplot2::aes(gate_rate)) +
   ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
 ```
 
-This check supports the gate component at the overall-rate level. It supplies no evidence about the conditional branches because no branch response was simulated or scored.
+The overall rate is a weak check because many item--annotator decompositions can reproduce one mean. The mixed-item rate also asks whether the model reproduces within-item disagreement. Neither statistic supplies evidence about the conditional branches because no branch response was simulated or scored.
 
 ## The follow-up target is conditional
 
@@ -167,6 +228,8 @@ The gate and a future follow-up model might share item or annotator quantities. 
 
 A rectangular data table may store `NA` for an undisplayed follow-up. The joint model, not the storage symbol, determines what that `NA` means. Protocol absence differs from the missing intended measurements discussed in [missingness mechanisms](../missing-data/missingness-mechanisms.qmd): here the instrument defines no follow-up response after the incompatible gate value.
 
+In the terminology of the [missing-data module](../missing-data/index.qmd#what-counts-as-missing), this is an undefined measure under one protocol path rather than measurement failure. Imputing a part-similarity value after a no gate would change the estimand by inventing a response the instrument did not request.
+
 The blocked measurements are part similarity, part duration, whole-situation duration, dynamicity, and raw confidence. No numerical claim about their distributions, associations, or fitted values follows from this page.
 
 ::: {.callout-note title="Check the gate"}
@@ -175,8 +238,18 @@ The blocked measurements are part similarity, part duration, whole-situation dur
 3. Why is a protocol-generated blank different from a recorded zero?
 4. What does the gate-rate predictive check leave untested?
 5. What evidence would a branch model require?
+
+**Answers.** (1) A negative gate contributes $1-\pi_{ij}$ and no branch density. (2) The conditional expectation describes records that passed the gate. (3) A blank means the question was not displayed, while zero would be a recorded point on a response scale. (4) Even with the disagreement check, no branch distribution or gate--branch dependence is tested. (5) A branch model requires audited raw branch responses, verified response anchors, adequate passed-gate counts, and a new recovery and predictive-check plan.
 :::
 
 A gated likelihood gives negative gates one gate factor and affirmative gates both a gate factor and a conditional follow-up factor. The observed UDS extract supports the first component only. Keeping the second component symbolic preserves the logic of the instrument without inventing data.
+
+## Recap
+
+1. The protocol defines a disjoint outcome space: a negative gate alone or an affirmative gate paired with branch responses.
+2. Marginalizing a negative-gate placeholder yields $1-\pi_{ij}$, not a density evaluated at zero.
+3. Bernoulli families match binary branches, while ordered models respect duration anchors.
+4. Gate-rate and disagreement checks assess only the fitted gate and cannot validate unavailable branches.
+5. A future branch-bearing analysis must return to the [joint-model factorization](writing-a-joint-model.qmd#translating-steps-into-factors) and add one factor for each displayed response.
 
 Previous: [Measuring natural-parts judgments](uds-measurement-model.qmd)

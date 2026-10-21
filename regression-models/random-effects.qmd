@@ -3,7 +3,9 @@ title: "Random effects and partial pooling"
 execute: {warning: false, message: false}
 ---
 
-The [preceding page](fixed-and-random-effects.qmd) separated population associations from variation across sampled listeners and words. A random-effects model represents the latter through a shared group distribution and **partial pooling**.
+The [preceding page](fixed-and-random-effects.qmd) separated population associations from variation across sampled listeners and words. A random-effects model represents the latter through a shared group distribution and [**partial pooling**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html).
+
+We first contrast complete, no, and partial pooling, then compute the MALD summaries and state the exchangeability assumption that makes the shared distribution meaningful.
 
 ## Model deviations from a shared center
 
@@ -42,6 +44,21 @@ w_p
 $$
 
 The weight $w_p$ lies between zero and one. More observations or greater between-participant variation move it toward one; more within-participant residual variation moves it toward zero. Shrinkage is thus a consequence of the joint probability model, not a correction applied after fitting unrelated participant means.
+
+To derive the expression, condition on all other model terms and write the participant contribution to the negative log likelihood, up to constants, as
+
+$$
+Q(b_p)=\frac{1}{2\sigma^2}\sum_{i=1}^{n_p}(y_{pi}-\beta_0-b_p)^2
++\frac{b_p^2}{2\tau_p^2}.
+$$
+
+Differentiating and setting the result to zero gives
+
+$$
+-\frac{n_p(\bar y_p-\beta_0-b_p)}{\sigma^2}+\frac{b_p}{\tau_p^2}=0,
+$$
+
+which solves to the weight above. This algebra resembles normal–normal posterior updating, but `lmer` treats the fitted population and variance parameters frequentistically and reports a conditional mode.
 
 ## Computing the three MALD summaries
 
@@ -118,4 +135,25 @@ The participant standard deviation $\tau_p$ describes stable between-listener va
 
 The shared normal distribution treats participant labels as exchangeable after conditioning on included predictors. Before observing the responses, swapping two arbitrary participant labels does not change the model. If listeners differ systematically by a measured property, that property should enter the population relation; the random effects then describe remaining variation.
 
-An estimated deviation near zero can indicate either that a listener lies near the fitted center or that the listener's trials provide weak information and receive strong shrinkage. The estimate, its conditional uncertainty, and the number of trials must be interpreted together. The [next page](random-intercepts.qmd) derives the dependence induced by the shared deviations.
+For instance, exchanging labels `P01` and `P02` everywhere leaves the model unchanged. Relabeling a measured bilingual listener as monolingual would not: if bilingual status predicts response time, it belongs in the population relation rather than being hidden inside exchangeable residual heterogeneity.
+
+```{r}
+#| label: two-participant-shrinkage-weights
+#| echo: true
+counts <- sort(table(mald$participant_id))
+vc <- as.data.frame(VarCorr(fit))
+tau2 <- vc$vcov[vc$grp == "participant_id" & is.na(vc$var2)]
+sigma2 <- sigma(fit)^2
+n_examples <- c(smallest = unname(counts[1]), largest = unname(counts[length(counts)]))
+data.frame(trials = n_examples,
+           shrinkage_weight = n_examples * tau2 / (sigma2 + n_examples * tau2))
+```
+
+An estimated deviation near zero can indicate either that a listener lies near the fitted center or that the listener's trials provide weak information and receive strong shrinkage. The estimate, its conditional uncertainty, and the number of trials must be interpreted together.
+
+## Recap and check
+
+1. Does partial pooling move every raw mean by the same amount? No. The weight depends on $n_p$ and the fitted within- and between-participant variances.
+2. Does exchangeability assert that listeners are identical? No. It says their labels carry no further model information after conditioning on included predictors.
+
+The [next page](random-intercepts.qmd) derives the dependence induced by the shared deviations.

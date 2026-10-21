@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-**Ridge regression** adds a squared-coefficient penalty to the least-squares objective:
+[**Ridge regression**](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) adds a squared-coefficient penalty to the least-squares objective stated below.
+
+This page first defines the penalty and its scaling, then selects it by frozen new-item folds and inspects the resulting MALD coefficient path.
 
 $$
 \widehat{\boldsymbol\beta}^{\,\text{ridge}}(\lambda)
@@ -22,9 +24,34 @@ $$
 
 The intercept is left unpenalized. When predictors are on different scales, standardization must be estimated from the training data so that the penalty is comparable across columns.
 
+After centering the response and standardizing the predictor columns, differentiate the penalized objective:
+
+$$
+-2\mathbf X^\top(\mathbf y-\mathbf X\boldsymbol\beta)
++2\lambda\boldsymbol\beta=\mathbf 0.
+$$
+
+Thus
+
+$$
+(\mathbf X^\top\mathbf X+\lambda\mathbf I)\widehat{\boldsymbol\beta}^{\,\text{ridge}}
+=\mathbf X^\top\mathbf y,
+$$
+
+and
+
+$$
+\widehat{\boldsymbol\beta}^{\,\text{ridge}}
+=(\mathbf X^\top\mathbf X+\lambda\mathbf I)^{-1}\mathbf X^\top\mathbf y.
+$$
+
+Adding $\lambda\mathbf I$ stabilizes coefficient directions with weak design support, but it introduces bias toward zero. The hoped-for gain is lower prediction variance, the [bias--variance tradeoff](../model-criticism-and-prediction/bias-variance-tradeoff.qmd), not guaranteed improvement.
+
 ## New-item validation in MALD
 
 We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning folds by item is also a row split. `glmnet` estimates standardization separately inside each training-fold fit.
+
+This is a **new-item validation target**: the held-out unit is one word item, the score is row-weighted squared error, and every center, scale, and coefficient is learned without that item. Ten folds are a declared computational compromise between training-set size and repeated fitting. The 80-point log-spaced penalty grid covers weak through strong shrinkage; neither ten nor 80 is a mathematical constant.
 
 ```{r}
 #| label: validate-mald-ridge
@@ -106,6 +133,45 @@ data.frame(
 )
 ```
 
+The minimum-error rule selects $\lambda_{\min}$ with the smallest fold-mean MSE. The one-standard-error rule selects the largest, hence most strongly regularized, candidate satisfying
+
+$$
+\widehat L(\lambda)
+\leq
+\widehat L(\lambda_{\min})
++\widehat{\operatorname{SE}}
+\{\widehat L(\lambda_{\min})\}.
+$$
+
+It deliberately trades a small estimated loss increase for a simpler, more stable coefficient vector. The fold standard error is descriptive across these ten folds; folds are not ten independent repetitions of the population.
+
+```{r}
+#| label: show-mald-ridge-path
+full_path <- glmnet(
+  x = X,
+  y = y,
+  alpha = 0, # dqr-allow: algorithm-setting
+  lambda = penalty_grid,
+  standardize = TRUE,
+  intercept = TRUE
+)
+path_matrix <- as.matrix(coef(full_path))[-1, , drop = FALSE]
+path_data <- do.call(rbind, lapply(seq_len(nrow(path_matrix)), function(j) {
+  data.frame(
+    lambda = full_path$lambda,
+    coefficient = rownames(path_matrix)[[j]],
+    estimate = path_matrix[j, ]
+  )
+}))
+ggplot(path_data, aes(lambda, estimate, linetype = coefficient)) +
+  geom_line(linewidth = 0.7) +
+  scale_x_log10() +
+  labs(x = "Ridge penalty", y = "Standardized-path coefficient", linetype = NULL) +
+  theme_classic(base_size = 11)
+```
+
+The paths show the algorithmic consequence of increasing $\lambda$: coefficients contract toward zero, with correlated directions sharing the adjustment.
+
 The minimum-error penalty is `r format(lambda_min, digits = 4)`, while the one-standard-error penalty is `r format(lambda_one_se, digits = 4)`. The new-item RMSE is `r sprintf("%.6f", ridge_rmse)` for the one-SE ridge fit and `r sprintf("%.6f", ols_rmse)` for OLS.
 
 ```{r}
@@ -132,7 +198,7 @@ ggplot(validation_curve, aes(lambda, rmse)) +
 
 Ridge does not beat OLS in this comparison. That outcome is part of the lesson: shrinkage changes the bias--variance tradeoff, but it does not guarantee lower predictive loss in a particular dataset.
 
-## Check your understanding
+## Recap and check your understanding
 
 1. Which coefficients are penalized?
 2. Why must standardization be learned inside each training fold?

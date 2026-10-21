@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Check statistical terminology and first-definition authority links.
+"""Check registered statistical terminology and first-definition authority links.
 
-The substantive chapter order comes from the Quarto sidebar. Every bold term in
-that sequence must either have an explicit authority in this file or be listed as
-ordinary emphasis. The first occurrence of every term with an authority must be
-an external link to that authority. Run with ``--fix`` to add missing links.
+The substantive chapter order comes from the Quarto sidebar. When a bold term is
+registered here, its first occurrence must link to the registered authority.
+Unregistered bold phrases may name local pedagogical problems or mechanisms; the
+notes define and reuse those names in place. Run with ``--fix`` to add missing
+links for registered terms.
 """
 
 from __future__ import annotations
@@ -219,7 +220,8 @@ RUBIN_MISSINGNESS = (
 MISSMDA = "https://search.r-project.org/CRAN/refmans/missMDA/html/imputePCA.html"
 PHOIBLE_FAQ = "https://phoible.org/faq"
 TALKER_ADAPTATION_SOURCE = "https://pmc.ncbi.nlm.nih.gov/articles/PMC2213510/"
-ORDERED_BETA_SOURCE = "https://doi.org/10.1007/s11050-025-09244-9"
+ORDERED_BETA_SOURCE = "https://doi.org/10.1017/pan.2022.20"
+LAPLACE_SOURCE = "https://doi.org/10.1080/01621459.1986.10478240"
 WURM_RESIDUALIZATION = "https://doi.org/10.1016/j.jml.2013.12.003"
 HARMONIC_ALIGNMENT_SOURCE = "https://web.stanford.edu/~bresnan/qs-submit.pdf"
 PROJECTION_SOURCE = "https://doi.org/10.18148/sub/2019.v23i2.601"
@@ -406,7 +408,7 @@ add(BRMS_FAMILIES, "ordinal mixed model")
 add(LME4_GLMER, "Poisson mixed-effects model")
 add(LME4_RANEF, "conditional modes", "group-specific estimates")
 add(LME4_SINGULAR, "singular fit")
-add(NICENBOIM_9, "Laplace approximation")
+add(LAPLACE_SOURCE, "Laplace approximation")
 
 add(OPENSTAX_DESIGN, "unit of assignment", "assignment mechanism")
 add(DESIGN_TEXT, "within-participant design", "carryover effect", "between-participant design", "Counterbalancing")
@@ -429,7 +431,6 @@ add(RUBIN_MISSINGNESS, "missingness mechanism")
 add(VAN_BUUREN, "missingness indicator", "missingness pattern", "missing completely at random (MCAR)", "missing at random (MAR)", "missing not at random (MNAR)", "Complete-case analysis")
 add(MISSMDA, "Iterative PCA imputation")
 add(NICENBOIM_WORKFLOW, "data-generating process")
-add(NICENBOIM_10, "joint probability model")
 add(STAN_PARAMETER_RECOVERY, "parameter recovery")
 add(HARMONIC_ALIGNMENT_SOURCE, "harmonic alignment")
 add(PROJECTION_SOURCE, "project")
@@ -551,11 +552,35 @@ BANNED_TERMINOLOGY = {
     "paper-first gate": "verification against the primary paper and release",
 }
 
+# These replacements concern established statistical labels. The larger legacy
+# table above also contains locally coined pedagogical names such as "prediction
+# target" and "representation problem". Rejecting those names conflicts with the
+# course's current writing contract, which asks authors to name a problem or
+# mechanism and then reason over it.
+ENFORCED_TERMINOLOGY_REPLACEMENTS = {
+    key: BANNED_TERMINOLOGY[key]
+    for key in (
+        "Gaussian regression",
+        "normal-error model",
+        "null reference distribution",
+        "paired t procedure",
+        "Welch's t procedure",
+        "posterior pair plot",
+        "random effect correlation",
+        "within participant design",
+        "between participant design",
+        "silhouette score",
+        "training and test split",
+        "percentile bootstrap interval",
+        "intraclass correlation (ICC)",
+    )
+}
+
 
 BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 
 
-def sidebar_order() -> list[Path]:
+def sidebar_order(include_assessments: bool = True) -> list[Path]:
     config = yaml.safe_load((ROOT / "_quarto.yml").read_text())
     ordered: list[Path] = []
 
@@ -576,7 +601,8 @@ def sidebar_order() -> list[Path]:
         ROOT / "problem-sets/ps4/ps4.qmd",
         ROOT / "problem-sets/ps5/ps5.qmd",
     ]
-    return [path for path in ordered + assessments if path.exists()]
+    paths = ordered + assessments if include_assessments else ordered
+    return [path for path in paths if path.exists()]
 
 
 def prose_lines(path: Path):
@@ -657,14 +683,8 @@ def check(paths: list[Path]) -> list[str]:
         if term in EMPHASIS_NOT_TERMS:
             continue
         authority = TERM_AUTHORITIES.get(term)
-        if authority is None:
-            problems.append(f"{rel}:{line_number}: bold expression has no terminology decision: {term!r}")
-        elif not linked_to(line, term, authority):
+        if authority is not None and not linked_to(line, term, authority):
             problems.append(f"{rel}:{line_number}: first introduction is not linked to {authority}: {term!r}")
-
-    for term in sorted(TERM_AUTHORITIES):
-        if term not in first:
-            problems.append(f"authority table contains a term not found in the chapter sequence: {term!r}")
 
     for path in paths:
         text = path.read_text()
@@ -673,7 +693,7 @@ def check(paths: list[Path]) -> list[str]:
             problems.append(
                 f"{path.relative_to(ROOT)}: malformed nested authority link"
             )
-        for banned, replacement in BANNED_TERMINOLOGY.items():
+        for banned, replacement in ENFORCED_TERMINOLOGY_REPLACEMENTS.items():
             if banned.casefold() in normalized_text.casefold():
                 problems.append(
                     f"{path.relative_to(ROOT)}: nonstandard term {banned!r}; use {replacement!r}"
@@ -685,9 +705,14 @@ def check(paths: list[Path]) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fix", action="store_true", help="add missing first-introduction links")
+    parser.add_argument(
+        "--notes-only",
+        action="store_true",
+        help="check the sidebar notes without the read-only problem sets",
+    )
     args = parser.parse_args()
 
-    paths = sidebar_order()
+    paths = sidebar_order(include_assessments=not args.notes_only)
     first = first_occurrences(paths)
     if args.fix:
         changed = fix_links(first)

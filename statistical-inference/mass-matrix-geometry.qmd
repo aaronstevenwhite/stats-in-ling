@@ -7,7 +7,9 @@ execute:
   message: false
 ---
 
-The [HMC trajectory](hamiltonian-monte-carlo.qmd) whitened the passage-level Student-t model before applying unit-mass leapfrog steps. A **mass matrix** supplies HMC with a constant scale and orientation for its momentum without changing the posterior target.
+The [HMC trajectory](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy) whitened the passage-level Student-t model before applying unit-mass leapfrog steps. A [**mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) supplies HMC with a constant scale and orientation for its momentum without changing the posterior target.
+
+We first derive the general kinetic energy associated with a mass matrix, then inspect how the fitted Provo posterior changes under whitening, and finally connect that fixed geometric adjustment to the adaptation used by NUTS.
 
 ## General kinetic energy
 
@@ -38,11 +40,20 @@ $$
 Because the velocity is $v=M^{-1}\rho$,
 
 $$
+\begin{aligned}
 \operatorname{Cov}(v)
-=M^{-1}MM^{-1}=M^{-1}.
+&=\operatorname{Cov}(M^{-1}\rho)\\
+&=M^{-1}\operatorname{Cov}(\rho)(M^{-1})^\mathsf T\\
+&=M^{-1}MM^{-1}\\
+&=M^{-1}.
+\end{aligned}
 $$
 
 Thus the inverse mass matrix should roughly match posterior covariance: wider posterior directions receive wider typical velocities.
+
+Software descriptions sometimes report the mass matrix and sometimes its inverse. Here $M$ means momentum covariance, while $M^{-1}$ means velocity covariance. Keeping that convention explicit prevents the phrase “adapted mass matrix” from silently switching meanings.
+
+In two dimensions, correlated posterior contours form a tilted ellipse. Axis-by-axis rescaling can make the ellipse wider or narrower but cannot untilt it. A dense linear transformation can both rescale and rotate the ellipse toward a circle; this is what posterior whitening does for global linear geometry.
 
 ## Geometry of the passage-level Student-t model
 
@@ -121,6 +132,17 @@ A unit matrix treats all directions as equally scaled and uncorrelated. A diagon
 
 Stan estimates a regularized inverse mass matrix during warmup, then holds it fixed during retained sampling. Adaptation must stop because changing the transition indefinitely could change its stationary distribution. The matrix improves computation; it does not alter the 55 passage summaries or repair the passage-level Student-t model's aggregation limits.
 
+The code-to-geometry bridge is: `covariance` estimates the weighted covariance of $(\mu,\log\sigma)$ grid cells, `chol(covariance)` factorizes that ellipse, `whitening` applies the inverse factor, and `white_covariance` checks that the transformed coordinates have approximately unit variances and zero correlation.
+
+## Recap and forward link
+
+1. $M$ is momentum covariance; $M^{-1}$ is velocity covariance in this notation.
+2. A diagonal matrix rescales axes, while a dense matrix can also rotate global linear correlation.
+3. Whitening improves computational geometry without changing the posterior target.
+4. A constant matrix cannot eliminate nonlinear curvature that changes across the target.
+
+The [NUTS page](no-u-turn-sampler.qmd#growing-and-stopping-a-trajectory) turns from trajectory geometry to trajectory length.
+
 ## Check your understanding
 
 1. Which matrix is the momentum covariance?
@@ -137,5 +159,3 @@ Stan estimates a regularized inverse mass matrix during warmup, then holds it fi
 4. The retained transition must remain fixed to preserve a single stationary distribution; indefinite adaptation would keep changing the kernel. <!-- dqr-allow: empirical-answer -->
 
 </details>
-
-The [NUTS page](no-u-turn-sampler.qmd) turns from trajectory geometry to trajectory length.

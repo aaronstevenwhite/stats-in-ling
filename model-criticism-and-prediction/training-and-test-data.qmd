@@ -6,6 +6,8 @@ The [prediction-target page](prediction-targets.qmd) fixed three meanings of *ne
 
 The [residuals of a fitted regression](../regression-models/residuals.qmd) are observed-minus-fitted discrepancies on the observations used to estimate its coefficients. A flexible model can reduce those residuals by following features of the training responses that will not recur. Training fit thus cannot by itself estimate predictive loss for a reader absent during fitting.
 
+We first state the separation rule, implement one participant-held-out Natural Stories target, and then inspect preprocessing leakage, split dependence, and reproducibility checks before treating the held-out score as evidence about new readers.
+
 ## The separation rule
 
 Let $D_{\mathrm{train}}$ and $D_{\mathrm{test}}$ be disjoint collections of observations. A fitted predictor is
@@ -28,9 +30,21 @@ $$
 
 The subscript on $\widehat f$ is essential. Test responses must not influence the coefficients, predictor transformations, model choice, or any other fitted quantity used to produce their predictions.
 
-## A participant-held-out Natural Stories split
+## Participant-held-out validation target {#participant-held-out-validation-target}
 
-The data and their source are introduced on the [prediction-target page](prediction-targets.qmd#natural-stories). The following code independently loads the tracked release, recreates the frozen participant folds, learns all transformations from the training rows, and predicts the first held-out fold.
+The [Natural Stories dossier](prediction-targets.qmd#natural-stories-measurement-dossier)
+defines one row as one retained button latency for a reader at a word position. The
+[VTS](index.qmd#validation-target-specification) for this analysis is:
+
+| VTS decision | present choice |
+|:--|:--|
+| split unit | participant; all of a reader's responses move together |
+| score unit | response row on this page; participant weighting comes next |
+| information set | word length, unigram frequency, and GPT-3 surprisal for each held-out word |
+| fold-local estimates | predictor means and standard deviations, then regression coefficients |
+| transfer target | similarly sampled readers of these ten represented stories |
+
+The following code independently loads the tracked release, recreates the frozen participant folds, learns all transformations from the training rows, and predicts the first held-out fold. Five folds are a computational teaching choice: each fit retains about four fifths of the participants while producing groups large enough for a readable calibration display. The shuffled round-robin assignment balances the number of participants across folds to within one; it does not balance response-row counts, reading speed, or any unobserved participant characteristic. The seed freezes that arbitrary assignment so the printed results can be reproduced.
 
 ```{r}
 #| label: natural-train-test
@@ -181,6 +195,26 @@ The training set contains `r format(assignment$rows[assignment$set == "training"
 
 The gray points show a reproducible display sample of raw held-out responses. The blue points and intervals summarize those responses within prediction deciles. This combines the raw test outcomes and the fitted model without using test responses to estimate the regression.
 
+The deciles are defined by quantiles of the held-out predictions so each bin contains
+roughly the same number of rows. Within a bin, the blue interval is the observed mean
+plus or minus $1.96$ row-level standard errors. It is a descriptive calibration
+interval, not a predictive interval for a new response and not a participant-level
+uncertainty interval. Sampling at most 12,000 gray points changes only what is drawn;
+the fit, bins, and printed summaries use every held-out row.
+
+The mathematics-to-code correspondence is direct:
+
+| mathematical object | code object |
+|:--|:--|
+| $D_{\mathrm{train}}$, $D_{\mathrm{test}}$ | logical vectors `train`, `test` |
+| $\overline x_{\mathrm{train}}$, $s_{\mathrm{train}}$ | `training_mean`, `training_sd` |
+| $\widehat f_{\mathrm{train}}$ | `fit` |
+| $\widehat f_{\mathrm{train}}(x_i)$ | `test_prediction` |
+| realized test responses $y_i$ | `natural$log_rt[test]` |
+
+Thus the fitted function is estimated from random training data, while the displayed
+`test_prediction` values are its estimates for this realized split.
+
 ## Leakage through preprocessing
 
 [**Data leakage**](https://scikit-learn.org/stable/common_pitfalls.html#data-leakage) occurs when information from the test set influences a fitted decision that should have been made without it. Directly fitting on a test response is one case, but preprocessing can leak more quietly.
@@ -212,4 +246,25 @@ The test set is also not a renewable source of decisions. If several specificati
 3. Why does the calibration figure not estimate an omitted-story target?
 4. What changes if the test responses guide model selection?
 
-Separating training and test data allows parameters and preprocessing to be estimated without the responses on which predictive loss is computed. The [previous page](prediction-targets.qmd) fixed the prediction unit; the [next page](predictive-loss.qmd) defines the numerical consequence assigned to these participant-held-out errors.
+<details>
+<summary>Answers</summary>
+
+1. None; the assertion after fold construction verifies that each participant has
+   exactly one fold label.
+2. The means and standard deviations estimated from training rows define both
+   training and test coordinates.
+3. Every story remains represented in training, so no story is absent.
+4. The test set becomes selection data, and its score is optimistic as an estimate
+   of the performance of the selected procedure.
+
+</details>
+
+## Recap and forward link
+
+1. Participants, rather than rows, cross the training-test boundary.
+2. Preprocessing and coefficients are learned from training data.
+3. Display sampling and calibration summaries do not alter the fit.
+
+The [previous page](prediction-targets.qmd#three-prediction-targets) fixed the
+prediction unit; the [next page](predictive-loss.qmd#the-averaging-unit-is-part-of-the-target)
+defines the numerical consequence assigned to these participant-held-out errors.

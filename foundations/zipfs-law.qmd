@@ -4,6 +4,8 @@ title: "A first pattern: Zipf's law"
 
 Word types in corpora tend to show a broad inverse relation between frequency and frequency rank. But computing rank and frequency from the same counts makes the two axes mathematically dependent, so the fitted relation is partly induced by the ranking operation.
 
+We construct the rank–frequency curve, separate the tokens used to estimate rank from those used to estimate frequency, and then inspect the residual pattern that a fitted inverse curve leaves behind.
+
 Piantadosi's (2014) [critical review](https://doi.org/10.3758/s13423-014-0585-6) demonstrates the problem with the written American National Corpus, separates rank and frequency estimation by splitting tokens, and shows systematic residual structure beyond a Zipf–Mandelbrot curve. The authorized ANC count snapshot is not available in this repository. We thus carry out an explicitly labeled, paper-aligned replication on [UD Turkish BOUN release 2.18](https://universaldependencies.org/treebanks/tr_boun/), pinned at commit `0def94a229dcbc28d32192b0138b560c075c6d87` under CC BY-SA 4.0.
 
 Türk et al. (2022) [describe the BOUN Treebank and its annotation](https://doi.org/10.1007/s10579-021-09558-0); Marşan et al. (2022) [describe later agglutination-sensitive revisions](https://arxiv.org/abs/2207.11782). The treebank contains written sentences from five Turkish National Corpus registers. Native-speaker linguists manually annotated and cross-checked automatically preprocessed sentences. The prepared table lowercases source surface forms with Turkish dotted and dotless I preserved, and it excludes punctuation, multiword-token range lines, and empty nodes while retaining component syntactic words. One row is one word-form type; `frequency` is its count among non-punctuation syntactic-word tokens. The immediate UD release permits redistribution under CC BY-SA 4.0, though the public documents do not independently expose the upstream Turkish National Corpus permission reported by the paper. The [data record](../data/ud-turkish-boun/README.md) gives the checksums and full terms caveat.
@@ -24,6 +26,12 @@ stopifnot(
 
 c(types = nrow(forms), tokens = sum(forms$frequency))
 ```
+
+For each row, `word_form` is one lowercased surface type and `frequency` is the
+number of retained syntactic-word tokens with exactly that form. For instance,
+the most frequent row is *bir*, with 2,746 tokens; its count is a type-level <!-- dqr-allow: empirical-answer -->
+summary of token records, not 2,746 new word types. `nrow(forms)` thus
+counts types, while `sum(forms$frequency)` recovers tokens.
 
 ## Rank and the descriptive model
 
@@ -50,6 +58,15 @@ Here $f(r)$ is an observed count and $\widehat f(r)$ is a fitted count. The mode
 ## Separate rank and frequency estimation
 
 Following Piantadosi (2014), we use a fixed binomial token split. One count part assigns ranks and the other estimates relative frequency. The random split is a computational device applied to the observed Turkish counts, not a new linguistic dataset. It also does not repair sentence or register dependence because the aggregate table lacks document identifiers.
+
+The 50/50 probability gives equal expected token totals to ranking and
+frequency estimation. A more unequal split would estimate one side more
+precisely at the other's expense. Within each type, `rbinom()` assigns every
+observed token to the rank half with probability 0.5; the remainder enters the
+frequency half. When rank-half counts tie, an independent uniform number gives
+a deterministic ordering after the seed is fixed. Seed `20261018` is an
+arbitrary reproducibility label, not a fitted quantity or a source of
+independence.
 
 ```{r}
 #| label: split-rank-frequency
@@ -89,6 +106,19 @@ $$
 \equiv
 \sum_{r=1}^{V}n_r\log p(r\mid\alpha,\beta).
 $$
+
+To see where this expression comes from, let $M=\sum_r n_r$. The multinomial
+mass of the count vector is
+
+$$
+\mathbb{P}(\mathbf N=\mathbf n\mid\alpha,\beta)
+=\frac{M!}{\prod_r n_r!}
+\prod_{r=1}^{V}p(r\mid\alpha,\beta)^{n_r}.
+$$
+
+Taking logs yields a combinatorial term that does not depend on $\alpha$ or
+$\beta$, plus $\sum_r n_r\log p(r\mid\alpha,\beta)$. Dropping only the constant
+term gives the displayed optimization objective.
 
 The ranks come from one half and the counts from the other, which removes the same-count error that Piantadosi identifies. Types with zero frequency-half counts remain in the model support even though they cannot appear on a logarithmic plot.
 
@@ -137,6 +167,24 @@ stopifnot(
 
 zipf_coef
 ```
+
+The formula-to-code map is direct:
+
+| Mathematical object | Code object |
+|---|---|
+| $r$ | `forms$rank_split` |
+| $n_r$ | `forms$frequency_count` |
+| $-\alpha\log(r+\beta)$ | `log_weight` |
+| $\log\sum_j(j+\beta)^{-\alpha}$ | `log_sum_exp(log_weight)` |
+| $-\ell(\alpha,\beta)$ | `negative_log_likelihood()` |
+
+Optimizing `log(alpha)` and `log(beta)` enforces positive parameter values.
+The starting values 1 and 2.7 are computational proposals, not assumptions
+about Turkish. The wide bounds prevent invalid or numerically extreme searches,
+and L-BFGS-B is chosen because it respects those bounds while using local
+gradient information. Convergence code zero is necessary but not sufficient;
+a production analysis should also compare starts and check whether the optimum
+is away from the bounds.
 
 The fitted exponent is `r round(zipf_coef[["alpha"]], 3)` and the fitted rank shift is `r round(zipf_coef[["beta"]], 3)`. These parameters describe this tokenization of this treebank release; they are not estimates for Turkish as a whole.
 
@@ -192,6 +240,8 @@ The [next page](possibilities-and-events.qmd) moves from the whole word-form inv
 2. Recompute ordinary same-sample ranks from `frequency`. Why are those ranks mathematically dependent on the plotted frequencies?
 3. Use `rank_frequency` to find the type with the largest absolute log residual. What does that residual establish, and what does it not establish about a generating mechanism?
 4. Explain why lowercasing and excluding punctuation change both the type inventory and the rank assignment.
+5. A student says that setting the seed makes the split counts independent of
+   sentence and register. Which role of a random seed has been confused?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -200,5 +250,13 @@ The [next page](possibilities-and-events.qmd) moves from the whole word-form inv
 2. Ordinary ranks are deterministic order statistics of `frequency`, so the plotted rank and frequency reuse the same counts and are mathematically dependent. <!-- dqr-allow: empirical-answer -->
 3. The largest absolute log residual belongs to *olanak* at split rank 32,474, with residual 3.119; this establishes that the fitted curve underpredicts that split count, not that any particular mechanism generated it. <!-- dqr-allow: empirical-answer -->
 4. Lowercasing merges case-distinguished strings, while punctuation removal deletes types and tokens; both operations change counts and thus the ordering that defines frequency rank. <!-- dqr-allow: empirical-answer -->
+5. A seed reproduces the pseudorandom token allocation. It cannot restore
+   document identifiers or remove dependence inherited from the corpus.
 
 </details>
+
+The Zipf analysis depends on keeping token counts distinct from type ranks. A
+fixed split reduces the same-count rank error, though even a good descriptive
+fit does not identify a linguistic mechanism. The [next
+page](possibilities-and-events.qmd) moves from an aggregated type table to keyed
+token outcomes and a finite probability experiment.

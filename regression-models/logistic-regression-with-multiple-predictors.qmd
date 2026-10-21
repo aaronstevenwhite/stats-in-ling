@@ -7,6 +7,10 @@ execute:
 
 Multiple-predictor logistic regression can represent whether the SuperTelicity verb-type contrast changes across contentfulness classes. The additive model states one common verb-type log odds difference; the interaction model allows it to vary.
 
+This page first constructs both linear predictors, then compares their fitted contrasts and likelihoods while keeping the repeated-unit limitation explicit.
+
+The [SuperTelicity data dossier](why-generalized-linear-models.qmd) defines the response and row unit. Here `contentful`, `bleached`, and `templatic` are the three contentfulness labels supplied by the prepared teaching table; the extract does not include source sentences that would support inventing lexical examples. We can, however, inspect the six observed design cells before interpreting partial coefficients.
+
 ```{r}
 #| label: fit-multiple-logistic
 #| echo: true
@@ -23,6 +27,12 @@ cells$interaction <- predict(interaction, newdata = cells, type = "response")
 cells
 ```
 
+```{r}
+#| label: supertelicity-six-cell-counts
+#| echo: true
+as.data.frame(xtabs(~ verb_type + contentfulness, data = st))
+```
+
 The additive linear predictor is
 
 $$
@@ -32,6 +42,20 @@ $$
 $$
 
 The interaction model adds products between verb type and the contentfulness indicators. Those product coefficients are differences between log odds differences, not raw probability differences.
+
+Write $\ell_{vc}$ for the cell log odds at verb type $v$ and contentfulness $c$. Treatment coding implies
+
+$$
+\begin{aligned}
+\beta_1 &= \ell_{\mathrm{result,contentful}}-\ell_{\mathrm{manner,contentful}},\\
+\beta_4 &=
+(\ell_{\mathrm{result,bleached}}-\ell_{\mathrm{manner,bleached}})-\beta_1,\\
+\beta_5 &=
+(\ell_{\mathrm{result,templatic}}-\ell_{\mathrm{manner,templatic}})-\beta_1.
+\end{aligned}
+$$
+
+Thus the additive model imposes $\beta_4=\beta_5=0$: the verb-type log odds difference is common across classes. This is the logistic analogue of the [interaction restriction](interactions.qmd).
 
 The six points below are raw cell probabilities, whereas the lines are interaction-model predictions on the same scale. The likelihood-ratio calculation then compares that interaction with the additive restriction.
 
@@ -54,4 +78,21 @@ ggplot(cells, aes(contentfulness, prep_in, shape = verb_type, group = verb_type)
 anova(additive, interaction, test = "Chisq")
 ```
 
+The likelihood-ratio statistic is twice the fitted log-likelihood difference. Under the regular large-sample conditions discussed on the [deviance page](deviance.qmd), it is compared with a chi-squared reference distribution whose degrees of freedom equal the two released interaction restrictions. Response-scale cell contrasts show what those link-scale restrictions mean substantively.
+
+```{r}
+#| label: contentfulness-specific-probability-contrasts
+#| echo: true
+wide <- reshape(cells[c("verb_type", "contentfulness", "interaction")],
+                idvar = "contentfulness", timevar = "verb_type", direction = "wide")
+transform(wide, result_minus_manner = interaction.result - interaction.manner)
+```
+
 A partial coefficient is meaningful only because the observed design supplies overlap among the represented cells. This population model still omits participant and sentence dependence and does not replace the paper's mixed analysis. The [PS3 page](../problem-sets/ps3/) asks students to interpret related fitted contrasts.
+
+## Recap and check
+
+1. Is an interaction coefficient a difference in raw probability differences? No. It is a difference in log odds differences; compute fitted probabilities for a response-scale target.
+2. What does the likelihood-ratio comparison test? It compares the additive restrictions with the model that releases two interaction coefficients, subject to its asymptotic and independence assumptions.
+
+The [deviance-residual page](deviance-residuals.qmd) next uses rowwise likelihood loss to inspect this fitted mean structure.

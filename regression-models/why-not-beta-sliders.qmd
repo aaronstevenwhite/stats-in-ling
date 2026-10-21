@@ -5,7 +5,9 @@ execute:
   message: false
 ---
 
-The beta density has support $0<y<1$. MegaNegRaising contains exact zeros and ones on both recorded sliders, so ordinary beta regression assigns those observations zero probability.
+The [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) is absolutely continuous on $0<y<1$. Its PDF gives density height, not probability at a point: for any exact $a$ in its support, $\mathbb{P}(Y=a)=\int_a^a f(y)\,dy=0$. MegaNegRaising contains recorded zeros and ones on both sliders, where the ordinary beta likelihood is not defined.
+
+This page first counts those endpoint observations, then examines the common endpoint-nudge workaround and identifies the new sample-size dependence it introduces.
 
 ```{r}
 #| label: load-meganegraising-beta
@@ -55,6 +57,18 @@ data.frame(recorded = c(0, 1), transformed = transform_endpoint(c(0, 1)),
            sample_size = n)
 ```
 
+The dependence on sample size is visible by applying the same rule to the observed sample size and to a half-sample benchmark derived from it:
+
+```{r}
+#| label: endpoint-nudge-by-sample-size
+#| echo: true
+n_values <- unique(c(floor(n / 2), n))
+do.call(rbind, lapply(n_values, function(nn) {
+  data.frame(sample_size = nn, recorded = c(0, 1),
+             transformed = (c(0, 1) * (nn - 1) + .5) / nn)
+}))
+```
+
 ```{r}
 #| label: plot-endpoint-nudge
 #| echo: true
@@ -69,4 +83,13 @@ ggplot(plot_data, aes(region, probability, shape = response, group = response)) 
 
 For the `r n` retained judgments, zero becomes `r format(transform_endpoint(0), digits = 6)` and one becomes `r format(transform_endpoint(1), digits = 6)`. The transformation makes the sample size part of the measurement model: adding unrelated rows moves the transformed endpoints. It also replaces observed endpoint events with extremely interior values.
 
+An endpoint can arise because a continuous intention was rounded to the displayed boundary or because a respondent deliberately selected the endpoint as a qualitatively meaningful response. Those mechanisms imply different measurement models. The prepared table cannot distinguish them, so an explicit endpoint-mass model states the retained assumption instead of silently moving the values.
+
 A likelihood that contains explicit endpoint probabilities is more faithful to the recorded response. The next page uses ordered-beta regression for both sliders without changing or filtering either outcome.
+
+## Recap and check
+
+1. Does a large beta density near zero assign positive probability to the exact value zero? No. Density over a nonzero interval can be positive; mass at one exact point remains zero.
+2. Why is the nudge not innocuous? It changes endpoint values when unrelated rows are added and assumes endpoints are merely interior measurements in disguise.
+
+The [ordered-beta page](ordered-beta-regression.qmd) makes its stronger assumptions explicit: a shared latent location orders zero, interior, and one, and two cutpoints determine the endpoint masses.

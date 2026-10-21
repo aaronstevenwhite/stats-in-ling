@@ -6,6 +6,14 @@ The Tanaka corpus provides a useful first case because its absences arise inside
 
 We use the current profile extract from the [official Jacy documentation](https://delph-in.github.io/docs/grammars/JacyHinoki/) and the [pinned Jacy release](https://github.com/delph-in/jacy/tree/82c282e2592841478d07aa81a83489344bb16e00). The row unit is one sentence in one `[incr tsdb()]` profile. This release is later than the annotation stage reported in the 2008 paper, so the empirical counts below describe the pinned release rather than reproducing the paper's table.
 
+We audit the profile fields, map the binary availability indicator into three observed pipeline states, compare their profile distribution, and then separate a pattern from a causal missingness mechanism.
+
+## Jacy measurement dossier {#jacy-measurement-dossier}
+
+A **profile** is a named test-suite partition. Within a profile, `item_id` identifies one sentence. The released `sentence` field is whitespace-delimited, so `item_length` counts those profile tokens rather than linguistic words under an independent tokenizer. `parse_readings` counts positive analyses returned by the grammar; the sentinel `-1` reports a nonpositive pipeline outcome and is not an arithmetic count. `preferred_analysis_count` counts accepted preference records, while `selected_analysis` records whether that count is positive.
+
+The processing chain is thus sentence $\rightarrow$ grammar readings $\rightarrow$ human discriminant choices $\rightarrow$ selected analysis $\rightarrow$ downstream MRS measurement. For instance, item `tc-006::109000` is *彼 は その 運動 に 関係 が ある の です か 。* It has 12 released tokens, 11 readings, and one preferred analysis. The sentence is an actual corpus record; the English gloss is not included in the extract, so we do not invent one.
+
 ## Loading and checking the profile table
 
 ```{r}
@@ -27,6 +35,10 @@ stopifnot(
   sum(jacy$preferred_analysis_count > 0L) == 8670L,
   sum(jacy$parse_readings == -1L) == 318L
 )
+
+jacy[jacy$profile == "tc-006" & jacy$item_id == 109000L,
+     c("profile", "item_id", "item_text", "item_length",
+       "parse_readings", "preferred_analysis_count", "selected_analysis")]
 ```
 
 The table has `r format(nrow(jacy), big.mark = ",")` items and `r format(sum(jacy$preferred_analysis_count), big.mark = ",")` preference records. Those are different units: `r sum(jacy$preferred_analysis_count > 1L)` items have more than one accepted result. Thus the selected-item count is `r format(sum(jacy$preferred_analysis_count > 0L), big.mark = ",")`, not the number of preference records.
@@ -43,7 +55,7 @@ R_i=
 \end{cases}
 $$
 
-The binary indicator records whether $Y_i$ is available, but it merges two observed pipeline outcomes. Some unselected items have positive parse readings, while others have no positive reading recorded. We therefore define a three-state categorical variable:
+The binary indicator records whether $Y_i$ is available, but it merges two observed pipeline outcomes. Some unselected items have positive parse readings, while others have no positive reading recorded. We thus define a three-state categorical variable:
 
 $$
 C_i=
@@ -94,6 +106,10 @@ stopifnot(
 )
 
 state_counts
+
+jacy[jacy$profile == "tc-006" & jacy$item_id == 109000L,
+     c("profile", "item_id", "parse_readings",
+       "preferred_analysis_count", "selected", "analysis_state")]
 ```
 
 The `r format(state_counts$items[1], big.mark = ",")` selected items account for `r scales::percent(state_counts$proportion[1], accuracy = 0.1)` of the release. Another `r format(state_counts$items[2], big.mark = ",")` items were parsed but have no accepted preference record, and `r format(state_counts$items[3], big.mark = ",")` have no positive reading. Thus a zero in $R_i$ does not identify one kind of failure.
@@ -158,6 +174,15 @@ This boundary matters for downstream MRS analyses. Restricting attention to sele
 3. Why must `parse_readings = -1` be treated as a sentinel rather than a count?
 4. Which claims about Japanese sentences remain unsupported by the profile plot?
 
+**Answers.** (1) An item may have more than one accepted preference record. (2) $R_i=0$ merges positive readings with no selection and the absence of a positive reading. (3) The release assigns `-1` as a pipeline sentinel, so treating it as a count would create a nonexistent negative number of analyses. (4) The plot does not establish grammaticality, meaning, frequency, or a causal explanation for nonselection.
+
 A selected-analysis indicator represents availability, while the three-state variable retains the observed distinction between parsing and selection outcomes. Neither object identifies its own cause. The [next page](missingness-mechanisms.qmd) asks what the association with observed profile length can and cannot establish.
+
+## Recap
+
+1. The row is a sentence within a named Jacy profile, and length is the released whitespace-delimited token count.
+2. Readings, accepted preference records, and selected items are different pipeline quantities.
+3. $R_i$ answers whether a downstream selected-analysis measurement is available; $C_i$ preserves two distinct unselected states.
+4. The [mechanism page](missingness-mechanisms.qmd#separating-observed-and-unobserved-quantities) next asks what these observed states can support about an observation process.
 
 [Previous: Missing data](index.qmd) · [Next: Missingness mechanisms](missingness-mechanisms.qmd)

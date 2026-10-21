@@ -6,6 +6,8 @@ A model may fit without warnings even when the observed design contains too litt
 
 This is an audited model simulation, not a substitute for linguistic data. Its rows, item identities, annotator identities, and imbalance come from the released annotation design. The generating values and success thresholds were fixed before the released responses were fit.
 
+We load that design and its audited fits, state the complete Stan program and generator, and then evaluate whether repeated fits recover the known population and group-level quantities.
+
 ## Loading the released design and audited cache
 
 ```{r}
@@ -148,6 +150,8 @@ model {
 '
 ```
 
+The priors regularize a sparse crossed design. `normal(0, 2.5)` places the population log odds near no directional preference while allowing a wide range of gate probabilities. Because the two scale parameters are constrained positive, `normal(0, 2)` becomes a half-normal prior: it favors smaller heterogeneity while retaining substantial positive mass. Standard-normal raw deviations define a non-centered parameterization, which often reduces posterior dependence between group effects and their scales. These choices are weakly regularizing design commitments, not facts learned from the response table; the [full measurement model](uds-measurement-model.qmd#writing-the-complete-model) checks their implications with prior and posterior prediction.
+
 ## The exact recovery generator and fitting call
 
 The code below is the executable core of one audited replicate. It uses the observed row indices without changing which annotator saw which item. The full audit ran replicates 1 through 12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains used seeds $740000+100s+c$ for chain $c$.
@@ -160,7 +164,7 @@ model <- cmdstanr::cmdstan_model(
   cmdstanr::write_stan_file(stan_program)
 )
 
-recover_one <- function(replicate) {
+recover_one <- function(replicate, generating_values) {
   set.seed(7300L + replicate)
 
   z_item <- stats::rnorm(length(uds_cache$item_levels))
@@ -206,10 +210,27 @@ recover_one <- function(replicate) {
   })
 }
 
-recovery_fits <- lapply(seq_len(12L), recover_one)
+recovery_fits <- lapply(
+  seq_len(12L),
+  recover_one,
+  generating_values = generating_values
+)
 ```
 
 The archived run combined the two chain files after each call. Every reported result below comes from that chain-specific run stored in the tracked compact cache.
+
+Two chains with 400 warmup and 400 retained draws made twelve complete fits feasible while still permitting an $\widehat R$ comparison. This is a compact audit, not a generally sufficient default: four or more chains and larger effective sample sizes are preferable for a final high-dimensional fit. `adapt_delta = 0.95` asks Stan for smaller integration steps than its default and was chosen to reduce divergent transitions in the hierarchical geometry. It can improve numerical exploration, but it cannot identify a weakly informed parameter.
+
+The tracked cache covers one baseline regime only. A stronger recovery audit should cross the observed incidence design with at least three prespecified conditions:
+
+| Regime | $\alpha$ | $\sigma_{\mathrm{item}}$ | $\sigma_{\mathrm{annotator}}$ | Stress being tested |
+|---|---:|---:|---:|---|
+| Baseline | -2.1 | 1.6 | 1.6 | released audited run | <!-- dqr-allow: algorithm-setting -->
+| Weak heterogeneity | -2.1 | 0.5 | 0.5 | separation of scales near zero | <!-- dqr-allow: algorithm-setting -->
+| Rarer yes responses | -3.2 | 1.6 | 1.6 | information under a lower event rate | <!-- dqr-allow: algorithm-setting -->
+| Strong annotator spread | -2.1 | 1.6 | 2.4 | separation under dominant annotator variation | <!-- dqr-allow: algorithm-setting -->
+
+The revised `recover_one()` accepts the generating vector as an argument, so those regimes can use the same fitting code and incidence design. We do not report unrun regime results: the tracked cache contains twelve baseline fits and no evidence for the other three conditions.
 
 ## Evaluating parameter recovery
 
@@ -225,6 +246,16 @@ $$
 =\sqrt{\frac{1}{S}\sum_{s=1}^S
 (\widehat\theta_s-\theta_s)^2}.
 $$
+
+For a positive scale, the relative error used below is
+
+$$
+e^{\mathrm{rel}}_s
+=\frac{\widehat\sigma_s-\sigma}{\sigma}
+=\frac{\widehat\sigma_s}{\sigma}-1.
+$$
+
+Dividing by the generating scale makes item and annotator scale errors comparable, though it becomes unstable when the truth approaches zero. The latent-effect correlations compare the generated and posterior-median vectors after their zero-sum coordinate constraint. They measure recovery of ordering and relative spacing, not equality of every effect. The item-probability correlation asks the same ordering question after the nonlinear inverse-logit map.
 
 The audit used medians and recovery correlations because the target includes population scales and high-dimensional latent orderings. Its prespecified thresholds were: median absolute intercept error at most $.25$; median absolute relative errors at most $.15$ for the item scale and $.25$ for the annotator scale; median correlations at least $.60$ for item effects, $.90$ for annotator effects, and $.65$ for conditional item probabilities; maximum key-parameter $\widehat R$ at most $1.05$; and no divergent transitions.
 
@@ -268,6 +299,49 @@ stopifnot(
 )
 
 knitr::kable(recovery_summary, digits = 3)
+```
+
+Medians can hide variation across only twelve simulations. The following interval records the central 80% of the replicate-level diagnostics. It is a Monte Carlo stability summary, not a confidence interval for real-data performance.
+
+```{r}
+#| label: summarize-uds-recovery-variation
+
+recovery_variation <- data.frame(
+  quantity = c(
+    "Absolute intercept error",
+    "Absolute relative item-scale error",
+    "Absolute relative annotator-scale error",
+    "Item-effect correlation",
+    "Annotator-effect correlation",
+    "Item-probability correlation"
+  ),
+  lower_10 = vapply(
+    list(
+      abs(recovery$alpha_error),
+      abs(recovery$sigma_item_relative_error),
+      abs(recovery$sigma_annotator_relative_error),
+      recovery$item_effect_correlation,
+      recovery$annotator_effect_correlation,
+      recovery$item_probability_correlation
+    ),
+    stats::quantile,
+    numeric(1), probs = 0.10, names = FALSE
+  ),
+  upper_90 = vapply(
+    list(
+      abs(recovery$alpha_error),
+      abs(recovery$sigma_item_relative_error),
+      abs(recovery$sigma_annotator_relative_error),
+      recovery$item_effect_correlation,
+      recovery$annotator_effect_correlation,
+      recovery$item_probability_correlation
+    ),
+    stats::quantile,
+    numeric(1), probs = 0.90, names = FALSE
+  )
+)
+
+knitr::kable(recovery_variation, digits = 3)
 ```
 
 ## Seeing variation across complete fits
@@ -322,11 +396,23 @@ The prespecified recovery criteria are met. But with two or three responses per 
 
 Successful recovery shows that the fitter can retrieve the declared targets when data arise from this model under this incidence design. It does not establish that real annotators follow the generator. The released-data analysis still requires posterior predictive checks and measurement limitations.
 
+Twelve replicates can detect large failures, but they estimate tail behavior and pass rates imprecisely. Likewise, $\widehat R$ and divergences diagnose parts of Markov-chain computation, not measurement validity. Revisit [Markov chain Monte Carlo](../statistical-inference/markov-chain-monte-carlo.qmd) for the draw-based approximation and [checking Markov chains](../statistical-inference/checking-markov-chains.qmd) for convergence checks.
+
 ::: {.callout-note title="Check the recovery claim"}
 1. Why is the observed incidence pattern held fixed?
 2. Why must fitting occur inside every replicate?
 3. Which recovery target is weakest in this design?
 4. What does successful recovery fail to establish?
+
+**Answers.** (1) Holding the incidence pattern fixed tests the information supplied by the actual sparse crossing rather than an easier balanced design. (2) Recovery evaluates the complete estimator, so every simulated response matrix must be fit anew. (3) The weakest target is the one with the lowest recorded recovery correlation or largest relative error, which the table makes explicit rather than naming from intuition. (4) Success does not show that the model generated the real annotations, that every item effect is precise, or that untested regimes would pass.
 :::
+
+## Recap
+
+1. Recovery simulates known parameters under the released item--annotator incidence design and refits the whole model.
+2. Absolute error, relative scale error, and latent-vector correlation answer different recovery questions.
+3. The compact twelve-fit cache supports the prespecified baseline regime only; three additional stress regimes remain unrun.
+4. MCMC diagnostics assess computation, while posterior predictive checks assess consequences of the fitted observation model.
+5. The next page grounds agreement in the [Turkish PropBank measurement dossier](annotations-as-measurements.qmd#turkish-propbank-measurement-dossier) before fitting another crossed model.
 
 [Previous: Writing a joint model](writing-a-joint-model.qmd) · [Next: Annotations are measurements](annotations-as-measurements.qmd)

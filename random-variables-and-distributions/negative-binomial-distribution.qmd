@@ -9,6 +9,13 @@ execute:
 
 The geometric distribution counts failures before the first success. The **negative-binomial distribution** counts failures before the $r$th success. For a pronunciation entry, let a vowel phone be a success and let $X$ count consonants before the third vowel.
 
+We choose the third vowel so $r=3$ gives a concrete later-success contrast with
+the geometric page. This is a teaching choice, not a linguistically privileged
+boundary. It also selects only entries that contain at least three vowel
+phones, a restriction that must remain part of every interpretation.
+
+We derive the later-success waiting-count mass function, fit it to eligible CMUdict entries, and then compare its assumptions and observed fit with the first-vowel geometric model.
+
 ## Definition
 
 Under independent trials with constant success probability $p$,
@@ -24,6 +31,11 @@ $$
 =\binom{x+r-1}{x}(1-p)^x p^r,
 \qquad x\in\{0,1,2,\ldots\}.
 $$
+
+The final trial must be the $r$th success. Among the preceding $x+r-1$ trials,
+choose the positions of the $x$ failures, giving
+$\binom{x+r-1}{x}$. Each such sequence has $x$ failures and $r$ successes, so
+its probability is $(1-p)^x p^r$.
 
 The mean and variance are
 
@@ -59,6 +71,11 @@ $$
 ## A third-vowel waiting count
 
 The variable is defined only for CMUdict entries with at least three vowel phones. Excluding undefined rows changes the observational subset, so the code states and checks that restriction.
+
+For instance, `!EXCLAMATION-POINT` has five vowel phones and five consonants
+before its third vowel, so the retained row contributes $x=5$. The 78,428
+entries with fewer than three vowels have no value of this random variable;
+they are not observed zeros.
 
 ```{r}
 #| label: fit-cmudict-negative-binomial
@@ -96,6 +113,18 @@ data.frame(n = length(wait), r, p_hat, empirical_mean = mean(wait),
 
 The fitted success probability is `r sprintf("%.3f", p_hat)`. As on the geometric page, the fitted mean matches by construction. The fitted variance is `r sprintf("%.3f", fitted_variance)`, compared with an empirical population variance of `r sprintf("%.3f", empirical_variance)`.
 
+With fixed $r$, the log likelihood is
+
+$$
+\ell(p)=\text{constant}+nr\log p+left(\sum_i x_i\right)\log(1-p).
+$$
+
+Setting its derivative to zero yields
+$\widehat p=nr/(nr+\sum_i x_i)=r/(r+\overline x)$, matching the code. This page
+uses the “failures before the $r$th success” parameterization; in R, `size = r`
+and `prob = p` implement that convention. Other texts may instead parameterize
+by the mean and dispersion or count trials including successes.
+
 ```{r}
 #| label: plot-cmudict-negative-binomial
 #| fig-cap: "Observed consonant count before the third vowel and the fitted size-three negative-binomial mass."
@@ -115,6 +144,8 @@ The fit again spreads too much mass across the support. A sequence of phones is 
 2. Compare the empirical and fitted zero probabilities.
 3. Show algebraically that the variance exceeds the mean under this parameterization.
 4. Why does conditioning on at least three vowels change the population being summarized?
+5. Why are entries with fewer than three vowels not part of the zero-count
+   cell?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -123,7 +154,15 @@ The fit again spreads too much mass across the support. A sequence of phones is 
 2. The empirical zero probability is 0.000307, whereas the fitted negative-binomial zero probability is 0.101748. <!-- dqr-allow: empirical-answer -->
 3. Here $\operatorname{Var}[X]-\mathbb{E}[X]=r(1-p)^2/p^2>0$ for $0<p<1$, so the variance necessarily exceeds the mean. <!-- dqr-allow: empirical-answer -->
 4. Conditioning on at least three vowels excludes all other pronunciations, so the fitted distribution summarizes only the selected 55,426-entry subpopulation. <!-- dqr-allow: empirical-answer -->
+5. Their waiting count is undefined because the stopping event never occurs
+   within the entry. Zero is reserved for a defined wait with no preceding
+   consonants.
 
 </details>
 
-The [Poisson distribution](poisson-distribution.qmd) models a count without defining it as a waiting time.
+For the negative-binomial model, the combinatorial factor counts sequences that
+end in the $r$th success, and the fixed-$r$ likelihood gives
+$\widehat p=r/(r+\bar x)$. Conditioning on at least three vowels changes the
+population represented by this model. The [Poisson
+distribution](poisson-distribution.qmd) next models a count without defining it
+as a waiting time.

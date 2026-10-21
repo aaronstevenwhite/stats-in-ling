@@ -7,6 +7,8 @@ execute:
 
 More observed zeros than a Poisson model predicts do not by themselves establish a separate zero-generating process. We examine this ambiguity in Storme's ([2024](https://doi.org/10.1007/s11525-024-09429-8)) French liaison study and its [Zenodo release](https://doi.org/10.5281/zenodo.12733801). One prepared row is a final-morpheme, final-consonant, and liaison-status combination. Following the released code, the response is integer truncation of 100 times summed `freqfilms2`, not a direct token tally. The Zenodo record states no separate data license, so these notes do not redistribute it.
 
+We first audit how the released count proxy and zeros are constructed, then compare one-process and two-process explanations without treating zero excess as proof of a mechanism.
+
 ```{r}
 #| label: load-storme-zero
 #| echo: true
@@ -32,6 +34,29 @@ storme$liaison <- factor(storme$liaison, levels = c("no", "yes"))
 storme$final_consonant <- factor(storme$final_consonant)
 ```
 
+The first prepared row is an actual release-derived cell:
+
+```{r}
+#| label: inspect-one-storme-cell
+storme[1L, c(
+  "final_morpheme", "final_consonant", "liaison",
+  "frequency_per_million_sum", "reconstructed_count"
+)]
+```
+
+If $f_{h}$ denotes `freqfilms2` for source row $h$ in a particular morpheme--consonant--liaison cell, the released preparation computes
+
+$$
+y
+=
+\operatorname{trunc}
+\left(
+100\sum_h f_h
+\right).
+$$
+
+Thus a zero may be produced by zero summed frequency or by positive summed frequency below $.01$ before truncation. It is not an observed count of liaison tokens.
+
 We fit additive Poisson and negative-binomial baselines with the same mean formula. The negative binomial allows
 
 $$
@@ -39,6 +64,23 @@ $$
 $$
 
 so ordinary heterogeneity can increase both tails, including zero mass.
+
+A zero-inflated count model would instead introduce a second process. With structural-zero probability $\omega_i$ and count mean $\mu_i$,
+
+$$
+\mathbb{P}(Y_i=0)
+=
+\omega_i+(1-\omega_i)f_{\text{count}}(0\mid\mu_i),
+$$
+
+and for $y>0$,
+
+$$
+\mathbb{P}(Y_i=y)
+=(1-\omega_i)f_{\text{count}}(y\mid\mu_i).
+$$
+
+Both processes can thus generate an observed zero. A linguistic analysis needs a mechanism that makes some cells structurally unable to occur before it interprets $\omega_i$.
 
 ```{r}
 #| label: compare-zero-probabilities
@@ -73,3 +115,20 @@ ggplot(zero_long, aes(model, value, shape = liaison)) +
 ```
 
 The Poisson model assigns almost no zero mass, while the negative binomial moves toward the observed proportions without a structural-zero component. We thus do not fit a zero-inflated model here. Such a model requires a linguistically motivated process that makes some morpheme cells deterministically absent, not merely a conspicuous zero bar.
+
+## Recap and check your understanding
+
+1. Why is `reconstructed_count` not a direct token tally?
+2. Which two components of a zero-inflated model can produce zero?
+3. Why does extra-Poisson zero mass not prove a structural-zero process?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. It is a truncated transformation of summed frequency-per-million values. <!-- dqr-allow: conceptual-answer -->
+2. The structural component and the ordinary count component can both produce zero. <!-- dqr-allow: conceptual-answer -->
+3. Unmodeled heterogeneity or a negative-binomial count process can also increase zero probability. The mixture needs an independently motivated state. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](negative-binomial-regression.qmd) derives that heterogeneous count model.
