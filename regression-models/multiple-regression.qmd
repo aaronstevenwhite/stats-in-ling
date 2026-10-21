@@ -9,15 +9,43 @@ execute:
 
 Simple regression compares conditional means across one predictor. **Multiple regression** lets several observed predictors contribute to the same conditional mean, so each slope becomes a partial comparison.
 
-We first establish the MALD item-level measurement and analysis subset, then fit the expanded mean and interpret each coefficient against the comparisons supported by the observed design.
+The rowwise Gaussian likelihood later multiplies contributions only under a stated [independence](../foundations/independence.qmd) assumption. Recall that a [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed item summaries fixed and compares possible coefficient and variance values. MALD item means retain neither participant identities nor raw trial noise because the trial table has already been aggregated, but their construction still determines what population claim is available.
 
-## MALD word-item data
+A partial slope cannot be interpreted until the response clock, item summary, and
+other held-fixed predictors have been named. The MALD example supplies those
+objects before the expanded conditional mean is fitted.
+
+[]{#mald-item-measurement-dossier}
+
+## MALD word-item data {#mald-word-item-data}
 
 We now use data from the Massive Auditory Lexical Decision database (MALD). Tucker et al. ([2019](https://doi.org/10.3758/s13428-018-1056-1)) describe the database and analyze lexical frequency as a predictor of response time. The [MALD 1.1 release](https://doi.org/10.7939/r3-kh0r-r116) is available under CC BY-NC 4.0.
 
-The course table contains word items summarized over correct retained trials whose response times and frequency satisfy the documented filters. One row is one word item, not one participant response. The table retains the number and dispersion of contributing trials, but it cannot recover participant effects. We model mean log auditory lexical-decision time from SUBTLEX frequency, acoustic duration, and phone count.
+The source attaches a **SUBTLEX frequency** to each word form, a corpus-frequency
+measure derived from occurrences in film and television subtitles. A word's
+**phonological form** is the sequence of transcribed speech-sound segments used
+to represent its pronunciation. We call one such segment a **phone**, and
+`n_phones` counts the segments in that sequence rather than letters in the
+spelling.
 
-In an auditory lexical-decision trial, a listener hears a recording and decides whether it is an English word. Response time is measured from stimulus onset to the recorded decision. The teaching table retains correct word trials, then summarizes them by item. If $T_{ri}$ is the positive response time for retained listener trial $r$ on word $i$, then
+The course table contains word items summarized over correct retained trials whose response times and frequency satisfy the documented filters. Each row summarizes one word item across its retained participant responses. The table retains the number and dispersion of contributing trials, but it cannot recover participant effects. We model mean log auditory lexical-decision time from SUBTLEX frequency, acoustic duration, and phone count.
+
+In an auditory lexical-decision trial, a listener hears a recording and decides whether it is an English word. Response time is measured from stimulus onset to the recorded decision. Acoustic duration measures the interval from that same onset to the recording's offset:
+
+| Event | Time on the trial clock |
+|:--|:--|
+| Recording begins | stimulus onset, 0 ms |
+| Recording ends | `duration_ms` |
+| Listener responds | `rt_ms` |
+
+The response interval therefore contains presentation time as well as any time
+between acoustic offset and the button press. A longer recording mechanically
+occupies more of an onset-based latency, though listeners may sometimes respond
+before the recording ends. The item-summary table does not retain trial-level
+offset-relative latencies or early-response flags, so it cannot separate physical
+presentation time from later lexical-decision time.
+
+The prepared table retains correct word trials, then summarizes them by item. If $T_{ri}$ is the positive response time for retained listener trial $r$ on word $i$, then
 
 $$
 \overline{\log T}_i
@@ -26,7 +54,18 @@ $$
 \sum_{r\in\mathcal R_i}\log T_{ri}.
 $$
 
-This item summary answers a word-level question. It cannot estimate listener differences or within-listener dependence.
+This item summary answers a word-level question conditional on a correct retained
+decision. It cannot estimate listener differences or within-listener dependence.
+Recall that [independence](../foundations/independence.qmd#why-the-characterizations-are-equivalent)
+means that the joint distribution factorizes. Averaging trials into word rows does
+not establish that factorization: two item means may still share listeners, and
+that identity is absent from the prepared table.
+The ordinary regression below gives each word one row and thus equal influence,
+even though `n_observations` and within-item precision differ. The
+[distributional-regression page](distributional-regression.qmd) uses those two
+quantities to define a grouped likelihood. That later model answers a
+precision-sensitive question; the current fit deliberately targets an equally
+weighted collection of word-item means.
 
 ```{r}
 #| label: load-and-fit-mald-multiple-regression
@@ -52,7 +91,7 @@ stopifnot(
 coef(summary(fit))
 ```
 
-The word *abandon* supplies one concrete row in the pinned table:
+The word *abandon* supplies one concrete row in the prepared course table:
 
 ```{r}
 #| label: inspect-one-mald-item
@@ -63,7 +102,7 @@ mald[mald$item == "abandon", c(
 )]
 ```
 
-`mean_rt_ms` is the arithmetic mean response time from onset, while `mean_log_rt` is the mean of trial-level log response times. `frequency_subtlex` is the SUBTLEX corpus count used to construct log frequency. `duration_ms` is acoustic duration of the recording. `n_phones` and `n_syllables` describe its phonological form. Finally, `n_observations` is the number of retained correct trials, not a property of the word. Correct-trial filtering makes the latency target conditional on a correct lexical decision; it does not turn the retained trials into an independent sample.
+`mean_rt_ms` is the arithmetic mean response time from onset, while `mean_log_rt` is the mean of trial-level log response times. `frequency_subtlex` supplies the subtitle-corpus measure used to construct log frequency, and `duration_ms` records the acoustic duration of the word recording. Its coefficient consequently combines the mechanical contribution of presentation length with any remaining differences among items at fixed frequency and phone count. Isolating additional lexical-processing time would require offset-relative timing that this table does not retain. `n_phones` and `n_syllables` summarize the item's phonological form. Finally, `n_observations` is the number of retained correct trials; it varies with the observed responses rather than with the lexical entry alone. Correct-trial filtering makes the latency target conditional on a correct lexical decision, and repeated trials may still share listeners.
 
 The table contains `r nrow(mald)` distinct word items. The conditional mean is
 
@@ -78,7 +117,7 @@ $$
 
 where $F_i^c$ is centered log SUBTLEX frequency, $D_i^c$ is centered log acoustic duration, and $P_i^c$ is centered phone count.
 
-Holding acoustic duration and phone count fixed, a one-unit increase in log frequency is associated with `r sprintf("%.4f", coef(fit)[["log_frequency_c"]])` log response-time units. Holding the other two predictors fixed is a model comparison, not an experimental intervention.
+Holding acoustic duration and phone count fixed, a one-unit increase in log frequency is associated with `r sprintf("%.4f", coef(fit)[["log_frequency_c"]])` log response-time units. The phrase *holding fixed* asks us to compare two model predictions that differ only in log frequency; it does not describe an experimental intervention.
 
 ```{r}
 #| label: plot-mald-multiple-regression
@@ -122,7 +161,7 @@ The fitted MALD regression explains `r sprintf("%.1f", 100 * summary(fit)$r.squa
 
 ## Recap and check your understanding
 
-1. What is one observation in the MALD analysis?
+1. What is one observation in the MALD analysis, and which trials contribute to it?
 2. Which variables are held fixed when reading the frequency coefficient?
 3. Why is the displayed line conditional rather than marginal?
 4. Which dependence structure cannot be recovered from this table?
@@ -130,7 +169,7 @@ The fitted MALD regression explains `r sprintf("%.1f", 100 * summary(fit)$r.squa
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. One observation is one MALD word item summarized over its retained correct trials. <!-- dqr-allow: empirical-answer -->
+1. One observation is one MALD word item summarized over its retained correct trials; incorrect and otherwise filtered trials do not enter the mean. <!-- dqr-allow: empirical-answer -->
 2. Acoustic duration and phone count are held fixed when the log-frequency coefficient is read. <!-- dqr-allow: empirical-answer -->
 3. The line sets the other predictors to their observed means, so it describes the fitted frequency relation at those fixed values rather than averaging over their observed joint distribution. <!-- dqr-allow: empirical-answer -->
 4. Participant-level dependence cannot be recovered because the table omits individual trials and participant identifiers. <!-- dqr-allow: empirical-answer -->

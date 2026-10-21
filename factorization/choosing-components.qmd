@@ -2,7 +2,9 @@
 title: "Choosing the number of components"
 ---
 
-The singular values describe how well components reconstruct the training matrix. They do not determine how many components reconstruct genuinely hidden entries. The matrix-completion evaluation thus separates three operations: fit directions on training inventories, choose rank on validation inventories, and estimate performance once on test inventories.
+The singular values describe how well components reconstruct the training matrix. Recall that [principal component analysis](principal-component-analysis.qmd#beginning-with-variation-around-column-means) finds orthogonal score directions that successively maximize empirical variance in a centered matrix. That training criterion does not determine how many components reconstruct genuinely hidden entries. The matrix-completion evaluation thus separates three operations: fit directions on training inventories, choose rank on validation inventories, and estimate performance once on test inventories.
+
+The empirical variance used by PCA is the realized-row analogue of the [variance](../random-variables-and-distributions/variance-and-covariance.qmd) of a random variable. Rank selection instead follows [cross-validation](../model-criticism-and-prediction/cross-validation.qmd): validation observations choose among procedures, and test observations assess the selected procedure once.
 
 The **validation-target specification (VTS)** is:
 
@@ -15,7 +17,8 @@ The **validation-target specification (VTS)** is:
 4. **Fold-local fit:** column retention, means, and singular directions use training
    inventories only.
 5. **Transfer target:** completion of a few hidden database cells in a partly
-   observed inventory record, not a wholly unseen language or family.
+   observed inventory record. The primary macroarea-stratified split may leave
+   genealogical relatives in training; a family-blocked sensitivity appears below.
 
 The exact [partly observed row
 algorithm](reconstruction.qmd#reconstructing-partially-observed-inventories) is a
@@ -23,6 +26,8 @@ mean-filled projection whose clipped outputs are bounded reconstruction scores,
 not calibrated probabilities.
 
 ## Separating fitting, selection, and evaluation
+
+This separation follows the [cross-validation rule](../model-criticism-and-prediction/cross-validation.qmd#the-algorithm): refit the complete procedure on training data and evaluate a prespecified loss on held-out units. Here validation inventories choose rank, while test inventories are reserved for one final evaluation of the selected procedure.
 
 Let $\mathcal T$, $\mathcal V$, and $\mathcal E$ denote training, validation, and test inventory records. Training data determine:
 
@@ -128,6 +133,11 @@ RNGkind(sample.kind = "Rejection")
 set.seed(20260827L)
 chosen <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
 selected <- inventories[unname(chosen), ]
+selected$family_key <- ifelse(
+  is.na(selected$family_name) | selected$family_name == "",
+  paste0("Unclassified::", selected$glottocode),
+  selected$family_name
+)
 
 area <- selected$macroarea
 area[is.na(area) | area == ""] <- "Unclassified"
@@ -227,6 +237,141 @@ data.frame(
 )
 ```
 
+## A family-blocked sensitivity target {#phoible-family-blocked-sensitivity}
+
+The primary split balances broad macroareas, but it does not keep Glottolog
+families together. To ask a stricter transfer question, the sensitivity split
+moves every record with the same available `family_name` as one group. A record
+without a family label receives its own `Unclassified::<Glottocode>` group; we do
+not pretend that all unknown records form one genealogical family. The greedy
+assignment aims for 70% training, 15% validation, and 15% test records. It cannot
+simultaneously guarantee the primary split's macroarea balance because family and
+area are associated.
+
+```{r}
+#| label: phoible-family-blocked-sensitivity
+
+make_family_split <- function(selected, seed = 20261030L) {
+  sizes <- table(selected$family_key)
+  set.seed(seed)
+  shuffled <- sample(names(sizes))
+  group_order <- shuffled[order(
+    -as.integer(sizes[shuffled]),
+    match(shuffled, shuffled)
+  )]
+  target <- c(
+    training = 0.70,
+    validation = 0.15,
+    test = 0.15
+  ) * nrow(selected)
+  totals <- setNames(rep(0, 3), names(target))
+  destination <- setNames(character(length(group_order)), group_order)
+  for (group in group_order) {
+    split_name <- names(which.min(totals / target))
+    destination[[group]] <- split_name
+    totals[[split_name]] <- totals[[split_name]] + sizes[[group]]
+  }
+  factor(
+    unname(destination[selected$family_key]),
+    levels = c("training", "validation", "test")
+  )
+}
+
+family_split <- make_family_split(selected)
+family_training <- which(family_split == "training")
+family_validation_rows <- which(family_split == "validation")
+family_test_rows <- which(family_split == "test")
+
+stopifnot(
+  all(rowSums(table(selected$family_key, family_split) > 0) == 1L),
+  length(family_validation_rows) > 0L,
+  length(family_test_rows) > 0L
+)
+
+family_frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[family_training]]
+)
+family_columns <- sort(names(family_frequency)[family_frequency >= 20L])
+X_family <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(family_columns),
+  dimnames = list(selected$glottocode, family_columns)
+)
+family_retained <- memberships[memberships$segment_id %in% family_columns, ]
+X_family[cbind(
+  match(family_retained$glottocode, rownames(X_family)),
+  match(family_retained$segment_id, colnames(X_family))
+)] <- 1
+
+family_mean <- colMeans(X_family[family_training, , drop = FALSE])
+Z_family <- sweep(
+  X_family[family_training, , drop = FALSE],
+  2,
+  family_mean,
+  "-"
+)
+family_svd <- svd(Z_family, nu = 0L, nv = min(64L, ncol(Z_family)))
+family_validation <- make_mask(
+  X_family, family_validation_rows, seed = 20261031L
+)
+family_test <- make_mask(X_family, family_test_rows, seed = 20261101L)
+family_ranks <- candidate_ranks[candidate_ranks <= ncol(family_svd$v)]
+
+family_validation_loss <- vapply(
+  family_ranks,
+  function(k) {
+    prediction <- reconstruct(
+      X_family, family_validation, family_mean, family_svd$v, k
+    )
+    truth <- X_family[
+      family_validation$rows, , drop = FALSE
+    ][family_validation$mask]
+    balanced_squared_loss(truth, prediction[family_validation$mask])
+  },
+  numeric(1)
+)
+family_rank <- family_ranks[[which.min(family_validation_loss)]]
+family_test_truth <- X_family[
+  family_test$rows, , drop = FALSE
+][family_test$mask]
+family_test_baseline <- reconstruct(
+  X_family, family_test, family_mean, family_svd$v, 0L
+)[family_test$mask]
+family_test_selected <- reconstruct(
+  X_family, family_test, family_mean, family_svd$v, family_rank
+)[family_test$mask]
+
+data.frame(
+  split = c("training", "validation", "test"),
+  inventory_records = as.integer(table(family_split)),
+  family_units = c(
+    length(unique(selected$family_key[family_training])),
+    length(unique(selected$family_key[family_validation_rows])),
+    length(unique(selected$family_key[family_test_rows]))
+  )
+)
+
+data.frame(
+  target = "new family unit, with unknown-family records treated separately",
+  retained_segments = ncol(X_family),
+  selected_rank = family_rank,
+  prevalence_test_loss = balanced_squared_loss(
+    family_test_truth, family_test_baseline
+  ),
+  selected_rank_test_loss = balanced_squared_loss(
+    family_test_truth, family_test_selected
+  )
+)
+```
+
+This sensitivity changes two things at once: genealogical relatives no longer
+cross partitions, and the macroarea composition is no longer balanced by design.
+Its loss therefore addresses transfer to held-out family units under that new
+geographic composition. Comparing it with the primary score is informative, but
+the difference cannot be attributed to genealogy alone.
+
 The selected reconstruction reduces test balanced squared reconstruction loss from
 `r round(balanced_squared_loss(test_truth, test_baseline), 4)` to
 `r round(balanced_squared_loss(test_truth, test_selected), 4)`. We do not report
@@ -239,7 +384,11 @@ mean-filled and projected, (iii) validation loss is compared with other ranks,
 (iv) the winning procedure remains fixed, and (v) test inventories receive the
 single final evaluation. The test cells never return to an earlier decision.
 
-One inventory was sampled per Glottocode, and the split is stratified by macroarea. Families were not assigned wholesale to splits. Thus this evaluation concerns held-out inventory records under broad area balance; it does not establish transfer to unseen families.
+One inventory was sampled per Glottocode, and the primary split is stratified by
+macroarea. The family audit shows that relatives can cross that split, so its score
+concerns hidden cells in held-out inventory records under broad area balance. The
+family-blocked sensitivity supplies the separate new-family-unit target and makes
+its changed geographic composition visible.
 
 ## Why other criteria answer different questions
 
@@ -259,7 +408,7 @@ rule were fixed without inspecting test results.
 2. Which data choose the rank?
 3. Why is the test set evaluated only once?
 4. Why can the training reconstruction curve not select a predictive rank?
-5. What generalization claim is blocked because family is not the split unit?
+5. Why do the primary and family-blocked splits answer different transfer questions?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -268,7 +417,9 @@ rule were fixed without inspecting test results.
 2. Masked validation cells choose the rank.
 3. Reusing test loss would adapt the procedure to the supposed final evaluation.
 4. Training error rewards added terms on cells used to fit them.
-5. The split does not establish transfer to an unseen genealogical family.
+5. The primary split keeps macroarea balance but may leave relatives in training;
+   the family-blocked split removes that genealogical availability while changing
+   the geographic composition.
 
 </details>
 

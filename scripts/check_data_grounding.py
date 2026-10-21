@@ -362,7 +362,7 @@ def sha256_file(path: Path) -> str:
 
 
 def validate_uds_cache(manifest: Any) -> list[str]:
-    """Check the promoted UDS teaching cache and its provenance contract."""
+    """Check the promoted UDS posterior cache and its provenance contract."""
     errors: list[str] = []
     dataset = manifest.get("datasets", {}).get("uds-event-structure", {})
     artifacts = {
@@ -372,19 +372,19 @@ def validate_uds_cache(manifest: Any) -> list[str]:
     }
     paths = {
         "uds-natural-parts.csv": ROOT / "data/uds/uds-natural-parts.csv",
-        "uds-natural-parts-teaching-cache.rds": ROOT / "data/uds/uds-natural-parts-teaching-cache.rds",
-        "uds-natural-parts-teaching-cache-provenance.json": ROOT / "data/uds/uds-natural-parts-teaching-cache-provenance.json",
+        "uds-natural-parts-posterior-cache.rds": ROOT / "data/uds/uds-natural-parts-posterior-cache.rds",
+        "uds-natural-parts-posterior-cache-provenance.json": ROOT / "data/uds/uds-natural-parts-posterior-cache-provenance.json",
     }
     for name, path in paths.items():
         if not path.is_file():
-            errors.append(f"UDS teaching artifact missing: {path.relative_to(ROOT)}")
+            errors.append(f"UDS posterior artifact missing: {path.relative_to(ROOT)}")
             continue
         expected = artifacts.get(name)
         observed = sha256_file(path)
         if expected != observed:
-            errors.append(f"UDS teaching artifact checksum mismatch: {name}")
+            errors.append(f"UDS posterior artifact checksum mismatch: {name}")
 
-    provenance_path = paths["uds-natural-parts-teaching-cache-provenance.json"]
+    provenance_path = paths["uds-natural-parts-posterior-cache-provenance.json"]
     if provenance_path.is_file():
         try:
             provenance = read_json(provenance_path)
@@ -392,7 +392,7 @@ def validate_uds_cache(manifest: Any) -> list[str]:
             errors.append(str(exc))
         else:
             expected_fields = {
-                "cache_sha256": artifacts.get("uds-natural-parts-teaching-cache.rds"),
+                "cache_sha256": artifacts.get("uds-natural-parts-posterior-cache.rds"),
                 "source_csv_sha256": artifacts.get("uds-natural-parts.csv"),
                 "source_fit_sha256": "f48a5b9d37fc91728804366515b8c34864fa69f9ece7755f33a6007a4641005c",
                 "stan_sha256": "5d85750a5090c6b1cd709844336372e945ec85e68f8391f0c72d7a8141329fc0",
@@ -404,7 +404,7 @@ def validate_uds_cache(manifest: Any) -> list[str]:
     rscript = shutil.which("Rscript")
     validator = ROOT / "scripts/data-grounding/validate_uds_cache.R"
     if rscript is None:
-        errors.append("Rscript is required to validate the UDS teaching cache")
+        errors.append("Rscript is required to validate the UDS posterior cache")
     elif validator.is_file() and all(path.is_file() for path in paths.values()):
         result = subprocess.run(
             [rscript, str(validator), str(ROOT)],
@@ -416,7 +416,7 @@ def validate_uds_cache(manifest: Any) -> list[str]:
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip().splitlines()
             errors.append(
-                "UDS teaching cache structure check failed"
+                "UDS posterior cache structure check failed"
                 + (f": {detail[-1]}" if detail else "")
             )
     return errors

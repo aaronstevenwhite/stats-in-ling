@@ -7,57 +7,144 @@ execute:
   message: false
 ---
 
-The [HMC trajectory](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy) whitened the passage-level Student-t model before applying unit-mass leapfrog steps. A [**mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) supplies HMC with a constant scale and orientation for its momentum without changing the posterior target.
+The [HMC
+trajectory](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy)
+first transformed the passage-level Student-$t$ posterior so that its two
+directions had comparable scales. We call this transformation **whitening**
+because it aims to produce coordinates having unit variance and zero
+correlation. A [**mass
+matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) supplies HMC
+with the corresponding scale and orientation for its momentum without
+changing the [posterior target](posterior-distributions.qmd).
 
-We first derive the general kinetic energy associated with a mass matrix, then inspect how the fitted Provo posterior changes under whitening, and finally connect that fixed geometric adjustment to the adaptation used by NUTS.
+The [covariance-matrix
+primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+defines matrix--vector multiplication, positive definiteness, and the matrix
+inverse, then shows that a covariance matrix records marginal variances on its
+diagonal and pairwise covariances off diagonal.
+[Correlation](../random-variables-and-distributions/correlation.qmd)
+rescales those pairwise associations. A mass matrix can adapt to this joint
+scale and orientation without changing the posterior probabilities being
+sampled.
 
-## General kinetic energy
+We begin with one mass in one dimension, extend it to two separate axis
+scales, and then ask why a tilted posterior requires a dense matrix. The
+passage-level posterior lets us see the resulting whitening transformation
+before we connect it to NUTS adaptation.
 
-For symmetric positive-definite $M$, draw
+## From one mass to a dense matrix {#general-kinetic-energy}
+
+Start with one position $q$ and one momentum $\rho$. Choose a positive scalar
+mass $m$ and draw
 
 $$
-\rho\sim\mathcal N(0,M)
+\rho\sim\mathcal N(0,m).
 $$
 
-and define
+The kinetic energy and position velocity are
 
 $$
-K(\rho)=\frac12\rho^\mathsf TM^{-1}\rho.
+K(\rho)=\frac{\rho^2}{2m},
+\qquad
+v=\frac{\mathrm dq}{\mathrm dt}=\frac{\rho}{m}.
 $$
 
-The position equation becomes
+Because $\operatorname{Var}[\rho]=m$, the velocity variance is
 
 $$
-\frac{\mathrm dq}{\mathrm dt}=M^{-1}\rho,
+\operatorname{Var}[v]
+=\operatorname{Var}\!\left[\frac{\rho}{m}\right]
+=\frac{1}{m^2}\operatorname{Var}[\rho]
+=\frac{1}{m}.
 $$
 
-and the leapfrog position update is
+A larger mass therefore produces a smaller range of typical velocities. The
+momentum itself varies on the scale $\sqrt m$, but dividing it by $m$ leaves
+velocity on the scale $1/\sqrt m$.
+
+Now suppose the position has two coordinates. We can give them separate
+masses with the diagonal matrix
 
 $$
-q_{t+1}=q_t+\epsilon M^{-1}\rho_{t+\frac12}.
+M=
+\begin{pmatrix}
+m_1&0\\
+0&m_2
+\end{pmatrix}.
 $$
 
-Because the velocity is $v=M^{-1}\rho$,
+The zeros say that the two momentum coordinates have no covariance. The
+velocity vector is
+
+$$
+\mathbf v=M^{-1}\boldsymbol\rho
+=
+\begin{pmatrix}
+\rho_1/m_1\\
+\rho_2/m_2
+\end{pmatrix},
+$$
+
+so its coordinate variances are $1/m_1$ and $1/m_2$. We may therefore move
+at one typical speed along the first axis and another along the second.
+
+But what if the posterior contours form a tilted ellipse? Changing the two
+axis speeds can widen or narrow that ellipse, but it cannot remove the tilt.
+We need a matrix with off-diagonal entries so that a velocity in one
+coordinate may also depend on momentum in the other. Such a matrix is called
+**dense**.
+
+For a symmetric positive-definite mass matrix $M$, the scalar formulas become
+
+$$
+\boldsymbol\rho\sim\mathcal N(\mathbf 0,M),
+\qquad
+K(\boldsymbol\rho)
+=\frac12\boldsymbol\rho^\mathsf TM^{-1}\boldsymbol\rho,
+$$
+
+and
+
+$$
+\frac{\mathrm d\mathbf q}{\mathrm dt}
+=M^{-1}\boldsymbol\rho.
+$$
+
+The [matrix
+primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+defines positive definiteness and the inverse used here. The leapfrog position
+update follows the same pattern:
+
+$$
+\mathbf q_{t+1}
+=\mathbf q_t+\epsilon M^{-1}\boldsymbol\rho_{t+\frac12}.
+$$
+
+Since $\mathbf v=M^{-1}\boldsymbol\rho$,
 
 $$
 \begin{aligned}
-\operatorname{Cov}(v)
-&=\operatorname{Cov}(M^{-1}\rho)\\
-&=M^{-1}\operatorname{Cov}(\rho)(M^{-1})^\mathsf T\\
+\operatorname{Cov}(\mathbf v)
+&=\operatorname{Cov}(M^{-1}\boldsymbol\rho)\\
+&=M^{-1}\operatorname{Cov}(\boldsymbol\rho)(M^{-1})^\mathsf T\\
 &=M^{-1}MM^{-1}\\
 &=M^{-1}.
 \end{aligned}
 $$
 
-Thus the inverse mass matrix should roughly match posterior covariance: wider posterior directions receive wider typical velocities.
-
-Software descriptions sometimes report the mass matrix and sometimes its inverse. Here $M$ means momentum covariance, while $M^{-1}$ means velocity covariance. Keeping that convention explicit prevents the phrase “adapted mass matrix” from silently switching meanings.
-
-In two dimensions, correlated posterior contours form a tilted ellipse. Axis-by-axis rescaling can make the ellipse wider or narrower but cannot untilt it. A dense linear transformation can both rescale and rotate the ellipse toward a circle; this is what posterior whitening does for global linear geometry.
+Thus the inverse mass matrix should roughly match posterior covariance: wider
+posterior directions receive wider typical velocities. Here $M$ denotes
+momentum covariance and $M^{-1}$ denotes velocity covariance. Software may
+report either matrix, so we will keep the convention visible whenever we
+interpret an adapted value.
 
 ## Geometry of the passage-level Student-t model
 
-The code reconstructs the exact posterior grid and compares the observed $(\mu,\log\sigma)$ covariance with its whitening transformation.
+We can now examine the posterior grid used on the preceding pages. The left
+panel of the figure retains the unequal scales and tilt of
+$(\mu,\log\sigma)$. The right panel applies a dense whitening transformation
+that both rescales and untilts the grid. If separate axis masses were enough,
+the second operation would be unnecessary.
 
 ```{r}
 #| label: provo-mass-matrix-geometry
@@ -111,7 +198,7 @@ geometry
 
 ```{r}
 #| label: plot-provo-whitened-geometry
-#| fig-cap: "posterior grid cells before and after posterior whitening. Point darkness represents normalized posterior mass."
+#| fig-cap: "Posterior grid cells before and after dense whitening. Point darkness represents normalized posterior mass."
 display <- rbind(
   data.frame(x = centered[, 1], y = centered[, 2], weight = grid$weight,
              coordinates = "centered passage-level Student-t model coordinates"),
@@ -128,11 +215,20 @@ ggplot(display, aes(x, y, alpha = weight)) +
   theme_classic(base_size = 12)
 ```
 
-A unit matrix treats all directions as equally scaled and uncorrelated. A diagonal matrix supplies separate scales but no rotation. A dense matrix can also represent global linear correlation. One constant dense matrix cannot remove curvature that changes across the posterior.
+A unit matrix would give the two coordinates the same mass. A diagonal matrix
+could match their separate widths, but the left panel would remain tilted.
+The dense transformation produces the more nearly circular cloud on the
+right by mixing the coordinates as well as rescaling them. One constant dense
+matrix still cannot remove curvature that changes from one posterior region
+to another.
 
 Stan estimates a regularized inverse mass matrix during warmup, then holds it fixed during retained sampling. Adaptation must stop because changing the transition indefinitely could change its stationary distribution. The matrix improves computation; it does not alter the 55 passage summaries or repair the passage-level Student-t model's aggregation limits.
 
-The code-to-geometry bridge is: `covariance` estimates the weighted covariance of $(\mu,\log\sigma)$ grid cells, `chol(covariance)` factorizes that ellipse, `whitening` applies the inverse factor, and `white_covariance` checks that the transformed coordinates have approximately unit variances and zero correlation.
+To connect this geometry to the R objects, `covariance` estimates the weighted
+covariance of the $(\mu,\log\sigma)$ grid cells. Then
+`chol(covariance)` factorizes that ellipse, `whitening` applies the inverse
+factor, and `white_covariance` checks whether the transformed coordinates have
+approximately unit variances and zero correlation.
 
 ## Recap and forward link
 

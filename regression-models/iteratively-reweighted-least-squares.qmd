@@ -22,7 +22,15 @@ y_i\eta_i-\log(1+e^{\eta_i})
 \boldsymbol\eta=\mathbf X\boldsymbol\beta.
 $$
 
-Its score and Hessian are
+To find the coefficient vector that maximizes this function, we need to know
+both which way it is rising and how quickly that rise is changing. A
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+records the local rate of change in one direction. The **score** collects the
+log likelihood's first derivative with respect to each coefficient. The
+**Hessian** collects all second derivatives; its entries describe local
+curvature for individual coefficients and pairs of coefficients. The [Hessian
+discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+develops this curvature interpretation in detail. Here the two objects are
 
 $$
 \nabla\ell(\boldsymbol\beta)
@@ -36,7 +44,18 @@ $$
 W_{ii}=\mu_i(1-\mu_i).
 $$
 
-Newton--Raphson updates the current coefficients by inverse curvature times the score:
+The one-dimensional version of the next move is easier to see. If \(s(b)\) is
+the score at a current value \(b^{(t)}\), its tangent-line approximation is
+
+$$
+s(b)\approx s(b^{(t)})+s'(b^{(t)})(b-b^{(t)}).
+$$
+
+Setting this local line to zero gives
+\(b^{(t+1)}=b^{(t)}-s(b^{(t)})/s'(b^{(t)})\). **Newton--Raphson** repeats that
+operation: approximate the score by a line near the current value, move to the
+line's zero, and recalculate. For several coefficients, the Hessian supplies
+the multivariate curvature. Substituting the logistic score and Hessian gives
 
 $$
 \boldsymbol\beta^{(t+1)}
@@ -71,14 +90,17 @@ w_i^{(t)}=\mu_i^{(t)}[1-\mu_i^{(t)}],\quad
 z_i^{(t)}=\eta_i^{(t)}+\frac{y_i-\mu_i^{(t)}}{w_i^{(t)}}.
 $$
 
-The update is
+The **working response** \(\mathbf z\) is the value that makes the current
+tangent-line approximation look like a weighted linear regression. It belongs
+to the algorithm rather than the linguistic measurements, and we recalculate it
+after every move. With these weights and working response, the update is
 
 $$
 \boldsymbol\beta^{(t+1)}=(\mathbf X^\mathsf T\mathbf W^{(t)}\mathbf X)^{-1}
 \mathbf X^\mathsf T\mathbf W^{(t)}\mathbf z^{(t)}.
 $$
 
-Indeed, $\mathbf W^{(t)}\mathbf z^{(t)}=\mathbf W^{(t)}\mathbf X\boldsymbol\beta^{(t)}+\mathbf y-\boldsymbol\mu^{(t)}$. Substituting that identity into the weighted-least-squares solution recovers the Newton step. The working response $\mathbf z$ is the first-order linearization of the link-scale problem; it is not another observed linguistic response.
+Indeed, $\mathbf W^{(t)}\mathbf z^{(t)}=\mathbf W^{(t)}\mathbf X\boldsymbol\beta^{(t)}+\mathbf y-\boldsymbol\mu^{(t)}$. Substituting that identity into the weighted-least-squares solution recovers the Newton step.
 
 ```{r}
 #| label: run-irls
@@ -118,7 +140,14 @@ path
 stopifnot(max(abs(beta - coef(glm_fit))) < 1e-7)
 ```
 
-Starting at zero is a reproducible neutral location: every initial probability is one half. It is a computational choice, not a model assumption. `pmax()` prevents division by a floating-point zero when a fitted probability becomes numerically indistinguishable from zero or one. The tolerance stops when no coefficient moves appreciably; a fixed iteration count would not establish convergence. Persistent near-zero weights or a coefficient path that fails to stabilize can signal separation or weak support rather than a need to declare success after more iterations.
+Starting at zero is a reproducible neutral location, since every initial
+probability is one half. This starting point helps the numerical search but does
+not change the Bernoulli model. `pmax()` prevents division by a floating-point
+zero when a fitted probability becomes numerically indistinguishable from zero
+or one. The tolerance stops when no coefficient moves appreciably; a fixed
+iteration count would not establish convergence. Persistent near-zero weights
+or a coefficient path that fails to stabilize can signal separation or weak
+support rather than a need to declare success after more iterations.
 
 ```{r}
 #| label: plot-irls-path
@@ -136,7 +165,12 @@ ggplot(long, aes(iteration, estimate, linetype = coefficient, shape = coefficien
   theme_classic()
 ```
 
-The plotted path records successive local weighted-least-squares solutions. The working response $\mathbf z$ is algorithmic, whereas the observed response remains the original vector of *in* and *for* choices; the final coefficients agree with `glm()` to the asserted tolerance. Thus IRLS is local least squares, not a claim that the Bernoulli data have become Gaussian.
+The plotted path records successive local weighted-least-squares solutions. The
+working response $\mathbf z$ belongs to the algorithm; the observed response
+remains the original vector of *in* and *for* choices. The final coefficients
+agree with `glm()` to the asserted tolerance. Thus IRLS repeatedly solves a
+local least-squares problem without treating the Bernoulli observations as
+Gaussian.
 
 ## Recap and check your understanding
 

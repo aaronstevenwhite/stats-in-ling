@@ -7,7 +7,7 @@ execute:
   message: false
 ---
 
-The normal page estimated a mean and variance for each /i/ F1 speaker group. Under an independent normal-sampling model, the uncertainty in an estimated variance has a **chi-squared reference distribution**.
+The normal page estimated a mean and [variance](variance-and-covariance.qmd) for each /i/ F1 speaker group. Under an [independent](../foundations/independence.qmd) normal-sampling model, the uncertainty in an estimated variance has a **chi-squared reference distribution**.
 
 We construct that reference statistic, connect its degrees of freedom to the number of centered vowel measurements, and then use the resulting density to interpret variance uncertainty under the normal model.
 
@@ -26,10 +26,14 @@ $$
 f_Q(q)
 =\frac{q^{\nu/2-1}e^{-q/2}}
        {2^{\nu/2}\Gamma(\nu/2)},
-\qquad q>0,
+\qquad q>0.
 $$
 
-with
+The [gamma function introduced with the beta
+distribution](beta-distribution.qmd#gamma-function-and-recurrence) extends the
+factorial operation to positive noninteger inputs. Here it supplies the
+normalizing constant even when $\nu/2$ is not an integer, so that the area
+under the chi-squared density is one. Its mean and variance are
 
 $$
 \mathbb{E}[Q]=\nu,
@@ -50,15 +54,108 @@ $$
 \end{aligned}
 $$
 
-For an independent sample from $\mathcal N(\mu,\sigma^2)$,
+The remaining question is why estimating the mean leaves only $n-1$
+independent deviations. We can see the constraint before introducing the
+general result. The values $320$, $350$, and $380$ Hz have mean $350$ Hz and
+centered deviations
 
 $$
-\frac{(n-1)S^2}{\sigma^2}\sim\chi^2_{n-1}.
+(-30,0,30).
 $$
 
-Here is the missing link. Standardize the sample as
-$Z_i=(X_i-\mu)/\sigma$. The total standardized sum of squares decomposes into
-orthogonal mean and residual components:
+These three deviations must add to zero. Once the first two have been chosen,
+the third is fixed: $30=-(-30+0)$. We began with three measurements, used one
+quantity to estimate their mean, and retained two freely varying deviations.
+The same argument leaves $n-1$ freely varying deviations in a sample of size
+$n$.
+
+How does that counting argument connect to the chi-squared construction? Think
+of the $n$ observations as the coordinates of one point in an $n$-dimensional
+space. The direction
+$\mathbf 1=(1,\ldots,1)$ moves every coordinate together and thus changes the
+sample mean. A **projection** is the component, or shadow, of a vector along a
+chosen direction. Two directions are **orthogonal** when they are
+perpendicular, equivalently when their dot product is zero.
+The earlier [vector and matrix
+primer](variance-and-covariance.qmd#vectors-matrices-and-covariance) defines a
+vector as an ordered tuple and a dot product as paired multiplication followed
+by addition.
+
+A **residual** is a centered observation $X_i-\overline X$; the later
+[residual page](../regression-models/residuals.qmd) develops the same
+observed-minus-fitted idea for regression. The **residual subspace** is the
+collection of all centered vectors whose coordinates sum to zero. Every such
+vector is orthogonal to $\mathbf 1$, because
+$\mathbf 1^{\mathsf T}(d_1,\ldots,d_n)=\sum_i d_i=0$. It has $n-1$
+freely varying directions: after $n-1$ deviations have been chosen, the
+zero-sum constraint fixes the last one.
+
+The two-coordinate case lets us draw the decomposition. The diagonal line is
+the mean direction: moving along it changes both coordinates together. The
+other line is the residual subspace: its coordinates sum to zero. The blue
+arrow is the observed vector's projection onto the mean direction, and the
+red arrow is the remaining residual component.
+
+```{r}
+#| label: plot-mean-residual-projection
+#| fig-cap: "A two-coordinate vector decomposed into orthogonal mean and residual components."
+#| fig-alt: "A coordinate plane shows the mean direction y equals x and the perpendicular residual direction y equals minus x. An observed vector from the origin is decomposed into a blue arrow along the mean direction and a red arrow parallel to the residual direction. The two components meet at a right angle."
+library(ggplot2)
+
+projection_point <- data.frame(
+  mean_x = 1.2, # dqr-allow: symbolic-derivation
+  mean_y = 1.2, # dqr-allow: symbolic-derivation
+  observed_x = 1.8, # dqr-allow: symbolic-derivation
+  observed_y = 0.6 # dqr-allow: symbolic-derivation
+)
+
+ggplot() +
+  geom_abline(
+    slope = 1, intercept = 0,
+    color = "#2C7FB8", linewidth = 0.65
+  ) +
+  geom_abline(
+    slope = -1, intercept = 0,
+    color = "#8B1A1A", linewidth = 0.65
+  ) +
+  geom_segment(
+    data = projection_point,
+    aes(x = 0, y = 0, xend = observed_x, yend = observed_y),
+    color = "grey45", linetype = "dashed", # dqr-allow: plot-aesthetic
+    arrow = grid::arrow(length = grid::unit(0.12, "inches"))
+  ) +
+  geom_segment(
+    data = projection_point,
+    aes(x = 0, y = 0, xend = mean_x, yend = mean_y),
+    color = "#2C7FB8", linewidth = 0.9, # dqr-allow: plot-aesthetic
+    arrow = grid::arrow(length = grid::unit(0.12, "inches"))
+  ) +
+  geom_segment(
+    data = projection_point,
+    aes(x = mean_x, y = mean_y, xend = observed_x, yend = observed_y),
+    color = "#8B1A1A", linewidth = 0.9, # dqr-allow: plot-aesthetic
+    arrow = grid::arrow(length = grid::unit(0.12, "inches"))
+  ) +
+  annotate("text", x = 1.68, y = 1.82, label = "mean direction", color = "#2C7FB8", size = 3.3) +
+  annotate("text", x = 1.58, y = -1.72, label = "residual subspace", color = "#8B1A1A", size = 3.3) +
+  annotate("point", x = 1.8, y = 0.6, size = 2) + # dqr-allow: symbolic-derivation
+  annotate("text", x = 1.86, y = 0.45, label = "observed vector", hjust = 0, size = 3.2) +
+  coord_fixed(xlim = c(-0.25, 2.25), ylim = c(-2, 2.05), clip = "off") +
+  labs(x = "Coordinate 1", y = "Coordinate 2") +
+  theme_classic(base_size = 12)
+```
+
+The right angle is the geometric meaning of orthogonality. For more than two
+observations, the residual subspace has more directions, but the same
+projection idea applies.
+
+Our three-value residual vector $(-30,0,30)$ lies in a two-dimensional
+residual subspace of the three-coordinate space. Its projection in the mean
+direction is zero because its coordinates add to zero.
+
+Now standardize the sample as $Z_i=(X_i-\mu)/\sigma$. The total standardized
+sum of squares decomposes into the squared length of the residual projection
+and the squared length of the mean projection:
 
 $$
 \sum_{i=1}^n\left(\frac{X_i-\mu}{\sigma}\right)^2
@@ -76,13 +173,25 @@ $$
 =\frac{(n-1)S^2}{\sigma^2},
 $$
 
-that component has the $\chi^2_{n-1}$ distribution. Estimating the mean thus
-removes one freely varying direction; it is not a convention attached after
-the fact.
+that component has the $\chi^2_{n-1}$ distribution. We have thus obtained the
+variance result:
+
+$$
+\frac{(n-1)S^2}{\sigma^2}\sim\chi^2_{n-1}
+$$
+
+for an independent sample from $\mathcal N(\mu,\sigma^2)$. In the
+three-observation example, the corresponding standardized squared residual
+length has a $\chi^2_2$ reference distribution. The conclusion depends on
+independent normal sampling: orthogonality by itself does not guarantee
+independence for an arbitrary distribution.
 
 ## Degrees of freedom from the vowel data
 
-The degrees of freedom below are not illustrative choices. They come from the numbers of speakers who produced /i/ in the [Hillenbrand dataset](continuous-random-variables.qmd).
+For each speaker group below, the degrees of freedom equal one less than the
+number of speakers who produced /i/ in the [Hillenbrand
+dataset](continuous-random-variables.qmd). The observed group sizes thus
+determine the reference distributions.
 
 ```{r}
 #| label: hillenbrand-chi-square

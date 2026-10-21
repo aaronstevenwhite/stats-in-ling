@@ -4,9 +4,22 @@ title: "Annotator effects"
 
 The Turkish PropBank analysis separated agreement from adjudication. We now return to the [UDS natural-parts responses](generative-stories.qmd), where each predicate node was judged by two or three annotators. A stable annotator term may separate an annotator's response location from the item propensities estimated from overlapping judgments.
 
-We represent this pattern with an annotator-specific intercept. It describes a stable upward or downward shift in log odds under this instrument. It is not a measure of annotator quality or proof of a context-independent bias.
+Recall that [conditional probability](../foundations/conditional-probability.qmd) restricts the reference set using supplied information. The response factors below are conditionally [independent](../foundations/independence.qmd) only after item and annotator effects are given; integrating those shared effects induces dependence among rows.
 
-Before loading fitted summaries, state the model they summarize. For each observed pair, $Y_{ij}$ is Bernoulli with $\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j$. The prior model is $\alpha\sim\mathcal N(0,2.5^2)$, positive item and annotator scales have half-normal $\mathcal N^+(0,2^2)$ priors, and standardized group deviations are normal before the zero-sum transformation. Thus the cache contains posterior summaries from a named likelihood and prior, not stand-alone “adjusted scores.”
+We represent this pattern with an annotator-specific intercept, a stable upward or downward shift in log odds under this instrument. The recorded data contain responses under one protocol but no independent quality measure or second instrument. The fitted shift therefore describes response location within this task.
+
+For each observed pair, $Y_{ij}$ is Bernoulli with
+$\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j$. The
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+therefore multiplies the response probabilities over observed item--annotator pairs
+while holding the recorded responses fixed. The prior model is
+$\alpha\sim\mathcal N(0,2.5^2)$, positive item and annotator scales have half-normal
+$\mathcal N^+(0,2^2)$ priors, and standardized group deviations are normal before
+the zero-sum transformation. By [Bayes' rule](../foundations/bayes-rule.qmd), the
+[posterior distribution](../statistical-inference/posterior-distributions.qmd) is
+the normalized product of that likelihood and those priors. The loaded object
+stores summaries and joint draws from this posterior; every displayed effect
+inherits the stated likelihood, priors, and zero-sum coordinates.
 
 We add and identify the annotator intercept, compare posterior effects with raw response rates, and then delimit which forms of annotator variation this location term cannot represent.
 
@@ -22,7 +35,7 @@ uds <- utils::read.csv(
   check.names = FALSE
 )
 uds_cache <- readRDS(
-  "data/uds/uds-natural-parts-teaching-cache.rds"
+  "data/uds/uds-natural-parts-posterior-cache.rds"
 )
 
 stopifnot(
@@ -117,9 +130,9 @@ The printed row above shows the scale conversion. Starting from the posterior me
 
 ## Raw rates and posterior effects
 
-The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Exact binomial intervals summarize each raw rate; posterior intervals summarize each annotator-specific intercept.
+The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Clopper--Pearson intervals under an independent common-probability binomial working model summarize each raw rate; posterior intervals summarize each annotator-specific intercept.
 
-The raw intervals are [Clopper--Pearson intervals](../statistical-inference/exact-binomial-intervals.qmd). They condition on the annotator's realized item set and treat those binary responses as the binomial sample. They do not adjust for which items were assigned, and they are not intervals for $a_j$.
+The raw intervals are [Clopper--Pearson intervals](../statistical-inference/exact-binomial-intervals.qmd) under an independent common-probability binomial working model. They condition on the annotator's realized item set and treat those binary responses as IID Bernoulli observations with one probability. Their coverage is exact for that working model. Repeated items, heterogeneous item probabilities, and the crossed assignment process violate its simplification, so these intervals neither adjust for which items were assigned nor target $a_j$.
 
 ```{r}
 #| label: prepare-uds-annotator-plot
@@ -198,7 +211,7 @@ The plot shows why the location term matters: the raw rates span a broad range, 
 
 Annotators may differ in response consistency, interpretation, or use of an ordered scale. A location effect cannot represent those patterns. It shifts every predicted log odds in the same direction. The current binary data and recovery study support this smaller term; they do not support adding discrimination or threshold parameters without a new design check.
 
-Item and annotator effects would be perfectly confounded if each item were judged by only one annotator. The UDS teaching extract instead forms one connected bipartite graph across `r length(unique(uds$item_id))` items and `r length(unique(uds$annotator_id))` annotators. Connectivity supplies paths of shared judgments, though sparse responses still limit the precision of individual item effects.
+Item and annotator effects would be perfectly confounded if each item were judged by only one annotator. The prepared UDS extract instead forms one connected bipartite graph across `r length(unique(uds$item_id))` items and `r length(unique(uds$annotator_id))` annotators. Connectivity supplies paths of shared judgments, though sparse responses still limit the precision of individual item effects.
 
 A disconnected incidence graph would permit separate shifts within each component, so one global annotator coordinate system would not be informed by the likelihood. Connectivity is thus a design requirement for separating the two crossed locations. It does not by itself guarantee precise recovery; the [parameter-recovery study](parameter-recovery.qmd#evaluating-parameter-recovery) checks the remaining finite-data problem.
 
@@ -213,7 +226,7 @@ A disconnected incidence graph would permit separate shifts within each componen
 
 ## Recap
 
-1. The cached effects summarize a Bernoulli--logit likelihood with explicit regularizing priors.
+1. The fitted effects summarize a Bernoulli--logit likelihood with explicit regularizing priors.
 2. A normal annotator population supplies exchangeability and partial pooling; the connected design helps separate annotator and item locations.
 3. Log-odds effects become conditional probabilities only after adding the other predictor terms and applying the inverse logit.
 4. Raw Clopper--Pearson intervals and posterior effect intervals have different targets and conditioning assumptions.

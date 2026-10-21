@@ -2,7 +2,21 @@
 title: "The widely applicable information criterion"
 ---
 
-The [PSIS-LOO page](psis-loo.qmd) used full-posterior draws to approximate omitted-position posteriors. The [**widely applicable information criterion (WAIC)**](https://mc-stan.org/loo/reference/waic.html) instead corrects fitted pointwise posterior predictive density using posterior variation. Both calculations require the same pointwise likelihood matrix, but their approximations differ.
+The [PSIS-LOO page](psis-loo.qmd) used full-posterior draws to approximate what
+would happen when one position is omitted. We now ask whether the same draws can
+estimate that predictive target without importance weighting.
+
+Recall that a
+[posterior predictive density](../statistical-inference/predictive-distributions.qmd#prediction-under-the-exchangeable-bernoulli-model)
+averages a response density over uncertainty from the
+[posterior distribution](../statistical-inference/posterior-distributions.qmd). The
+[**widely applicable information criterion (WAIC)**](https://mc-stan.org/loo/reference/waic.html)
+performs that averaging one observed position at a time, then uses posterior
+variation to correct the optimism caused by fitting and evaluating on the same
+response.
+
+WAIC and PSIS-LOO use the same pointwise quantities, but approximate the
+omitted-position target in different ways.
 
 We first construct fitted pointwise posterior predictive density, derive the posterior-variance optimism correction, and then compare WAIC with exact LOO on the fixed Provo models before stating which target choices that correction leaves untouched.
 
@@ -19,6 +33,13 @@ $$
 f(y_i\mid\theta^{(s)})
 \right].
 $$
+
+For fixed $i$, the values $f(y_i\mid\theta^{(s)})$ form one row of the pointwise
+likelihood matrix: the observed response $y_i$ stays fixed while the posterior draw
+$\theta^{(s)}$ changes. This uses
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+in its usual sense, as a function of unknown model quantities with the observed
+data held fixed.
 
 The average integrates the likelihood of $y_i$ over posterior uncertainty. But $y_i$ helped determine the posterior, so this remains a fitted predictive quantity. Summing gives
 
@@ -51,10 +72,12 @@ p_{\mathrm{waic},i}
 =
 \operatorname{Var}_s\left[
 \log f(y_i\mid\theta^{(s)})
-\right],
+\right].
 $$
 
-and
+The [variance](../random-variables-and-distributions/variance-and-covariance.qmd) is taken across posterior draws $s$ while the aggregated Provo position $i$ stays fixed. It is thus a posterior-draw variance of one row's log likelihood, rather than variation across word positions or readers.
+
+Summing these pointwise variances gives
 
 $$
 p_{\mathrm{waic}}
@@ -77,6 +100,36 @@ $$
 $$
 
 for which smaller is preferred.
+
+The factor $-2$ uses the same [deviance-scale convention](../regression-models/deviance.qmd): it reverses the preference direction and doubles the log-score difference without changing the model ordering.
+
+## One position across three posterior draws
+
+The indices are easier to track before the general approximation. Fix Provo position `1-2`, whose observed response is a mean log FFD of $5.168$. Under the fixed-seed linear-model computation below, the first three posterior draws give log likelihoods <!-- dqr-allow: empirical-answer -->
+
+$$
+\ell_1^{(1)}=0.9383,
+\qquad
+\ell_1^{(2)}=0.9179,
+\qquad
+\ell_1^{(3)}=0.9404.
+$$
+
+Exponentiating produces density heights $2.5556$, $2.5040$, and $2.5611$. Their log mean is
+
+$$
+\operatorname{lppd}_{1,\,3\text{ draws}}
+=\log\left(\frac{2.5556+2.5040+2.5611}{3}\right)
+=0.9323.
+$$
+
+The sample variance of the three log likelihoods is $0.000155$, giving the miniature corrected contribution
+
+$$
+0.9323-0.000155=0.9321.
+$$
+
+The position index $i=1$ stays fixed throughout; only the posterior-draw index $s$ varies. The complete calculation below repeats these two operations for every position using 4,000 draws. This three-draw arithmetic is a tracing device, not the final WAIC estimate.
 
 ## Why posterior variance corrects optimism {#why-posterior-variance-corrects-optimism}
 
@@ -121,6 +174,8 @@ make that factorization scientifically incomplete.
 ## WAIC and exact LOO for the Provo models
 
 The code independently reloads the [Provo data](likelihood-ratio-tests.qmd#provo-measurement-dossier), reconstructs the fixed conjugate posteriors, and generates the same independent posterior draws used for PSIS. The [normal-inverse-gamma derivation](leave-one-out-cross-validation.qmd#normal-inverse-gamma-posterior-and-predictive-update) defines the reused `Vn`, `bn`, `an`, and `dn` quantities. It computes WAIC both manually and with `loo::waic()`, then compares each pointwise WAIC contribution with exact LOO.
+
+Independence here refers to the posterior simulation draws, as defined on the [independence page](../foundations/independence.qmd). It does not make the aggregated Provo positions independent empirical replications; passage dependence remains part of the approximation's target limitation.
 
 ```{r}
 #| label: provo-waic

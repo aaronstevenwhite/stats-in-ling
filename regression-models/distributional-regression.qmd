@@ -9,7 +9,9 @@ execute:
 
 **Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use the location-scale specification stated below.
 
-This page first states separate equations for conditional location and scale, then fits them to grouped item summaries and interprets the two coefficient sets on their own terms.
+The likelihood is the joint density of the realized item summaries viewed as a function of the location and scale coefficients, as on the [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd). Conditional [variance and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) describe response spread, a [residual](residuals.qmd) is observed minus fitted location, and the likelihood product requires the stated [independence](../foundations/independence.qmd) approximation. Retained-trial counts and within-item variances improve the precision story, though the response remains conditional on correct trials and uses onset-to-response timing.
+
+One predictor equation cannot say that MALD item means and their remaining spread change differently with frequency. Separate location and scale equations supply those two conditional targets and require their coefficients to be interpreted separately.
 
 $$
 Y_{ij}\sim\mathcal N(\mu_i,\sigma_i^2),
@@ -54,6 +56,24 @@ y_{ij}-\mu_i=(y_{ij}-\overline y_i)+(\overline y_i-\mu_i).
 $$
 
 After squaring and summing, the cross-product vanishes because $\sum_j(y_{ij}-\overline y_i)=0$. The first squared term is $(n_i-1)s_i^2$ and the second is $n_i(\overline y_i-\mu_i)^2$. Thus the grouped likelihood is algebraically equal to the row likelihood only under the declared Gaussian common-within-item mean and scale.
+
+## How we will search for the likelihood maximum
+
+There is no closed-form solution for all the location and scale coefficients
+together, so we will search numerically. Recall that a
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+measures local change. A **gradient** collects one derivative of the negative log
+likelihood for each coefficient, so it points toward local increase; its negative
+points toward local decrease. A **Hessian** collects the corresponding second
+derivatives and describes local curvature, as developed in the [Hessian
+discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature).
+
+We use **BFGS**, an algorithm that learns an approximation to the inverse Hessian
+from successive gradients. Each iteration combines the current gradient with
+that curvature approximation to propose another coefficient vector. The search
+stops when its relative progress falls below `reltol` or when it reaches the
+`maxit` ceiling. Neither stopping rule assesses whether the distributional
+assumptions fit the data.
 
 ```{r}
 #| label: fit-mald-distributional-regression
@@ -157,7 +177,13 @@ model_comparison
 
 `X_mu` maps the four mean coefficients to $\mu_i`; `Z_frequency` maps an intercept and centered-frequency coefficient to $\log\sigma_i`. The optimizer parameter vector thus contains the mean coefficients first and the scale coefficients second. Weighted least squares supplies stable mean starting values, pooled residual sums of squares supply the scale start, and the added zero initializes no frequency change in scale.
 
-BFGS is a numerical choice: it builds a local inverse-Hessian approximation from likelihood gradients. `maxit` caps work and `reltol` declares a relative stopping threshold. A zero convergence code reports numerical stabilization, not model adequacy. The requested Hessian supplies a local curvature check:
+A zero convergence code reports that this search stabilized numerically. We
+also request a Hessian at the reported solution. An **eigenvector** of the
+Hessian is a direction in coefficient space whose direction is unchanged by the
+curvature transformation; its **eigenvalue** records the amount and sign of
+curvature in that direction. Positive eigenvalues in every direction are what
+we expect at a strict local minimum of the negative log likelihood. The smallest
+eigenvalue therefore supplies the most demanding local curvature check:
 
 ```{r}
 #| label: check-mald-distributional-curvature

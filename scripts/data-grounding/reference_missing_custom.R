@@ -1064,7 +1064,7 @@ uds_cache <- list(
   item_summary = uds_item_summary,
   annotator_summary = uds_annotator_summary
 )
-cache_path <- file.path(output_dir, "uds-natural-parts-teaching-cache.rds")
+cache_path <- file.path(output_dir, "uds-natural-parts-posterior-cache.rds")
 saveRDS(uds_cache, cache_path, compress = "xz")
 
 uds$item_index <- match(uds$item_id, uds_cache$item_levels)

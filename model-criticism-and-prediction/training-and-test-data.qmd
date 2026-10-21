@@ -40,11 +40,13 @@ defines one row as one retained button latency for a reader at a word position. 
 |:--|:--|
 | split unit | participant; all of a reader's responses move together |
 | score unit | response row on this page; participant weighting comes next |
-| information set | word length, unigram frequency, and GPT-3 surprisal for each held-out word |
-| fold-local estimates | predictor means and standard deviations, then regression coefficients |
+| information set | word length, Google Books log unigram count, and GPT-3 word surprisal as defined in the [predictor provenance table](prediction-targets.qmd#natural-stories-measurement-dossier) | <!-- dqr-allow: reference-metadata -->
+| quantities refit in each split | predictor means and [standard deviations](../random-variables-and-distributions/standard-deviation.qmd#definition), which measure predictor spread, then regression coefficients |
 | transfer target | similarly sampled readers of these ten represented stories |
 
-The following code independently loads the tracked release, recreates the frozen participant folds, learns all transformations from the training rows, and predicts the first held-out fold. Five folds are a computational teaching choice: each fit retains about four fifths of the participants while producing groups large enough for a readable calibration display. The shuffled round-robin assignment balances the number of participants across folds to within one; it does not balance response-row counts, reading speed, or any unobserved participant characteristic. The seed freezes that arbitrary assignment so the printed results can be reproduced.
+The following code loads the prepared Natural Stories table and keeps rows for which the response and all three predictors are finite. It then randomly shuffles the participant identifiers, assigns them in turn to five groups, uses the first group as the test set, and uses the other four groups for training. All responses from one participant receive the same group label. Predictor means, predictor standard deviations, and regression coefficients are estimated from the training rows before predictions are computed for the held-out rows.
+
+We could use fewer groups, which would hold out more participants from each fit, or more groups, which would leave fewer participants in each test set. We choose five for the present analysis so that about four fifths of the participants estimate the fitted quantities and about one fifth evaluate them. The shuffled round-robin assignment balances participant counts to within one, but it does not balance response-row counts, reading speed, or any unobserved participant characteristic. The stated random seed makes this particular assignment reproducible.
 
 ```{r}
 #| label: natural-train-test
@@ -191,15 +193,20 @@ ggplot2::ggplot(
   ggplot2::theme_classic(base_size = 11)
 ```
 
-The training set contains `r format(assignment$rows[assignment$set == "training"], big.mark = ",")` responses from `r assignment$participants[assignment$set == "training"]` readers. The test set contains `r format(assignment$rows[assignment$set == "test"], big.mark = ",")` responses from `r assignment$participants[assignment$set == "test"]` readers. All `r unique(assignment$stories)` stories remain represented on both sides, so the target is a new reader of these stories rather than a new text.
+The training set contains `r format(assignment$rows[assignment$set == "training"], big.mark = ",")` responses from `r assignment$participants[assignment$set == "training"]` readers. The test set contains `r format(assignment$rows[assignment$set == "test"], big.mark = ",")` responses from `r assignment$participants[assignment$set == "test"]` readers. All `r unique(assignment$stories)` stories remain represented on both sides. Thus positions from every story, together with their lexical predictors, appear in training while different readers of those same stories appear in test. The target is a new reader of these ten stories rather than a new text.
 
 The gray points show a reproducible display sample of raw held-out responses. The blue points and intervals summarize those responses within prediction deciles. This combines the raw test outcomes and the fitted model without using test responses to estimate the regression.
 
 The deciles are defined by quantiles of the held-out predictions so each bin contains
 roughly the same number of rows. Within a bin, the blue interval is the observed mean
-plus or minus $1.96$ row-level standard errors. It is a descriptive calibration
-interval, not a predictive interval for a new response and not a participant-level
-uncertainty interval. Sampling at most 12,000 gray points changes only what is drawn;
+plus or minus $1.96$ row-level standard errors. Recall that a [standard
+error](../statistical-inference/standard-errors.qmd#deriving-the-standard-error-of-a-mean)
+is the standard deviation of a specified estimator under a specified
+repeated-sampling model. Here the estimator is the mean held-out log latency in
+one prediction bin, and the working sampling units are response rows. Repeated
+responses from the same participant and word position make that row-independence
+calculation descriptive rather than a participant-level uncertainty analysis. It
+is also not a predictive interval for a new response. Sampling at most 12,000 gray points changes only what is drawn;
 the fit, bins, and printed summaries use every held-out row.
 
 The mathematics-to-code correspondence is direct:
@@ -221,7 +228,7 @@ Thus the fitted function is estimated from random training data, while the displ
 
 - Centering a predictor using the complete dataset lets held-out predictor values affect the training representation.
 - Imputing a missing test response from a full-data mean uses held-out responses.
-- Selecting predictors by their full-data response correlation consults the test set.
+- Selecting predictors by their full-data response [correlation](../random-variables-and-distributions/correlation.qmd), the standardized covariance measuring linear association, consults the test set.
 - Choosing a model because it has the best test score turns the test data into selection data.
 - Averaging reading times over readers before holding readers out carries their responses into the target.
 

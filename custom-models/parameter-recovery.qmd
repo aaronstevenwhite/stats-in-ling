@@ -4,11 +4,21 @@ title: "Parameter recovery"
 
 A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. Here the simulation preserves the exact item--annotator incidence pattern of the UDS natural-parts extract introduced on the [first page](generative-stories.qmd).
 
-This is an audited model simulation, not a substitute for linguistic data. Its rows, item identities, annotator identities, and imbalance come from the released annotation design. The generating values and success thresholds were fixed before the released responses were fit.
+We generate synthetic responses from the proposed model on the observed
+item--annotator incidence graph and then refit the complete procedure. Recovery of
+the known generating quantities checks computation and the information supplied by
+that design, conditional on the generator. Evidence that real annotations follow
+the generator must instead come from the measurement argument and
+[posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd),
+which compare observed response summaries with the same summaries computed from
+response tables generated under posterior draws. The rows, identities, and imbalance
+come from the released annotation design; the generating values and acceptance
+criteria were fixed before the released responses were fit.
 
-We load that design and its audited fits, state the complete Stan program and generator, and then evaluate whether repeated fits recover the known population and group-level quantities.
+We state the complete generator and Stan model, then evaluate whether repeated fits
+recover the known population and group-level quantities under the released design.
 
-## Loading the released design and audited cache
+## The released design and recovery runs {#loading-released-design-and-completed-fits}
 
 ```{r}
 #| label: load-uds-recovery
@@ -19,7 +29,7 @@ uds <- utils::read.csv(
   "data/uds/uds-natural-parts.csv",
   check.names = FALSE
 )
-cache_path <- "data/uds/uds-natural-parts-teaching-cache.rds"
+cache_path <- "data/uds/uds-natural-parts-posterior-cache.rds"
 uds_cache <- readRDS(cache_path)
 
 stopifnot(
@@ -68,19 +78,6 @@ generating_values <- c(
   sigma_annotator = 1.6 # dqr-allow: algorithm-setting
 )
 
-cache_record <- data.frame(
-  quantity = c(
-    "Audited posterior draws retained",
-    "Warmup iterations per released-data chain",
-    "Retained iterations per released-data chain"
-  ),
-  value = c(
-    nrow(uds_cache$population_draws),
-    uds_cache$provenance$warmup_per_chain,
-    uds_cache$provenance$retained_per_chain
-  )
-)
-
 stopifnot(
   all(abs(
     recovery$alpha_estimate - recovery$alpha_error -
@@ -97,15 +94,24 @@ stopifnot(
       generating_values[["sigma_annotator"]]
   ) < 1e-10)
 )
-
-knitr::kable(cache_record)
 ```
 
-The compact cache contains `r nrow(uds_cache$recovery)` completed recovery fits and `r nrow(uds_cache$population_draws)` deterministic draws from the later released-data fit. Rendering uses the cache; it does not silently refit Stan.
+The analysis contains `r nrow(uds_cache$recovery)` complete recovery replicates. In
+each one, responses are generated from known population and group quantities and the
+same model is fit back to those responses. We can therefore compare each posterior
+summary with the value that generated its data.
 
 ## The complete Stan program
 
-The crossed response model constructs item and annotator deviations by centering non-centered standard-normal vectors. Centering the realized vectors fixes their finite-sample sums at zero.
+The crossed response model uses a **non-centered parameterization**. Rather than
+sampling each deviation $u_i$ directly on a scale set by an unknown $\sigma$, we
+sample a standard-normal coordinate $z_i$ and construct $u_i=\sigma z_i$. The two
+forms describe the same conditional distribution, but their sampling coordinates
+can have different posterior dependence; the
+[divergence page](../statistical-inference/divergent-transitions.qmd) develops this
+computational motivation. Here we also center the realized standard-normal vectors,
+which fixes the finite-sample sums of the resulting item and annotator deviations at
+zero.
 
 ```{r}
 #| label: define-uds-stan-program
@@ -150,11 +156,27 @@ model {
 '
 ```
 
-The priors regularize a sparse crossed design. `normal(0, 2.5)` places the population log odds near no directional preference while allowing a wide range of gate probabilities. Because the two scale parameters are constrained positive, `normal(0, 2)` becomes a half-normal prior: it favors smaller heterogeneity while retaining substantial positive mass. Standard-normal raw deviations define a non-centered parameterization, which often reduces posterior dependence between group effects and their scales. These choices are weakly regularizing design commitments, not facts learned from the response table; the [full measurement model](uds-measurement-model.qmd#writing-the-complete-model) checks their implications with prior and posterior prediction.
+The priors provide **regularization** by combining the sparse evidence for each
+group-specific deviation with a shared population distribution. Weakly informed
+deviations are consequently pulled toward the population center, much as the
+penalty in [ridge regression](../regression-models/ridge-regression.qmd) pulls weakly
+supported coefficients toward zero. Here `normal(0, 2.5)` places the population log
+odds near no directional preference while allowing a wide range of gate
+probabilities. Because the two scale parameters are constrained positive,
+`normal(0, 2)` becomes a half-normal prior: it favors smaller heterogeneity while
+retaining substantial positive mass. The standard-normal raw deviations implement
+the non-centered parameterization defined above, which often reduces posterior
+dependence between group effects and their scales. These weakly regularizing choices
+are assumptions we make before fitting, rather than facts learned from the response
+table; the [full measurement model](uds-measurement-model.qmd#writing-the-complete-model)
+checks their implications with prior and posterior prediction.
 
 ## The exact recovery generator and fitting call
 
-The code below is the executable core of one audited replicate. It uses the observed row indices without changing which annotator saw which item. The full audit ran replicates 1 through 12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains used seeds $740000+100s+c$ for chain $c$.
+The code below is the executable core of one replicate. It uses the observed row
+indices without changing which annotator saw which item. We ran replicates 1 through
+12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains
+used seeds $740000+100s+c$ for chain $c$.
 
 ```{r}
 #| label: recovery-generator-and-fit
@@ -217,20 +239,27 @@ recovery_fits <- lapply(
 )
 ```
 
-The archived run combined the two chain files after each call. Every reported result below comes from that chain-specific run stored in the tracked compact cache.
+Two chains with 400 warmup and 400 retained draws made twelve complete fits feasible
+while still permitting an $\widehat R$ comparison. This design provides less
+between-chain information and smaller
+[effective sample sizes](../statistical-inference/effective-sample-size.qmd) than the
+four or more chains appropriate for a final high-dimensional fit. `adapt_delta =
+0.95` asks Stan for smaller integration steps than its default and was chosen to
+reduce divergent transitions in the hierarchical geometry. It can improve numerical
+exploration, but it cannot identify a weakly informed parameter.
 
-Two chains with 400 warmup and 400 retained draws made twelve complete fits feasible while still permitting an $\widehat R$ comparison. This is a compact audit, not a generally sufficient default: four or more chains and larger effective sample sizes are preferable for a final high-dimensional fit. `adapt_delta = 0.95` asks Stan for smaller integration steps than its default and was chosen to reduce divergent transitions in the hierarchical geometry. It can improve numerical exploration, but it cannot identify a weakly informed parameter.
-
-The tracked cache covers one baseline regime only. A stronger recovery audit should cross the observed incidence design with at least three prespecified conditions:
+Only the baseline generating regime was simulated and fit. A stronger recovery
+analysis should cross the observed incidence design with at least three additional
+conditions fixed before inspecting the results:
 
 | Regime | $\alpha$ | $\sigma_{\mathrm{item}}$ | $\sigma_{\mathrm{annotator}}$ | Stress being tested |
 |---|---:|---:|---:|---|
-| Baseline | -2.1 | 1.6 | 1.6 | released audited run | <!-- dqr-allow: algorithm-setting -->
+| Baseline | -2.1 | 1.6 | 1.6 | evaluated here | <!-- dqr-allow: algorithm-setting -->
 | Weak heterogeneity | -2.1 | 0.5 | 0.5 | separation of scales near zero | <!-- dqr-allow: algorithm-setting -->
 | Rarer yes responses | -3.2 | 1.6 | 1.6 | information under a lower event rate | <!-- dqr-allow: algorithm-setting -->
 | Strong annotator spread | -2.1 | 1.6 | 2.4 | separation under dominant annotator variation | <!-- dqr-allow: algorithm-setting -->
 
-The revised `recover_one()` accepts the generating vector as an argument, so those regimes can use the same fitting code and incidence design. We do not report unrun regime results: the tracked cache contains twelve baseline fits and no evidence for the other three conditions.
+The revised `recover_one()` accepts the generating vector as an argument, so those regimes can use the same fitting code and incidence design. Their rows state planned stress tests; numerical results are available only for the twelve completed baseline fits.
 
 ## Evaluating parameter recovery
 
@@ -255,9 +284,27 @@ e^{\mathrm{rel}}_s
 =\frac{\widehat\sigma_s}{\sigma}-1.
 $$
 
-Dividing by the generating scale makes item and annotator scale errors comparable, though it becomes unstable when the truth approaches zero. The latent-effect correlations compare the generated and posterior-median vectors after their zero-sum coordinate constraint. They measure recovery of ordering and relative spacing, not equality of every effect. The item-probability correlation asks the same ordering question after the nonlinear inverse-logit map.
+Dividing by the generating scale makes item and annotator scale errors comparable,
+though it becomes unstable when the truth approaches zero. A
+[correlation](../random-variables-and-distributions/correlation.qmd) standardizes
+covariance. The latent-effect correlations compare the generated and
+posterior-median vectors after their zero-sum coordinate constraint. They measure
+recovery of ordering and relative spacing, not equality of every effect. The
+item-probability correlation asks the same ordering question after the nonlinear
+inverse-logit map.
 
-The audit used medians and recovery correlations because the target includes population scales and high-dimensional latent orderings. Its prespecified thresholds were: median absolute intercept error at most $.25$; median absolute relative errors at most $.15$ for the item scale and $.25$ for the annotator scale; median correlations at least $.60$ for item effects, $.90$ for annotator effects, and $.65$ for conditional item probabilities; maximum key-parameter $\widehat R$ at most $1.05$; and no divergent transitions.
+We use medians and recovery correlations because the target includes population
+scales and high-dimensional latent orderings. We call the cutoffs fixed before
+fitting the **recovery acceptance criteria for this analysis**. They are decision
+rules tied to the later use of these quantities: intercept and scale errors
+constrain population summaries, latent correlations constrain item and annotator
+ordering, and the computational thresholds screen unstable fits. Fixing the values
+beforehand prevents us from choosing favorable cutoffs after seeing the fits, but
+it does not make them disciplinary standards.
+
+The baseline criteria have concrete scales. An intercept error of $.25$ is a quarter log-odds unit; around the generating intercept $-2.1$, shifts of that size move the zero-effect yes probability from about $.109$ to roughly $.087$ or $.136$. Relative scale errors of $.15$ and $.25$ permit deviations of $.24$ and $.40$ from the generating scale $1.6$. Correlation cutoffs assess preservation of latent ordering, with the stricter annotator cutoff reflecting the fact that only 12 annotator effects must be ranked. The $\widehat R$ and divergence rules screen the numerical fits rather than measurement validity. <!-- dqr-allow: algorithm-setting -->
+
+The baseline thresholds are: median absolute intercept error at most $.25$; median absolute relative errors at most $.15$ for the item scale and $.25$ for the annotator scale; median correlations at least $.60$ for item effects, $.90$ for annotator effects, and $.65$ for conditional item probabilities; maximum key-parameter $\widehat R$ at most $1.05$; and no divergent transitions.
 
 ```{r}
 #| label: summarize-uds-recovery
@@ -301,7 +348,46 @@ stopifnot(
 knitr::kable(recovery_summary, digits = 3)
 ```
 
-Medians can hide variation across only twelve simulations. The following interval records the central 80% of the replicate-level diagnostics. It is a Monte Carlo stability summary, not a confidence interval for real-data performance.
+To show how much the conclusion depends on those choices, we also apply a stricter sensitivity rule: maximum errors of $.20$, $.10$, and $.20$; minimum correlations of $.70$, $.95$, and $.75$; maximum $\widehat R$ of $1.01$; and zero divergences.
+
+```{r}
+#| label: summarize-uds-recovery-sensitivity
+
+strict_threshold <- c(0.20, 0.10, 0.20, 0.70, 0.95, 0.75, 1.01, 0) # dqr-allow: algorithm-setting
+direction <- c("at most", "at most", "at most", "at least",
+               "at least", "at least", "at most", "equal to")
+baseline_pass <- c(
+  recovery_summary$result[1:3] <= recovery_summary$threshold[1:3],
+  recovery_summary$result[4:6] >= recovery_summary$threshold[4:6],
+  recovery_summary$result[[7]] <= recovery_summary$threshold[[7]],
+  recovery_summary$result[[8]] == recovery_summary$threshold[[8]]
+)
+strict_pass <- c(
+  recovery_summary$result[1:3] <= strict_threshold[1:3],
+  recovery_summary$result[4:6] >= strict_threshold[4:6],
+  recovery_summary$result[[7]] <= strict_threshold[[7]],
+  recovery_summary$result[[8]] == strict_threshold[[8]]
+)
+recovery_sensitivity <- data.frame(
+  quantity = recovery_summary$quantity,
+  result = recovery_summary$result,
+  direction = direction,
+  baseline_threshold = recovery_summary$threshold,
+  baseline_pass = baseline_pass,
+  stricter_threshold = strict_threshold,
+  stricter_pass = strict_pass
+)
+knitr::kable(recovery_sensitivity, digits = 3)
+```
+
+The baseline rule passes all eight criteria. Under the stricter rule, `r sum(strict_pass)` of eight pass. This comparison makes the decision sensitivity visible; it does not turn either threshold set into a scientific constant.
+
+Medians can hide variation across only twelve simulations. The following interval
+records the central 80% of the replicate-level diagnostics. It describes
+[Monte Carlo](../statistical-inference/monte-carlo-integration.qmd) variation across
+these simulated fits. It is not a
+[confidence interval](../statistical-inference/confidence-intervals.qmd) for
+real-data performance.
 
 ```{r}
 #| label: summarize-uds-recovery-variation
@@ -392,7 +478,7 @@ ggplot2::ggplot(
   ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
 ```
 
-The prespecified recovery criteria are met. But with two or three responses per item, recovery supports aggregate regularized ordering, not precise lexical interpretation of every predicate node.
+The prespecified recovery criteria are met. With two or three responses per item, the fitted population distribution supplies substantial pooling, so recovery concerns aggregate regularized ordering. Precise lexical interpretation of every predicate node would require more item-specific information.
 
 Successful recovery shows that the fitter can retrieve the declared targets when data arise from this model under this incidence design. It does not establish that real annotators follow the generator. The released-data analysis still requires posterior predictive checks and measurement limitations.
 
@@ -411,7 +497,7 @@ Twelve replicates can detect large failures, but they estimate tail behavior and
 
 1. Recovery simulates known parameters under the released item--annotator incidence design and refits the whole model.
 2. Absolute error, relative scale error, and latent-vector correlation answer different recovery questions.
-3. The compact twelve-fit cache supports the prespecified baseline regime only; three additional stress regimes remain unrun.
+3. The twelve completed fits evaluate the prespecified baseline regime; the additional stress regimes remain planned rather than evaluated.
 4. MCMC diagnostics assess computation, while posterior predictive checks assess consequences of the fitted observation model.
 5. The next page grounds agreement in the [Turkish PropBank measurement dossier](annotations-as-measurements.qmd#turkish-propbank-measurement-dossier) before fitting another crossed model.
 

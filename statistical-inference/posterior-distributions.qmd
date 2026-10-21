@@ -11,13 +11,18 @@ The foundations chapter derived [Bayes' rule](../foundations/bayes-rule.qmd), an
 
 First, keep the random and observed objects separate. $\mathbf Z$ denotes the binary random sample and $\mathbf z$ the values we observed. $\Theta$ denotes the unknown superpopulation parameter. Before seeing $\mathbf z$, the prior density distributes model-based uncertainty over $\Theta$; after seeing $\mathbf z$, the posterior density redistributes that uncertainty using the likelihood.
 
-We begin by specifying the exchangeable Bernoulli superpopulation model, normalize its beta update in detail, and end by separating posterior statements about $\Theta$ from claims about the finite Turkish resource or the adequacy of the sampling model.
+The conditioning bar uses the [conditional-probability](../foundations/conditional-probability.qmd) operation: the reference distribution for $\Theta$ changes after restricting attention to the observed data. The Bernoulli likelihood below also assumes [conditional independence](../foundations/independence.qmd) of the cell indicators given their shared probability.
 
-## An exchangeable Bernoulli superpopulation model
+We begin by specifying a Bernoulli superpopulation model, normalize its beta
+update in detail, and end by separating posterior statements about $\Theta$
+from claims about the finite Turkish resource or the adequacy of the sampling
+model.
 
-We use the Turkish table from the [UniMorph release pinned at commit `6c179ac`](https://github.com/unimorph/tur/tree/6c179ace7d2f3d7f3484020e5304c1544d07bb6b). Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) describe its use in a morphological-reinflection task, and Batsuren et al. ([2022](https://aclanthology.org/2022.lrec-1.89/)) describe UniMorph as a type-level resource of lemma--form--feature triples. The data are CC BY-SA 3.0.
+## A Bernoulli superpopulation model
 
-The course table retains 588 distinct verb lexemes with one form in the feature cell `V;IND;PST;3;SG;POS;DECL`. A row is a lexeme--paradigm cell, not a usage token. The binary variable $Z_i$ marks whether the course-derived two-character ending begins with *t*. This ending is an orthographic measurement, not a UniMorph morpheme boundary.
+We use the [exact analyzed version of the Turkish UniMorph table](https://github.com/unimorph/tur/tree/6c179ace7d2f3d7f3484020e5304c1544d07bb6b). Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) describe its use in a morphological-reinflection task, and Batsuren et al. ([2022](https://aclanthology.org/2022.lrec-1.89/)) describe UniMorph as a type-level resource of lemma--form--feature triples. The data are CC BY-SA 3.0.
+
+The prepared table retains 588 distinct verb lexemes with one form in the feature cell `V;IND;PST;3;SG;POS;DECL`. Each row represents one lexeme--paradigm cell and contains no usage count. The binary variable $Z_i$ marks whether the final two orthographic characters extracted during preparation begin with *t*. Because the extraction does not consult a morphological segmentation, it measures a word-form ending. A morpheme-boundary claim would require an annotation the table does not supply.
 
 ```{r}
 #| label: load-unimorph-posterior
@@ -47,7 +52,23 @@ stopifnot(
 data.frame(N, K, n, k, resource_share, sample_share = k / n)
 ```
 
-The value $K/N=$ `r sprintf("%.6f", resource_share)` is known because the complete pinned resource is available. There is no posterior uncertainty about that finite-population proportion.
+The value $K/N=$ `r sprintf("%.6f", resource_share)` is known because all 588 rows in the analyzed UniMorph table are available. There is no posterior uncertainty about that finite-population proportion.
+
+### Exchangeability and IID sampling {#exchangeability-and-iid}
+
+A sequence is **exchangeable** when reordering its entries does not change
+their joint probability. Under that assumption, row order carries no model
+information: a sequence with 42 focal endings receives the same probability
+as any reordering with the same 42 focal endings. Exchangeability can still
+allow dependence among the entries.
+
+**Independent and identically distributed (IID)** sampling is stronger.
+*Identically distributed* says that every $Z_i$ has the same Bernoulli
+probability $\theta$; *independent* says that learning one $Z_i$ does not
+change the conditional distribution of another after $\theta$ is fixed. IID
+sampling implies exchangeability, while exchangeability alone does not imply
+IID sampling. The model below makes the stronger IID assumption conditional
+on the shared parameter $\Theta$.
 
 To introduce Bayesian updating, we posit an exchangeable superpopulation from which lexeme cells are independently drawn,
 
@@ -59,7 +80,11 @@ Z_i\mid\Theta=\theta
 \Theta\sim\operatorname{Beta}(1,1).
 $$
 
-This exchangeable Bernoulli superpopulation model is counterfactual, not a description of the actual sampling design. The committed 120-row sample was drawn without replacement from the known 588-row resource, so independent Bernoulli sampling does not describe that procedure.
+The 120 observed rows were drawn without replacement from the known 588-row
+table. The exchangeable Bernoulli model instead imagines independent draws from
+an unlimited population with a shared unknown probability. Its posterior thus
+answers a counterfactual superpopulation question rather than reconstructing the
+sampling procedure that produced the course sample.
 
 The $\operatorname{Beta}(1,1)$ density equals one on $0<\theta<1$. It is support-compatible and convenient, but it is not uniquely “uninformative”: a prior uniform in $\theta$ is not uniform after a nonlinear transformation such as the log odds. We use it here to make the updating calculation transparent.
 
@@ -192,7 +217,7 @@ The 42 observed *t*-initial cells and 78 other cells update the prior to a beta 
 
 ```{r}
 #| label: plot-unimorph-posterior
-#| fig-cap: "Prior and exchangeable Bernoulli superpopulation model posterior densities. The vertical line is the known proportion in the pinned resource, not an uncertain parameter estimate."
+#| fig-cap: "Prior and exchangeable Bernoulli superpopulation posterior densities. The vertical line marks the known proportion in the complete 588-row UniMorph table."
 posterior_long <- rbind(
   data.frame(theta = theta_grid, density = posterior_density$prior,
              distribution = "prior"),
@@ -237,15 +262,15 @@ The [posterior-summaries page](posterior-summaries.qmd#credible-intervals-and-di
 
 1. Which quantity is fixed when the likelihood is evaluated?
 2. Why is $200/588$ not uncertain in this analysis?
-3. Which assumption makes the exchangeable Bernoulli superpopulation model a counterfactual superpopulation model rather than a description of the committed sample?
+3. Which assumption makes the exchangeable Bernoulli superpopulation model a counterfactual model rather than a description of the observed sample?
 4. Why is a posterior density at one value not a point probability?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
 1. The observed sample $\mathbf z$, including $n=120$ and $k=42$, is fixed while the likelihood varies over $\theta$. <!-- dqr-allow: empirical-answer -->
-2. The complete pinned resource is observed, so its 200 focal rows and 588 total rows are fixed counts rather than uncertain parameters. <!-- dqr-allow: empirical-answer -->
-3. The exchangeable Bernoulli superpopulation model assumes independent, exchangeable Bernoulli draws from a superpopulation, while the committed sample was drawn without replacement from the known finite resource. <!-- dqr-allow: empirical-answer -->
+2. The complete UniMorph table is observed, so its 200 focal rows and 588 total rows are fixed counts rather than uncertain parameters. <!-- dqr-allow: empirical-answer -->
+3. The exchangeable Bernoulli superpopulation model assumes independent, exchangeable Bernoulli draws from a superpopulation, while the observed sample was drawn without replacement from the known 588-row table. <!-- dqr-allow: empirical-answer -->
 4. For a continuous parameter, probability is an integral over an interval; a density value at one point is not probability mass at that point. <!-- dqr-allow: empirical-answer -->
 
 </details>

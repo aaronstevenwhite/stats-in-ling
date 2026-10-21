@@ -5,22 +5,24 @@ execute: {warning: false, message: false}
 
 An ordinal mixed model combines the cumulative link introduced for [ordinal regression](ordinal-regression.qmd) with the group deviations introduced for [generalized linear mixed models](generalized-linear-mixed-models.qmd). The [Laplace page](laplace-approximation.qmd) explains how the random effects are integrated during fitting.
 
+The [expected value](../random-variables-and-distributions/expected-values.qmd) of numeric category codes would depend on unsupported distances, so this model instead targets cumulative category probabilities. The [random-effect framework](fixed-and-random-effects.qmd) supplies respondent and verb deviations. Each response remains one ordered task judgment; a link to the [ordinal-response dossier](ordinal-regression.qmd) fixes that scale before group variation is interpreted.
+
 This page first fixes the MegaVeridicality subset, then fits respondent and verb variation, checks category probabilities, and states exactly which group deviations enter each prediction.
 
-We use **MegaVeridicality v1**, the *no*, *maybe*, and *yes* veridicality judgments described by White and Rawlins ([2018](https://ling.auf.net/lingbuzz/004012/current.pdf)) and distributed through the [official MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). Each row records one response to a low-content sentence containing a clause-embedding verb. The direct task asks whether the embedded event happened after an assertion; the conditional task places that assertion in a conditional antecedent.
+We use **MegaVeridicality v1**, the *no*, *maybe*, and *yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012)) and distributed through the [official MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). Each row records one response to a low-content sentence containing a clause-embedding verb. The direct task asks whether the embedded event happened after an assertion; the conditional task places that assertion in a conditional antecedent.
 
 The two tasks recruited separate samples. Numeric participant labels recur across tasks, so the prepared table prefixes them with the task before constructing `respondent_id`. Treating the repeated numbers as the same people would invent a dependence relation not present in the study.
 
-## A fixed teaching subset
+## A fixed analysis subset
 
 ```{r}
-#| label: prepare-megaveridicality-teaching-subset
+#| label: prepare-megaveridicality-subset
 data_path <- paste0(
   "data/megaveridicality/",
   "megaveridicality-v1-active-native.csv"
 )
 fold_path <- "data/megaveridicality/verb-folds.csv"
-teaching_fold <- 1L
+analysis_fold <- 1L
 
 full_judgments <- read.csv(
   data_path,
@@ -45,13 +47,21 @@ stopifnot(
 )
 
 # Select whole verbs using the preassigned, outcome-blind fold.
-judgments <- judgments[judgments$fold == teaching_fold, ]
+judgments <- judgments[judgments$fold == analysis_fold, ]
 row.names(judgments) <- NULL
 ```
 
-The full active/native table contains `r nrow(full_judgments)` responses from `r length(unique(full_judgments$verb))` active-frame verbs. Fitting the correlated-slope ordinal mixed model to that table makes routine course builds unnecessarily slow. We thus use a fixed teaching subset: all `r nrow(judgments)` responses for the `r length(unique(judgments$verb))` verbs assigned to fold `r teaching_fold` by the release's salted verb-hash partition. Hashing maps each verb label deterministically to one fold without reading its responses. Fold 1 is used for computational tractability, not because its verbs are more representative or its estimates are inferentially privileged. It retains all four polarity-by-task conditions for every selected verb and all `r length(unique(judgments$respondent_id))` task-specific respondents.
+The full active/native table contains `r nrow(full_judgments)` responses from
+`r length(unique(full_judgments$verb))` active-frame verbs. We begin with the
+`r nrow(judgments)` responses for the
+`r length(unique(judgments$verb))` verbs assigned to fold
+`r analysis_fold`, using a deterministic partition of verb labels created
+before their responses were read. This subset lets us work through the response
+model and its polarity-by-task contrasts on one declared training fold. The
+[next page](aspectual-similarity-example.qmd) repeats the procedure across the
+complete held-out-verb comparison.
 
-This is a computational teaching subset, not a probability sample from the English clause-embedding lexicon. The estimates describe the selected verbs and should not be reported as full-data estimates. The model also analyzes raw ordered responses; it does not reproduce White and Rawlins's participant-threshold normalization, derived veridicality and factivity measures, or responsivity analysis.
+The partition selected whole verbs without consulting their responses and retained all task-specific respondents represented in those rows. It did not give English clause-embedding verbs known inclusion probabilities. The estimates consequently describe the verbs and respondents in the selected fold, rather than the full release or the English lexicon. The response remains the raw ordered judgment, whereas White and Rawlins analyze participant-threshold normalization, derived veridicality and factivity measures, and responsivity.
 
 The prepared release does not contain full sentence strings, so the notes cannot responsibly invent source items. It does contain the task, polarity, verb, frame, respondent, and response for each judgment. One direct and one conditional row are:
 
@@ -110,7 +120,7 @@ $$
 
 The ordered thresholds preserve category order without assigning equal numerical spacing to the labels.
 
-Each selected verb occurs in all four polarity-by-task cells, so both contrasts vary within verbs and can support verb-specific slopes. Respondents belong to only one task sample, so a respondent task slope is not identified; the teaching model includes only respondent intercepts. It also omits respondent polarity slopes and threshold variation, which remain limitations rather than claims that response styles are identical.
+Each selected verb occurs in all four polarity-by-task cells, so both contrasts vary within verbs and can support verb-specific slopes. Respondents belong to only one task sample, so a respondent task slope is not identified. We include respondent intercepts and verb slopes, leaving respondent polarity slopes and threshold variation for models with stronger within-respondent support or a different response-style specification.
 
 ## Fitting the verb-and-respondent model
 
@@ -175,7 +185,7 @@ cache_path <- paste0(
 
 cache_signature <- list(
   input_md5 = unname(tools::md5sum(c(data_path, fold_path))),
-  teaching_fold = teaching_fold,
+  analysis_fold = analysis_fold,
   formula = paste(deparse(model_formula), collapse = " "),
   link = "logit",
   nAGQ = 1L,
@@ -242,7 +252,11 @@ The `clmm` arguments map directly to assumptions and computation:
 | `nAGQ = 1` | Laplace approximation to random-effect integration |
 | `gradTol`, `maxIter` | convergence tolerance and iteration budget, not model assumptions |
 
-The cache is reused only when data hashes, formula, link, computational settings, R version, and package version match. It shortens builds; it does not turn the teaching subset into a full-data analysis.
+Before using a previously fitted object, the code compares the current data,
+formula, link, numerical settings, R version, and package version with those
+used to create it. Any mismatch triggers a refit so that the reported estimates
+match the declared analysis. The selected rows determine the scope of those
+estimates.
 
 The threshold and fixed-effect estimates are computed directly from the raw ordered responses:
 
@@ -259,11 +273,11 @@ data.frame(
 )
 ```
 
-These values describe one fitted teaching model. They do not define a latent taxonomy of clause-embedding verbs.
+These values describe the fitted location shifts and group deviations for the analyzed responses. The model contains no latent-category variable or decision rule that would partition clause-embedding verbs into a taxonomy.
 
 ## Comparing observed and fitted category probabilities
 
-The fitted points below set verb and respondent deviations to zero. The bars are raw teaching-subset response proportions for the same polarity-by-task cells. Thus the figure compares raw and fitted quantities from the same `r nlevels(judgments$verb)` verbs.
+The fitted points below set verb and respondent deviations to zero. The bars are raw response proportions from the same analysis subset and polarity-by-task cells. Thus the figure compares raw and fitted quantities from the same `r nlevels(judgments$verb)` verbs.
 
 ```{r}
 #| label: plot-megaveridicality-clmm
@@ -358,12 +372,15 @@ A positive location shift moves probability toward higher ordered responses. It 
 
 The verb random slopes allow the polarity and task associations to vary across observed verbs. The respondent random intercept allows overall response location to vary across respondents. It cannot represent every response style: respondents might also differ in threshold spacing or in how often they use *maybe*. A location-intercept model leaves those possibilities outside its structure.
 
-White and Rawlins normalize responses and study derived veridicality, factivity, responsivity, and clause-selection patterns. The course model instead analyzes raw ordered responses as a function of polarity and task. It is related to the source design, but it is not a reproduction of the paper's normalization or responsivity analysis.
+White and Rawlins normalize responses and study derived veridicality, factivity, responsivity, and clause-selection patterns. We instead analyze raw ordered responses as a function of polarity and task so that the cumulative-link and random-effect assumptions are visible on the recorded scale. The resulting coefficients answer that narrower question and do not reproduce the paper's normalization or responsivity analysis.
 
 ## Recap and check
 
 1. What does proportional odds assume? A predictor shifts one location $\eta_i$ across both cumulative cutpoints; it does not receive a separate coefficient at each threshold.
 2. Can an observed-verb conditional mode be used for a new verb? No. A new verb has no estimated deviation; its prediction must use zero deviations or average over the verb distribution.
-3. Why is fold 1 used? To bound course-build computation, not to support a new sampling claim.
+3. Which observations do the estimates on this page describe? They describe the
+   respondents, verbs, and items represented in training fold 1. The
+   [next page](aspectual-similarity-example.qmd) carries out the complete
+   held-out-verb comparison.
 
 The [next worked page](aspectual-similarity-example.qmd) asks whether the fixed interaction predicts judgments for verbs absent from fitting.

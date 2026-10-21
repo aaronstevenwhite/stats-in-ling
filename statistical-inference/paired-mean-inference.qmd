@@ -11,9 +11,17 @@ For ordinary paired-mean inference, one first forms within-pair differences and 
 
 Signed differences answer a directional question: does one language side tend to contain more Scenes? Absolute differences answer an agreement question: how far apart are the paired counts regardless of direction? The absolute value prevents positive and negative differences from canceling, but it also discards direction. Thus the statistic cannot by itself say which language side tends to have the larger count.
 
-We first derive the sampling result for a mean of paired values, then apply it to the aligned absolute Scene-count difference, and finally use descriptive re-pairing to show what the observed alignment contributes without turning that re-pairing into a new sampling design.
+The central distinction is between a sampling distribution for independent pairs
+and a descriptive permutation of alignments that were never randomly assigned.
+The UCCA example uses the first derivation to clarify the estimator and the second
+calculation only to show what source-passage matching contributes.
 
 ## The general paired-mean result
+
+An estimator is a random function of the sample before observation; its realized
+value is an estimate of a fixed target. The [estimator-properties
+page](properties-of-estimators.qmd#estimators-are-random-variables) develops this
+distinction.
 
 For signed differences $D_i=Y_{i,A}-Y_{i,B}$, the target and estimator are
 
@@ -23,7 +31,20 @@ $$
 \overline D=\frac{1}{n}\sum_{i=1}^nD_i.
 $$
 
-Under independent pairs with an appropriate t reference,
+The within-pair subtraction preserves the pairing: in general,
+
+$$
+\operatorname{Var}[D_i]
+=\operatorname{Var}[Y_{i,A}]+\operatorname{Var}[Y_{i,B}]
+-2\operatorname{Cov}[Y_{i,A},Y_{i,B}],
+$$
+
+where [covariance](../random-variables-and-distributions/covariance.qmd#definition)
+measures whether the two centered measurements vary together. The following
+reference then assumes that the differences from distinct pairs are
+[independent](../foundations/independence.qmd#why-the-characterizations-are-equivalent),
+while measurements within a pair may remain dependent. With an appropriate t
+reference,
 
 $$
 \frac{\overline D-\mu_D}{S_D/\sqrt n}\sim t_{n-1},
@@ -66,26 +87,36 @@ pairs <- data.frame(
   english_scenes = english$scene_count,
   french_scenes = french$scene_count,
   english_terminals = english$terminal_count,
-  french_terminals = french$terminal_count
+  french_terminals = french$terminal_count,
+  english_words = english$word_count,
+  french_words = french$word_count
 )
 pairs$absolute_difference <- abs(pairs$french_scenes - pairs$english_scenes)
-pairs$english_rate <- 100 * pairs$english_scenes / pairs$english_terminals
-pairs$french_rate <- 100 * pairs$french_scenes / pairs$french_terminals
+pairs$english_word_rate <- 100 * pairs$english_scenes / pairs$english_words
+pairs$french_word_rate <- 100 * pairs$french_scenes / pairs$french_words
+pairs$english_terminal_rate <- 100 * pairs$english_scenes / pairs$english_terminals
+pairs$french_terminal_rate <- 100 * pairs$french_scenes / pairs$french_terminals
 
 delta_aligned <- mean(pairs$absolute_difference)
-rate_delta_aligned <- mean(abs(pairs$french_rate - pairs$english_rate))
+word_rate_delta_aligned <- mean(abs(
+  pairs$french_word_rate - pairs$english_word_rate
+))
+terminal_rate_delta_aligned <- mean(abs(
+  pairs$french_terminal_rate - pairs$english_terminal_rate
+))
 stopifnot(abs(delta_aligned - 320 / 154) < 1e-12)
 
 data.frame(
   pairs = nrow(pairs),
   mean_absolute_scene_difference = delta_aligned,
-  mean_absolute_difference_per_100_terminals = rate_delta_aligned
+  mean_absolute_difference_per_100_words = word_rate_delta_aligned,
+  sensitivity_per_100_terminals = terminal_rate_delta_aligned
 )
 ```
 
 The aligned passages differ by `r sprintf("%.3f", delta_aligned)` Scenes on average.
 
-The code-to-formula mapping is direct: subtraction forms $S_{i,\mathrm{fr}}-S_{i,\mathrm{en}}$, `abs()` removes direction, and `mean()` gives $\Delta_{\mathrm{aligned}}$. The rate calculation repeats the same operation after dividing each count by its passage's number of terminals.
+The code-to-formula mapping is direct: subtraction forms $S_{i,\mathrm{fr}}-S_{i,\mathrm{en}}$, `abs()` removes direction, and `mean()` gives $\Delta_{\mathrm{aligned}}$. The primary rate calculation repeats the same operation after dividing each count by its passage's non-punctuation `word_count`, as defined in the [UCCA exposure dossier](paired-observations.qmd#ucca-exposure-dossier). The terminal-based value checks how much the result changes when punctuation-bearing Layer-0 terminals also enter the denominator.
 
 ## A descriptive re-pairing reference
 
@@ -125,16 +156,16 @@ ggplot(data.frame(mean_absolute_difference = repaired_delta),
   theme_classic(base_size = 12)
 ```
 
-The re-paired mean is `r sprintf("%.3f", mean(repaired_delta))` Scenes, and the plus-one lower-tail fraction is `r format(lower_tail_fraction, scientific = FALSE)`. This fraction is descriptive. It is not a randomization-test p value because translation alignment was not randomly assigned. The analysis supports an agreement claim for the pinned v2 passage graphs, not a general claim about languages, genres, or translators.
+The re-paired mean is `r sprintf("%.3f", mean(repaired_delta))` Scenes, and the plus-one lower-tail fraction is `r format(lower_tail_fraction, scientific = FALSE)`. Each permutation holds both languages' Scene counts fixed and replaces source-passage alignment with an arbitrary one-to-one matching. The fraction therefore reports how often those arbitrary matchings produce a mean absolute difference no larger than the source-aligned value.
 
-For instance, an aligned row compares the English and French graphs belonging to one source passage. A re-paired row may compare that English graph with the French graph from a different passage. The latter is a baseline for what arbitrary matching looks like, not a null assignment mechanism that the study actually used.
+Translation alignment was established by the corpus construction rather than by random assignment. The permutations consequently describe the contribution of source matching; they do not reproduce a treatment-assignment process under a sharp null. And because the calculation conditions on the 154 v2 passage pairs, its agreement claim concerns those graphs. Extending that claim to languages, genres, or translators would require a sampling design that represents those broader populations.
 
 ## Recap and forward link
 
 1. Absolute differences measure disagreement but remove its direction.
 2. Source alignment supplies the defensible pairs.
 3. Arbitrary re-pairing is descriptive because translation alignment was not randomized.
-4. Passage-length normalization checks whether count disagreement mainly reflects different graph sizes.
+4. Word-count normalization checks whether count disagreement mainly reflects different amounts of non-punctuation lexical material; terminal-count normalization is the sensitivity analysis.
 
 The [independent-means page](independent-means.qmd#welchs-standard-error) returns to disjoint speaker groups, where no pairing covariance is available.
 
@@ -143,7 +174,7 @@ The [independent-means page](independent-means.qmd#welchs-standard-error) return
 1. Why does the focal statistic use absolute rather than signed differences?
 2. What feature changes across re-pairings?
 3. Why is the lower-tail fraction not a randomization-test p value?
-4. What does the per-terminal sensitivity calculation control?
+4. Why is the per-word rate primary, and what changes in the per-terminal sensitivity calculation?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -151,6 +182,6 @@ The [independent-means page](independent-means.qmd#welchs-standard-error) return
 1. Absolute differences measure passage-level count disagreement without allowing positive and negative signed differences to cancel. <!-- dqr-allow: empirical-answer -->
 2. The French Scene counts are assigned to different English passages while each language's marginal counts remain fixed. <!-- dqr-allow: empirical-answer -->
 3. Translation alignment was not randomly assigned, so permutation does not represent a randomized treatment assignment under a sharp null. <!-- dqr-allow: empirical-answer -->
-4. Dividing by passage terminal counts controls descriptively for cross-passage and cross-language differences in passage length. <!-- dqr-allow: empirical-answer -->
+4. The per-word rate uses non-punctuation Layer-0 nodes as lexical exposure. The sensitivity calculation also counts punctuation terminals, so it asks whether that broader denominator changes the cross-language disagreement. <!-- dqr-allow: empirical-answer -->
 
 </details>

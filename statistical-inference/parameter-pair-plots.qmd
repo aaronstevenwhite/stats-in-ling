@@ -9,9 +9,18 @@ execute:
 
 A trace plot shows one parameter across iterations. A [**pairs plot**](https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html) shows joint draws and can reveal dependence or locate a computational warning in parameter space. The plot must distinguish inference from a diagnostic manipulation. The [mass-matrix page](mass-matrix-geometry.qmd#geometry-of-the-passage-level-student-t-model) explained why joint geometry can matter even when each marginal distribution looks well behaved.
 
-We first read the joint geometry of the production fit, then locate the deliberately induced stress warning in that same parameter space, and finally state why localization aids diagnosis without making the stress draws inferential output.
+The first set of plotted points contains joint draws from the fitted
+[posterior distribution](posterior-distributions.qmd); their shape represents
+posterior dependence under the model. The deliberately coarse points come
+from unadapted transitions under unfavorable numerical settings, so we do not
+use them for posterior summaries.
 
-## Production passage-level Student-t model geometry
+We first read the joint geometry of the adapted NUTS draws, then locate the
+deliberately induced warning in that same parameter space, and finally state
+why localization aids diagnosis without turning the coarse transitions into
+inferential output.
+
+## Geometry of the adapted NUTS draws
 
 ```{r}
 #| label: load-provo-pair-draws
@@ -22,29 +31,33 @@ provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
 cache <- readRDS(
   "data/provo/provo-stan-draw-cache.rds"
 )
-production <- as.data.frame(as_draws_df(subset_draws(
+adapted_draws <- as.data.frame(as_draws_df(subset_draws(
   cache$production_draws, variable = c("mu", "sigma")
 )))
-stress <- as.data.frame(as_draws_df(subset_draws(
+coarse_draws <- as.data.frame(as_draws_df(subset_draws(
   cache$stress_draws, variable = c("mu", "sigma")
 )))
-stress_diagnostics <- as.data.frame(as_draws_df(cache$stress_diagnostics))
-stress$divergent <- as.logical(stress_diagnostics$divergent__)
+coarse_diagnostics <- as.data.frame(as_draws_df(cache$stress_diagnostics))
+coarse_draws$divergent <- as.logical(coarse_diagnostics$divergent__)
 
-production_correlation <- cor(production$mu, production$sigma)
-stress_correlation <- cor(stress$mu, stress$sigma)
-stopifnot(nrow(provo) == 55L, nrow(production) == 4000L,
-          nrow(stress) == 1000L, sum(stress$divergent) > 0L)
-data.frame(fit = c("production", "coarse unadapted stress"),
-           correlation = c(production_correlation, stress_correlation))
+adapted_correlation <- cor(adapted_draws$mu, adapted_draws$sigma)
+coarse_correlation <- cor(coarse_draws$mu, coarse_draws$sigma)
+stopifnot(nrow(provo) == 55L, nrow(adapted_draws) == 4000L,
+          nrow(coarse_draws) == 1000L,
+          sum(coarse_draws$divergent) > 0L)
+data.frame(
+  transitions = c("adapted NUTS draws",
+                  "deliberately coarse unadapted transitions"),
+  correlation = c(adapted_correlation, coarse_correlation)
+)
 ```
 
 ```{r}
 #| label: plot-provo-production-pairs
-#| fig-cap: "Joint mu and sigma draws from the production adapted-NUTS fit."
-production_opacity <- .18
-ggplot(production, aes(mu, sigma)) +
-  geom_point(color = "grey35", alpha = production_opacity, size = .65) +
+#| fig-cap: "Joint mu and sigma draws from four adapted NUTS chains for the passage-level Student-t model."
+adapted_opacity <- .18
+ggplot(adapted_draws, aes(mu, sigma)) +
+  geom_point(color = "grey35", alpha = adapted_opacity, size = .65) +
   labs(x = "Passage-level contrast (mu)",
        y = "Passage contrast scale (sigma)") +
   theme_classic(base_size = 12)
@@ -52,18 +65,18 @@ ggplot(production, aes(mu, sigma)) +
 
 A roughly circular cloud suggests weak linear dependence for this parameter pair, while a diagonal ellipse suggests that combinations along one direction remain plausible. Curvature or changing width may be more difficult for a constant mass matrix. Shape alone does not identify its cause.
 
-This is the joint-versus-marginal lesson: $\mu$ and $\sigma$ can each have a smooth one-dimensional histogram while their allowed combinations form a narrow ellipse or curved funnel. A sampler moves through that joint set, not through each marginal independently.
+The joint distribution contains information that the two marginal histograms remove: $\mu$ and $\sigma$ can each have a smooth one-dimensional histogram while their allowed combinations form a narrow ellipse or curved funnel. A sampler must move through that joint set rather than through each marginal independently.
 
-## Locating the stress warning
+## Locating divergences in the coarse transitions {#locating-the-stress-warning}
 
 ```{r}
 #| label: plot-provo-stress-pairs
-#| fig-cap: "Joint draws from the coarse, unadapted stress computation. Divergent transitions are marked in the accent color; this is not the production posterior display."
-stress_opacity <- .35
+#| fig-cap: "Joint locations from deliberately coarse, unadapted transitions. Accent points mark divergences; these transitions are not used for posterior summaries."
+coarse_opacity <- .35
 divergent_opacity <- .75
-ggplot(stress, aes(mu, sigma)) +
-  geom_point(color = "grey68", alpha = stress_opacity, size = .75) +
-  geom_point(data = subset(stress, divergent),
+ggplot(coarse_draws, aes(mu, sigma)) +
+  geom_point(color = "grey68", alpha = coarse_opacity, size = .75) +
+  geom_point(data = subset(coarse_draws, divergent),
              color = "#8B1A1A", alpha = divergent_opacity, size = 1.1) +
   coord_cartesian(xlim = c(-.015, .035), ylim = c(.025, .070)) +
   labs(x = "Passage-level contrast (mu)",
@@ -71,9 +84,15 @@ ggplot(stress, aes(mu, sigma)) +
   theme_classic(base_size = 12)
 ```
 
-Marked transitions locate where the intentionally degraded integrator failed. They do not constitute posterior evidence about $\mu$ or $\sigma$, and they should not be combined with production draws.
+Marked transitions locate where the intentionally degraded integrator failed.
+They do not contribute posterior evidence about $\mu$ or $\sigma$, and we do
+not combine them with the adapted draws.
 
-The accent overlay joins the stress draw coordinates to `divergent__`. Clustering in one corner would identify a region where that degraded trajectory struggled; a diffuse overlay would suggest a less localized failure. In either case, the overlay locates a symptom and does not by itself identify its cause.
+The accent overlay joins each coarse transition's coordinates to
+`divergent__`. Clustering in one corner would identify a region where the
+degraded trajectory struggled; a diffuse overlay would suggest a less
+localized failure. In either case, the overlay locates a symptom and does not
+by itself identify its cause.
 
 A matrix of every parameter pair quickly becomes unreadable. Select pairs implicated by the model structure or another diagnostic. A compact cloud establishes neither causal relations among parameters nor model fit; both claims require additional assumptions or checks.
 
@@ -90,7 +109,7 @@ The [generated-quantities page](generated-quantities.qmd#three-passage-level-stu
 
 1. What does a diagonal posterior cloud show directly?
 2. What can a divergence overlay locate?
-3. Why are the production and stress displays separated?
+3. Why are the adapted-draw and coarse-transition displays separated?
 4. Why does a compact pairs plot not establish model adequacy?
 
 <details class="understanding-answers">
@@ -98,7 +117,9 @@ The [generated-quantities page](generated-quantities.qmd#three-passage-level-stu
 
 1. A diagonal posterior cloud shows linear posterior association: plausible parameter combinations lie along a common direction. <!-- dqr-allow: empirical-answer -->
 2. A divergence overlay locates the part of joint parameter space where numerical integration failed. <!-- dqr-allow: empirical-answer -->
-3. The production draws represent inference, while the coarse stress draws are a deliberately degraded diagnostic manipulation and must not be pooled with them. <!-- dqr-allow: empirical-answer -->
+3. The adapted draws represent inference, while the coarse transitions come
+   from deliberately degraded numerical settings and must not be pooled with
+   them. <!-- dqr-allow: empirical-answer -->
 4. A compact pairs plot shows only selected joint parameter geometry; it does not compare replicated linguistic data with observations. <!-- dqr-allow: empirical-answer -->
 
 </details>

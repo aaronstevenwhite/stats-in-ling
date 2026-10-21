@@ -23,13 +23,26 @@ been.
 
 One retained row records participant `A3QJPB0NZU5PY1` reading *you* at Story 1,
 sentence 1, position 2. The observed reading time is 924 ms, so
-`log_rt = log(924) = 6.828712`. The remaining focal columns mean:
+`log_rt = log(924) = 6.828712`. The predictors have different sources and units:
 
-- `word_length`: the number of characters in the displayed word, here 3;
-- `log_unigram_frequency`: the natural logarithm of the released Google Books
-  unigram count, here `log(578117187) = 20.17529`; and
-- `gpt3_surprisal`: the negative sum of the released GPT-3 token log probabilities <!-- dqr-allow: empirical-answer -->
-  aligned to this experiment word, here 0.7762714.
+| Predictor | Source and construction | Unit and interpretation |
+|:--|:--|:--|
+| `word_length` | Number of Unicode characters in the displayed experiment word | Characters, including any characters retained in that displayed token |
+| `log_unigram_frequency` | Natural logarithm of the released Google Books unigram count | Log count, not a probability and not a frequency normalized by a common corpus-token denominator |
+| `gpt3_surprisal` | For each experiment word, sum the released GPT-3 byte-pair-token `logprob` values, then negate the sum | Released log-probability units; larger values mean that GPT-3 assigned the aligned word less conditional probability in its preceding context |
+
+The checked GPT-3 file names its numerical field `logprob`, but neither that file
+nor the accompanying Natural Stories metadata declares a logarithm base. The
+course preparation therefore preserves the released values and does not relabel
+them as bits or nats. This missing metadata affects the numerical unit, though a
+constant change of log base would only rescale this predictor in the linear models
+used here.
+
+The **surprisal** of an outcome is the negative logarithm of the probability
+assigned to it. Here that probability comes from GPT-3 given the preceding text, so
+surprisal describes the model's contextual expectation rather than a participant's
+reported expectation. Negating the log probability makes less probable words have
+larger values. The missing log base changes the scale, but not this ordering.
 
 This gives the raw-to-modeled ladder used below: a button interval becomes one
 participant-by-position `rt_ms`; source filtering retains the trial; a natural log
@@ -37,7 +50,7 @@ produces `log_rt`; lexical and contextual annotations are joined by story positi
 and complete focal rows enter the regression. The row remains nested within a
 participant and a story. No averaging removes that dependence on this page.
 
-The code below constructs the prediction table from the tracked release. One row is one retained button latency for one reader at one word position. It is a self-paced reading time, not an eye fixation.
+The code below filters the corrected Natural Stories source table to complete focal rows and retains the participant, story, word-position, response, and predictor columns. One resulting row is one retained button latency for one reader at one word position. It is a self-paced reading time, not an eye fixation.
 
 ```{r}
 #| label: natural-targets
@@ -58,7 +71,7 @@ complete_prediction_row <- with(
 natural <- natural_all[complete_prediction_row, c(
   "row_id", "participant_id", "story_id", "sentence_id",
   "word_position", "word", "word_length", "log_rt",
-  "log_unigram_frequency", "gpt3_surprisal"
+  "unigram_frequency", "log_unigram_frequency", "gpt3_surprisal"
 )]
 natural$position_id <- paste(
   natural$story_id, natural$word_position, sep = ":"
@@ -102,6 +115,12 @@ target_variation$rank_within_unit <- ave(
 
 target_inventory
 
+alignment_exception <- read.csv(
+  "data/natural-stories/gpt3-alignment-exception.csv",
+  stringsAsFactors = FALSE
+)
+alignment_exception
+
 ggplot2::ggplot(
   target_variation,
   ggplot2::aes(rank_within_unit, mean_log_rt)
@@ -116,6 +135,14 @@ ggplot2::ggplot(
 ```
 
 The prepared release has `r format(nrow(natural_all), big.mark = ",")` response rows from `r length(unique(natural_all$participant_id))` participants and `r length(unique(natural_all$story_id))` stories. Requiring finite word length, log unigram frequency, and GPT-3 surprisal retains `r format(nrow(natural), big.mark = ",")` rows at `r format(length(unique(natural$position_id)), big.mark = ",")` contextual word positions. The figure shows why a response row, participant, and story are not interchangeable units: the participant and story means vary, but there are only `r nrow(story_means)` story-level values.
+
+Position-based alignment has one documented lexical exception. At Story 2,
+position 749, the self-paced reading record and unigram annotation use *peaked*,
+while the released GPT-3 input uses *peeked*. The reading time, displayed word,
+length, and unigram count therefore concern *peaked*; `gpt3_surprisal` at that
+position concerns the model token sequence for *peeked*. We retain the released
+position join and expose the mismatch rather than silently treating the strings as
+identical.
 
 ## Three prediction targets {#three-prediction-targets}
 
@@ -143,13 +170,25 @@ estimate learned from training data; it is not a new random response.
 
 These separations ask different questions. A random row split evaluates another response from the represented collection of readers and stories. A participant split evaluates a reader absent from fitting. A story split evaluates one omitted member of these deliberately enriched texts.
 
-The story target needs especially narrow wording. The corpus supplies `r nrow(story_means)` opportunities to inspect an omitted story, not `r format(nrow(natural), big.mark = ",")` independent story transfers. Leave-one-story-out results consequently describe these ten omissions; they do not estimate performance for an unrestricted population of English texts.
+The story target needs especially narrow wording. Recall that
+[independence](../foundations/independence.qmd#why-the-characterizations-are-equivalent)
+requires the joint distribution to factorize. The corpus supplies
+`r nrow(story_means)` opportunities to inspect an omitted story, not
+`r format(nrow(natural), big.mark = ",")` independent story transfers, because
+many response rows belong to the same ten texts. Leave-one-story-out results
+consequently describe these ten omissions; they do not estimate performance for
+an unrestricted population of English texts.
 
 ## The prediction information set
 
 Holding out a group does not by itself determine which information about it may be used. In these analyses, a held-out row keeps its word length, frequency, and surprisal because those predictors are available at prediction time. A held-out participant contributes no reading-time response to fitting. A held-out story contributes its lexical predictors but no response from any of its positions.
 
-The preprocessing rule is part of the information set. Each predictor mean and standard deviation is estimated from training rows and then applied to test rows. A full-data center would let held-out predictor values affect the training representation. A separately estimated test center would place the test observations in a different coordinate system.
+The preprocessing rule is part of the information set. Each predictor mean and
+[standard deviation](../random-variables-and-distributions/standard-deviation.qmd#definition),
+which measures spread in the predictor's units, is estimated from training rows
+and then applied to test rows. A full-data center would let held-out predictor
+values affect the training representation. A separately estimated test center
+would place the test observations in a different coordinate system.
 
 The [validation-target specification](index.qmd#validation-target-specification)
 keeps five choices separate. In the present sequence, the split unit is a response

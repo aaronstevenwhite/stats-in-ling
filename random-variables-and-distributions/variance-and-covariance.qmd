@@ -9,7 +9,9 @@ execute:
 
 The [expected value page](expected-values.qmd) summarized the center of a distribution. But the mean does not say how tightly probability is concentrated around that center. We now measure spread in the [CMUdict total phone-count distribution](why-random-variables.qmd#the-pronunciation-entry-outcomes) and then ask how vowel and consonant counts vary together.
 
-We derive variance from squared centered distances, explain why the squaring is needed, and then extend the same centered-product logic to covariance and a variance decomposition.
+We derive variance from squared centered distances, explain why the squaring is
+needed, extend the same centered-product logic to covariance, and then build
+the vector and matrix notation used later for joint distributions.
 
 ```{r}
 #| label: load-cmudict-variance
@@ -144,8 +146,317 @@ The displayed assertion checks this decomposition directly from the pronunciatio
 Covariance appears here because it is the cross-term created when
 $(V+C-\mathbb{E}[V+C])^2$ is expanded. The later
 [covariance page](covariance.qmd) treats covariance as the focal summary of a
-joint distribution and distinguishes empirical-population and sample-estimator
-conventions.
+joint distribution and distinguishes an empirical-population quantity from an
+[estimator](../statistical-inference/properties-of-estimators.qmd), a rule that
+maps a random sample to an estimate of an unknown population quantity.
+
+## From vectors to covariance matrices {#vectors-matrices-and-covariance}
+
+Okay. So why introduce matrices when the covariance of two variables is one
+number? Well, as soon as we follow several measurements together, we need a
+compact way to keep their individual variances and all of their pairwise
+covariances aligned. We will build that representation one operation at a
+time.
+
+Begin with a rule on ordinary numbers,
+
+$$
+f(x)=bx,
+$$
+
+where $b$ is fixed. This rule respects weighted sums. For any numbers $c$,
+$d$, $x$, and $y$,
+
+$$
+\begin{aligned}
+f(cx+dy)
+&=b(cx+dy)\\
+&=c(bx)+d(by)\\
+&=cf(x)+df(y).
+\end{aligned}
+$$
+
+We call this property **linearity**. Scaling an input scales its output by the
+same amount, and adding inputs before applying the rule gives the same answer
+as applying the rule first and then adding the outputs. A matrix extends this
+idea from numbers to vectors.
+
+A **vector** is an ordered tuple of numbers. For two measurements we may write
+
+$$
+\mathbf x
+=
+\begin{pmatrix}
+x_1\\x_2
+\end{pmatrix}.
+$$
+
+The order matters: the first coordinate might represent vowel count and the
+second consonant count. Swapping them produces a different vector.
+
+The **dot product** pairs the coordinates of two vectors, multiplies within
+each pair, and then adds:
+
+$$
+\mathbf a^{\mathsf T}\mathbf x
+=a_1x_1+a_2x_2.
+$$
+
+For instance, $(2,1)^{\mathsf T}(3,-1)=2(3)+1(-1)=5$. The superscript
+$\mathsf T$ turns the first column vector sideways so the paired
+multiplications line up.
+
+A **matrix** is a rectangular array of numbers. For a two-by-two matrix,
+
+$$
+A=
+\begin{pmatrix}
+a_{11} & a_{12}\\ % dqr-allow: symbolic-derivation
+a_{21} & a_{22} % dqr-allow: symbolic-derivation
+\end{pmatrix},
+$$
+
+the first subscript $i$ identifies a row and the second subscript $j$
+identifies a column. Thus $a_{21}$ is the entry in row 2, column 1. When $A$
+multiplies a two-coordinate vector, each output coordinate is the dot product
+of one row with that vector:
+
+$$
+A\mathbf x
+=
+\begin{pmatrix}
+a_{11}x_1+a_{12}x_2\\
+a_{21}x_1+a_{22}x_2
+\end{pmatrix}.
+$$
+
+For instance,
+
+$$
+\begin{pmatrix}
+2 & 0.5\\ % dqr-allow: symbolic-derivation
+0.5 & 1 % dqr-allow: symbolic-derivation
+\end{pmatrix}
+\begin{pmatrix}
+1\\1
+\end{pmatrix}
+=
+\begin{pmatrix}
+2(1)+0.5(1)\\
+0.5(1)+1(1)
+\end{pmatrix}
+=
+\begin{pmatrix}
+2.5\\1.5
+\end{pmatrix}.
+$$
+<!-- dqr-allow: symbolic-derivation -->
+
+The matrix thus represents a **linear map**: a rule that transforms every
+input vector using the same multiply-and-add operation. We can verify its
+linearity one coordinate at a time. The first coordinate of the transformed
+weighted sum is
+
+$$
+\begin{aligned}
+\left[A(c\mathbf x+d\mathbf y)\right]_1 % dqr-allow: symbolic-derivation
+&=a_{11}(cx_1+dy_1)+a_{12}(cx_2+dy_2)\\ % dqr-allow: symbolic-derivation
+&=c(a_{11}x_1+a_{12}x_2) % dqr-allow: symbolic-derivation
+  +d(a_{11}y_1+a_{12}y_2)\\
+&=\left[cA\mathbf x+dA\mathbf y\right]_1.
+\end{aligned}
+$$
+
+The same calculation with the second row gives the second coordinate. Thus
+$A(c\mathbf x+d\mathbf y)=cA\mathbf x+dA\mathbf y$, just as in the
+one-number calculation above.
+
+The diagram applies one fixed matrix to a square grid and one vector. Straight
+grid lines remain straight, while their lengths and directions may change.
+
+```{r}
+#| label: plot-matrix-linear-map
+#| fig-cap: "One matrix transforms a square coordinate grid and a vector. The same row-by-row dot-product rule changes every point."
+#| fig-alt: "Two panels show a square grid before and after one linear transformation. In the transformed panel the grid becomes a slanted parallelogram grid, and an arrow changes both length and direction. Straight parallel lines remain straight and parallel, illustrating that a matrix represents one linear map applied to every vector."
+grid_values <- seq(-1, 1, by = 0.5) # dqr-allow: symbolic-derivation
+original_grid <- rbind(
+  data.frame(
+    group = paste0("horizontal-", grid_values),
+    x = -1, y = grid_values, xend = 1, yend = grid_values
+  ),
+  data.frame(
+    group = paste0("vertical-", grid_values),
+    x = grid_values, y = -1, xend = grid_values, yend = 1
+  )
+)
+
+linear_map <- matrix( # dqr-allow: symbolic-derivation
+  c(1.25, 0.55, 0.20, 0.95), # dqr-allow: symbolic-derivation
+  nrow = 2,
+  byrow = TRUE
+)
+transform_xy <- function(x, y) {
+  transformed <- linear_map %*% rbind(x, y)
+  data.frame(x = transformed[1, ], y = transformed[2, ])
+}
+
+transformed_start <- transform_xy(original_grid$x, original_grid$y)
+transformed_end <- transform_xy(original_grid$xend, original_grid$yend)
+transformed_grid <- data.frame(
+  group = original_grid$group,
+  x = transformed_start$x,
+  y = transformed_start$y,
+  xend = transformed_end$x,
+  yend = transformed_end$y
+)
+
+grid_panels <- rbind(
+  transform(original_grid, panel = "Input coordinates"),
+  transform(transformed_grid, panel = "After multiplication by A")
+)
+grid_panels$panel <- factor(
+  grid_panels$panel,
+  levels = c("Input coordinates", "After multiplication by A")
+)
+input_vector <- c(0.75, 0.45) # dqr-allow: symbolic-derivation
+output_vector <- drop(linear_map %*% input_vector)
+vector_panels <- data.frame(
+  panel = factor(
+    c("Input coordinates", "After multiplication by A"),
+    levels = c("Input coordinates", "After multiplication by A")
+  ),
+  x = 0,
+  y = 0,
+  xend = c(input_vector[1], output_vector[1]),
+  yend = c(input_vector[2], output_vector[2])
+)
+
+ggplot(grid_panels) +
+  geom_segment(
+    aes(x, y, xend = xend, yend = yend, group = group),
+    color = "grey68", linewidth = 0.45
+  ) +
+  geom_segment(
+    data = vector_panels,
+    aes(x, y, xend = xend, yend = yend),
+    inherit.aes = FALSE,
+    color = "#8B1A1A", linewidth = 0.9,
+    arrow = grid::arrow(length = grid::unit(0.12, "inches"))
+  ) +
+  facet_wrap(~panel) +
+  coord_fixed(xlim = c(-1.9, 1.9), ylim = c(-1.5, 1.5)) +
+  labs(x = "Coordinate 1", y = "Coordinate 2") +
+  theme_classic(base_size = 12) +
+  theme(strip.background = element_blank())
+```
+
+A **covariance matrix** applies this matrix organization to random variables.
+For the random vector $\mathbf X=(V,C)^{\mathsf T}$,
+
+$$
+\Sigma
+=
+\begin{pmatrix}
+\operatorname{Var}[V] & \operatorname{Cov}(V,C)\\
+\operatorname{Cov}(C,V) & \operatorname{Var}[C]
+\end{pmatrix}.
+$$
+
+The diagonal entries record the marginal variances, one for each coordinate.
+The off-diagonal entries record the pairwise covariances. Since
+$\operatorname{Cov}(V,C)=\operatorname{Cov}(C,V)$, a covariance matrix is
+symmetric across its diagonal.
+
+A covariance matrix also tells us the variance of a linear combination. Let
+
+$$
+L=a_1V+a_2C
+=\mathbf a^{\mathsf T}\mathbf X,
+\qquad
+\mathbf a=
+\begin{pmatrix}a_1\\a_2\end{pmatrix}.
+$$
+
+Expanding the variance gives
+
+$$
+\begin{aligned}
+\operatorname{Var}[L]
+&=a_1^2\operatorname{Var}[V]
+  +2a_1a_2\operatorname{Cov}(V,C)
+  +a_2^2\operatorname{Var}[C]\\
+&=
+\begin{pmatrix}a_1&a_2\end{pmatrix}
+\Sigma
+\begin{pmatrix}a_1\\a_2\end{pmatrix}\\
+&=\mathbf a^{\mathsf T}\Sigma\mathbf a.
+\end{aligned}
+$$
+
+For a concrete case, take $\mathbf a=(1,-1)^{\mathsf T}$. Then
+$L=V-C$, and
+
+$$
+\operatorname{Var}[V-C]
+=\operatorname{Var}[V]+
+\operatorname{Var}[C]-2\operatorname{Cov}(V,C)
+=
+\begin{pmatrix}1&-1\end{pmatrix}
+\Sigma
+\begin{pmatrix}1\\-1\end{pmatrix}.
+$$
+
+Every variance is at least zero. We therefore know that
+$\mathbf a^{\mathsf T}\Sigma\mathbf a\geq0$ for every vector $\mathbf a$.
+A symmetric matrix with this property is called **positive semidefinite**.
+This name records a consequence of the variance definition; it does not add a
+new probabilistic assumption.
+
+The matrix analogue of a reciprocal is an **inverse**. For a number $a\ne0$,
+$a^{-1}a=1$; for a square matrix $A$, an ordinary inverse $A^{-1}$ satisfies
+
+$$
+A^{-1}A=AA^{-1}=I,
+$$
+
+where $I$ leaves every vector unchanged. But a matrix has an ordinary inverse
+only when it is **nonsingular**, meaning that it does not flatten a nonzero
+direction to zero.
+
+A valid covariance matrix may nevertheless be singular. If one coordinate is
+an exact linear combination of the others, some nonzero combination has zero
+variance and the matrix flattens that direction. A covariance matrix is
+**positive definite** when the quadratic expression above is strictly positive
+for every nonzero $\mathbf a$; in that case it is nonsingular and has an
+ordinary inverse.
+
+The expression $\mathbf a^{\mathsf T}\Sigma\mathbf a$ is a **quadratic
+form**: multiply by a matrix, take a dot product with the original vector, and
+obtain one number. This operation supplies the distance used by the
+multivariate normal family. The [normal-distribution page later introduces the
+one-variable family](normal-distribution.qmd); its multivariate extension has
+density proportional to
+
+$$
+\exp\left\{
+-\frac12
+(\mathbf x-\boldsymbol\mu)^{\mathsf T}
+\Sigma^{-1}
+(\mathbf x-\boldsymbol\mu)
+\right\}.
+$$
+
+The quadratic form first centers the observation, then uses $\Sigma^{-1}$ to
+account for the scales and pairwise orientation, and finally takes a dot
+product. It is the multivariate analogue of the squared standardized distance
+$(x-\mu)^2/\sigma^2$.
+
+One special property must stay attached to this family. In a multivariate
+normal distribution, zero covariance between two coordinates implies their
+[independence](../foundations/independence.qmd), because the corresponding
+normal density factorizes. For an arbitrary joint distribution, zero
+covariance removes only average linear co-variation; nonlinear dependence may
+remain.
 
 ## Keeping the units visible
 

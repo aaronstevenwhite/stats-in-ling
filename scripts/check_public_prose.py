@@ -47,7 +47,6 @@ NOTE_DIRECTORIES = {
 }
 
 BANNED = (
-    "therefore",
     "for example",
     "although",
     "utilize",

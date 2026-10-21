@@ -4,15 +4,30 @@ title: "Data-generating processes"
 
 The event-structure annotations in [Universal Decompositional Semantics (UDS)](https://aclanthology.org/2020.lrec-1.699/) attach properties to predicate nodes anchored in sentence context. In the natural-parts task, an annotator first reports whether the situation described by a predicate has natural subparts. The response is evidence about event structure under this instrument; it is not event structure itself. [Gantt, Glass, and White (2022)](https://aclanthology.org/2022.tacl-1.2/) describe the event protocol and its conditional branches, while the [Decomp documentation](https://decomp.readthedocs.io/en/latest/data/semantic-types.html) describes the released semantic graph attributes.
 
-A **data-generating process (DGP)** is an ordered account of the random choices and deterministic mappings that could produce an observation. We begin with the observed binary gate because the local extract contains its raw responses. The conditional follow-up responses and raw confidence judgments are not present in an audited form, so this analysis does not invent them.
+A **data-generating process (DGP)** is an ordered account of the random choices and
+deterministic mappings that could produce an observation. We begin with the observed
+binary gate because the local extract contains its raw responses. We could not
+reconcile the available conditional follow-up and confidence fields with the
+documented response scales, so this analysis does not invent those responses.
 
-We audit the measurement record, trace the observed response process, write its random steps one at a time, and then use one released item to mark the boundary of the supported DGP.
+Recall that an [expected value](../random-variables-and-distributions/expected-values.qmd) is an average under a probability model, while [independence](../foundations/independence.qmd) licenses multiplication of joint probabilities. The DGP below declares independence only for raw latent coordinates and then shows how shared centered effects induce dependence among response rows.
+
+We inspect the measurement record, trace the observed response process, write its
+random steps one at a time, and then use one released item to mark the boundary of
+the supported DGP.
 
 ## UDS measurement dossier {#uds-measurement-dossier}
 
-The item is a predicate node in sentence context. Item `ewt-test-963%%ewt-test-963-semantics-pred-6` anchors *exhibited* in “His artworks were selected and exhibited in British Museum in 2002.” The mapping uses the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html) and the pinned [UD English EWT 1.2 test sentence](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). An annotator answers whether the event described by the highlighted predicate has natural subparts. The local `natural_parts` field codes no as 0 and yes as 1.
+The item is a predicate node in sentence context. Item `ewt-test-963%%ewt-test-963-semantics-pred-6` anchors *exhibited* in “His artworks were selected and exhibited in British Museum in 2002.” The mapping uses the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html) and the [UD English EWT 1.2 test sentence](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). An annotator answers whether the event described by the highlighted predicate has natural subparts. The local `natural_parts` field codes no as 0 and yes as 1.
 
-The full protocol branches after that gate. A yes response reveals questions about similarity among the parts and their typical duration; a no response reveals questions about dynamicity and whole-event duration. Duration uses ordered anchors ranging from effectively no time through seconds, minutes, longer calendar units, and effectively forever. Those branch responses are not present as audited raw fields in this extract. The empirical model on this page thus concerns only the binary gate, while [gated annotations](gated-annotations.qmd#the-observed-protocol) returns to the full symbolic protocol.
+The full protocol branches after that gate. A yes response reveals questions about
+similarity among the parts and their typical duration; a no response reveals
+questions about dynamicity and whole-event duration. Duration uses ordered anchors
+ranging from effectively no time through seconds, minutes, longer calendar units,
+and effectively forever. We could not verify raw fields for those branch responses
+in this extract. The empirical model on this page thus concerns only the binary gate,
+while [gated annotations](gated-annotations.qmd#the-observed-protocol) returns to the
+full symbolic protocol.
 
 ## Inspecting the observed response process
 
@@ -92,19 +107,31 @@ ggplot2::ggplot(
 
 ## Stating one step at a time
 
-Let $i$ index predicate nodes and $j$ index annotators. A first DGP has four steps.
+Let $i$ index predicate nodes and $j$ index annotators. The fitted model uses centered raw deviations, so its data-generating process has six steps.
 
-1. Draw an item deviation $u_i$ from an item population.
-2. Draw an annotator deviation $a_j$ from an annotator population.
-3. Map the population location and deviations to a yes probability $\pi_{ij}$.
-4. Draw the recorded response $Y_{ij}$ from that probability.
+1. Draw independent raw item coordinates $z_i^{\text{item}}$ from a standard normal distribution.
+2. Subtract their realized mean and multiply by $\sigma_{\text{item}}$ to construct zero-sum item deviations $u_i$.
+3. Draw independent raw annotator coordinates $z_j^{\text{annotator}}$ and apply the analogous transformation to construct $a_j$.
+4. Draw the population location $\alpha$ and the two positive raw-deviation scales from their stated priors.
+5. Map the population location and centered deviations to a yes probability $\pi_{ij}$.
+6. Draw the recorded response $Y_{ij}$ from that probability.
 
 The corresponding model is
 
 $$
-u_i\sim\mathcal N(0,\sigma_{\text{item}}^2),
+z_i^{\text{item}}\overset{\mathrm{iid}}{\sim}\mathcal N(0,1),
 \qquad
-a_j\sim\mathcal N(0,\sigma_{\text{annotator}}^2),
+u_i
+=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right),
+$$
+
+$$
+z_j^{\text{annotator}}\overset{\mathrm{iid}}{\sim}\mathcal N(0,1),
+\qquad
+a_j
+=\sigma_{\text{annotator}}
+\left(z_j^{\text{annotator}}-\bar z^{\text{annotator}}\right),
 $$
 
 $$
@@ -116,14 +143,38 @@ $$
 The dependence sequence is
 
 $$
-(\alpha,u_i,a_j)\longrightarrow\pi_{ij}\longrightarrow Y_{ij}.
+(\mathbf z^{\text{item}},\mathbf z^{\text{annotator}},
+\sigma_{\text{item}},\sigma_{\text{annotator}},\alpha)
+\longrightarrow
+(\mathbf u,\mathbf a)
+\longrightarrow\pi_{ij}\longrightarrow Y_{ij}.
 $$
 
 The arrows describe an order of generation, not a chronology in the annotator's mind. The response is the only observed quantity in this sequence. The probability and both deviations are model quantities.
 
-Each choice encodes a substantive assumption. Bernoulli sampling matches one binary gate response. The logit link keeps $\pi_{ij}$ in $(0,1)$ while allowing item and annotator contributions to add on the log-odds scale. Normal, mean-zero deviations treat the observed items and annotators as exchangeable draws around population locations, with symmetric light-tailed variation. Additivity assumes no item--annotator interaction beyond those two locations. Finally, responses are conditionally independent given $u_i$, $a_j$, and $\alpha$; marginally, rows sharing an item or annotator remain dependent.
+The centered effects sum to zero but are not mutually independent. With $I$ items,
 
-These assumptions may fail. A few annotators might use the gate in qualitatively different ways, item difficulty might have heavy tails, or particular annotators might react differently to particular event types. Later posterior predictive checks can expose some consequences, but they cannot prove the latent decomposition uniquely correct.
+$$
+\operatorname{Var}[u_i]
+=\sigma_{\text{item}}^2\left(1-\frac{1}{I}\right),
+\qquad
+\operatorname{Cov}[u_i,u_{i'}]
+=-\frac{\sigma_{\text{item}}^2}{I}
+\quad(i\ne i'),
+$$
+
+and the annotator effects have the analogous formulas with $J$. Thus $\sigma_{\text{item}}$ and $\sigma_{\text{annotator}}$ are scales for the raw standard-normal deviations before centering. The marginal standard deviation of a realized centered effect is smaller by the factor $\sqrt{1-1/I}$ or $\sqrt{1-1/J}$.
+
+Each choice encodes a substantive assumption. Bernoulli sampling matches one binary gate response. The logit link keeps $\pi_{ij}$ in $(0,1)$ while allowing item and annotator contributions to add on the log-odds scale. Independent raw normal coordinates produce exchangeable, symmetric, light-tailed centered vectors, while their deterministic centering fixes a finite-sample origin. Additivity assumes no item--annotator interaction beyond those two locations. Finally, responses are conditionally independent given $u_i$, $a_j$, and $\alpha$; marginally, rows sharing an item or annotator remain dependent.
+
+These assumptions may fail. A few annotators might use the gate in qualitatively
+different ways, item difficulty might have heavy tails, or particular annotators
+might react differently to particular event types. A later
+[posterior predictive check](../statistical-inference/posterior-predictive-checks.qmd)
+will draw replicated response tables under parameter values from the posterior and
+compare their summaries with the observed table. Such checks can expose some
+consequences of failed assumptions, but they cannot prove the latent decomposition
+uniquely correct.
 
 The observed/model ledger is thus:
 
@@ -137,7 +188,7 @@ The observed/model ledger is thus:
 
 ## Grounding the indices in an observed item
 
-The following code chooses the first predicate node in file order that received both response values and prints its recorded rows. Selection depends on response pattern here only to make disagreement visible; it is not part of the teaching extract's construction or any fitted model.
+The following code chooses the first predicate node in file order that received both response values and prints its recorded rows. Selection depends on response pattern here only to make disagreement visible; it is not part of the prepared extract's construction or any fitted model.
 
 ```{r}
 #| label: inspect-one-uds-item
@@ -158,9 +209,21 @@ These rows share one $u_i$ but have different annotator indices $j$. A joint mod
 
 ## Declaring what is outside the process
 
-The original protocol uses the natural-parts answer to determine which later questions appear. A yes reveals questions about part similarity and part duration; a no reveals questions about whole-event duration and dynamicity. This display logic matters, but the present extract does not contain audited raw responses to those branches. Raw confidence is also blocked: the paper describes a one-to-five scale, the package metadata describes a zero-to-four scale, and the inspected raw serialization repeats a duration response in the confidence position. The released normalized confidence field is thus not treated as an additional raw judgment.
+The original protocol uses the natural-parts answer to determine which later
+questions appear. A yes reveals questions about part similarity and part duration;
+a no reveals questions about whole-event duration and dynamicity. This display logic
+matters, but the present extract does not contain branch responses whose raw fields
+can be verified against the documented scales. Raw confidence is also blocked: the
+paper describes a one-to-five scale, the package metadata describes a zero-to-four
+scale, and the inspected raw serialization repeats a duration response in the
+confidence position. The released normalized confidence field is thus not treated
+as an additional raw judgment.
 
-Thus this DGP is deliberately a model of the observed natural-parts gate. It is not a model of the complete event-structure instrument. The narrower claim keeps every recorded variable in the likelihood and every omitted variable outside it.
+Thus this DGP generates the observed natural-parts gate responses. The full
+instrument also displays conditional questions about similarity, duration, and
+dynamicity, but their raw responses cannot be verified in this extract. Those
+branches remain outside the likelihood, so the fitted parameters describe response
+propensities for the gate under this protocol.
 
 ::: {.callout-note title="Check the generative order"}
 1. Which quantity in the model is recorded directly?

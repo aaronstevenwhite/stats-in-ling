@@ -4,11 +4,13 @@ title: "Comparing predictive loss"
 
 The [grouped-validation page](grouped-cross-validation.qmd) returned held-out losses to the groups omitted during fitting. Comparing two procedures requires pairing their predictions on those same groups. We now use an ordinal response and hold out complete verb types, which makes both the loss and the new-verb prediction task visible.
 
+Each fold estimates its ordinal-model parameters by [maximum likelihood](../statistical-inference/maximum-likelihood.qmd), meaning that the observed training responses are held fixed while the parameter values are varied to maximize their likelihood. Held-out log score then evaluates the realized fit on responses that did not enter that maximization.
+
 We begin with the MegaOrientation measurement dossier, compare cumulative-link procedures on the same held-out verbs, inspect their descriptive fit to the raw ratings, and then delimit the population and model changes to which the observed gain might transfer.
 
 ## MegaOrientation measurement dossier {#megaorientation-measurement-dossier}
 
-[Moon and White (2020)](https://ling.auf.net/lingbuzz/005282/current.pdf) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. Participants rated the sentences on a 1-to-7 acceptability scale. The corrected [MegaOrientation v1.1 release](https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip) changes the released participant and verb inventories after items with irregular-inflection errors were rerun.
+[Moon and White (2020)](https://lingbuzz.net/lingbuzz/005282) constructed sentence pairs that force past- or future-oriented interpretations by combining matrix tense or modality with an incompatible embedded temporal adverb. The link points to the stable LingBuzz record rather than its mutable `current.pdf` target. Participants rated the sentences on a 1-to-7 acceptability scale. The corrected [MegaOrientation v1.1 release](https://megaattitude.io/projects/mega-orientation/mega-orientation-v1.1.zip) changes the released participant and verb inventories after items with irregular-inflection errors were rerun.
 
 For the verb *abhor* in the active-gerund frame, the released pair is “Someone
 abhorred doing something in the future” and “Someone will abhor doing something in
@@ -29,13 +31,13 @@ The five compact `frame_code` values abbreviate these released templates:
 | `passive_to_stative` | `NP was _ed to VP[-eventive]` | passive stative *to*-complement |
 
 One actual response row records participant `0` rating the future-oriented *abhor*
-active-gerund sentence as 7. Thus the course-facing row is a
+active-gerund sentence as 7. Thus the analyzed row is a
 participant-by-verb-frame-item judgment with an ordered response, not a verb-level
 summary. Version 1.1 reran items affected by irregular-inflection errors, which
 changed the participant and verb inventories; all counts and folds below use the
 corrected release rather than the original paper's v1 counts.
 
-The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. The teaching comparison is narrower. It restricts the release to verbs attested in at least two frames, fits population cumulative-logit models, and holds out every response from a verb together. Thus, the target is an unseen verb within the selected multi-frame inventory, not a reproduction of the paper's latent-type comparison.
+The original paper fits latent lexical, structural, and mixed models with participant-specific ordinal cutpoints. We ask a narrower question: after restricting the release to verbs attested in at least two frames, which of two population cumulative-logit models predicts a completely held-out verb better? The target is thus an unseen verb within the selected multi-frame inventory. The calculation does not reproduce the paper's latent-type comparison.
 
 Requiring at least two observed frames keeps the transfer question tied to verbs
 represented across frame contexts and prevents the selected inventory from being
@@ -58,6 +60,8 @@ $$
 L_i(M)=-\log p_M(Y_i=y_i\mid x_i).
 $$
 
+The probability inside this score is conditional on the predictors and fitted model. The [conditional-probability chapter](../foundations/conditional-probability.qmd) introduced this restriction of the reference set; here it restricts the distribution to the held-out item's observed predictor values.
+
 Equivalently, we can compare the log probability itself, where larger values are better. The sign convention below reports $\log p_{M_1}-\log p_{M_0}$, so positive values favor the interaction.
 
 The [cumulative-logit model](../regression-models/ordinal-regression.qmd#cumulative-logits)
@@ -77,7 +81,7 @@ the sixth cumulative probability. These are the three operations in
 
 ## Held-out-verb comparison
 
-The code loads the tracked response table and frozen verb folds, fits both ordinal models in every fold, and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the `r length(unique(utils::read.csv("data/megaorientation/verb-folds-multiframe.csv")$verb))` verbs, preventing verbs with more judgment rows from receiving greater weight.
+The code loads the prepared response table and a verb-to-fold map that sends every response from one verb to the same fold. It fits both ordinal models in every fold and extracts the probability assigned to each observed rating. It first averages log scores within verbs and only then averages the `r length(unique(utils::read.csv("data/megaorientation/verb-folds-multiframe.csv")$verb))` verbs, preventing verbs with more judgment rows from receiving greater weight.
 
 Its [VTS](index.qmd#validation-target-specification) splits complete verb types,
 weights verbs equally, retains a held-out verb's frame and forced-orientation labels,
@@ -252,8 +256,10 @@ ggplot2::ggplot(
 
 The interaction improves the verb-weighted mean log score by `r sprintf("%.5f", comparison$verb_weighted_gain)`, with a conditional verb-bootstrap interval of [`r sprintf("%.5f", comparison$bootstrap_low)`, `r sprintf("%.5f", comparison$bootstrap_high)`]. The row-weighted gain is `r sprintf("%.5f", comparison$row_weighted_gain)`, and `r comparison$folds_favoring_interaction` of `r nrow(fold_scores)` folds favor the interaction. The gray points show all held-out verb differences; the blue points show fold means.
 
+Both displayed means use the [expectation operation](../random-variables-and-distributions/expected-values.qmd): they average the paired log-score gain over a declared empirical unit, first verbs and then folds. Changing the averaging unit changes which verbs or response rows receive equal weight.
+
 The 999 bootstrap draws make the resampling calculation reproducible at modest cost;
-they do not remove Monte Carlo error, and 999 has no special statistical status. Each
+they do not remove [Monte Carlo error](../statistical-inference/monte-carlo-integration.qmd#two-uncertainties), and 999 has no special statistical status. Each
 draw resamples the stored verb-level differences, so the resulting quantiles are
 conditional on the fitted folds and the observed response rows. They do not repeat
 participant sampling, item construction, model fitting, or the v1.1 correction.
@@ -343,11 +349,11 @@ ggplot2::ggplot(
   ggplot2::theme_classic(base_size = 11)
 ```
 
-The tracked comparison contains `r format(nrow(orientation), big.mark = ",")` judgments from `r length(unique(orientation$verb))` multi-frame verbs and `r nrow(unique(orientation[c("verb", "frame_code")]))` predicate-frame pairs. Points are empirical category probabilities; lines are the descriptive full-data interaction fit. Those fitted lines do not supply the held-out comparison numbers.
+The selected multi-frame table contains `r format(nrow(orientation), big.mark = ",")` judgments from `r length(unique(orientation$verb))` verbs and `r nrow(unique(orientation[c("verb", "frame_code")]))` predicate-frame pairs. Points are empirical category probabilities; lines are the descriptive full-data interaction fit. Those fitted lines do not supply the held-out comparison numbers.
 
 ## Scope of the gain
 
-The conditional bootstrap resamples the stored verb differences while holding the fitted cross-validation predictions fixed. It respects verb as the resampling unit, but it does not reproduce participant, item, or refitting uncertainty. The population models also omit participant and sentence-item effects. Thus, the interval is useful for the paired-loss lesson, not a full confirmatory analysis of the experiment.
+The conditional bootstrap resamples the stored verb differences while holding the fitted cross-validation predictions fixed. It respects verb as the resampling unit, but it does not reproduce participant, item, or refitting uncertainty. The population models also omit participant and sentence-item effects. A confirmatory experiment-level interval would need to regenerate those sources of variation and refit the complete model; the displayed interval quantifies only the conditional paired-verb resampling operation.
 
 The interaction gain suggests that frame-specific orientation patterns help predict ratings for unseen verbs within this selected inventory. It does not turn acceptability into a directly observed temporal-orientation label, reproduce Moon and White's lexical-versus-structural theory comparison, or generalize to unrestricted English embedding verbs.
 

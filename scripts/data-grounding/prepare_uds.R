@@ -31,7 +31,7 @@ derived_sha256 <- sha256_file(output_path)
 
 write_json_stable(
   list(
-    title = "UDS event-structure natural-parts teaching extract",
+    title = "UDS event-structure natural-parts analysis extract",
     citation = "White et al. (2020), LREC, https://aclanthology.org/2020.lrec-1.699/",
     source_release = "decomp 0.3.2",
     source = "https://pypi.org/project/decomp/0.3.2/",

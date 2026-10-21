@@ -7,17 +7,58 @@ execute:
   message: false
 ---
 
-Fisher's exact test assigns probabilities to contingency tables conditional on their margins. Its reference distribution is hypergeometric, so it is especially natural for a fixed sample drawn without replacement from a finite resource.
+Fisher's exact test evaluates association in a two-by-two table by conditioning on
+both observed margins. Under a null odds ratio of one, the remaining free cell has
+a hypergeometric distribution. This conditional reference distribution is
+distinct from the multivariate-hypergeometric randomness induced by drawing 120
+lexemes without replacement from the 588-row table: the sampling design does not
+itself fix the two sample margins.
 
-We begin with the Turkish morphology table and its sampling design, derive the conditional hypergeometric probability, and then calculate the test while keeping its fixed-margin conditioning separate from a broader superpopulation claim.
+Here [conditioning](../foundations/conditional-probability.qmd) means calculating
+probabilities after treating the observed row and column totals as given, while
+the null [independence](../foundations/independence.qmd#why-the-characterizations-are-equivalent)
+model says the joint cell probabilities factorize into their marginals.
+
+The present analysis therefore contains two different operations: sampling 120
+lexeme rows from the 588-row table and, after observing them, conditioning on the
+sample table's margins. The derivation below keeps their two reference
+distributions separate.
 
 ## A Turkish morphology sample
 
-We use the [Turkish UniMorph release](https://github.com/unimorph/tur) pinned at commit `6c179ace7d2f3d7f3484020e5304c1544d07bb6b` and licensed CC BY-SA 3.0. Pimentel et al. ([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) use the resource for morphological reinflection: predicting an inflected form from a lemma and feature bundle. The release describes its Turkish verb paradigms as semi-automatically generated and partially checked by a native speaker; unverified noun and adjective material is excluded from the teaching data.
+We use the [exact analyzed version of the Turkish UniMorph
+release](https://github.com/unimorph/tur/tree/6c179ace7d2f3d7f3484020e5304c1544d07bb6b)
+under CC BY-SA 3.0. Pimentel et al.
+([2021](https://aclanthology.org/2021.sigmorphon-1.25/)) use the resource for
+morphological reinflection: predicting an inflected form from a lemma and feature
+bundle. The release describes its Turkish verb paradigms as semi-automatically
+generated and partially checked by a native speaker; unverified noun and adjective
+material is excluded from the analyzed verb population.
 
-One row is one of 588 distinct verb lemmas paired with `V;IND;PST;3;SG;POS;DECL`. It is a lexeme--paradigm-cell row, not a corpus token. The table retains the whole UniMorph form and derives the last stem-vowel class and final two orthographic characters. Those characters are teaching measurements, not source-supplied morpheme boundaries; the release's [pinned README](https://github.com/unimorph/tur/blob/6c179ace7d2f3d7f3484020e5304c1544d07bb6b/README.md) documents the source data and verification status.
+Each row represents one lexeme--paradigm cell: one of 588 distinct verb
+lemmas paired with `V;IND;PST;3;SG;POS;DECL`. Corpus token frequencies do not
+enter this table. The table retains the whole UniMorph form and derives the
+last stem-vowel class and final two orthographic characters. We use those
+analyst-derived characters as orthographic measurements; the source does not
+mark them as morpheme boundaries. The release's [version-specific
+README](https://github.com/unimorph/tur/blob/6c179ace7d2f3d7f3484020e5304c1544d07bb6b/README.md)
+documents the source data and verification status.
 
-The Fisher analysis uses the fixed 120-lemma simple random sample drawn without replacement with seed 414. It crosses last stem-vowel backness with whether the final orthographic sequence begins in *d* or *t*.
+### Two parts of the Turkish past-tense form {#turkish-past-allomorphy-map}
+
+The derived two-character ending combines two phonological alternations. Its vowel
+harmonizes with the last vowel of the stem: stems in *a/ı*, *e/i*, *o/u*, and
+*ö/ü* take *ı*, *i*, *u*, and *ü*, respectively. Its initial consonant is *t*
+after one of the voiceless stem-final consonants *ç, f, h, k, p, s, ş,* and *t*;
+otherwise it is *d*. Thus last-vowel class predicts the suffix vowel, while
+stem-final voicing predicts the *d*/*t* choice.
+
+The Fisher analysis uses the 120-lemma simple random sample drawn without
+replacement with seed 414. It deliberately crosses last stem-vowel backness with
+the *d*/*t* initial. Both variables describe the same lexeme row, which makes a
+valid independence table, but last-vowel backness is not the phonological
+conditioner of the consonant alternation. The following comparison checks the canonical
+conditioner before we construct the contingency table.
 
 ```{r}
 #| label: load-unimorph-fisher
@@ -33,6 +74,13 @@ sample_120 <- read.csv(
 )
 sample_120$front_vowel <- grepl("^front", sample_120$vowel_class)
 
+canonical_tab <- table(
+  stem_final_voiceless = sample_120$stem_final_voiceless,
+  t_initial = sample_120$t_initial
+)
+stopifnot(all(sample_120$stem_final_voiceless == sample_120$t_initial))
+canonical_tab
+
 tab <- table(
   front_vowel = sample_120$front_vowel,
   t_initial = sample_120$t_initial
@@ -40,6 +88,12 @@ tab <- table(
 stopifnot(nrow(population) == 588L, nrow(sample_120) == 120L)
 tab
 ```
+
+The first table is diagonal because every sampled *t*-initial form follows a
+stem-final consonant classified as voiceless by the preparation rule, and every
+sampled *d*-initial form follows another stem-final segment. The second table asks
+a different, intentionally noncanonical question: whether last-vowel backness and
+the consonant initial are associated in these 120 sampled lexeme rows.
 
 ## The conditional probability
 
@@ -97,7 +151,14 @@ ggplot(cells, aes(past_initial, stem_vowel, fill = lexemes)) +
   theme_classic(base_size = 12)
 ```
 
-The calculation conditions on the sample and margins. Its finite sampling fraction is `r sprintf("%.3f", summary$sampling_fraction)`, so treating these without-replacement rows as independent Bernoulli draws would discard part of the design. The result concerns the resource-defined lexeme population, not Turkish token use.
+The calculation conditions on both table margins after the `r nrow(sample_120)` rows have been
+sampled. It supplies an exact conditional reference distribution under the null
+model. The without-replacement design still matters for claims about repeated
+samples from the 588-row table: its sampling fraction is
+`r sprintf("%.3f", summary$sampling_fraction)`, and an independent Bernoulli model
+would not reproduce that design. But this finite sampling fraction is not what
+produces Fisher's fixed-margin distribution. The result concerns association
+among UniMorph lexeme--paradigm rows; no corpus-token frequencies enter the table.
 
 ## Recap and forward link
 

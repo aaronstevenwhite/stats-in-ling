@@ -9,6 +9,10 @@ execute:
 
 The Provo Gaussian linear model can be combined with a prior to produce a posterior distribution over regression lines. Recall from [posterior distributions](../statistical-inference/posterior-distributions.qmd) that updating multiplies a likelihood by a prior and then normalizes the product. The response model remains the Gaussian specification stated below.
 
+The [Provo measurement dossier](regression-models.qmd#provo-word-position-data) defines each response as a word-position mean of log first-fixation durations among readers with a retained positive fixation. It defines modeled cloze surprisal as the negative base-two logarithm of a fitted cloze probability. Skipped reader--word trials do not enter that mean, and the available table retains passage grouping rather than reader identities.
+
+The likelihood is the joint density of the fixed observed responses viewed as a function of unknown parameters, as defined on the [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd). Its factorization uses [independence](../foundations/independence.qmd); its covariance matrix records [variances and covariances](../random-variables-and-distributions/variance-and-covariance.qmd). The [Monte Carlo page](../statistical-inference/monte-carlo-integration.qmd) later explains how averages over posterior draws approximate integrals. A [residual](residuals.qmd) remains observed minus fitted response, now evaluated across posterior draws when uncertainty is propagated.
+
 The derivation has three parts: we first specify a conjugate prior, then update its parameters from the likelihood, and finally compute posterior summaries and fitted means.
 
 $$
@@ -47,6 +51,34 @@ $$
 whose mean is $d_0/(a_0-1)$ when $a_0>1$. Conditional conjugacy is useful here because it makes every updating step visible. It is not a claim that a normal--inverse-gamma prior is required for regression.
 
 ## From likelihood and prior to posterior
+
+The basic algebra is **completing the square**: rewriting a quadratic so that
+its center is visible. Begin with one coefficient and suppress the common scale
+factor. Combining one squared data discrepancy with a normal prior discrepancy
+gives
+
+$$
+(y-\beta)^2+\frac{(\beta-b_0)^2}{v_0}
+=
+\left(1+\frac{1}{v_0}\right)\beta^2
+-2\left(y+\frac{b_0}{v_0}\right)\beta
++\text{terms without }\beta.
+$$
+
+Write \(A=1+1/v_0\) and \(h=y+b_0/v_0\). Then
+
+$$
+A\beta^2-2h\beta
+=
+A\left(\beta-\frac{h}{A}\right)^2
+-\frac{h^2}{A}.
+$$
+
+The coefficient \(A\) is the **precision**, the inverse of the variance, and
+\(h\) is an **information value** that combines the prior center with the data.
+Their ratio \(h/A\) is the updated center. The matrix derivation below performs
+this same operation for several coefficients at once: precision becomes a
+matrix and the information value becomes a vector.
 
 The likelihood kernel is
 
@@ -91,6 +123,12 @@ $$
 \mathbf V_n^{-1}\mathbf b_n
 =\mathbf V_0^{-1}\mathbf b_0+\mathbf X^\top\mathbf y.
 $$
+
+Thus \(\mathbf V_n^{-1}\) is the posterior **precision matrix**, and
+\(\mathbf V_0^{-1}\mathbf b_0+\mathbf X^{\mathsf T}\mathbf y\) is the
+posterior **information vector**. Multiplying that vector by the covariance
+\(\mathbf V_n\) recovers the posterior center \(\mathbf b_n\), just as \(h/A\)
+did in the scalar calculation.
 
 Completing the square yields
 
@@ -139,6 +177,95 @@ d_0+\frac12
 $$
 
 ## Computing the posterior
+
+Before drawing all coefficients, consider two independent standard-normal
+coordinates \(z_1\) and \(z_2\). Define two coefficient deviations by
+
+$$
+\delta_1=z_1,
+\qquad
+\delta_2=0.8z_1+0.6z_2. % dqr-allow: symbolic-derivation
+$$
+
+The second deviation shares \(z_1\) with the first. Both deviations have
+variance one, while their covariance is \(0.8\). The same calculation can be
+written
+
+$$
+\begin{bmatrix}\delta_1\\\delta_2\end{bmatrix}
+=
+\underbrace{
+\begin{bmatrix}
+1&0\\ % dqr-allow: symbolic-derivation
+0.8&0.6 % dqr-allow: symbolic-derivation
+\end{bmatrix}}_{\mathbf L}
+\begin{bmatrix}z_1\\z_2\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+The lower-triangular matrix \(\mathbf L\) is a mixing recipe: it turns
+independent coordinates into deviations having covariance
+
+$$
+\mathbf L\mathbf L^{\mathsf T}
+=
+\begin{bmatrix}1&0.8\\0.8&1\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+The [matrix
+primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+shows how the two row-by-column calculations in this product arise from scalar
+multiplication and addition. The figure applies the same mixing recipe to every
+point on a circular contour.
+
+~~~{r}
+#| label: fig-cholesky-circle-to-ellipse
+#| fig-cap: "A lower-triangular mixing matrix transforms an independent-coordinate circle into a tilted correlated ellipse."
+#| fig-alt: "Two coordinate panels. The first contains a circular contour for two independent standard-normal coordinates. The second contains a narrow ellipse tilted upward, showing positive covariance between the transformed coefficient deviations."
+#| echo: false
+#| fig-width: 7
+#| fig-height: 3.4
+
+library(ggplot2)
+
+angle <- seq(0, 2 * pi, length.out = 241L) # dqr-allow: symbolic-derivation
+independent_contour <- cbind(cos(angle), sin(angle))
+L_example <- matrix(
+  c(1, 0, 0.8, 0.6), # dqr-allow: symbolic-derivation
+  nrow = 2,
+  byrow = TRUE
+)
+correlated_contour <- t(L_example %*% t(independent_contour))
+
+cholesky_plot <- rbind(
+  data.frame(
+    coordinate_1 = independent_contour[, 1],
+    coordinate_2 = independent_contour[, 2],
+    stage = "Independent coordinates"
+  ),
+  data.frame(
+    coordinate_1 = correlated_contour[, 1],
+    coordinate_2 = correlated_contour[, 2],
+    stage = "Correlated deviations"
+  )
+)
+
+ggplot(cholesky_plot, aes(coordinate_1, coordinate_2)) +
+  geom_hline(yintercept = 0, color = "grey85", linewidth = 0.35) +
+  geom_vline(xintercept = 0, color = "grey85", linewidth = 0.35) +
+  geom_path(color = "#2C6E9B", linewidth = 0.9) +
+  facet_wrap(~stage) +
+  coord_equal(xlim = c(-1.15, 1.15), ylim = c(-1.15, 1.15)) +
+  labs(x = "Coordinate 1", y = "Coordinate 2") +
+  theme_classic(base_size = 11)
+~~~
+
+We call a lower-triangular mixing matrix with this property a **Cholesky
+factor**. In general, \(\mathbf L\) satisfies
+\(\mathbf V_n=\mathbf L\mathbf L^{\mathsf T}\). R's `chol(Vn)` returns the
+upper-triangular transpose \(\mathbf R=\mathbf L^{\mathsf T}\). Because the code
+stores independent draws as rows, multiplying them on the right by
+\(\mathbf R\) gives covariance
+\(\mathbf R^{\mathsf T}\mathbf R=\mathbf V_n\).
 
 ```{r}
 #| label: fit-provo-bayesian-regression
@@ -210,9 +337,21 @@ data.frame(
 )
 ```
 
-The code mirrors the algebra: `Vn` inverts prior precision plus data precision; `bn` multiplies that covariance by the prior-and-data information vector; `an` adds $n/2$; and `dn` is the constant left after completing the square. Because $1/\sigma^2\sim\operatorname{Gamma}(a_n,d_n)$ under this parameterization, `1 / rgamma(..., rate = dn)` generates inverse-gamma draws. Conditional beta draws then add a Cholesky-transformed standard-normal vector scaled by each sampled $\sigma$.
+The code mirrors the algebra: `Vn` inverts prior precision plus data precision;
+`bn` multiplies that covariance by the prior-and-data information vector; `an`
+adds $n/2$; and `dn` is the constant left after completing the square. Because
+$1/\sigma^2\sim\operatorname{Gamma}(a_n,d_n)$ under this parameterization,
+`1 / rgamma(..., rate = dn)` generates inverse-gamma draws.
 
-The 4,000 draws are a Monte Carlo setting, not an inferential assumption. For a posterior mean, simulation error is approximately the posterior draw SD divided by $\sqrt{4000}$ because these conjugate draws are independent. More draws reduce numerical error but do not change the posterior distribution.
+Scaling the transformed standard-normal vector by the sampled \(\sigma\) and
+adding \(\mathbf b_n\) produces one draw from the conditional multivariate
+normal posterior.
+
+The 4,000 draws determine the Monte Carlo precision of our summaries. They do
+not enter the inferential assumptions. For a posterior mean, simulation error is
+approximately the posterior draw SD divided by $\sqrt{4000}$ because these
+conjugate draws are independent. More draws reduce numerical error but do not
+change the posterior distribution.
 
 The posterior mean slope is `r sprintf("%.6f", mean(beta_draws[, "cloze_surprisal_c"]))`, with a central interval from `r sprintf("%.6f", slope_interval[[1]])` to `r sprintf("%.6f", slope_interval[[2]])`.
 
@@ -257,7 +396,7 @@ data.frame(
 )
 ```
 
-A [prior-predictive check](../statistical-inference/prior-predictive-distributions.qmd) ordinarily precedes looking at the responses. Here it documents the implications of a teaching prior already calibrated to those responses; it cannot retroactively make the prior independent of the sample.
+A [prior-predictive check](../statistical-inference/prior-predictive-distributions.qmd) ordinarily precedes looking at the responses. Here it documents the implications of a prior already calibrated to those responses; it cannot retroactively make the prior independent of the sample.
 
 ```{r}
 #| label: plot-provo-bayesian-regression

@@ -6,9 +6,9 @@ Word types in corpora tend to show a broad inverse relation between frequency an
 
 We construct the rank–frequency curve, separate the tokens used to estimate rank from those used to estimate frequency, and then inspect the residual pattern that a fitted inverse curve leaves behind.
 
-Piantadosi's (2014) [critical review](https://doi.org/10.3758/s13423-014-0585-6) demonstrates the problem with the written American National Corpus, separates rank and frequency estimation by splitting tokens, and shows systematic residual structure beyond a Zipf–Mandelbrot curve. The authorized ANC count snapshot is not available in this repository. We thus carry out an explicitly labeled, paper-aligned replication on [UD Turkish BOUN release 2.18](https://universaldependencies.org/treebanks/tr_boun/), pinned at commit `0def94a229dcbc28d32192b0138b560c075c6d87` under CC BY-SA 4.0.
+Piantadosi's (2014) [critical review](https://doi.org/10.3758/s13423-014-0585-6) demonstrates the problem with the written American National Corpus, separates rank and frequency estimation by splitting tokens, and shows systematic residual structure beyond a Zipf–Mandelbrot curve. The authorized ANC count snapshot is not available in this repository. We thus carry out an explicitly labeled, paper-aligned replication on [UD Turkish BOUN release 2.18](https://universaldependencies.org/treebanks/tr_boun/) under CC BY-SA 4.0. The [data record](../data/ud-turkish-boun/README.md) identifies the exact source version and checksums.
 
-Türk et al. (2022) [describe the BOUN Treebank and its annotation](https://doi.org/10.1007/s10579-021-09558-0); Marşan et al. (2022) [describe later agglutination-sensitive revisions](https://arxiv.org/abs/2207.11782). The treebank contains written sentences from five Turkish National Corpus registers. Native-speaker linguists manually annotated and cross-checked automatically preprocessed sentences. The prepared table lowercases source surface forms with Turkish dotted and dotless I preserved, and it excludes punctuation, multiword-token range lines, and empty nodes while retaining component syntactic words. One row is one word-form type; `frequency` is its count among non-punctuation syntactic-word tokens. The immediate UD release permits redistribution under CC BY-SA 4.0, though the public documents do not independently expose the upstream Turkish National Corpus permission reported by the paper. The [data record](../data/ud-turkish-boun/README.md) gives the checksums and full terms caveat.
+Türk et al. (2022) [describe the BOUN Treebank and its annotation](https://doi.org/10.1007/s10579-021-09558-0); Marşan et al. (2022) [describe later agglutination-sensitive revisions](https://arxiv.org/abs/2207.11782). The treebank contains written sentences from five Turkish National Corpus registers. Native-speaker linguists manually annotated and cross-checked automatically preprocessed sentences. The prepared table lowercases source surface forms with Turkish dotted and dotless I preserved, and it excludes punctuation, multiword-token range lines, and empty nodes while retaining component syntactic words. One row is one **orthographic syntactic-word-form type**; `frequency` is its count among non-punctuation syntactic-word tokens. The immediate UD release permits redistribution under CC BY-SA 4.0, though the public documents do not independently expose the upstream Turkish National Corpus permission reported by the paper. The [data record](../data/ud-turkish-boun/README.md) gives the full terms caveat.
 
 ```{r}
 #| label: load-turkish-frequencies
@@ -32,6 +32,15 @@ number of retained syntactic-word tokens with exactly that form. For instance,
 the most frequent row is *bir*, with 2,746 tokens; its count is a type-level <!-- dqr-allow: empirical-answer -->
 summary of token records, not 2,746 new word types. `nrow(forms)` thus
 counts types, while `sum(forms$frequency)` recovers tokens.
+
+The unit matters especially in Turkish. The source sentence *Adeta kendimden
+geçmiş bir haldeyim* contains the surface form *kendimden*, whose UD lemma is
+*kendi*. The frequency table gives *kendimden* its own row, separate from
+*kendisine*, *kendilerini*, and other inflected forms of that lemma. A lemma
+table would combine evidence that this surface-form table keeps apart, while a
+morpheme table would divide each form into still smaller units. The curve below
+therefore describes lowercased surface-form types. It does not describe Turkish
+lexemes or morphemes.
 
 ## Rank and the descriptive model
 
@@ -57,7 +66,11 @@ Here $f(r)$ is an observed count and $\widehat f(r)$ is a fitted count. The mode
 
 ## Separate rank and frequency estimation
 
-Following Piantadosi (2014), we use a fixed binomial token split. One count part assigns ranks and the other estimates relative frequency. The random split is a computational device applied to the observed Turkish counts, not a new linguistic dataset. It also does not repair sentence or register dependence because the aggregate table lacks document identifiers.
+Following Piantadosi (2014), we use a fixed binomial token split. One count
+part assigns ranks and the other estimates relative frequency. We apply this
+computational split to the observed Turkish counts; it does not create new
+linguistic observations. The split also cannot repair sentence or register
+dependence because the aggregate table lacks document identifiers.
 
 The 50/50 probability gives equal expected token totals to ranking and
 frequency estimation. A more unequal split would estimate one side more
@@ -99,7 +112,22 @@ p(r\mid\alpha,\beta)
 {\sum_{j=1}^{V}(j+\beta)^{-\alpha}}.
 $$
 
-If $n_r$ is the frequency-half count at rank $r$, maximizing the multinomial likelihood is equivalent to maximizing
+### Likelihoods and logarithms {#likelihoods-and-logarithms}
+
+For fixed observed counts, a **likelihood** is the model probability viewed as a
+function of unknown parameters. Maximizing it selects the parameter values under
+which those counts receive the greatest model probability. The general treatment
+comes later on the [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood).
+
+The **natural logarithm** $\log a$ is the power to which $e$ must be raised to
+recover a positive number $a$: $e^{\log a}=a$. Because
+$\log(ab)=\log a+\log b$, taking a logarithm turns a product of probabilities
+into a sum. And because $\log a$ increases whenever $a$ increases, the
+parameter values that maximize a positive likelihood also maximize its
+logarithm.
+
+If $n_r$ is the frequency-half count at rank $r$, maximizing the multinomial
+likelihood is therefore equivalent to maximizing the **log likelihood**
 
 $$
 \ell(\alpha,\beta)
@@ -119,6 +147,15 @@ $$
 Taking logs yields a combinatorial term that does not depend on $\alpha$ or
 $\beta$, plus $\sum_r n_r\log p(r\mid\alpha,\beta)$. Dropping only the constant
 term gives the displayed optimization objective.
+
+The numerical search below uses the **gradient**, the collection of local
+slopes of the objective with respect to $\alpha$ and $\beta$. A local slope
+asks how much the objective changes after a very small change in one parameter
+while the other is held fixed. L-BFGS-B uses these slopes to propose a new
+pair, then repeats the calculation until the objective no longer improves
+appreciably. The [expected-value chapter later defines derivatives as local
+rates of change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change);
+the gradient gathers one such derivative for each coordinate.
 
 The ranks come from one half and the counts from the other, which removes the same-count error that Piantadosi identifies. Types with zero frequency-half counts remain in the model support even though they cannot appear on a logarithmic plot.
 
@@ -178,13 +215,16 @@ The formula-to-code map is direct:
 | $\log\sum_j(j+\beta)^{-\alpha}$ | `log_sum_exp(log_weight)` |
 | $-\ell(\alpha,\beta)$ | `negative_log_likelihood()` |
 
-Optimizing `log(alpha)` and `log(beta)` enforces positive parameter values.
-The starting values 1 and 2.7 are computational proposals, not assumptions
+Searching over `log(alpha)` and `log(beta)` enforces positive parameter values
+because exponentiating any candidate on those transformed scales returns a
+positive value.
+The starting values 1 and 2.7 are computational proposals. They do not enter
+the statistical assumptions
 about Turkish. The wide bounds prevent invalid or numerically extreme searches,
-and L-BFGS-B is chosen because it respects those bounds while using local
-gradient information. Convergence code zero is necessary but not sufficient;
-a production analysis should also compare starts and check whether the optimum
-is away from the bounds.
+and L-BFGS-B respects those bounds while using the local-slope information just
+defined. Convergence code zero is necessary but not sufficient;
+we should also compare starting values and check whether the optimum lies away
+from the bounds.
 
 The fitted exponent is `r round(zipf_coef[["alpha"]], 3)` and the fitted rank shift is `r round(zipf_coef[["beta"]], 3)`. These parameters describe this tokenization of this treebank release; they are not estimates for Turkish as a whole.
 
@@ -204,6 +244,11 @@ ggplot(rank_frequency,
 ```
 
 ## Inspect the residual structure
+
+A [**residual**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is an observed response minus its fitted value after a model has
+been fit. The [regression residual page](../regression-models/residuals.qmd)
+develops that model-checking idea later; here both quantities are on the log
+relative-frequency scale.
 
 Define the log residual by
 
@@ -230,9 +275,17 @@ ggplot(rank_frequency, aes(rank_split, log_residual)) +
 
 The broad decline and the residual structure coexist. This is Piantadosi's description–explanation gap: a simple curve may summarize much of the distribution while providing weak evidence for any particular mechanism that can generate it.
 
-This replication has two limits. First, BOUN is a five-register treebank, not a balanced probability sample of Turkish usage. Second, the aggregate frequency table permits a token split but not a document-level split, so discourse clustering remains. The result licenses a claim about represented word-form counts, not about a universal law of Turkish.
+This replication has two limits. The 9,761 source sentences were selected within
+essays, broadsheet newspapers, instructional texts, popular-culture articles, and
+biographies. The analyzed release supplies no weights saying how prevalent those
+registers are in Turkish usage, and it contains no spoken conversation. In
+addition, the aggregate frequency table permits a token split but not a
+document-level split. Words from the same sentence or document share topic and
+local context, so the `r format(sum(forms$frequency), big.mark = ",")` token counts do not provide that many unrelated
+pieces of evidence. The fitted curve summarizes lowercased word-form counts in
+these represented written materials.
 
-The [next page](possibilities-and-events.qmd) moves from the whole word-form inventory to an audited token extract and defines a finite probability experiment.
+The [next page](possibilities-and-events.qmd) moves from the whole word-form inventory to a token extract and defines a finite probability experiment.
 
 ## Check your understanding
 
@@ -242,6 +295,8 @@ The [next page](possibilities-and-events.qmd) moves from the whole word-form inv
 4. Explain why lowercasing and excluding punctuation change both the type inventory and the rank assignment.
 5. A student says that setting the seed makes the split counts independent of
    sentence and register. Which role of a random seed has been confused?
+6. Would lemmatizing the corpus necessarily leave the rank--frequency curve
+   unchanged? Explain using *kendimden* and *kendi*.
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -252,6 +307,8 @@ The [next page](possibilities-and-events.qmd) moves from the whole word-form inv
 4. Lowercasing merges case-distinguished strings, while punctuation removal deletes types and tokens; both operations change counts and thus the ordering that defines frequency rank. <!-- dqr-allow: empirical-answer -->
 5. A seed reproduces the pseudorandom token allocation. It cannot restore
    document identifiers or remove dependence inherited from the corpus.
+6. No. Lemmatization would combine *kendimden* with other surface forms analyzed
+   as the lemma *kendi*, changing both counts and the ranks derived from them.
 
 </details>
 

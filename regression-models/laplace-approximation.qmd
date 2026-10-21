@@ -5,7 +5,9 @@ execute: {warning: false, message: false}
 
 A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. The [marginal-distribution page](../random-variables-and-distributions/marginal-distributions.qmd) reminds us that marginalization sums or integrates a joint distribution over an unobserved quantity. A likelihood for the observed responses must thus average over every possible random-effect value.
 
-This page first identifies that integral, then constructs its local quadratic approximation and compares the approximation with direct integration for the SuperTelicity teaching model.
+The [random-effect framework](fixed-and-random-effects.qmd) defines the group deviations being integrated. Their [standard deviations and covariances](../random-variables-and-distributions/variance-and-covariance.qmd) set the local geometry. The likelihood is the density of the realized responses viewed as a function of fixed coefficients and group-distribution parameters, as defined on the [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd).
+
+This page first identifies that integral, then constructs its local quadratic approximation and compares the approximation with direct integration for a restricted SuperTelicity model.
 
 This integral usually has no elementary form for a logistic mixed model. The [**Laplace approximation**](https://doi.org/10.1080/01621459.1986.10478240) replaces the log integrand with a quadratic near its highest point. We expose that computation with one participant intercept from the SuperTelicity release introduced on the GLMM page.
 
@@ -32,15 +34,33 @@ Before observation, $\mathbf Y_p$ and $B_p$ are random. After the responses are 
 
 $$
 \underbrace{\prod_i
-\pi_i(b)^{y_i}[1-\pi_i(b)]^{1-y_i}}_{	ext{Bernoulli likelihood}}
+\pi_i(b)^{y_i}[1-\pi_i(b)]^{1-y_i}}_{\text{Bernoulli likelihood}}
 \times
 \underbrace{\frac{1}{\tau\sqrt{2\pi}}
-\exp\left(-\frac{b^2}{2\tau^2}\right)}_{	ext{normal group density}}.
+\exp\left(-\frac{b^2}{2\tau^2}\right)}_{\text{normal group density}}.
 $$
 
-The integral is area. The Laplace approximation estimates that area from two local features: the integrand's height at its mode and its width, which is proportional to $1/\sqrt H$. A high but very narrow peak can thus have less area than a lower, wider peak.
+The integral is area. The Laplace approximation estimates that area from two
+local features: the integrand's height at its **mode**, the value of \(b\) where
+the integrand is highest, and the peak's width. A high but very narrow peak can
+thus have less area than a lower, wider peak. We will derive the quantity that
+measures that width rather than assume its form.
 
 ## Expanding the log integrand
+
+Recall that a [first derivative measures local
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
+A second derivative measures how that rate of change itself changes, which is
+why it describes **curvature**: a large negative second derivative marks a
+sharply bending peak, while a value near zero marks a flatter one. The [Hessian
+discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+extends this idea to several parameters.
+
+A **Taylor approximation** replaces a smooth function near a chosen point by a
+polynomial that has the same value and derivatives there. Keeping terms through
+the second derivative gives a local quadratic. We use that quadratic because
+exponentiating a downward-opening quadratic produces the shape of a normal
+density, whose area we know how to calculate.
 
 Define
 
@@ -50,7 +70,8 @@ h(b)
 +\log f_B(b\mid\tau).
 $$
 
-Let $\widehat b$ maximize $h(b)$. At the mode,
+Let $\widehat b$ maximize $h(b)$. At this mode, a small move to either side has
+no first-order advantage, so
 
 $$
 h'(\widehat b)=0.
@@ -65,13 +86,15 @@ h(b)
 +\frac{1}{2}h''(\widehat b)(b-\widehat b)^2.
 $$
 
-The first-derivative term vanishes at the mode. Writing
+The first-derivative term vanishes at the mode. The second derivative is
+negative at an ordinary local maximum, so we write its negative as the positive
+curvature magnitude
 
 $$
 H=-h''(\widehat b)>0
 $$
 
-gives
+and obtain
 
 $$
 h(b)
@@ -100,7 +123,7 @@ The height records support at the conditional mode. The curvature records how qu
 
 ## Constructing the SuperTelicity integrand
 
-The complete teaching GLMM has participant, verb, and sentence intercepts. To make the integral one-dimensional and visible, this page fits a declared computational restriction with only the participant intercept.
+The fuller GLMM has participant, verb, and sentence intercepts. To make one integration step directly inspectable, we restrict the worked model to a participant intercept. The comparison therefore studies Laplace error for that one-dimensional integral rather than the complete crossed model.
 
 ```{r}
 #| label: supertelicity-laplace
@@ -176,7 +199,7 @@ curvature <- sum(mode_probability * (1 - mode_probability)) +
 
 The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below come from the release.
 
-`optimize()` performs a bounded one-dimensional search for the conditional mode. The interval extends six fitted random-effect standard deviations in each direction, which is wide relative to the normal group density while keeping the teaching search finite. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
+`optimize()` performs a bounded one-dimensional search for the conditional mode. We extend the interval six fitted random-effect standard deviations in each direction, which covers the practically relevant normal density while keeping numerical integration finite. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
 
 ## Comparing the exact integral with its local approximation
 
@@ -269,7 +292,12 @@ ggplot(
   theme_classic()
 ```
 
-The approximation is a computational method, not a new response model. It does not add a predictor, repair a missing random slope, or make an inappropriate link valid. It tends to be most accurate when the integrand is concentrated and roughly symmetric near its mode; sparse groups, rare responses, boundary variances, or strong asymmetry may make the local quadratic less adequate.
+The approximation changes how we evaluate the integral; it leaves the response
+model unchanged. It cannot add a predictor, repair a missing random slope, or
+make an inappropriate link valid. It tends to be most accurate when the
+integrand is concentrated and roughly symmetric near its mode; sparse groups,
+rare responses, boundary variances, or strong asymmetry may make the local
+quadratic less adequate.
 
 In `glmer`, `nAGQ = 1` selects this one-point Laplace calculation. The one-intercept restriction exists only to expose it in one dimension. In the crossed participant, verb, and sentence model, the integral is high-dimensional and can be skewed or weakly concentrated along some covariance directions. Agreement in the selected one-dimensional example thus cannot guarantee equal accuracy in that fitted crossed model.
 

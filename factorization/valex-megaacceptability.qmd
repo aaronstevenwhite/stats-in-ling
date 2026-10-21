@@ -2,13 +2,23 @@
 title: "From VALEX distributions to MegaAcceptability profiles"
 ---
 
-The PHOIBLE sequence used factorization to reconstruct hidden cells. We test whether PCA of VALEX frame proportions improves held-out-verb prediction of MegaAcceptability profiles.
+Can a compressed summary of a verb's corpus frame distribution predict its
+acceptability profile better than the complete distribution? We compare two
+procedures on verbs excluded from fitting. The direct procedure uses every
+VALEX frame proportion; the compressed procedure replaces those proportions
+with a smaller set of directions estimated from the training verbs. Both
+procedures predict the same MegaAcceptability response profiles with the same
+regression model, so their held-out difference isolates the proposed
+compression.
 
 [VALEX](https://ilexir.co.uk/valex/) was acquired automatically from five corpora and the Web. Korhonen, Krymolowski, and Briscoe's [dataset paper](https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf) describes counts for English verb subcategorization frames and emphasizes automatic acquisition. The counts may contain parsing and frame-assignment error, and the release does not disambiguate verb senses.
 
-The official [MegaAcceptability archive](https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip) is CC BY-SA 4.0, and its internal README identifies the release as v1.2. It contains judgments for English clause-embedding verbs in semantically bleached frames. [White and Rawlins (2020)](https://doi.org/10.5334/gjgl.1001) constructed lists in which each verb and frame appeared at most once, collected ordinal responses from participants reporting native American English, and modeled the relation between corpus frequencies and acceptability. The teaching analysis uses their empirical target but simplifies the model so that PCA is the only representational change.
+The official [MegaAcceptability archive](https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip) is CC BY-SA 4.0, and its internal README identifies the release as v1.2. It contains judgments for English clause-embedding verbs in semantically bleached frames. [White and Rawlins (2020)](https://doi.org/10.5334/gjgl.1001) constructed lists in which each verb and frame appeared at most once, collected ordinal responses from participants reporting native American English, and modeled the relation between corpus frequencies and acceptability. We retain their held-out-verb target and compare raw VALEX proportions with a PCA representation while holding the predictive model fixed.
 
-We audit both measurement systems, define the competing raw and PCA predictors, keep representation choices inside training data, and then evaluate held-out verbs before examining the selected rank and predictive limits.
+The remaining questions are concrete. What does one row from each resource
+measure? How do the direct and compressed procedures turn those rows into
+predictions without using a held-out verb? And which procedure predicts those
+verbs more accurately?
 
 ## VALEX-MegaAcceptability measurement dossier
 
@@ -20,9 +30,15 @@ p_{vj}
 \frac{c_{vj}}{\sum_h c_{vh}}.
 $$
 
-The row $\mathbf p_v$ represents the allocation of observed corpus evidence across frames, not total verb frequency. It is not a sense-specific grammatical description.
+The row $\mathbf p_v$ records how automatically extracted corpus evidence for verb form $v$ is allocated across frames after division by that verb's total extracted count. This normalization removes the total-frequency scale, and the release does not disambiguate senses or turn parser assignments into grammatical descriptions.
 
-The raw MegaAcceptability unit is one participant's ordinal response to one verb-frame item. Within a training set $\mathcal T$, participant $q$'s response is transformed as
+The raw MegaAcceptability unit is one participant's ordinal response to one
+verb-frame item. The following arithmetic treats the seven ordered response
+categories as if equal numerical steps represented equal changes in
+acceptability: it subtracts a mean, divides by a standard deviation, and later
+averages. That interval-scale working assumption makes these operations
+available, but the recorded order alone does not establish it. Within a training
+set $\mathcal T$, participant $q$'s response is transformed as
 
 $$
 z_{qi}
@@ -31,7 +47,16 @@ z_{qi}
      {s_{q,\mathcal T}}.
 $$
 
-These values are averaged within verb-frame cells to form a response matrix $\mathbf Y$ with one verb per row and one experimental frame per column. Zero is the training-fitted participant origin, not a boundary between grammatical and ungrammatical sentences. This transformation is a fold-fitted approximation to the paper's ordinal normalization.
+These values are averaged within verb-frame cells to form a response matrix
+\(\mathbf Y\) with one verb per row and one experimental frame per column.
+These are empirical averages of recorded responses; the [expected-value
+page](../random-variables-and-distributions/expected-values.qmd) instead defines
+an average under a probability model. Zero marks a participant's
+training-fitted mean on this transformed coordinate. Because the task supplied
+ordered acceptability responses rather than a grammaticality cutoff, no
+transformation step makes zero a boundary between grammatical and ungrammatical
+sentences. This transformation is a fold-fitted approximation to the paper's
+ordinal normalization.
 
 The raw course bundle retains the verb, schematic experimental frame, participant,
 and numeric response, but not the fully lexicalized sentence string or the wording
@@ -41,9 +66,23 @@ notation is read compositionally: `NP` is a noun phrase, `S` a finite clause, `V
 a verb phrase, `Ved` the target verb in past-tense form, and bracketed material
 marks a controlled semantic or morphosyntactic feature.
 
-## Reading and checking the analysis inputs
+## What information do the two procedures need?
 
-The audited course bundle stores the raw inputs and validated predictions from the leakage-safe nested procedure. The R below reads every object used on this page and recomputes the reported summaries and figures. A complete R implementation of the fitting procedure follows in the next section.
+For every held-out verb-by-frame cell, we need four quantities: the observed
+MegaAcceptability profile value, the training-frame-mean baseline, the
+prediction from the complete VALEX distribution, and the prediction from its
+compressed representation. To reconstruct those predictions, we also need the
+raw VALEX counts by verb and frame, the participant response rows, and the
+training split in which each normalization, component direction, rank, and
+penalty was estimated.
+
+::: {.callout-note title="Reproducibility files"}
+The course bundle stores the source counts and responses together with the
+fold-level predictions, validation curves, and declared summary files under
+`data/valex-megaacceptability/audited`. The code below reads those records and
+recomputes the displayed checks; the later fitting section shows how the
+predictions are obtained from a training split.
+:::
 
 ```{r}
 library(ggplot2)
@@ -167,7 +206,7 @@ columns after aggregation, so the course outcome matrix has no missing verb-fram
 cells. VALEX zeros are observed automatic counts rather than missing values. The
 information removed by aggregation is participant-level variation, item-list
 variation, and the ordinal response distribution within a verb-frame cell. We
-aggregate because the teaching target is multivariate held-out-verb prediction;
+aggregate because the target is multivariate held-out-verb prediction;
 a participant-by-item model would preserve more variation and answer a richer
 measurement question.
 
@@ -195,7 +234,20 @@ Q(\mathbf B)
 +\lambda\|\mathbf B\|_F^2.
 $$
 
-Its matrix derivative is
+The cells of \(\mathbf Y-\mathbf X\mathbf B\) are [regression
+residuals](../regression-models/residuals.qmd), observed response-profile values
+minus their fitted values. The validation score later evaluates the same kind
+of discrepancy on verbs that did not determine \(\mathbf B\).
+
+To obtain the coefficient solution, recall that a
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+measures how a criterion changes after a small parameter move. For one outcome
+column \(\mathbf y\) and coefficient vector \(\mathbf b\), differentiating
+\(\|\mathbf y-\mathbf X\mathbf b\|^2+\lambda\|\mathbf b\|^2\) gives
+\(-2\mathbf X^{\mathsf T}(\mathbf y-\mathbf X\mathbf b)+2\lambda\mathbf b\).
+The **matrix derivative** stacks that same gradient across all outcome columns;
+its \((j,k)\) cell is the derivative with respect to coefficient \(B_{jk}\).
+Thus
 
 $$
 \frac{\partial Q}{\partial\mathbf B}
@@ -204,7 +256,8 @@ $$
 +2\lambda\mathbf B.
 $$
 
-Setting it to zero gives
+Setting every cell of this derivative to zero gives the multivariate version of
+the [normal equations](../regression-models/design-matrices.qmd#from-squared-error-to-the-coefficient-estimates):
 
 $$
 (\mathbf X^{\mathsf T}\mathbf X+\lambda\mathbf I)\widehat{\mathbf B}
@@ -239,7 +292,9 @@ This is the code path in `ridge_prediction()`: `component_outcome` is
 \(\mathbf X_{\mathrm{test}}\mathbf V\). Increasing \(\lambda\) shrinks weak
 singular directions more strongly.
 
-The factor procedure fits PCA only to training predictor rows,
+The factor procedure fits [principal component
+analysis](principal-component-analysis.qmd#beginning-with-variation-around-column-means)
+only to training predictor rows,
 
 $$
 \mathbf F_K
@@ -256,6 +311,8 @@ The direct hypothesis predicts that the complete VALEX distribution improves on 
 
 Five repetitions of ten-fold outer cross-validation hold out complete verbs. Within every outer training set, independent five-fold validation selects the direct ridge penalty and jointly selects factor rank and ridge penalty. Participant normalization, response aggregation, predictor centering, PCA loadings, rank, and penalty are refitted in the relevant training split.
 
+Recall from the [cross-validation algorithm](../model-criticism-and-prediction/cross-validation.qmd#the-algorithm) that the complete fitting procedure must be rerun on each training fold before a prespecified loss is evaluated on its held-out units. Here the held-out unit is a verb and the outcome is its 50-cell response profile. No response for that verb enters normalization, aggregation, component estimation, or tuning. The participants themselves may occur in the training data through judgments of other verbs; the target is thus a new verb judged by the experiment's participant pool, rather than a simultaneously new verb and new participant.
+
 The fixed candidate sets are:
 
 ```{r}
@@ -265,7 +322,7 @@ rank_candidates <- c(2L, 5L, 10L, 20L, 30L, 40L, 50L) # dqr-allow: algorithm-set
 
 The penalty grid spans nearly unpenalized through visibly regularized fits on the
 training-centered scale. The rank grid is dense at low dimension and extends to
-`r max(rank_candidates)`, just below the `r length(unique(mega$frame))` response-frame targets; it tests substantial compression
+`r max(rank_candidates)`, equal to the `r length(unique(mega$frame))` response-frame targets; it tests substantial compression
 without pretending to enumerate every possible rank. Outer folds hold out verbs
 because the scientific target is a new lexical predicate, and every frame for a
 verb moves with it. Five repetitions of ten-fold outer cross-validation reduce
@@ -274,16 +331,18 @@ Five inner folds provide a tractable repeated selection calculation inside each
 outer training set.
 
 Ties are resolved toward the larger ridge penalty, and factor ties then favor the
-smaller rank, as the `order()` calls show. The five registered outer seeds and
-derived inner seeds reproduce procedural randomization; they are not tuned
-empirical quantities.
+smaller rank, as the `order()` calls show. Five fixed outer seeds and their derived
+inner seeds determine the random fold assignments before any response score is
+compared.
 
-The validated predictions keep the default page render short. The complete R teaching implementation is below. It uses base R's seeded shuffling, so it implements the registered split logic without reproducing NumPy's exact fold membership. The displayed audit results remain those of the registered procedure and the checked files above. Setting `eval: true` reruns fold construction, participant normalization, nested selection, and outer prediction from the two raw course inputs; it does not read the frozen prediction files.
-
-This separation matters. The frozen files reproduce the registered analysis and
-its exact NumPy splits. The unevaluated R block is a pedagogical reconstruction of
-the procedure; turning it on demonstrates the algorithm but does not reproduce the
-registered fold identities or replace the frozen empirical result.
+The reported predictions come from one execution of this procedure in Python
+with the five stated seeds. The R implementation below shows each operation:
+fold construction, participant normalization, nested selection, and outer
+prediction from the two inputs. Base R and NumPy use different seeded shuffling
+algorithms, so running the R block follows the same procedure with different
+fold assignments and may produce different numerical predictions. In either
+implementation, response normalization, PCA, and tuning are recomputed within
+the relevant training set.
 
 ```{r}
 #| eval: false
@@ -542,7 +601,7 @@ $$
 R_{\mathrm{factor}}^2-R_{\mathrm{direct}}^2.
 $$
 
-The frozen audit uses a verb bootstrap, so a sampled verb contributes every response frame and all repeated outer predictions.
+The uncertainty calculation resamples verbs, so each sampled unit carries every response frame and all repeated outer predictions for that verb.
 
 ```{r}
 skill <- function(outcome, prediction, baseline) {
@@ -654,7 +713,9 @@ Inner validation selects rank `r selected_rank`, the largest candidate, in all `
 
 ## Locating the predictive limitation
 
-White and Rawlins report a marked weakness for finite clauses preceded by a direct object. The audit fixed the corresponding frame-family comparison before inspecting the new procedure.
+White and Rawlins report a marked weakness for finite clauses preceded by a
+direct object. We specified the corresponding frame-family comparison before
+inspecting the results of the new procedure.
 
 ```{r}
 #| fig-width: 7
@@ -682,13 +743,13 @@ ggplot(family_long,
 
 Direct skill for finite clauses without an object is `r round(family_metrics$direct_skill[family_metrics$family == "finite without object"], 3)`, but falls to `r round(family_metrics$direct_skill[family_metrics$family == "finite with direct object"], 3)` for the matched object frames. PCA does not repair this difference.
 
-White and Rawlins connect the object pattern to communicativity: with a verb such as *persuade*, the object may denote a recipient of communicated content. The present residual is consistent with that proposal, though it cannot separate communicativity from animacy, discourse, polysemy, item construction, or corpus-analysis error.
+White and Rawlins connect the object pattern to communicativity: with a verb such as *persuade*, the object may denote a recipient of communicated content. The present prediction-error pattern is consistent with that proposal, though it cannot separate communicativity from animacy, discourse, polysemy, item construction, or corpus-analysis error.
 
 ## What the application establishes
 
 First, automatically acquired VALEX distributions contain information about MegaAcceptability profiles for verbs excluded from fitting. Second, PCA compression does not improve that mapping: the selected factor procedure performs slightly and stably worse than the direct profile. The result counts against this shallow compression for this target, not against abstract syntactic or semantic representations in general.
 
-The teaching analysis differs from the paper in three declared ways. It uses raw VALEX proportions rather than the paper's best Beta Negative Binomial representation, PCA rather than a logistic factor model, and a fold-fitted z transformation rather than the released ordinal mixed-effects normalization. Those changes isolate the matrix operations taught here while preserving the held-out-verb question.
+The present analysis differs from the paper in three declared ways. We use raw VALEX proportions rather than the paper's best Beta Negative Binomial representation, PCA rather than a logistic factor model, and a fold-fitted z transformation rather than the released ordinal mixed-effects normalization. Holding the predictive target fixed lets us ask specifically what changes when PCA replaces the raw frame distribution.
 
 ## Checking the reasoning
 

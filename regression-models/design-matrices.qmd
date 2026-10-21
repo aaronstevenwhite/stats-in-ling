@@ -13,29 +13,51 @@ We move from equation to data in two steps: first we derive the matrix product, 
 
 ## From equations to a matrix
 
-The MALD regression can be written
+The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+begins with scalar multiplication, then builds dot products and matrix-vector
+products from repeated scalar operations. We use that same sequence here. For
+item \(i\), the four scalar products in the MALD regression are
+
+$$
+\widehat y_i
+=
+1\widehat\beta_0
++F_i^c\widehat\beta_F
++D_i^c\widehat\beta_D
++P_i^c\widehat\beta_P.
+$$
+
+The design row and coefficient vector collect the four multipliers and four
+coefficients:
+
+$$
+\mathbf x_i^{\mathsf T}
+=
+\begin{bmatrix}
+1 & F_i^c & D_i^c & P_i^c
+\end{bmatrix},
+\qquad
+\widehat{\boldsymbol\beta}
+=
+\begin{bmatrix}
+\widehat\beta_0 & \widehat\beta_F & \widehat\beta_D & \widehat\beta_P
+\end{bmatrix}^{\mathsf T}.
+$$
+
+Their dot product abbreviates the four multiplications and their sum:
+
+$$
+\widehat y_i=\mathbf x_i^{\mathsf T}\widehat{\boldsymbol\beta}.
+$$
+
+Stacking all item rows gives one such calculation per row. The complete MALD
+regression can then be written
 
 $$
 \mathbf y=\mathbf X\boldsymbol\beta+\boldsymbol\varepsilon.
 $$
 
 With $n$ observed items and $p$ coefficients, $\mathbf y$ is $n\times1$, $\mathbf X$ is $n\times p$, $\boldsymbol\beta$ is $p\times1$, and $\boldsymbol\varepsilon$ is $n\times1$. The product $\mathbf X\boldsymbol\beta$ is thus an $n\times1$ vector containing one fitted mean per item.
-
-For item $i$, the design row is
-
-$$
-\mathbf x_i^\top
-=
-\begin{bmatrix}
-1 & F_i^c & D_i^c & P_i^c
-\end{bmatrix}.
-$$
-
-Its fitted mean is the inner product
-
-$$
-\widehat y_i=\mathbf x_i^\top\widehat{\boldsymbol\beta}.
-$$
 
 ## Inspecting observed rows
 
@@ -101,14 +123,32 @@ ggplot(mald, aes(fitted_mean_log_rt, mean_log_rt)) +
 
 The complete matrix contains `r nrow(model.matrix(fit))` rows and `r ncol(model.matrix(fit))` columns. Its first column is the intercept column. The other columns contain observed centered item properties.
 
-The OLS solution follows by differentiating
+## From squared error to the coefficient estimates
+
+We now need to choose the coefficients that make the total squared discrepancy as
+small as possible. Recall that a [derivative is a local rate of
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
+With one coefficient, its derivative tells us whether a small increase in that
+coefficient would raise or lower squared error. With several coefficients, we
+collect one such derivative for each coefficient in a **gradient**. A zero
+gradient means that no sufficiently small move in any single coefficient
+direction lowers the criterion.
+
+The scalar calculation supplies the pattern. If \(q(b)=(y-xb)^2\), then
+
+$$
+q'(b)=-2x(y-xb).
+$$
+
+For the complete data matrix, the same calculation is performed for all rows
+and coefficients at once. We differentiate
 
 $$
 (\mathbf y-\mathbf X\boldsymbol\beta)^\top
 (\mathbf y-\mathbf X\boldsymbol\beta)
 $$
 
-with respect to $\boldsymbol\beta$. Setting the gradient to zero gives the normal equations
+with respect to $\boldsymbol\beta$:
 
 $$
 \begin{aligned}
@@ -128,7 +168,12 @@ $$
 \mathbf X^\top\mathbf y,
 $$
 
-and, when $\mathbf X^\top\mathbf X$ is invertible,
+Setting the gradient to zero gives the **normal equations**, the system that a
+least-squares coefficient vector must satisfy. The matrix
+\(\mathbf X^{\mathsf T}\mathbf X\) converts a coefficient vector into the left
+side of that system. Calling this matrix **invertible** means that the conversion
+can be undone in exactly one way. When it is invertible, multiplying both sides
+by its inverse yields
 
 $$
 \widehat{\boldsymbol\beta}
@@ -150,9 +195,67 @@ data.frame(
 )
 ```
 
-The design matrix makes coefficient meaning auditable. It also exposes a failure: if one column is an exact linear combination of others, the inverse does not exist. The correlated-predictor pages return to this issue with the observed MALD design.
+The design matrix makes coefficient meaning auditable. It also exposes a failure:
+if one column is an exact linear combination of others, distinct coefficient
+vectors can produce the same fitted values. Then the inverse does not exist and
+the normal equations do not determine a unique coefficient vector. The
+correlated-predictor pages return to this issue with the observed MALD design.
 
 Full column rank means that no nonzero change in the coefficient vector can leave every fitted value unchanged. Geometrically, OLS projects $\mathbf y$ onto the column space spanned by the declared predictor columns.
+
+## Seeing a projection {#projection-as-fitted-plus-residual}
+
+In a two-observation illustration, the model's column space can be drawn as a
+line. The fitted vector is the point on that line closest to the observed
+response vector. The remaining arrow is the residual vector, and its right
+angle with the model line explains why no movement along that line can reduce
+the squared distance further.
+
+```{r}
+#| label: fig-projection-fitted-residual
+#| fig-cap: "A two-dimensional response vector decomposed into its projection onto a model line and a perpendicular residual."
+#| fig-alt: "Coordinate plane with a sloped gray model line through the origin. A blue arrow runs from the origin to the fitted projection on that line. A black arrow runs from the origin to the observed response. An orange residual arrow connects the fitted point to the observed point at a right angle to the model line."
+#| echo: false
+
+projection_diagram <- data.frame(
+  x = c(0, 0, 2), # dqr-allow: symbolic-derivation
+  y = c(0, 0, 1), # dqr-allow: symbolic-derivation
+  xend = c(1.4, 2, 1.4), # dqr-allow: symbolic-derivation
+  yend = c(2.2, 1, 2.2), # dqr-allow: symbolic-derivation
+  quantity = factor(
+    c("Observed response", "Fitted projection", "Residual"),
+    levels = c("Observed response", "Fitted projection", "Residual")
+  )
+)
+
+ggplot() +
+  geom_abline(slope = 0.5, intercept = 0, color = "grey65", linewidth = 0.7) +
+  geom_segment(
+    data = projection_diagram,
+    aes(x, y, xend = xend, yend = yend, color = quantity),
+    arrow = grid::arrow(length = grid::unit(0.16, "cm")),
+    linewidth = 0.9
+  ) +
+  annotate("text", x = 2.55, y = 1.15, label = "model column space",
+           color = "grey35", size = 3.4) +
+  annotate("text", x = 1.10, y = 2.35, label = "observed", size = 3.4) +
+  annotate("text", x = 2.15, y = 0.85, label = "fitted", size = 3.4) +
+  scale_color_manual(
+    values = c("Observed response" = "black",
+               "Fitted projection" = "#2C6E9B",
+               "Residual" = "#B24C24")
+  ) +
+  coord_equal(xlim = c(-0.15, 3), ylim = c(-0.15, 2.6), expand = FALSE) +
+  labs(x = "Response coordinate 1", y = "Response coordinate 2", color = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "bottom")
+```
+
+The observed vector in the figure is the sum of the fitted projection and the
+residual. A real regression has one response coordinate per observation, so we
+cannot usually draw its column space. The same perpendicular decomposition
+still holds, and the [leverage page](leverage-and-influence.qmd) later uses it to
+ask which rows have the greatest capacity to move the projection.
 
 ## Recap and check your understanding
 

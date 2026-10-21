@@ -4,7 +4,13 @@ execute:
   cache: false
 ---
 
-[BIC](choosing-a-mixture.qmd) penalizes likelihood on the rows used for fitting. We now compare the fixed ten-component `EVI` model and the BIC-selected fourteen-component `EEI` model by predictive density on complete held-out speakers. This comparison retains the K10/G14 distinction and uses the same folds as the centroid validation.
+[BIC](choosing-a-mixture.qmd) penalizes the fitted
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood),
+the joint density of the training vectors viewed as a function of the mixture
+parameters. We now compare the fixed ten-component `EVI` model and the BIC-selected
+fourteen-component `EEI` model by predictive density on complete held-out speakers.
+This comparison retains the K10/G14 distinction and uses the same folds as the
+centroid validation.
 
 The **validation-target specification (VTS)** is:
 
@@ -78,7 +84,7 @@ stopifnot(all(tapply(vowels$fold, vowels$speaker, function(x) {
 })))
 ```
 
-The folds exclude every one of a held-out speaker's `r unique(as.integer(table(vowels$speaker)))` rows from mixture estimation. Each held-out speaker supplies an unlabeled panel for within-speaker standardization. The target is thus an adapted complete panel, not a first isolated token.
+The folds exclude every one of a held-out speaker's `r unique(as.integer(table(vowels$speaker)))` rows from mixture estimation. Each held-out speaker supplies an unlabeled panel for within-speaker standardization. The score therefore concerns density for a complete panel after adaptation to that panel's coordinate system. A first isolated token would not provide the mean and standard deviation needed for the transformation.
 
 ## Held-out log loss
 
@@ -102,8 +108,7 @@ p(\mathbf x_i\mid Z_i=k,D_{\mathrm{train}})\\
 \end{aligned}
 $$
 
-This weighted sum, rather than the density under the winning hard component, is
-what `mclust::dens(..., logarithm = TRUE)` returns.
+This is an application of [conditional probability](../foundations/conditional-probability.qmd): the component-specific density is weighted by the component probability and summed because the component label is unobserved. The full weighted sum, rather than the density under the winning hard component, is what `mclust::dens(..., logarithm = TRUE)` returns.
 
 For a mixture fit to training speakers, the log loss of token $i$ is
 
@@ -200,8 +205,16 @@ loss_summary <- speaker_loss |>
     speakers = dplyr::n(),
     mean_speaker_log_loss =
       mean(mean_negative_log_predictive_density),
-    standard_error_across_speakers =
-      stats::sd(mean_negative_log_predictive_density) / sqrt(dplyr::n()),
+    median_speaker_log_loss =
+      stats::median(mean_negative_log_predictive_density),
+    speaker_log_loss_sd =
+      stats::sd(mean_negative_log_predictive_density),
+    speaker_log_loss_q10 = stats::quantile(
+      mean_negative_log_predictive_density, 0.10, names = FALSE
+    ),
+    speaker_log_loss_q90 = stats::quantile(
+      mean_negative_log_predictive_density, 0.90, names = FALSE
+    ),
     .groups = "drop"
   )
 
@@ -260,12 +273,13 @@ ggplot2::ggplot(paired_loss, ggplot2::aes(
 
 The figure keeps the 76 paired speaker comparisons visible. Points left of zero favor G14 under predictive density; points right of zero favor K10.
 
-The standard errors in `loss_summary` describe dispersion among the 76 observed
-speaker means under this fixed five-fold assignment. They do not include
-uncertainty from the historical sampling frame, the within-speaker transformation,
-the candidate grid, or repeated fold construction. The paired scatter is thus more
-informative about heterogeneity than a confidence-interval interpretation of those
-bars would be.
+The table describes the 76 observed speaker means with their mean, median,
+standard deviation, and 10th and 90th percentiles under this fixed five-fold
+assignment. These are summaries of heterogeneity in the historical sample.
+They do not include uncertainty from the historical sampling frame, the
+within-speaker transformation, the candidate grid, or repeated fold
+construction. The paired scatter keeps that heterogeneity visible without
+giving the summaries a confidence-interval interpretation.
 
 ## External alignment after prediction
 
@@ -299,7 +313,7 @@ K10 has the larger post-fit ARI in all `r nrow(alignment_wide)` folds. Thus, the
 
 The coordinate system includes each held-out speaker's unlabeled calibration panel, though no held-out token enters mixture estimation. This is the same explicit [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd#the-prediction-information-set) used for centroid validation.
 
-The mixture likelihood still treats transformed token rows as conditionally independent and does not model their shared speaker normalization. Fold averages are computational summaries, not independent samples. Speaker-level paired values describe the variation relevant to the claim without pretending that repeated folds create new speakers.
+The mixture likelihood still treats transformed token rows as [conditionally independent](../random-variables-and-distributions/conditional-independence.qmd): after the fitted mixture is supplied, their joint density factorizes into token terms. Shared speaker normalization makes that working factorization stronger than the design warrants. Fold averages reuse speakers through a common fold-level fit, so they are computational summaries rather than new sampling units. The paired values keep each of the 76 speakers visible and describe heterogeneity at the level relevant to the claim. <!-- dqr-allow: empirical-answer -->
 
 ## Checking the validation design
 

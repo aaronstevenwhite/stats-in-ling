@@ -2,11 +2,13 @@
 title: "Iterative PCA imputation"
 ---
 
-The [complete-case analysis](complete-case-analysis.qmd) discarded a Hillenbrand token whenever one of five steady measurements was unavailable. We now retain the tokens and ask whether the other acoustic measurements predict an unavailable formant estimate. The result is a prediction of a released acoustic cell, not a recovered observation from the recording.
+The [complete-case analysis](complete-case-analysis.qmd) discarded a Hillenbrand token whenever one of five steady measurements was unavailable. We now retain the tokens and ask whether the other acoustic measurements predict an unavailable formant estimate. The low-rank model supplies a numerical prediction for that cell. Because the original measurement remains unavailable, the algorithm cannot recover or verify what the recording would have yielded.
 
 [**Iterative PCA imputation**](https://search.r-project.org/CRAN/refmans/missMDA/html/imputePCA.html) repeatedly uses a rank-$K$ reconstruction to update missing cells while returning observed cells to their measured values. Principal components and matrix reconstruction have already been introduced; the new object is the update procedure.
 
-We derive and implement that update, choose rank with registered artificial masks, predict the naturally missing cells, and then distinguish those predictions from recovered measurements.
+We derive and implement that update, choose rank with artificial masks fixed before
+comparing ranks, predict the naturally missing cells, and then distinguish those
+predictions from recovered measurements.
 
 ::: {.callout-note title="Prerequisite: low-rank reconstruction"}
 Review [centering and scaling](../factorization/centering-and-scaling.qmd), [principal component analysis](../factorization/principal-component-analysis.qmd), and [rank-$K$ reconstruction](../factorization/reconstruction.qmd). The treatment of [choosing the number of components](../factorization/choosing-components.qmd) supplies the holdout logic used below.
@@ -209,11 +211,11 @@ The code estimates $\widehat\mu_j$ and $\widehat s_j$ before filling cells. A ma
 
 The default tolerance $10^{-6}$ asks the missing-cell update to change by less than roughly one part per million on the squared standardized scale. The cap of 1,000 iterations prevents an indefinitely running fit. Neither number follows from the Hillenbrand measurement process; they are numerical settings, so every reported fit checks `converged`, `iterations`, and `final_change`. Tightening the tolerance or changing the initialization is a useful sensitivity check when a substantive result depends on the completed cells.
 
-## Choosing rank with registered masks
+## Choosing rank with masks fixed in advance
 
-The number of retained components controls which relations can inform a missing cell. We compare $K\in\{0,1,2,3,4,5,8,10,12,15,20\}$ using eight registered validation masks. Each mask hides 5% of the naturally observed cells in every fallible column. Four smaller test masks are created afterward; their union is removed from every validation fit, so rank choice cannot use any test target directly or through preprocessing.
+The number of retained components controls which relations can inform a missing cell. Before comparing ranks, we fix eight validation masks and the grid $K\in\{0,1,2,3,4,5,8,10,12,15,20\}$. Each mask hides 5% of the naturally observed cells in every fallible column. Four smaller test masks are created afterward; their union is removed from every validation fit, so rank choice cannot use any test target directly or through preprocessing.
 
-The rank grid includes the mean-only baseline, every small rank through five, and increasingly flexible reconstructions up to 20 of the 29 columns. Eight masks reduce dependence on one random split while keeping each fit large enough to estimate centers, scales, and component directions. The 5% validation fraction supplies enough targets to compare ranks; the four 1.25% test masks reserve disjoint cells without consuming the available table. These are design choices, not universal defaults, and the next page reports what target they validate. <!-- dqr-allow: algorithm-setting -->
+The rank grid includes the mean-only baseline, every small rank through five, and increasingly flexible reconstructions up to 20 of the 29 columns. Eight masks reduce dependence on one random split while keeping each fit large enough to estimate centers, scales, and component directions. The 5% validation fraction supplies enough targets to compare ranks; the four 1.25% test masks reserve disjoint cells without consuming the available table. Fixing these settings before inspecting the errors prevents us from repeatedly changing the comparison until a favored rank wins. Other matrix sizes or missingness patterns may require a different grid and different mask fractions; the next page reports the target validated by the present choices. <!-- dqr-allow: algorithm-setting -->
 
 ```{r}
 #| label: build-hillenbrand-validation-masks
@@ -465,6 +467,8 @@ Iterative PCA imputation alternates between rank-$K$ reconstruction and replacem
 1. Standardization places the acoustic columns on comparable scales, and every preprocessing quantity is estimated from training cells.
 2. Each iteration reconstructs the completed matrix at rank $K$ but updates only the cells declared missing.
 3. The epsilon floor, tolerance, iteration cap, and initialization define a reproducible numerical algorithm without guaranteeing a unique substantive solution.
-4. Registered validation masks choose rank; the [validation-error section](validating-imputation.qmd#defining-the-validation-error) next separates that choice from the final test.
+4. Validation masks fixed before comparing ranks choose the rank; the
+   [validation-error section](validating-imputation.qmd#defining-the-validation-error)
+   next separates that choice from the final test.
 
 [Previous: Complete-case analysis](complete-case-analysis.qmd) · [Next: Validating imputation](validating-imputation.qmd)

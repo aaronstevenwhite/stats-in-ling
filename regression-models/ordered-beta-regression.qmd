@@ -5,9 +5,19 @@ execute:
   message: false
 ---
 
-[**Ordered-beta regression**](https://doi.org/10.1017/pan.2022.20) represents three observable regions: $Y_i=0$, $0<Y_i<1$, and $Y_i=1$. We fit the same population formula to both MegaNegRaising sliders, as prespecified in the dataset audit.
+[**Ordered-beta regression**](https://doi.org/10.1017/pan.2022.20) represents three observable regions: $Y_i=0$, $0<Y_i<1$, and $Y_i=1$. We fit the same population formula to both MegaNegRaising sliders so we can compare how voice and subject relate to each recorded response.
 
-We first state the endpoint-and-interior likelihood, then fit both slider responses and compare the distinct processes governing endpoint use and interior location.
+Each row receives a predictor location \(\eta_i\), a numerical position
+determined by that row's predictors and coefficients. Two ordered
+**cutpoints**, \(\kappa_0<\kappa_1\), divide the location scale into regions
+associated with zero, the open interval, and one. For an interior response, the
+positive **precision** \(\phi\) controls how concentrated the beta density is
+around its mean: larger precision means less interior spread at a fixed mean.
+
+The logistic [CDF](../random-variables-and-distributions/cumulative-distribution-functions.qmd) supplies endpoint-region probabilities, while the beta [variance](../random-variables-and-distributions/variance-and-covariance.qmd) describes spread conditional on an interior response. Fitting uses [maximum likelihood](../statistical-inference/maximum-likelihood.qmd): the observed slider values remain fixed while coefficients, cutpoints, and precision vary.
+
+We begin with an observed endpoint response, generalize its contribution to all
+three regions, and then fit both slider responses.
 
 This model combines the threshold logic from [ordinal regression](ordinal-regression.qmd) with the interior [beta distribution](../random-variables-and-distributions/beta-distribution.qmd). It adds a strong **shared-location assumption**: one predictor value $\eta_i$ simultaneously moves zero use, one use, and the center of interior responses. Separate endpoint logits plus a beta regression would relax that restriction.
 
@@ -19,6 +29,32 @@ mnr$voice <- factor(mnr$voice, levels = c("active", "passive"))
 mnr$subject <- factor(mnr$subject, levels = c("first", "third"))
 X <- model.matrix(~ voice * subject, mnr)
 ```
+
+The first observed exact-zero neg-raising response supplies a concrete starting
+point:
+
+```{r}
+#| label: ordered-beta-observed-zero
+#| echo: true
+observed_zero_index <- which(mnr$negraising == 0)[[1L]]
+cbind(
+  mnr[observed_zero_index, c("voice", "subject", "negraising")],
+  X[observed_zero_index, , drop = FALSE]
+)
+```
+
+For this row, the recorded value is \(y_i=0\). Its likelihood contribution is
+the probability that the latent location falls in the lower endpoint region:
+
+$$
+p_{0i}=F(\kappa_0-\eta_i),
+\qquad
+\eta_i=\sum_j x_{ij}\beta_j.
+$$
+
+The sum defining \(\eta_i\) multiplies each displayed design-row entry by its
+coefficient and adds the products. We now add the contributions needed for
+interior values and exact ones.
 
 For ordered cutpoints $\kappa_0<\kappa_1$ and $\eta_i=\mathbf x_i^\mathsf T\boldsymbol\beta$,
 
@@ -62,6 +98,20 @@ p_{1i}, & y_i=1.
 \end{cases}
 $$
 
+For \(n\) rows, conditional independence lets us multiply these observed-row
+contributions. Computation uses the equivalent sum of their logarithms:
+
+$$
+L(\boldsymbol\beta,\kappa_0,\kappa_1,\phi)
+=
+\prod_{i=1}^{n}
+f(y_i\mid\eta_i,\kappa_0,\kappa_1,\phi),
+\qquad
+-\log L
+=
+-\sum_{i=1}^{n}\log f(y_i\mid\eta_i,\kappa_0,\kappa_1,\phi).
+$$
+
 The three regions form a valid distribution because
 
 $$
@@ -72,9 +122,23 @@ p_{0i}
 =p_{0i}+p_{mi}+p_{1i}=1.
 $$
 
-The logistic CDF $F$ keeps the ordered probabilities between zero and one and makes the location additive in log odds. It is a choice, not a consequence of bounded support. The precision $\phi$ controls interior beta variance at fixed $\mu_i$; it does not control endpoint mass directly.
+We use the logistic CDF \(F\) because it keeps the ordered probabilities between
+zero and one and makes the location additive in log odds. Bounded support alone
+would permit other CDFs. The precision $\phi$ controls interior beta variance at
+fixed $\mu_i$; endpoint mass is controlled by the ordered-region probabilities.
 
 The visible likelihood below constrains the cutpoint gap and precision to be positive.
+
+We must search for the coefficient, cutpoint, and precision values together.
+Recall that a [derivative is a local rate of
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
+A **gradient** collects that rate for every parameter of the negative log
+likelihood. A **Hessian** collects the second derivatives and describes its local
+curvature; the [Hessian discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+develops that interpretation. We use **BFGS**, which builds an approximation to
+the inverse Hessian from successive gradients and uses it to choose each next
+parameter vector. The search ends when relative progress falls below `reltol`
+or after `maxit` iterations.
 
 The code-to-model map is:
 
@@ -126,9 +190,94 @@ data.frame(response = c("neg-raising", "ease"),
            negative_log_likelihood = c(neg_fit$value, ease_fit$value))
 ```
 
-The starting values place the intercept near the empirical interior location, initialize contrasts at zero, set a finite ordered gap, and set moderate precision. They are computational launch points, not prior information. BFGS constructs an inverse-curvature approximation from successive gradients; `maxit` is an iteration ceiling, and `reltol` is a numerical stopping rule. The `1e-15` bounds prevent floating-point `log(0)` and should never be interpreted as observed pseudo-counts.
+## Fitted contributions for two observed rows
 
-The optimizer reports convergence, but a return code alone is not enough. A central finite-difference check evaluates whether the negative-log-likelihood gradient is near zero at the solution, and the Hessian eigenvalues check local positive curvature.
+The symbolic likelihood becomes easier to read when one fitted predictor cell is carried through every region. The code below finds an actual zero and an actual interior neg-raising response with the same voice and subject, then uses the fitted parameter vector to compute their shared $\eta_i$, region probabilities, interior mean, and likelihood contributions.
+
+```{r}
+#| label: ordered-beta-one-contribution
+p <- ncol(X)
+beta <- neg_fit$par[seq_len(p)]
+lower <- neg_fit$par[[p + 1L]]
+upper <- lower + exp(neg_fit$par[[p + 2L]])
+precision <- exp(neg_fit$par[[p + 3L]])
+
+candidate_cells <- interaction(mnr$voice, mnr$subject, drop = TRUE)
+usable_cell <- names(which(vapply(
+  split(mnr$negraising, candidate_cells),
+  function(values) any(values == 0) && any(values > 0 & values < 1),
+  logical(1)
+)))[[1L]]
+cell_rows <- which(candidate_cells == usable_cell)
+zero_row <- cell_rows[which(mnr$negraising[cell_rows] == 0)[[1L]]]
+interior_row <- cell_rows[
+  which(mnr$negraising[cell_rows] > 0 & mnr$negraising[cell_rows] < 1)[[1L]]
+]
+
+eta <- drop(X[zero_row, , drop = FALSE] %*% beta)
+p_zero <- plogis(lower - eta)
+p_one <- plogis(eta - upper)
+p_middle <- 1 - p_zero - p_one # dqr-allow: algorithm-setting
+mu <- plogis(eta)
+interior_y <- mnr$negraising[[interior_row]]
+
+worked_contributions <- data.frame(
+  observed_region = c("exact zero", "interior"),
+  observed_y = c(0, interior_y),
+  eta = eta,
+  p_zero = p_zero,
+  p_middle = p_middle,
+  p_one = p_one,
+  interior_mean = mu,
+  likelihood_contribution = c(
+    p_zero,
+    p_middle * dbeta(
+      interior_y,
+      mu * precision,
+      (1 - mu) * precision
+    )
+  )
+)
+worked_contributions
+```
+
+The exact zero contributes only $p_{0i}$. The interior response uses the same $\eta_i$ twice: once through $p_{mi}$, which determines whether the response enters the interior, and again through $\mu_i$, which locates its beta density within that region.
+
+A positive shift in $\eta_i$ moves all four quantities because of the shared-location assumption:
+
+```{r}
+#| label: ordered-beta-location-shift
+eta_values <- c(fitted = eta, shifted_up_one = eta + 1)
+do.call(rbind, lapply(names(eta_values), function(label) {
+  current_eta <- eta_values[[label]]
+  current_zero <- plogis(lower - current_eta)
+  current_one <- plogis(current_eta - upper)
+  data.frame(
+    location = label,
+    eta = current_eta,
+    p_zero = current_zero,
+    p_middle = 1 - current_zero - current_one, # dqr-allow: algorithm-setting
+    p_one = current_one,
+    interior_mean = plogis(current_eta)
+  )
+}))
+```
+
+The starting values place the intercept near the empirical interior location,
+initialize contrasts at zero, set a finite ordered gap, and set moderate
+precision. They start the numerical search and carry no prior probability. The
+`1e-15` bounds prevent floating-point `log(0)`; they do not add observed
+pseudo-counts.
+
+The optimizer reports convergence, but a return code alone is not enough. To
+check the gradient independently, we move one parameter a small distance above
+and below its fitted value. The change in the criterion divided by the total
+step approximates that parameter's derivative; this is a **central finite
+difference**. We want every such derivative to be near zero. We also inspect
+the Hessian. An **eigenvector** gives a coefficient-space direction whose
+direction is preserved by the curvature transformation, and its **eigenvalue**
+records the curvature in that direction. A positive smallest eigenvalue is
+consistent with a strict local minimum of the negative log likelihood.
 
 ```{r}
 #| label: check-ordered-beta-optimum
@@ -160,11 +309,6 @@ data.frame(
 ```{r}
 #| label: ordered-beta-raw-and-fit
 #| echo: true
-p <- ncol(X)
-beta <- neg_fit$par[seq_len(p)]
-lower <- neg_fit$par[[p + 1L]]
-upper <- lower + exp(neg_fit$par[[p + 2L]])
-precision <- exp(neg_fit$par[[p + 3L]])
 grid <- expand.grid(voice = levels(mnr$voice), subject = levels(mnr$subject))
 X_grid <- model.matrix(~ voice * subject, grid)
 eta_grid <- drop(X_grid %*% beta)
@@ -209,7 +353,7 @@ ggplot(display, aes(bin, group = subject)) +
        shape = NULL, linetype = NULL) + theme_classic()
 ```
 
-The fitted passive coefficient is `r round(beta[[which(colnames(X) == "voicepassive")]], 3)`, a shift on the ordered location scale. Interpretation belongs in the full predictive distribution above, not in that coefficient alone.
+The fitted passive coefficient is `r round(beta[[which(colnames(X) == "voicepassive")]], 3)`, a shift on the ordered location scale. We interpret that shift through the full predictive distribution above because the coefficient alone does not say how probability moves among zero, the interior, and one.
 
 These are fixed population fits. They omit participant and verb dependence and do not reproduce An and White's acceptability-weighted latent model. Ease remains a companion response, never a trial-level filter. The ordering also assumes that predictors move endpoint use and interior location through one latent dimension; condition-specific discrepancies in the plot are the relevant check.
 

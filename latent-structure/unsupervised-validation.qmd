@@ -4,7 +4,7 @@ execute:
   cache: false
 ---
 
-A clustering has no observed cluster label that the fitting procedure is meant to predict. For K-means, we can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The validation target here is a new speaker's complete 20-token calibration panel, not one isolated token.
+A clustering has no observed cluster label that the fitting procedure is meant to predict. Recall that [K-means](k-means.qmd) represents a fitted group by its centroid, the coordinate-wise mean of the tokens assigned to that group. We can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The held-out speaker supplies all 20 unlabeled tokens needed for speaker-relative standardization, and none enters centroid fitting. The resulting target is reconstruction of a complete calibrated panel; an isolated first token would not supply the same coordinate system.
 
 The **validation-target specification (VTS)** is:
 
@@ -188,8 +188,14 @@ loss_summary <- speaker_loss |>
   dplyr::summarise(
     speakers = dplyr::n(),
     mean_speaker_loss = mean(mean_squared_reconstruction_loss),
-    standard_error_across_speakers =
-      stats::sd(mean_squared_reconstruction_loss) / sqrt(dplyr::n()),
+    median_speaker_loss = stats::median(mean_squared_reconstruction_loss),
+    speaker_loss_sd = stats::sd(mean_squared_reconstruction_loss),
+    speaker_loss_q10 = stats::quantile(
+      mean_squared_reconstruction_loss, 0.10, names = FALSE
+    ),
+    speaker_loss_q90 = stats::quantile(
+      mean_squared_reconstruction_loss, 0.90, names = FALSE
+    ),
     .groups = "drop"
   )
 
@@ -197,26 +203,26 @@ stopifnot(all(loss_summary$speakers == 76L))
 knitr::kable(loss_summary, digits = 3)
 ```
 
-Each speaker contributes one mean loss at each $K$, so speakers receive equal weight in the displayed uncertainty summary.
-
-The standard error is the sample standard deviation of the `r dplyr::n_distinct(vowels$speaker)` speaker means divided
-by \(\sqrt{\text{`r dplyr::n_distinct(vowels$speaker)`}}\). It describes dispersion across these observed historical speakers
-under this fixed fold construction. It does not account for uncertainty from drawing
-a new population sample, choosing the representation, or rerunning the fold
-assignment.
+Each speaker contributes one mean loss at each $K$, so speakers receive equal
+weight. The table reports their mean, median, [standard deviation](../random-variables-and-distributions/standard-deviation.qmd), and 10th and
+90th percentiles. These quantities directly describe how reconstruction loss
+varies among the 76 historical speakers under this fixed fold assignment. They
+do not turn the speakers into independent draws from a new population, and they
+do not propagate uncertainty from choosing the representation or fold
+construction.
 
 ```{r}
 #| fig-width: 7
 #| fig-height: 4.2
-#| fig-alt: "Mean held-out speaker reconstruction loss across two through fifteen training centroids, with standard-error bars across speakers."
+#| fig-alt: "Mean held-out speaker reconstruction loss across two through fifteen training centroids, with bars spanning the tenth through ninetieth percentiles of speaker losses."
 
 ggplot2::ggplot(loss_summary, ggplot2::aes(
   x = k, y = mean_speaker_loss
 )) +
   ggplot2::geom_errorbar(
     ggplot2::aes(
-      ymin = mean_speaker_loss - standard_error_across_speakers,
-      ymax = mean_speaker_loss + standard_error_across_speakers
+      ymin = speaker_loss_q10,
+      ymax = speaker_loss_q90
     ),
     width = 0,
     color = "grey45",
@@ -232,7 +238,7 @@ ggplot2::ggplot(loss_summary, ggplot2::aes(
   ggplot2::theme_classic(base_size = 11)
 ```
 
-Held-out mean loss is `r round(loss_summary$mean_speaker_loss[loss_summary$k == 10], 3)` for ten centroids and `r round(loss_summary$mean_speaker_loss[loss_summary$k == 15], 3)` for fifteen. The decline shows that more centers represent the complete held-out panels more compactly under this loss.
+Held-out mean loss is `r round(loss_summary$mean_speaker_loss[loss_summary$k == 10], 3)` for ten centroids and `r round(loss_summary$mean_speaker_loss[loss_summary$k == 15], 3)` for fifteen. The vertical ranges show where the middle 80% of speaker losses fall. The decline shows that more centers represent the complete held-out panels more compactly under this loss.
 
 ## Why reconstruction loss does not select a category count
 

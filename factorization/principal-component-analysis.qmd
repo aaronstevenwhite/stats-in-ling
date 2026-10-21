@@ -4,30 +4,146 @@ title: "Principal component analysis"
 
 Principal component analysis (PCA) finds directions along which centered rows vary. For the PHOIBLE matrix, a row is an inventory record and a column is a segment listing. PCA thus summarizes covariance among database-segment columns. It does not use phonological labels, family names, or macroareas to fit the directions.
 
+Recall that [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) are probability-model quantities for random variables. On this page, hats and $s^2$ mark empirical analogues computed across the realized training inventory records. The resulting components summarize this prepared database matrix and need not be universal articulatory axes.
+
+The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+develops matrix-vector multiplication from scalar multiplication and dot
+products. We will keep the componentwise calculation visible before using its
+compact matrix abbreviation.
+
 We derive the variance criterion, connect its solution to the SVD, verify that identity on PHOIBLE, and only then use metadata to interpret the fitted scores.
+
+## A two-dimensional case first
+
+Suppose two centered measurements have the sample covariance matrix
+
+$$
+\mathbf S=
+\begin{bmatrix}4&0\\0&1\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+The value 4 says that the horizontal measurement varies four times as much as
+the vertical measurement, whose variance is 1. <!-- dqr-allow: symbolic-derivation --> The off-diagonal zeros say that
+the two measurements have zero sample covariance. If we transform the
+horizontal vector \((1,0)^{\mathsf T}\), ordinary row-by-column multiplication
+gives <!-- dqr-allow: symbolic-derivation -->
+
+$$
+\begin{bmatrix}4&0\\0&1\end{bmatrix} % dqr-allow: symbolic-derivation
+\begin{bmatrix}1\\0\end{bmatrix} % dqr-allow: symbolic-derivation
+=
+\begin{bmatrix}4\\0\end{bmatrix} % dqr-allow: symbolic-derivation
+=
+4
+\begin{bmatrix}1\\0\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+The vector becomes four times as long and keeps its direction. We call such a
+direction an **eigenvector** and call its multiplier the **eigenvalue**. By
+contrast, the diagonal vector \((1,1)^{\mathsf T}/\sqrt 2\) becomes
+\((4,1)^{\mathsf T}/\sqrt 2\), which points in a different direction.
+
+### Seeing a preserved direction {#eigenvectors-as-preserved-directions}
+
+The figure shows that contrast. The horizontal eigenvector stays horizontal
+after the transformation, while the diagonal vector turns toward the
+high-variance horizontal coordinate.
+
+~~~{r}
+#| label: fig-eigenvector-direction
+#| fig-cap: "A matrix transformation preserves an eigenvector's direction but changes a general vector's direction."
+#| fig-alt: "Two coordinate panels. In the eigenvector panel, an original horizontal arrow and its longer transformed arrow lie on the same line. In the non-eigenvector panel, the original diagonal arrow and transformed flatter arrow point in different directions."
+#| echo: false
+
+library(ggplot2)
+
+S_example <- diag(c(4, 1))
+eigen_direction <- c(1, 0)
+other_direction <- c(1, 1) / sqrt(2)
+
+make_transformation_arrows <- function(v, panel) {
+  transformed <- drop(S_example %*% v)
+  data.frame(
+    panel = panel,
+    stage = factor(
+      c("After transformation", "Original"),
+      levels = c("Original", "After transformation")
+    ),
+    x = 0,
+    y = 0,
+    xend = c(transformed[[1]], v[[1]]),
+    yend = c(transformed[[2]], v[[2]])
+  )
+}
+
+transformation_arrows <- rbind(
+  make_transformation_arrows(eigen_direction, "Eigenvector"),
+  make_transformation_arrows(other_direction, "Non-eigenvector")
+)
+
+ggplot(
+  transformation_arrows,
+  aes(x, y, xend = xend, yend = yend, color = stage)
+) +
+  geom_segment(
+    arrow = grid::arrow(length = grid::unit(0.16, "cm")),
+    linewidth = 1
+  ) +
+  facet_wrap(~panel) +
+  scale_color_manual(values = c("Original" = "black",
+                                "After transformation" = "#2C6E9B")) +
+  coord_equal(xlim = c(0, 4.3), ylim = c(0, 1.25), expand = FALSE) +
+  labs(x = "Coordinate 1", y = "Coordinate 2", color = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "bottom")
+~~~
+
+The horizontal direction also yields the largest possible variance after we
+project the two measurements onto any unit-length direction. We now derive why
+that maximum-variance direction must be an eigenvector.
 
 ## Beginning with variation around column means
 
-Let
+For observed row \(i\) and column \(j\), let \(x_{ij}\) be the original cell and
+let \(\widehat\mu_j\) be the training mean of column \(j\). Centering subtracts
+that column mean:
+
+$$
+z_{ij}=x_{ij}-\widehat\mu_j.
+$$
+
+Collecting all centered cells into a matrix gives
 
 $$
 \mathbf Z
 =
 \mathbf X
 -
-\mathbf 1_n\widehat{\boldsymbol\mu}^{\mathsf T}
+\mathbf 1_n\widehat{\boldsymbol\mu}^{\mathsf T},
 $$
 
-be the training-centered matrix. For a unit direction $\mathbf v$, the row scores are
+where \(\mathbf 1_n\) supplies one copy of the column-mean vector for every
+training row. Let \(\mathbf v\) be a direction with length one, so
+\(\mathbf v^{\mathsf T}\mathbf v=1\). The score for row \(i\) is the sum
+of one product per centered segment-listing column:
+
+$$
+t_i
+=
+\sum_{j=1}^{p}z_{ij}v_j.
+$$
+
+Doing that calculation for every row gives the score vector
 
 $$
 \mathbf t=\mathbf Z\mathbf v.
 $$
 
-Their sample variance is
+Their empirical variance across row scores is
 
 $$
-\operatorname{Var}[\mathbf t]
+s_t^2
+=\widehat{\operatorname{Var}}_{\mathrm{rows}}(\mathbf t)
 =
 \frac{1}{n-1}\mathbf t^{\mathsf T}\mathbf t
 =
@@ -53,7 +169,16 @@ $$
 \mathbf v^{\mathsf T}\mathbf S\mathbf v.
 $$
 
-Introduce a multiplier \(\eta\) for the unit-length constraint:
+The unit-length condition matters because, without it, multiplying
+\(\mathbf v\) by a larger constant would make the criterion arbitrarily large.
+We therefore have a constrained problem: increase the variance while staying on
+the unit circle (or unit sphere in more dimensions).
+
+A **Lagrange multiplier** is an extra unknown that lets us solve an equality-
+constrained problem with ordinary derivatives. We subtract the constraint
+\(\mathbf v^{\mathsf T}\mathbf v-1=0\), multiplied by an unknown \(\eta\), from
+the objective. We then solve for both \(\mathbf v\) and \(\eta\); \(\eta\) is
+not chosen in advance.
 
 $$
 \mathcal L(\mathbf v,\eta)
@@ -62,7 +187,10 @@ $$
 -\eta(\mathbf v^{\mathsf T}\mathbf v-1).
 $$
 
-Because \(\mathbf S\) is symmetric,
+The **gradient** collects one [local rate of
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+for each entry of \(\mathbf v\). Because \(\mathbf S\) is symmetric, the
+gradient of the Lagrange expression is
 
 $$
 \frac{\partial\mathcal L}{\partial\mathbf v}
@@ -70,14 +198,20 @@ $$
 2\mathbf S\mathbf v-2\eta\mathbf v.
 $$
 
-Setting the gradient to zero gives
+Setting it to zero finds a **stationary
+direction**, one for which every sufficiently small allowed move has zero
+first-order change. The resulting equation is
 
 $$
 \mathbf S\mathbf v=\eta\mathbf v.
 $$
 
-Thus every stationary direction is an eigenvector. Multiplying on the left by
-\(\mathbf v^{\mathsf T}\) shows that its objective value is the corresponding
+This is an **eigenvalue equation**. An **eigenvector** of \(\mathbf S\) is a
+nonzero direction whose direction is unchanged when \(\mathbf S\) acts on it;
+the **eigenvalue** is the multiplier by which its length is scaled. Thus every
+stationary direction here is an eigenvector, with \(\eta\) as its eigenvalue.
+Multiplying on the left by \(\mathbf v^{\mathsf T}\) shows that its objective
+value is that same
 eigenvalue, so the largest eigenvalue gives the first direction.
 
 Later directions maximize the same criterion while remaining orthogonal to the preceding directions.
@@ -133,7 +267,8 @@ $$
 \mathbf U\mathbf D.
 $$
 
-This is an identity between two computations, not a resemblance inferred from a plot.
+The two calculations give exactly the same score matrix. We established that
+equality algebraically above and verify it numerically below.
 
 ## Verifying the identity on PHOIBLE
 
@@ -254,7 +389,7 @@ PCA also does not discover a group contrast merely because groups can be colored
 
 1. Centering makes the covariance interpretation concern departures from column
    means rather than arbitrary binary origins.
-2. It is the sample variance of row projections onto \(\mathbf v\).
+2. It is the empirical variance across the realized row projections onto \(\mathbf v\).
 3. Substituting the SVD into \(\mathbf Z^{\mathsf T}\mathbf Z/(n-1)\) produces that
    eigendecomposition.
 4. Only centered segment listings enter; macroarea is joined afterward.

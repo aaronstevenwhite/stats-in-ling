@@ -2,11 +2,19 @@
 title: "Measuring natural-parts judgments"
 ---
 
-We can now combine the [UDS response process](generative-stories.qmd), its [joint factorization](writing-a-joint-model.qmd), the [recovery analysis](parameter-recovery.qmd), and [annotator-specific intercepts](annotator-effects.qmd). The model separates predicate-node variation from annotator variation in binary natural-parts responses.
+We now face the problem left open by the
+[UDS response process](generative-stories.qmd): a yes or no response may reflect the
+predicate node, the annotator, or Bernoulli variation. A useful model must separate
+those sources.
 
-The model is narrower than the event-structure representation in [Gantt, Glass, and White (2022)](https://aclanthology.org/2022.tacl-1.2/). It does not model conditional follow-up questions or confidence. And it treats an item as one predicate node in sentence context, not as a verb lemma or context-free event type.
+The model covers one part of the event-structure representation in [Gantt, Glass, and White (2022)](https://aclanthology.org/2022.tacl-1.2/): the natural-parts gate. Conditional follow-up questions and confidence have no likelihood terms here. Each item identifier anchors one predicate node in one sentence context, so item effects vary over those contextualized nodes rather than verb lemmas or context-free event types.
 
-We write the complete model, inspect its posterior population and item summaries, check partial pooling and replicated responses, and then compare the fitted item scale with the released normalized values before stating the remaining limits.
+We begin from the earlier [joint factorization](writing-a-joint-model.qmd), add the
+[annotator-specific intercepts](annotator-effects.qmd), and use the
+[recovery analysis](parameter-recovery.qmd) to check whether the released incidence
+design can separate the two group scales. We then inspect posterior population and
+item summaries, check partial pooling and replicated responses, and compare the
+fitted item scale with the released normalized values.
 
 ## Loading measurements and posterior draws
 
@@ -20,7 +28,7 @@ uds <- utils::read.csv(
   check.names = FALSE
 )
 uds_cache <- readRDS(
-  "data/uds/uds-natural-parts-teaching-cache.rds"
+  "data/uds/uds-natural-parts-posterior-cache.rds"
 )
 
 stopifnot(
@@ -63,7 +71,7 @@ uds[uds$item_id == "ewt-test-963%%ewt-test-963-semantics-pred-6",
 
 Only the raw binary responses enter the likelihood. The released normalized value is retained for an external comparison after fitting.
 
-The displayed rows anchor *exhibited* in “His artworks were selected and exhibited in British Museum in 2002.” The graph-to-sentence mapping follows the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html), and the sentence comes from the pinned [UD English EWT 1.2 test source](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). Its responses 0, 1, and 0 are three measurements of one predicate node under the natural-parts prompt, not three context-free labels for the lemma *exhibit*.
+The displayed rows anchor *exhibited* in “His artworks were selected and exhibited in British Museum in 2002.” The graph-to-sentence mapping follows the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html), and the sentence comes from the [UD English EWT 1.2 test file](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). The three responses—0, 1, and 0—were elicited for one predicate node under the natural-parts prompt. The annotation target is the predicate in this sentence context; the responses do not supply three context-free labels for the lemma *exhibit*.
 
 ## Writing the complete model
 
@@ -78,7 +86,19 @@ $$
 =\alpha+u_i+a_j.
 $$
 
-The fitted deviations are effects constructed by centering non-centered standard-normal vectors,
+The response rows are conditionally
+[independent](../foundations/independence.qmd) after their shared item and annotator
+effects are supplied. The scale parameters below are
+[standard deviations](../random-variables-and-distributions/standard-deviation.qmd)
+for the raw latent coordinates before centering.
+
+We use the
+[non-centered parameterization](../statistical-inference/divergent-transitions.qmd)
+introduced on the recovery page: sample a standard-normal coordinate $z$ first,
+then multiply it by the unknown group scale $\sigma$ to construct the deviation.
+This represents the same conditional normal distribution as sampling the deviation
+directly, but gives the sampler different coordinates. The fitted deviations also
+center those standard-normal vectors:
 
 $$
 u_i=\sigma_{\text{item}}
@@ -112,32 +132,55 @@ $$
 \operatorname{logit}^{-1}(\alpha+u_i)
 $$
 
-is item $i$'s yes probability with the annotator effect fixed at zero. It is not the probability obtained by integrating over an annotator population.
+is item $i$'s yes probability with the annotator coordinate fixed at zero. Integrating over an annotator population instead averages the inverse-logit transformation across possible annotator deviations; the later prediction section computes that distinct quantity.
 
-The zero-sum transformation introduces mild dependence among the realized effects: if one centered $u_i$ increases while the raw-vector mean is held fixed, other centered effects must offset it. The non-centered raw variables remain convenient sampling coordinates, while the centered effects give $\alpha$ a finite-sample origin. This is an identification convention, not evidence that the sampled population has exactly zero empirical mean.
+The zero-sum transformation introduces mild dependence among the realized effects: if one centered $u_i$ increases while the raw-vector mean is held fixed, other centered effects must offset it. The non-centered raw variables remain convenient sampling coordinates, while the centered effects give $\alpha$ a finite-sample origin. Subtracting a realized vector mean imposes that origin by construction; it supplies no empirical evidence that a broader item or annotator population has mean zero.
 
-For observed responses $\mathbf y$, the posterior comes from Bayes' rule:
+More precisely, $\sigma_{\text{item}}$ and $\sigma_{\text{annotator}}$ are raw-deviation scales. The induced centered item variance is $\sigma_{\text{item}}^2(1-1/I)$, and two distinct item effects have covariance $-\sigma_{\text{item}}^2/I$; replace $I$ with $J$ for annotators. This finite-population dependence is the consequence of subtracting each raw vector's realized mean.
+
+For observed responses $\mathbf y$, the
+[posterior distribution](../statistical-inference/posterior-distributions.qmd) comes
+from Bayes' rule:
 
 $$
 \begin{aligned}
-p(&\alpha,\boldsymbol u,\boldsymbol a,
+p(&\alpha,\boldsymbol z^{\text{item}},
+\boldsymbol z^{\text{annotator}},
 \sigma_{\mathrm{item}},\sigma_{\mathrm{annotator}}\mid\mathbf y)
 \propto{}&
 \prod_{(i,j)\in\mathcal O}
 p(y_{ij}\mid\alpha,u_i,a_j)\\
 &\times p(\alpha)
-p(\boldsymbol u\mid\sigma_{\mathrm{item}})
-p(\boldsymbol a\mid\sigma_{\mathrm{annotator}})
+p(\boldsymbol z^{\text{item}})
+p(\boldsymbol z^{\text{annotator}})
 p(\sigma_{\mathrm{item}})
 p(\sigma_{\mathrm{annotator}}).
 \end{aligned}
 $$
 
-The omitted proportionality constant is the integral of the numerator over every unknown parameter. Stan does not calculate that integral directly. It generates correlated draws whose long-run distribution is the posterior; posterior medians, intervals, and predictions below are functions evaluated across those joint draws.
+Here $\mathbf u$ and $\mathbf a$ inside the response factors are deterministic functions of the two raw vectors and their scale parameters, as defined above. Writing the density over the raw coordinates matters: the centered effect vectors lie on zero-sum subspaces and therefore do not have ordinary full-dimensional normal densities. The omitted proportionality constant is the integral of the numerator over every unknown raw coordinate and parameter. Stan does not calculate that integral directly. It generates correlated draws whose long-run distribution is the posterior; posterior medians, intervals, and predictions below are functions evaluated across those joint draws.
 
-The prior choices encode regularization. The intercept prior permits a broad range of baseline probabilities without concentrating on the boundary. The half-normal scale priors favor smaller heterogeneity but leave room for large item or annotator differences. Standard-normal deviations define exchangeable, symmetric, light-tailed group populations. A potential worry is that “weakly regularizing” means inconsequential. It does not: with only two or three responses per item, prior scale choices can affect item shrinkage.
+The prior choices encode **regularization**: sparse item- or annotator-specific evidence
+is combined with a shared population distribution, pulling weakly informed
+deviations toward the population center. This is the Bayesian analogue of the
+coefficient shrinkage developed in
+[ridge regression](../regression-models/ridge-regression.qmd). The intercept prior
+permits a broad range of baseline probabilities without concentrating on the
+boundary. The half-normal scale priors favor smaller heterogeneity but leave room
+for large item or annotator differences. Standard-normal deviations are
+**exchangeable**, meaning that item or annotator labels do not predict their prior
+ordering; this is the same symmetry introduced in the
+[exchangeable Bernoulli model](../statistical-inference/posterior-distributions.qmd).
+They also assume symmetric, light-tailed group populations. A potential worry is
+that “weakly regularizing” means inconsequential. It does not: with only two or three
+responses per item, prior scale choices can affect item shrinkage.
 
-Before conditioning on the observed responses, their combined implications can be inspected by prior prediction.
+Before conditioning on the observed responses, we can inspect their combined
+implications through a
+[prior predictive check](../statistical-inference/prior-predictive-distributions.qmd).
+We draw unknown quantities from the prior, generate a complete response table under
+each draw, and inspect the resulting yes rates. No observed response is used in this
+calculation.
 
 ```{r}
 #| label: uds-prior-predictive
@@ -252,11 +295,16 @@ run_one_chain <- function(chain) {
 released_chain_fits <- lapply(seq_len(4L), run_one_chain)
 ```
 
-Rendering reads 400 evenly spaced draws from the audited 3,200-draw posterior. The compact cache is a teaching artifact from the full fit, not an independent refit.
-
-Four chains permit between-chain convergence checks. The 800 warmup iterations adapt the Hamiltonian trajectory and mass matrix; the 800 retained iterations per chain form the full posterior sample. `adapt_delta = 0.95` requests smaller integration steps to reduce divergences in the hierarchical geometry. These settings are justified only together with the reported $\widehat R$, effective sample sizes, and divergence count; revisit [checking Markov chains](../statistical-inference/checking-markov-chains.qmd) and the [No-U-Turn sampler](../statistical-inference/no-u-turn-sampler.qmd).
-
-The cache keeps every eighth row beginning with full-posterior row 4. This deterministic thinning reduces repository size and preserves each selected row as one joint draw across population, item, and annotator arrays. It does not create independent draws or improve the effective sample size of the original chains.
+Four chains permit between-chain convergence checks. The 800 warmup iterations
+adapt the Hamiltonian trajectory and mass matrix; the 800 post-warmup iterations per
+chain form the full 3,200-draw run. All reported $\widehat R$ values,
+[effective sample sizes](../statistical-inference/effective-sample-size.qmd), and
+divergence counts refer to that full run. The predictive
+calculations below average over 400 joint posterior states, so their finite-draw
+Monte Carlo error concerns those calculations rather than the convergence
+diagnostics. Revisit [checking Markov chains](../statistical-inference/checking-markov-chains.qmd)
+and the [No-U-Turn sampler](../statistical-inference/no-u-turn-sampler.qmd) for the
+diagnostic definitions.
 
 ## Population summaries
 
@@ -281,7 +329,7 @@ stopifnot(
 knitr::kable(parameter_summary, digits = 3)
 ```
 
-Both scale intervals lie away from zero in this model and extract. Predicate nodes vary in their response propensities, and annotators vary in response location after item variation is represented. This is evidence about the annotation process, not a partition of predicates into event-structural categories.
+Both scale intervals lie away from zero in this model and extract. Predicate nodes vary in their response propensities, and annotators vary in response location after item variation is represented. Because the likelihood contains continuous item deviations for contextualized predicate nodes and no category variable, these intervals support heterogeneity in the annotation process without partitioning predicates into event-structural categories.
 
 The intercept should not be read as the logit of the raw yes proportion. The raw average mixes different item and annotator effects through a nonlinear link, while $\alpha$ locates an item and annotator whose deviations are both zero.
 
@@ -353,7 +401,13 @@ The displayed first-item comparison keeps two estimands apart. Fixing $a_j=0$ ev
 
 ## Checking replicated response matrices
 
-A fitted ordering is not enough. We generate one replicated response for every observed item--annotator pair in each cached posterior draw. Two summaries target distinct features: the overall yes rate and the proportion of items containing both response values.
+A fitted ordering is not enough. A
+[posterior predictive check](../statistical-inference/posterior-predictive-checks.qmd)
+draws replicated data under parameter values from the posterior and compares chosen
+summaries with the same summaries of the observed responses. We generate one
+replicated response for every observed item--annotator pair in each posterior draw.
+Two summaries target distinct features: the overall yes rate and the proportion of
+items containing both response values.
 
 ```{r}
 #| label: compute-uds-ppc
@@ -553,11 +607,11 @@ The Spearman correlation is `r format(round(released_comparison, 3), nsmall = 3)
 
 The recovery and predictive gates support one narrow analysis. Six limits remain.
 
-1. The deterministic teaching extract contains 1,000 multiply annotated development and test items; it is not a random sample of every UDS predicate.
+1. The extract deterministically selects 1,000 multiply annotated development and test items. No sampling mechanism gives every UDS predicate, English predicate, or predicate use a known chance of inclusion, so the fitted distribution describes these contextualized items.
 2. Most items have three responses, so item probabilities remain strongly regularized.
 3. The annotator term represents location only, not discrimination, consistency, or interpretation.
 4. The raw confidence serialization conflicts with the documented scale, so confidence is excluded.
-5. The data do not include audited raw responses for part similarity, duration, or dynamicity; those conditional branches are not fitted.
+5. The available fields do not include raw responses for part similarity, duration, or dynamicity that can be checked against documented response scales; those conditional branches are not fitted.
 6. An item is a PredPatt predicate node in sentence context, not a context-free verb lemma.
 
 A potential worry is that passing two posterior predictive checks makes the model adequate for every purpose. While the checks target the rate and within-item disagreement that motivated this model, they cannot validate unmodeled branches or a lexical interpretation of item effects. New targets require new response data and new recovery checks.
@@ -569,7 +623,7 @@ A potential worry is that passing two posterior predictive checks makes the mode
 4. Which response features do the two predictive checks target?
 5. Which measurements remain blocked?
 
-**Answers.** (1) It is an output of another measurement procedure and would double-use information if inserted as a response here. (2) Shared paths through a connected incidence graph help separate item and annotator locations. (3) Two or three unanimous responses do not determine a probability, and partial pooling retains uncertainty. (4) The checks target the overall rate, mixed and unanimous-yes item composition, and dispersion across annotator rates. (5) Audited raw confidence and the conditional similarity, duration, and dynamicity responses remain blocked.
+**Answers.** (1) It is an output of another measurement procedure and would double-use information if inserted as a response here. (2) Shared paths through a connected incidence graph help separate item and annotator locations. (3) Two or three unanimous responses do not determine a probability, and partial pooling retains uncertainty. (4) The checks target the overall rate, mixed and unanimous-yes item composition, and dispersion across annotator rates. (5) Raw confidence cannot be reconciled with the documented scale, and the conditional similarity, duration, and dynamicity responses are unavailable.
 :::
 
 ## Recap

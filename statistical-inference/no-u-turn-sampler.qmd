@@ -9,6 +9,8 @@ execute:
 
 A static HMC transition requires a fixed number of leapfrog steps. The [**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) chooses trajectory length during each transition. Hoffman and Gelman ([2014](https://jmlr.org/papers/v15/hoffman14a.html)) introduced the original algorithm; Stan uses a multinomial variant described in its [reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html).
 
+NUTS changes how an HMC proposal is constructed while preserving the same [posterior target](posterior-distributions.qmd). Adaptive path selection concerns computation; it does not alter the parameter or predictive claims encoded by that target.
+
 We first follow the doubling and stopping logic that constructs a NUTS trajectory, then inspect actual tree lengths from the passage-level Student-t fit, and finally distinguish adaptive path selection from a guarantee that the chosen geometry is adequate.
 
 ## Growing and stopping a trajectory
@@ -42,9 +44,13 @@ A one-dimensional schematic makes the doubling rule concrete:
 
 Suppose $q^-<q^+$. If the right-end momentum becomes negative, then $(q^+-q^-)M^{-1}\rho^+<0$: the path at the right endpoint is moving back toward the left. Internal tree states helped construct this one transition; counting them all as posterior draws would overweight a single trajectory. Stan's multinomial selection instead chooses one eligible state using energy-related weights.
 
-## Actual passage-level Student-t model tree lengths
+## Passage-level Student-t model tree lengths
 
-The production passage-level Student-t fit used four chains, 750 warmup iterations, 1,000 retained iterations, `adapt_delta = 0.90`, and `max_treedepth = 10`. The code imports the original 55 passage summaries and a frozen draw object from the exact program documented on the [Stan page](stan.qmd#the-complete-program). Thus this section previews stored diagnostics; the next page supplies the program and cache provenance on which they depend.
+We now examine four chains for the 55-passage Student-$t$ model. Each chain
+used 750 warmup iterations followed by 1,000 retained iterations, with
+`adapt_delta = 0.90` and `max_treedepth = 10`. The tree depths tell us how much
+leapfrog work each retained transition required while targeting the posterior
+defined on the [Stan page](stan.qmd#the-complete-program).
 
 ```{r}
 #| label: load-provo-nuts-diagnostics
@@ -80,7 +86,7 @@ nuts_summary
 
 ```{r}
 #| label: plot-provo-nuts-work
-#| fig-cap: "Leapfrog work in the production passage-level Student-t fit. No transition reached the maximum tree depth."
+#| fig-cap: "Leapfrog work in four adapted NUTS chains for the passage-level Student-t model. No transition reached the maximum tree depth."
 work <- aggregate(n_leapfrog__ ~ .chain + treedepth__, diagnostics, length)
 names(work)[3] <- "transitions"
 
@@ -95,11 +101,28 @@ ggplot(work, aes(treedepth__, transitions, group = factor(.chain),
   theme(legend.position = "top")
 ```
 
-The maximum observed tree depth is `r max(diagnostics$treedepth__)`, and the maximum leapfrog count is `r max(diagnostics$n_leapfrog__)`. These are empirical properties of the production computation, not generic NUTS examples.
+The maximum observed tree depth is `r max(diagnostics$treedepth__)`, and the
+maximum leapfrog count is `r max(diagnostics$n_leapfrog__)`. These values
+describe the four chains shown here; another posterior geometry could require
+different path lengths.
+
+**Identification** asks whether the observable-data distribution distinguishes
+one parameter value from another. The [experimental-design chapter introduces
+that connection between a target and observable
+data](../experimental-design/index.qmd#what-you-should-already-know). A
+parameter is **weakly identified** when substantially different values produce
+very similar observable distributions. The posterior may then extend along a
+broad or narrow ridge because the data change little as we move along that
+combination of parameters. That shape can force NUTS to travel farther, but a
+longer trajectory cannot create information absent from the likelihood.
 
 NUTS chooses trajectory length within a transition. Warmup adaptation separately learns the step size and mass matrix. Increasing `max_treedepth` only permits more work; it does not repair inaccurate integration, poor geometry, or weak identification.
 
-The target acceptance setting `.90` asks adaptation to favor smaller, more accurate leapfrog steps than a lower target would. The depth cap of 10 permits at most a large binary tree before stopping computation. Both are workflow settings, not model assumptions; repeated saturation or divergences would motivate diagnosis rather than automatic increases.
+The target acceptance setting `.90` asks adaptation to favor smaller, more
+accurate leapfrog steps than a lower target would. The depth cap of 10 limits
+the size of the binary tree. Both settings regulate computation and leave the
+model assumptions unchanged. Repeated saturation or divergences would
+motivate diagnosis rather than automatic increases.
 
 ## Recap and forward link
 

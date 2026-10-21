@@ -8,7 +8,7 @@ The values of the naturally missing Hillenbrand formant cells are unavailable. N
 
 We define the reconstruction error, recreate disjoint validation and test masks, select rank without leakage, and then interpret the final error for the artificial-mask target.
 
-::: {.callout-note title="Validation--test separation (VTS)"}
+::: {.callout-note title="Validation--test separation"}
 The validation masks choose the rank. The test masks estimate error only after that choice is fixed. If a test error changes the rank grid, preprocessing, or algorithm, the test set has become another validation set and a new untouched test is required.
 :::
 
@@ -163,7 +163,7 @@ pca_impute <- function(
 
 Seeds `20261018` through `20261025` identify eight validation masks, each hiding 5% of observed cells within every fallible column. Seeds `20261026` through `20261029` identify four test masks, each hiding 1.25% per fallible column. Masks are created sequentially so that their targets are disjoint.
 
-Masking within every fallible column prevents a large column from supplying nearly all targets. The larger validation fraction makes rank differences estimable, while the smaller test fraction leaves the within-token information pattern close to the intended isolated-cell use. Eight and four repeats reduce dependence on one random draw, though four test repeats remain too few for a precise sampling distribution. The fixed seeds make this particular design auditable rather than intrinsically optimal.
+Masking within every fallible column prevents a large column from supplying nearly all targets. The larger validation fraction makes rank differences estimable, while the smaller test fraction leaves the within-token information pattern close to the intended isolated-cell use. Eight and four repeats reduce dependence on one random draw. A [sampling distribution](../statistical-inference/properties-of-estimators.qmd) describes how a statistic varies across repetitions of a declared random-sampling procedure; four test masks are too few to estimate that distribution precisely. The fixed seeds make this particular comparison reproducible; they do not make the design intrinsically optimal.
 
 ```{r}
 #| label: create-hillenbrand-masks
@@ -350,7 +350,8 @@ The validation criterion selects rank `r selected_rank`, with standardized RMSE 
 
 ## Evaluating the selected rank on untouched cells
 
-Each test fit hides its registered test mask. We compare rank `r selected_rank` with rank zero, the training-column-mean reference.
+Each test fit hides one of the four fixed test masks. We compare rank
+`r selected_rank` with rank zero, the training-column-mean reference.
 
 ```{r}
 #| label: score-hillenbrand-test-masks
@@ -414,7 +415,14 @@ stopifnot(
 test_summary
 ```
 
-The aggregation above pools cells. To expose split-to-split and linguistic variation, we also summarize RMSE within each registered test replicate and, for the selected rank, within each vowel. The interval uses variability across the four registered replicates, so it is a descriptive stability interval rather than a population confidence interval.
+The aggregation above pools cells. To expose mask-to-mask and linguistic variation,
+we also summarize RMSE within each of the four fixed test masks and, for the selected
+rank, within each vowel. A
+[confidence interval](../statistical-inference/confidence-intervals.qmd) requires a
+sampling procedure whose repeated intervals attain a stated coverage rate for a
+population parameter. The interval below instead uses the variation across only
+these four masks, so we call it a descriptive stability interval and interpret it
+only for them.
 
 ```{r}
 #| label: stratify-hillenbrand-test-error
@@ -498,19 +506,26 @@ ggplot2::ggplot(
   ggplot2::theme_classic(base_size = 11)
 ```
 
-The raw held-out measurements and model predictions appear in the same figure. The diagonal is an identity reference, not a fitted regression line.
+The raw held-out measurements and model predictions appear in the same figure.
+The diagonal is fixed in advance at prediction = observation, so its slope and
+intercept are not estimated from the plotted points. Distance from that identity
+line directly shows reconstruction error.
 
 ## What this validation targets
 
-This is cell-level, transductive validation. The other measurements from the same token remain available because the intended use is to fill isolated F2 or F3 cells in an existing acoustic matrix. The results do not estimate prediction for a new speaker, a new vowel inventory, or a token with an entire contour absent.
+This is cell-level, **transductive validation**: the target is an isolated cell
+inside the same acoustic matrix whose other token measurements remain
+available. The results therefore concern filling isolated F2 or F3 cells under
+that information set. A new speaker, a new vowel inventory, or a token with an
+entire contour absent would present a different prediction problem.
 
-The masks are random within the `r length(fallible_columns)` naturally fallible columns. They preserve the measurement columns but do not reproduce the observed dependence of natural missingness on vowel or value. Low test error thus supports interpolation under these registered masks. It does not establish unbiased reconstruction of the `r sum(is.na(acoustic_matrix))` naturally missing cells.
+The masks are random within the `r length(fallible_columns)` naturally fallible columns. They preserve the measurement columns but do not reproduce the observed dependence of natural missingness on vowel or value. Low test error thus supports interpolation under this particular masking scheme. The result cannot establish unbiased reconstruction of the `r sum(is.na(acoustic_matrix))` naturally missing cells because their values remain unknown and their missingness may follow a different process.
 
 Using the full matrix to calculate centers, scales, components, or rank would give held-out values an indirect path into their predictions. This is [leakage through preprocessing](../model-criticism-and-prediction/training-and-test-data.qmd#leakage-through-preprocessing). The code above prevents it by estimating every preprocessing quantity after masking and by excluding the test union throughout rank selection.
 
 An overall error may still hide poor reconstruction for a vowel, speaker group, or measurement column. The prediction table retains token, vowel, formant, and measurement identifiers so those errors can be inspected at the level of a later linguistic claim.
 
-## Auditing the validation
+## Checking the validation design
 
 1. Why can the naturally missing cells not supply a direct reconstruction error?
 2. Which quantities are estimated after the target cells are masked?
@@ -518,9 +533,9 @@ An overall error may still hide poor reconstruction for a vowel, speaker group, 
 4. Which prediction target is represented by leaving other measurements from the same token available?
 5. What does low error under these masks fail to establish about the natural omissions?
 
-**Answers.** (1) Their values are unobserved, so no residual can be formed. (2) Column centers and scales, singular vectors, reconstructions, and rank-dependent predictions are all estimated after masking. (3) Otherwise a test value could affect preprocessing or rank choice before being used to assess the selected procedure. (4) It represents transductive interpolation of an isolated cell when the token's other measurements remain visible. (5) It does not show that natural omissions follow the random mask design, nor that their reconstruction is unbiased.
+**Answers.** (1) Their values are unobserved, so no residual—an observed value minus its fitted prediction—can be formed; revisit the [residual definition](../regression-models/residuals.qmd). (2) Column centers and scales, singular vectors, reconstructions, and rank-dependent predictions are all estimated after masking. (3) Otherwise a test value could affect preprocessing or rank choice before being used to assess the selected procedure. (4) It represents transductive interpolation of an isolated cell when the token's other measurements remain visible. (5) It does not show that natural omissions follow the random mask design, nor that their reconstruction is unbiased.
 
-Holdout validation by artificial masking evaluates an imputation procedure on observed values made unavailable during fitting. Under the registered masks, rank `r selected_rank` predicts held-out F2 and F3 cells more accurately than the column-mean reference. This result supports one cell-reconstruction target; it does not turn predictions for naturally missing cells into measurements.
+Holdout validation by artificial masking evaluates an imputation procedure on observed values made unavailable during fitting. Under this masking scheme, rank `r selected_rank` predicts held-out F2 and F3 cells more accurately than the column-mean reference. The evidence concerns reconstruction of isolated F2 and F3 cells when the same token's other measurements remain available. Predictions for the naturally missing cells remain predictions because no observed values exist against which to check them.
 
 ## Recap
 

@@ -4,7 +4,7 @@ args <- commandArgs(trailingOnly = TRUE)
 root <- if (length(args)) normalizePath(args[[1]], mustWork = TRUE) else getwd()
 source(file.path(root, "scripts/data-grounding/common.R"))
 
-cache_path <- file.path(root, "data/uds/uds-natural-parts-teaching-cache.rds")
+cache_path <- file.path(root, "data/uds/uds-natural-parts-posterior-cache.rds")
 csv_path <- file.path(root, "data/uds/uds-natural-parts.csv")
 
 assert_sha256(
@@ -19,7 +19,7 @@ assert_sha256(
 audit_paths <- c(
   cache = file.path(
     root,
-    "research/dataset-audits/reference-missing-custom-output/uds-natural-parts-teaching-cache.rds"
+    "research/dataset-audits/reference-missing-custom-output/uds-natural-parts-posterior-cache.rds"
   ),
   fit = file.path(
     root,
@@ -63,4 +63,4 @@ stopifnot(
   identical(cache$provenance$retained_cache_rows, seq(4L, 3200L, by = 8L))
 )
 
-cat("UDS teaching cache validation passed.\n")
+cat("UDS posterior cache validation passed.\n")

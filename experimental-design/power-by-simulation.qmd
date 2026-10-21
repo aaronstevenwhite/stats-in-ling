@@ -8,9 +8,10 @@ The preceding pages established the ManyBabies 1 design: register varies within 
 
 The [random-intercept derivation](../regression-models/random-intercepts.qmd#deriving-the-induced-covariance) showed why shared intercepts induce dependence: two trials from the same infant share the same infant term, and two infants from the same laboratory share the same laboratory term. The [fixed-and-random-effects page](../regression-models/fixed-and-random-effects.qmd#beginning-with-the-scientific-target) explains the distinct population-average and grouping roles used below.
 
-We begin again from the [released ManyBabies trial table](units-of-assignment.qmd). Nothing on this page is imported from a reference output or a preceding page.
-
-We calibrate a hierarchical data-generating process from that table, generate new trials under the recorded unit structure, and then connect the estimated rejection rate to its Monte Carlo uncertainty and target population.
+We take the [released ManyBabies trial table](units-of-assignment.qmd) as the design
+to be reproduced. We calibrate a hierarchical data-generating process from that
+table, generate new trials under its recorded unit structure, and then connect the
+estimated rejection rate to its Monte Carlo uncertainty and target population.
 
 ```{r}
 manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
@@ -77,11 +78,29 @@ $$
 +\beta_t(t-\overline t)+b_l+b_{i(l)}+b_p+\epsilon,
 $$
 
-where $l$ indexes laboratory, $i$ infant, $p$ paired stimulus, and $t$ trial position. The random intercepts and residual are normally distributed with their own variances.
+where $l$ indexes laboratory, $i$ infant, $p$ paired stimulus, and $t$ trial
+position. The random intercepts and residual are normally distributed with their
+own variances. We report the square root of each variance, its
+[standard deviation](../random-variables-and-distributions/standard-deviation.qmd),
+because those are the scales used to generate new values below.
 
 Each term has one job. $\beta_0$ is the expected log looking time for ADS at the centered trial position. $\beta_{\mathrm{IDS}}$ is the modeled IDS-minus-ADS log contrast. $\beta_t$ represents a linear change over trial position. The laboratory, infant, and stimulus intercepts induce dependence among rows that share those units, while $\epsilon$ is trial-level residual variation.
 
-The generator assumes exchangeable normal intercepts within each grouping factor, normally distributed residuals, a linear position effect, constant variance, and no random register slopes. It also treats the observed log-transformed included outcomes as the calibration target. These are modeling assumptions, not consequences of the design.
+The generator assumes **exchangeable normal intercepts** within each grouping
+factor. Exchangeability means that, before seeing outcomes, permuting the laboratory,
+infant, or stimulus labels would not change the joint model; members of one grouping
+factor are drawn from the same normal population rather than assigned label-specific
+positions in advance. This is the same symmetry introduced for an
+[exchangeable population model](../statistical-inference/posterior-distributions.qmd).
+The generator also assumes normally distributed residuals, a linear position
+effect, constant variance, and no random register slopes. It treats the observed
+log-transformed included outcomes as the calibration target. The
+[variance--covariance decomposition](../random-variables-and-distributions/variance-and-covariance.qmd#covariance-and-a-variance-decomposition)
+explains why the shared intercepts contribute covariance to rows from the same
+infant or laboratory, while the
+[residual page](../regression-models/residuals.qmd) distinguishes the simulated error
+term from a fitted residual. The design itself does not supply these distributional
+assumptions.
 
 ```{r}
 model_data <- observed
@@ -116,7 +135,7 @@ knitr::kable(fixed_effects, digits = 5)
 knitr::kable(variance_components, digits = 5)
 ```
 
-The estimated IDS coefficient is `r sprintf("%.6f", fixed_effects$estimate[fixed_effects$term == "ids"])` on the log-looking-time scale. This compact model is not the paper's confirmatory model. The published analyses included a cross-laboratory meta-analysis and richer trial-level predictors; the planned random-effects structure was pruned when it did not converge. Here the model has one job: calibrate an explicit teaching simulation.
+The estimated IDS coefficient is `r sprintf("%.6f", fixed_effects$estimate[fixed_effects$term == "ids"])` on the log-looking-time scale. The published confirmatory analyses included a cross-laboratory meta-analysis and richer trial-level predictors; the planned random-effects structure was pruned when it did not converge. We choose the compact model here to estimate the register, position, laboratory, infant, stimulus-pair, and residual quantities that the simulation generator requires. Its simulated detection rates therefore describe that declared generator and planned analysis, rather than reproducing the paper's confirmatory model.
 
 Using the fitted IDS coefficient asks a conditional question: what detection rate would this planned analysis have if the future effect equaled the estimate from this release and the remaining fitted assumptions held? It does not identify a smallest effect of scientific interest, and reusing an estimate from the same release does not turn the simulation into new evidence.
 
@@ -142,6 +161,32 @@ sd_residual <- unname(sd_lookup[["Residual"]])
 stopifnot(
   abs(beta_ids - 0.106804) < 0.00001,
   all(c(sd_lab, sd_infant, sd_stimulus, sd_residual) > 0)
+)
+
+shift_check_data <- model_data
+shift_check_data$log_looking_time <-
+  shift_check_data$log_looking_time + beta_ids * shift_check_data$ids
+shift_check_fit <- suppressMessages(lme4::lmer(
+  log_looking_time ~ ids + trial_centered +
+    (1 | lab_id) + (1 | infant_id) + (1 | stimulus_id),
+  data = shift_check_data,
+  REML = TRUE,
+  control = lme4::lmerControl(optimizer = "bobyqa")
+))
+
+shift_check <- data.frame(
+  quantity = c("IDS coefficient shift", "IDS standard-error change"),
+  observed = c(
+    lme4::fixef(shift_check_fit)[["ids"]] -
+      lme4::fixef(empirical_model)[["ids"]],
+    summary(shift_check_fit)$coefficients["ids", "Std. Error"] -
+      summary(empirical_model)$coefficients["ids", "Std. Error"]
+  ),
+  required_by_identity = c(beta_ids, 0)
+)
+stopifnot(
+  abs(shift_check$observed[[1L]] - beta_ids) < 1e-6,
+  abs(shift_check$observed[[2L]]) < 1e-6
 )
 
 raw_register_trial <- aggregate(
@@ -208,11 +253,15 @@ ggplot2::ggplot(
   ggplot2::theme(legend.position = "top")
 ```
 
-The raw summaries show both the register difference and the decline over trial position. The fitted lines provide a direct visual check on the two fixed effects used by the generator.
+The raw summaries show both the register difference and the decline over trial position. The fitted lines provide a direct visual check on the two fixed effects used by the generator. The additional refit checks the coefficient-shift identity used below: adding the IDS design column times $\beta_{\mathrm{IDS}}$ shifts that fitted coefficient by $\beta_{\mathrm{IDS}}$ while leaving its standard error unchanged to numerical tolerance.
 
 ## Power and Monte Carlo error
 
-Let $G$ be the complete generating process and let $A(Y)$ be the decision returned by the planned analysis for simulated data $Y$. If $A(Y)=1$ when the two-sided Wald interval for the IDS coefficient excludes zero, then
+Let $G$ be the complete generating process and let $A(Y)$ be the decision returned
+by the planned analysis for simulated data $Y$. The set of complete simulated
+studies for which $A(Y)=1$ is an
+[event](../foundations/possibilities-and-events.qmd). If that event occurs when the
+two-sided Wald interval for the IDS coefficient excludes zero, then
 
 $$
 \operatorname{Power}(G)=\mathbb{P}_G\{A(Y)=1\}.
@@ -227,11 +276,43 @@ $$
 
 Increasing $S$ reduces numerical uncertainty about the simulation result. It does not add infants or laboratories to the planned experiment.
 
-With only $S=200$ studies per scenario, the worst-case MCSE occurs near $\widehat p=.5$ and is about $\sqrt{.25/200}=.035$. Thus a nominal two-MCSE error bar can be roughly seven percentage points wide. This is adequate for a teaching comparison but may be too imprecise for a final design decision near a power threshold.
+This is the [standard error](../statistical-inference/standard-errors.qmd) of the Monte Carlo estimator $\widehat p$, not the standard error of the IDS coefficient inside any simulated study. The [Monte Carlo page](../statistical-inference/monte-carlo-integration.qmd#two-uncertainties) develops the same distinction between uncertainty in a numerical approximation and uncertainty under the fitted statistical model.
+
+With only $S=200$ studies per scenario, the worst-case MCSE occurs near $\widehat p=.5$ and is about $\sqrt{.25/200}=.035$. Thus a nominal two-MCSE error bar can be roughly seven percentage points wide. We use 200 studies to compare scenarios whose detection rates differ substantially; differences of only a few percentage points remain unresolved. A final design decision near a power threshold would require more repetitions.
 
 ## Simulating the ManyBabies structure
 
 The generator assigns each simulated infant one empirical order template, samples complete IDS-ADS stimulus pairs, draws laboratory, infant, stimulus-pair, and residual terms from the fitted standard deviations, and fits the same model. The design grid varies one dimension at a time around a baseline.
+
+Begin with ordinary linear regression containing one predictor $x$. If we add
+$cx_i$ to every response, then increasing the fitted slope by $c$ restores every
+fitted residual:
+
+$$
+[y_i+cx_i]-[\widehat\beta_0+(\widehat\beta_1+c)x_i]
+=
+y_i-[\widehat\beta_0+\widehat\beta_1x_i].
+$$
+
+Thus the slope shifts by $c$, while the residuals and the slope standard error stay
+the same. The matrix form applies this argument to one selected coefficient. Suppose
+the simulated null response is $\mathbf y_0$ and the model matrix contains an IDS
+column. Adding $\mathbf X\mathbf c$, where only the IDS entry of $\mathbf c$ is
+nonzero, gives
+
+$$
+\widehat{\boldsymbol\beta}(\mathbf y_0+\mathbf X\mathbf c)
+=\widehat{\boldsymbol\beta}(\mathbf y_0)+\mathbf c.
+$$
+
+For the Gaussian linear mixed model used here, the same shift leaves the fitted
+residuals, estimated variance components, and IDS standard error unchanged. The
+`shift_check_fit` calculation above verifies those equalities by refitting the
+analyzed design after the shift. We can therefore reuse the same simulated random
+effects and residuals across effect scenarios, which makes differences between
+scenarios easier to attribute to the declared IDS effect. This shortcut requires a
+Gaussian linear model that contains the shifted column; logistic, Poisson, and other
+nonlinear mixed models do not inherit it automatically.
 
 ```{r}
 simulation_seed <- 20261018L
@@ -379,6 +460,7 @@ for (i in seq_len(nrow(designs))) {
 
 simulation_results <- do.call(rbind, simulation_rows)
 row.names(simulation_results) <- NULL
+# The Gaussian coefficient-shift identity was derived and checked above.
 simulation_results$estimate_empirical <-
   simulation_results$estimate_null + beta_ids
 simulation_results$reject_null_under_null <- with(
@@ -522,7 +604,9 @@ ggplot2::ggplot(
 
 ## What the simulation supports
 
-The fitted effect is an estimate from the same release used for calibration. It is not a smallest effect of linguistic interest. The generator also omits age, method, language community, condition slopes, nonnormal tails, and the observed missingness process. Thus the plotted values are conditional results for this generator and analysis, not guarantees for a future study.
+The projection retains (i) the recorded within-infant register contrast and order templates, (ii) recurrence of paired stimuli across infants, (iii) laboratory and infant clustering through random intercepts, (iv) the fitted linear trial-position effect, and (v) the fitted Gaussian residual scale. It omits age, method, language-community differences, random register slopes, nonlinear position effects, nonnormal tails, and the observed missingness and exclusion process.
+
+The fitted IDS coefficient comes from the same release used to calibrate the generator. A future-study interpretation thus requires the new laboratories, infants, materials, and measurement pipeline to reproduce the retained mechanisms closely enough, and it requires the future effect to equal the fitted coefficient used here. A smallest effect of linguistic interest would have to be supplied separately. Under those conditions, the plotted values estimate the decision probability of the stated generator and analysis; changing the conditions defines a different power calculation.
 
 Each omission corresponds to a possible sensitivity analysis. Age or community heterogeneity may change the fixed contrast; method and laboratory practice may change both mean and variance; random condition slopes may weaken the information supplied by repeated trials; nonnormal tails may alter Wald behavior; and the [retention process](exclusion-rules.qmd#retention-enters-the-estimand) may change which outcomes enter the analysis.
 

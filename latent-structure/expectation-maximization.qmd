@@ -4,9 +4,86 @@ execute:
   cache: false
 ---
 
-If component labels were observed, we could estimate a Gaussian from its assigned Peterson-Barney tokens. If component parameters were known, we could calculate each token's responsibilities. The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html) alternates those two calculations when neither side is known.
+If component labels were observed, we could estimate a Gaussian from its assigned
+Peterson-Barney tokens. If component parameters were known, we could calculate the
+[responsibilities introduced on the preceding page](posterior-membership.qmd#conditioning-on-an-unobserved-component).
+The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html)
+alternates those two calculations when neither side is known. Its E-step takes a
+[conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd);
+its M-step maximizes a
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood),
+the joint density of the observed acoustic vectors viewed as a function of the
+mixture parameters. The [mixture page](gaussian-mixtures.qmd#combining-components)
+constructs that particular likelihood.
 
 We derive both updates from the complete-data formulation, implement them on the acoustic vectors, and then check the component update, likelihood path, and dependence on local solutions.
+
+## One E--M update by hand
+
+Begin with three one-dimensional observations, $x=(-1,0,3)$, and two Gaussian
+components. Give the components equal weights and unit variances, with means $-1$
+and $2$. For each observation, the E-step asks how its fitted density is divided
+between the two components. The resulting responsibility pairs are
+
+$$
+\begin{array}{c|cc}
+x_i&r_{i1}&r_{i2}\\ \hline % dqr-allow: symbolic-derivation
+-1&0.9890&0.0110\\ % dqr-allow: symbolic-derivation
+0&0.8176&0.1824\\ % dqr-allow: symbolic-derivation
+3&0.0006&0.9994 % dqr-allow: symbolic-derivation
+\end{array}
+$$
+
+Each row sums to one because the two entries are conditional probabilities for the
+two exhaustive component possibilities. Thus the observation $-1$ counts almost as
+one complete observation for component 1, the observation $3$ counts almost as one
+for component 2, and the observation $0$ is divided between them.
+
+Adding responsibilities down each column gives the effective component counts:
+
+$$
+N_1=0.9890+0.8176+0.0006=1.8071,
+\qquad
+N_2=0.0110+0.1824+0.9994=1.1929.
+$$
+
+The counts sum to three, the number of observations. Dividing by three gives the
+updated weights, $\pi_1^{(1)}=0.6024$ and $\pi_2^{(1)}=0.3976$. The updated means
+use the same fractional counts as weights:
+
+$$
+\begin{aligned}
+\mu_1^{(1)}
+&=\frac{0.9890(-1)+0.8176(0)+0.0006(3)}{1.8071} % dqr-allow: symbolic-derivation
+=-0.5464,\\
+\mu_2^{(1)}
+&=\frac{0.0110(-1)+0.1824(0)+0.9994(3)}{1.1929} % dqr-allow: symbolic-derivation
+=2.5044.
+\end{aligned}
+$$
+
+Finally, each variance is the responsibility-weighted average squared distance from
+its updated mean:
+
+$$
+\begin{aligned}
+(\sigma_1^2)^{(1)}
+&=\frac{
+0.9890(-1+0.5464)^2+0.8176(0+0.5464)^2+0.0006(3+0.5464)^2
+}{1.8071}
+=0.2515,\\
+(\sigma_2^2)^{(1)}
+&=\frac{
+0.0110(-1-2.5044)^2+0.1824(0-2.5044)^2+0.9994(3-2.5044)^2
+}{1.1929}
+=1.2781.
+\end{aligned}
+$$
+
+This example contains the complete alternation: use the current component
+parameters to divide each observation across components, then use those fractional
+memberships to update the weights, means, and variances. We now write the same
+calculation for $N$ vectors and $K$ components.
 
 ## Loading the acoustic vectors
 
@@ -180,12 +257,26 @@ r_{ik}^{(t)}
 \left(\mathbf{x}_i-\boldsymbol{\mu}_k^{(t+1)}\right)^{\mathsf T}.
 $$
 
-The transparent implementation below uses diagonal, component-specific covariance matrices, the `VVI` family in `mclust` terminology. It is intentionally distinct from the central ten-component `EVI` fit: the page exposes each update rather than reproducing that restricted optimizer.
+The implementation below uses diagonal, component-specific covariance matrices,
+the `VVI` family in `mclust` terminology. We choose it because the covariance
+updates separate by component and coordinate, so every update can be computed
+directly. The central ten-component fit instead uses `EVI`; reproducing its
+equal-determinant optimizer remains a separate computational problem.
 
 ## Deriving the maximization updates
 
+The derivation uses three pieces of matrix calculus. A
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+measures local change. A **partial derivative** measures change with respect to one
+argument while holding the others fixed, and a **gradient** collects all partial
+derivatives of a scalar objective into a vector. At a smooth maximum away from a
+parameter boundary, that gradient is zero because no sufficiently small move can increase the
+objective. These operations verify the updates already stated above; the numerical
+implementation does not require us to reproduce every derivative by hand.
+
 For the mixing weights, retain the part of \(Q\) that contains \(\pi_k\) and impose
-\(\sum_k\pi_k=1\) with a Lagrange multiplier \(\eta\):
+\(\sum_k\pi_k=1\) with a **Lagrange multiplier** \(\eta\). This extra scalar lets us
+maximize one augmented expression while enforcing that the weights sum to one:
 
 $$
 \mathcal L_{\pi}
@@ -225,6 +316,11 @@ $$
 (\mathbf x_i-\boldsymbol\mu_k).
 $$
 
+The inverse covariance $\boldsymbol\Sigma_k^{-1}$ weights movement by the
+component's spread: a displacement along a low-variance direction counts more than
+the same displacement along a high-variance direction. Multiplying by
+$\boldsymbol\Sigma_k$ cancels that weighting and exposes the weighted residual sum.
+
 Setting it to zero and multiplying by \(\boldsymbol\Sigma_k\) yields
 
 $$
@@ -245,10 +341,17 @@ $$
 {N_k^{(t)}}.
 $$
 
-`VVI` allows both diagonal volume and shape to vary by component. The central
-`EVI` model instead constrains the determinant to be equal across components while
-allowing diagonal shape to vary. Thus the implementation below teaches the update
-logic but does not reproduce the central covariance constraint.
+`VVI` allows both diagonal volume and shape to vary by component. The
+**determinant** of a covariance matrix measures its multidimensional scale; in two
+dimensions, its square root is proportional to the area of an equal-density
+ellipse. The [Gaussian-mixture page](gaussian-mixtures.qmd#one-gaussian-component)
+connects this volume to the plotted covariance ellipses. The central `EVI` model
+constrains that determinant to be equal across
+components while
+allowing diagonal shape to vary. We implement `VVI` below because its
+coordinate-specific variance updates separate cleanly and make every EM step
+visible. That calculation leaves the equal-determinant coupling unresolved; the
+central `mclust` fit imposes the `EVI` constraint directly.
 
 ## Implementing EM on the observed vectors
 
@@ -473,7 +576,7 @@ ggplot2::ggplot(trace_data, ggplot2::aes(
 
 ## Local solutions and variance constraints
 
-The variance floor prevents an estimated diagonal variance from approaching zero. It is a declared computational constraint, not an observed linguistic variance. Without such protection, a component may collapse around very few tokens and yield a misleadingly large likelihood.
+The variance floor prevents an estimated diagonal variance from approaching zero. Its value is chosen by the implementation to stabilize optimization; no acoustic measurement supplies it. Without such protection, a component may collapse around very few tokens and yield a misleadingly large likelihood.
 
 Several starts remain necessary because monotonic ascent can lead to distinct local optima. A fixed seed reproduces the collection of starts; it does not make the first solution globally best.
 
