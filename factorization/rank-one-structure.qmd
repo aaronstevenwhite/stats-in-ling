@@ -1,10 +1,369 @@
 ---
-title: "Rank one structure"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
+title: "Rank-one structure"
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+The centered [PHOIBLE inventory matrix](centering-and-scaling.qmd) contains many linked listing patterns. A rank-one approximation asks what can be represented by one row pattern and one column pattern before adding further components.
 
-**Available Monday, November 30, 2026.**
+Here *independent direction* means linearly independent in a matrix, rather than probabilistically [independent random outcomes](../foundations/independence.qmd). We call the observed-minus-reconstructed matrix a **reconstruction residual**; the [reconstruction page](reconstruction.qmd) develops that matrix-specific object, which differs from an observed-minus-fitted response in regression.
+
+We construct the outer product, fit the empirical rank-one term, compare observed and reconstructed cells, and then delimit what this compression can support linguistically.
+
+## Constructing one outer product
+
+For a matrix with $n$ rows and $p$ columns, let
+
+$$
+\mathbf a
+=
+\begin{bmatrix}
+a_1&\cdots&a_n
+\end{bmatrix}^{\mathsf T}
+\quad\text{and}\quad
+\mathbf b
+=
+\begin{bmatrix}
+b_1&\cdots&b_p
+\end{bmatrix}^{\mathsf T}.
+$$
+
+Their outer product is
+
+$$
+\mathbf a\mathbf b^{\mathsf T}
+=
+\begin{bmatrix}
+a_1b_1&\cdots&a_1b_p\\
+\vdots&\ddots&\vdots\\
+a_nb_1&\cdots&a_nb_p
+\end{bmatrix}.
+$$
+
+Every cell obeys the same rule,
+
+$$
+x_{ij}=a_i b_j.
+$$
+
+Thus all columns are scalar multiples of $\mathbf a$, and all rows are scalar multiples of $\mathbf b^{\mathsf T}$. Any nonzero matrix with this form has rank one.
+
+The individual vector scales are not identified by the product. For any nonzero constant $c$,
+
+$$
+(c\mathbf a)
+\left(\frac{1}{c}\mathbf b\right)^{\mathsf T}
+=
+\mathbf a\mathbf b^{\mathsf T}.
+$$
+
+The [next page introduces the singular value decomposition
+(SVD)](singular-value-decomposition.qmd#stating-the-reduced-decomposition),
+which fixes this scale ambiguity by using unit-length vectors. For current
+purposes, we need only its rank-one form: \(d_1\) is a nonnegative **singular
+value** recording the strength of the pattern, while \(\mathbf u_1\) and
+\(\mathbf v_1\) record its unit-length row and column directions:
+
+$$
+\widehat{\mathbf Z}^{(1)}
+=
+d_1\mathbf u_1\mathbf v_1^{\mathsf T},
+\qquad
+\mathbf u_1^{\mathsf T}\mathbf u_1
+=
+\mathbf v_1^{\mathsf T}\mathbf v_1
+=1.
+$$
+
+For a \(2\times3\) hand calculation, let
+
+$$
+\mathbf a=
+\begin{bmatrix}1\\2\end{bmatrix}, % dqr-allow: symbolic-derivation
+\qquad
+\mathbf b=
+\begin{bmatrix}1\\-1\\3\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+Then
+
+$$
+\mathbf a\mathbf b^{\mathsf T}
+=
+\begin{bmatrix}
+1&-1&3\\ % dqr-allow: symbolic-derivation
+2&-2&6 % dqr-allow: symbolic-derivation
+\end{bmatrix}.
+$$
+
+If the observed matrix differs only in its lower-right cell,
+
+$$
+\mathbf Z=
+\begin{bmatrix}
+1&-1&3\\ % dqr-allow: symbolic-derivation
+2&-2&7 % dqr-allow: symbolic-derivation
+\end{bmatrix},
+\qquad
+\mathbf E=
+\mathbf Z-\mathbf a\mathbf b^{\mathsf T}
+=
+\begin{bmatrix}
+0&0&0\\ % dqr-allow: symbolic-derivation
+0&0&1 % dqr-allow: symbolic-derivation
+\end{bmatrix},
+$$
+
+then the squared reconstruction loss is
+\(\|\mathbf E\|_F^2=1\). The outer product captures one shared pattern; the
+residual identifies the cell it misses.
+
+### Seeing reconstruction and residual cells {#rank-one-reconstruction-picture}
+
+The three panels below show that subtraction cell by cell. Because all panels
+use the same color scale, a given color always represents the same numerical
+value. The printed cell values keep the small residual visible even though its
+magnitude is much smaller than the largest observed cell.
+
+~~~{r}
+#| label: fig-rank-one-reconstruction
+#| fig-cap: "An observed matrix, its rank-one reconstruction, and the remaining cellwise residual on one shared color scale."
+#| fig-alt: "Three two-by-three heatmaps labeled observed matrix, rank-one reconstruction, and residual. The observed and reconstructed matrices agree in five cells. Their lower-right cells are seven and six, leaving a residual of one in the lower-right cell and zero elsewhere."
+#| echo: false
+#| fig-width: 8.5
+#| fig-height: 3.2
+
+library(ggplot2)
+
+observed_small <- matrix(
+  c(1, -1, 3, 2, -2, 7),
+  nrow = 2,
+  byrow = TRUE
+)
+rank_one_small <- outer(c(1, 2), c(1, -1, 3))
+residual_small <- observed_small - rank_one_small
+
+matrix_panel <- function(matrix_value, panel_name) {
+  panel <- as.data.frame(as.table(matrix_value))
+  names(panel) <- c("row", "column", "value")
+  panel$panel <- panel_name
+  panel
+}
+
+small_plot_data <- rbind(
+  matrix_panel(observed_small, "Observed matrix"),
+  matrix_panel(rank_one_small, "Rank-one reconstruction"),
+  matrix_panel(residual_small, "Residual")
+)
+small_plot_data$row <- factor(
+  small_plot_data$row,
+  levels = rev(unique(small_plot_data$row))
+)
+small_plot_data$column <- factor(
+  small_plot_data$column,
+  levels = unique(small_plot_data$column)
+)
+shared_limit <- max(abs(small_plot_data$value))
+
+ggplot(small_plot_data, aes(column, row, fill = value)) +
+  geom_tile(color = "grey80", linewidth = 0.4) +
+  geom_text(aes(label = value), size = 4) +
+  facet_wrap(~panel, nrow = 1) +
+  scale_fill_gradient2(
+    low = "#2166AC",
+    mid = "white",
+    high = "#B2182B",
+    midpoint = 0,
+    limits = c(-shared_limit, shared_limit),
+    name = "Cell value"
+  ) +
+  coord_equal() +
+  labs(x = "Column", y = "Row") +
+  theme_classic(base_size = 11) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = "bottom"
+  )
+~~~
+
+## Fitting the empirical rank-one pattern
+
+The following code reconstructs the PHOIBLE training matrix from the release object. Segment retention and centering depend only on training inventory records.
+
+```{r}
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+inventories <- phoible$inventories[
+  order(phoible$inventories$glottocode,
+        as.integer(phoible$inventories$inventory_id)),
+]
+groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+RNGkind(sample.kind = "Rejection")
+set.seed(20260827L)
+keep <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+selected <- inventories[unname(keep), ]
+
+area <- selected$macroarea
+area[is.na(area) | area == ""] <- "Unclassified"
+selected$split <- NA_character_
+set.seed(20261018L)
+for (name in sort(unique(area))) {
+  index <- sample(which(area == name))
+  n_holdout <- floor(0.15 * length(index))
+  selected$split[index[seq_len(n_holdout)]] <- "validation"
+  selected$split[index[n_holdout + seq_len(n_holdout)]] <- "test"
+  selected$split[index[is.na(selected$split[index])]] <- "training"
+}
+training_rows <- which(selected$split == "training")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
+)
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
+
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+fit <- svd(Z, nu = 1L, nv = 1L)
+Z_rank_one <- fit$d[[1]] * tcrossprod(fit$u[, 1], fit$v[, 1])
+dimnames(Z_rank_one) <- dimnames(Z)
+
+c(
+  first_singular_value = fit$d[[1]],
+  centered_sum_of_squares_fraction =
+    sum(Z_rank_one^2) / sum(Z^2)
+)
+```
+
+The first fitted pattern accounts for `r scales::percent(sum(Z_rank_one^2) / sum(Z^2), accuracy = 0.1)` of the centered sum of squares. That empirical proportion is far from complete reconstruction, so the rank-one matrix is an approximation rather than an exact representation of the inventory data.
+
+| Mathematical object | R object | Role |
+|---|---|---|
+| \(\mathbf u_1\) | `fit$u[, 1]` | unit direction over inventory rows |
+| \(d_1\) | `fit$d[[1]]` | strength of the first term |
+| \(\mathbf v_1\) | `fit$v[, 1]` | unit direction over segment columns |
+| \(d_1\mathbf u_1\mathbf v_1^{\mathsf T}\) | `Z_rank_one` | fitted centered cells |
+| \(\mathbf Z-\widehat{\mathbf Z}^{(1)}\) | `Z - Z_rank_one` | residual cells |
+
+## Comparing observed and fitted cells
+
+To make the cell pattern legible, the plot uses the same training inventory rows and segment columns selected for the matrix display on the first page. Both panels use one diverging scale, centered at zero.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 6
+
+areas <- setdiff(sort(unique(selected$macroarea)), c("", NA, "Unclassified"))
+display_rows_global <- unlist(lapply(areas, function(one_area) {
+  candidates <- training_rows[selected$macroarea[training_rows] == one_area]
+  candidates <- candidates[order(rowSums(X[candidates, , drop = FALSE]))]
+  candidates[unique(round(seq(1, length(candidates), length.out = 4)))]
+}), use.names = FALSE)
+display_rows <- match(display_rows_global, training_rows)
+display_columns <- order(training_mean, decreasing = TRUE)[seq_len(20)]
+segment_meta <- phoible$segments[match(column_ids, phoible$segments$segment_id), ]
+
+long_matrix <- function(M, panel) {
+  out <- as.data.frame(as.table(M[display_rows, display_columns, drop = FALSE]))
+  names(out) <- c("row", "column", "value")
+  out$panel <- panel
+  out$inventory <- selected$language_name[
+    display_rows_global[match(out$row, rownames(M)[display_rows])]
+  ]
+  out$segment <- segment_meta$segment[
+    display_columns[match(out$column, colnames(M)[display_columns])]
+  ]
+  out
+}
+
+plot_data <- rbind(
+  long_matrix(Z, "Observed centered cells"),
+  long_matrix(Z_rank_one, "Rank-one fit")
+)
+plot_data$inventory <- factor(plot_data$inventory, levels = rev(unique(plot_data$inventory)))
+plot_data$segment <- factor(
+  plot_data$segment,
+  levels = segment_meta$segment[display_columns]
+)
+bound <- max(abs(plot_data$value))
+
+ggplot(plot_data, aes(x = segment, y = inventory, fill = value)) +
+  geom_tile() +
+  facet_wrap(~panel) +
+  scale_fill_gradient2(
+    low = "#2166AC", mid = "white", high = "#B2182B",
+    midpoint = 0, limits = c(-bound, bound), name = "Centered\nlisting"
+  ) +
+  labs(x = "Segment", y = "Inventory record") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The fitted panel is smoother because all its cells share one outer-product rule. Positive and negative values indicate deviations above and below training prevalence. They are not probabilities.
+
+## Compression and interpretation
+
+An unrestricted $n\times p$ matrix contains $np$ cells. A rank-one representation stores $n+p+1$ fitted quantities before accounting for the unit-length and sign conventions. The reduction can be substantial, but it is useful only when the residual matrix
+
+$$
+\mathbf E^{(1)}
+=
+\mathbf Z-\widehat{\mathbf Z}^{(1)}
+$$
+
+is small enough for the target at hand.
+
+The component is a numerical direction. PHOIBLE family and macroarea metadata do not enter this fit, and a high loading does not by itself identify a phonological natural class. Rank is an algebraic property before it is a linguistic hypothesis.
+
+Least-squares rank one is used as descriptive geometry because it gives a single
+common pattern with a transparent cellwise squared-loss criterion. It does not
+assume that centered binary cells are Gaussian observations, independent
+Bernoulli trials, or calibrated probabilities. The
+[truncated-SVD result](singular-value-decomposition.qmd#why-truncation-is-the-best-rank-k-approximation)
+will explain why the fitted first term is the best rank-one approximation under
+this particular loss.
+
+## Checking the common pattern
+
+1. Why are all rows of an exact rank-one matrix proportional?
+2. What roles do $d_1$, $\mathbf u_1$, and $\mathbf v_1$ play?
+3. What does a positive centered cell mean in the PHOIBLE matrix?
+4. Why is the fitted rank-one matrix not a probability matrix?
+5. Why does an interpretable loading pattern not establish a natural class?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Every row is a scalar multiple of \(\mathbf b^{\mathsf T}\).
+2. The vectors give unit row and column directions; \(d_1\) gives their strength.
+3. It is a deviation above the training segment-listing proportion.
+4. Centered least-squares fitted values are unrestricted real numbers.
+5. A numerical weight pattern requires independent linguistic evidence.
+
+</details>
+
+## Recap
+
+1. An outer product couples every fitted cell through one row and one column vector.
+2. Residual cells record the structure that one shared pattern misses.
+3. Least-squares rank describes the geometry of the matrix; it supplies no
+   binary probability model.
+
+The [next page](singular-value-decomposition.qmd#stating-the-reduced-decomposition)
+adds orthogonal rank-one terms in order of their empirical strength.

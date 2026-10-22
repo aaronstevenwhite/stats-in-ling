@@ -1,10 +1,318 @@
 ---
 title: "K-means clustering"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+We now fit centroids to the [speaker-relative Peterson-Barney representation](distance-and-scaling.qmd). Intended-vowel labels do not enter the fit. We fix $K=10$ before fitting so that the resulting ten-region acoustic partition can later be compared with the experiment's ten elicitation categories. The label count therefore enters the evaluation design, not the centroid-estimation algorithm.
 
-**Available Monday, November 23, 2026.**
+## Reconstructing the feature matrix
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    )
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+stopifnot(
+  max(abs(tapply(vowels$z_f1, vowels$speaker, mean))) < 1e-12,
+  max(abs(tapply(vowels$z_f2, vowels$speaker, mean))) < 1e-12
+)
+```
+
+## Assignments, centroids, and loss
+
+Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s feature vector. For $K$ clusters, let
+
+$$
+z_i\in\{1,\ldots,K\}
+$$
+
+be its hard assignment and let
+
+$$
+\boldsymbol{\mu}_k\in\mathbb{R}^p
+$$
+
+be centroid $k$. [**K-means clustering**](https://online.stat.psu.edu/stat505/Lesson14) minimizes the within-cluster sum of squares
+
+$$
+W
+=
+\sum_{i=1}^{N}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_{z_i}
+\right\rVert^2.
+$$
+
+For fixed centroids, the assignment step chooses
+
+$$
+z_i
+=
+\underset{k\in\{1,\ldots,K\}}{\operatorname{argmin}}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_k
+\right\rVert^2.
+$$
+
+This update is optimal for fixed centroids because token \(i\)'s contribution to
+\(W\) is exactly one of the \(K\) displayed squared distances. Choosing any center
+other than the minimum can only preserve or increase that summand, and the choices
+for different tokens separate. Thus the nearest-center rule minimizes \(W\) over
+all assignments with the centroids held fixed.
+
+For fixed assignments, the update step replaces each centroid with the mean of its assigned rows:
+
+$$
+\boldsymbol{\mu}_k
+=
+\frac{1}{|C_k|}
+\sum_{i\in C_k}\mathbf{x}_i.
+$$
+
+## Why the update is a mean
+
+For one coordinate of one fixed cluster, the squared loss around a proposed center $\mu$ is
+
+$$
+Q(\mu)
+=
+\sum_{i=1}^{n}(x_i-\mu)^2.
+$$
+
+Recall that a
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+is a local rate of change. Here it tells us whether moving the proposed center
+slightly to the right would increase or decrease the squared loss. Its derivative
+is
+
+$$
+\frac{\mathrm{d}Q}{\mathrm{d}\mu}
+=
+-2\sum_{i=1}^{n}(x_i-\mu).
+$$
+
+At a smooth minimum, a small move in either direction cannot lower the loss, so this
+local rate of change is zero. Setting the derivative to zero gives
+
+$$
+\sum_{i=1}^{n}x_i-n\mu=0,
+$$
+
+and thus
+
+$$
+\mu
+=
+\frac{1}{n}\sum_{i=1}^{n}x_i.
+$$
+
+The coordinatewise mean thus minimizes squared distance for fixed assignments.
+
+For a one-iteration hand calculation, suppose the one-dimensional observations
+are \(-1,1,5\) and the current centers are \(0\) and \(4\). The squared-distance
+pairs are \((1,25)\), \((1,9)\), and \((25,1)\), so the assignment step gives
+\(C_1=\{-1,1\}\) and \(C_2=\{5\}\). The update then gives
+
+$$
+\mu_1^{\mathrm{new}}=\frac{-1+1}{2}=0,
+\qquad
+\mu_2^{\mathrm{new}}=5.
+$$
+
+The first center stays fixed and the second moves from 4 to 5. This small example
+separates the nearest-center comparison from the mean calculation performed after
+the assignments are fixed.
+
+## Fitting ten centroids
+
+```{r}
+seed <- 1952L
+components <- 10L
+
+set.seed(seed)
+fit_k10 <- stats::kmeans(
+  X,
+  centers = components,
+  nstart = 100L,
+  iter.max = 200L,
+  algorithm = "Hartigan-Wong"
+)
+
+fit_summary <- data.frame(
+  quantity = c("centroids", "iterations", "within-cluster sum of squares"),
+  value = c(components, fit_k10$iter, fit_k10$tot.withinss)
+)
+knitr::kable(fit_summary, digits = 3)
+```
+
+The fitted loss is `r round(fit_k10$tot.withinss, 3)`. The seed and 100 starts make this calculation reproducible and reduce sensitivity to one initialization. They do not establish a global optimum.
+
+The displayed equations describe Lloyd-style block updates. R's
+`Hartigan-Wong` implementation may move individual observations between clusters
+when doing so reduces the objective, but it targets the same within-cluster sum of
+squares. We use 100 starts because local solutions are plausible in this
+overlapping space, and 200 iterations is a generous computational ceiling rather
+than a mathematical constant. Hartigan-Wong reports an error rather than silently
+returning a final solution when a requested fit cannot maintain nonempty clusters.
+Finally, seed 1952 labels the random initialization sequence for reproducibility;
+it does not make one initialization scientifically privileged.
+
+## Inspecting one observed assignment
+
+The token used on the scaling page is row `r which.min(rowSums(sweep(X, 2, colMeans(X), "-")^2))`. We calculate its squared distance to every fitted centroid rather than inserting a constructed coordinate pair.
+
+```{r}
+pairwise_squared_distance <- function(x, centers) {
+  x2 <- rowSums(x^2)
+  c2 <- rowSums(centers^2)
+  pmax(outer(x2, c2, "+") - 2 * tcrossprod(x, centers), 0)
+}
+
+reference_row <- which.min(rowSums(sweep(X, 2, colMeans(X), "-")^2))
+reference_distances <- data.frame(
+  cluster = seq_len(components),
+  squared_distance = as.numeric(pairwise_squared_distance(
+    X[reference_row, , drop = FALSE],
+    fit_k10$centers
+  ))
+) |>
+  dplyr::arrange(squared_distance) |>
+  dplyr::mutate(distance_rank = dplyr::row_number())
+
+stopifnot(reference_distances$cluster[1] == fit_k10$cluster[reference_row])
+knitr::kable(reference_distances, digits = 3)
+```
+
+The nearest fitted centroid is cluster `r reference_distances$cluster[1]`, with squared distance `r round(reference_distances$squared_distance[1], 3)`. The integer label is arbitrary; its location and assigned observations define the fitted region.
+
+## Verifying the update step on the fitted data
+
+```{r}
+centroid_check <- vowels |>
+  dplyr::mutate(cluster = fit_k10$cluster) |>
+  dplyr::group_by(cluster) |>
+  dplyr::summarise(
+    assigned_tokens = dplyr::n(),
+    observed_mean_z_f1 = mean(z_f1),
+    observed_mean_z_f2 = mean(z_f2),
+    .groups = "drop"
+  ) |>
+  dplyr::mutate(
+    fitted_z_f1 = fit_k10$centers[cluster, 1],
+    fitted_z_f2 = fit_k10$centers[cluster, 2],
+    maximum_absolute_difference = pmax(
+      abs(observed_mean_z_f1 - fitted_z_f1),
+      abs(observed_mean_z_f2 - fitted_z_f2)
+    )
+  )
+
+stopifnot(max(centroid_check$maximum_absolute_difference) < 1e-12)
+knitr::kable(centroid_check, digits = 3)
+```
+
+The fitted centroids equal the coordinatewise means of their assigned Peterson-Barney tokens to numerical tolerance. This observed check instantiates the update equation above.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4.5
+#| fig-alt: "Within-speaker standardized Peterson and Barney vowel tokens colored by ten fitted K-means clusters, with centroid locations marked by black crosses."
+
+plot_data <- vowels |>
+  dplyr::mutate(cluster = factor(fit_k10$cluster))
+centroids <- data.frame(
+  cluster = factor(seq_len(components)),
+  z_f1 = fit_k10$centers[, 1],
+  z_f2 = fit_k10$centers[, 2]
+)
+
+ggplot2::ggplot(plot_data, ggplot2::aes(
+  x = z_f2, y = z_f1, color = cluster
+)) +
+  ggplot2::geom_point(alpha = 0.48, size = 0.65) + # dqr-allow: algorithm-setting
+  ggplot2::geom_point(
+    data = centroids,
+    ggplot2::aes(x = z_f2, y = z_f1),
+    inherit.aes = FALSE,
+    color = "black",
+    shape = 4,
+    stroke = 1,
+    size = 2.3
+  ) +
+  ggplot2::scale_x_reverse() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::scale_color_viridis_d(option = "D", end = 0.9) +
+  ggplot2::labs(
+    x = "Within-speaker standardized F2",
+    y = "Within-speaker standardized F1"
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "none")
+```
+
+## Comparing with labels only after fitting
+
+```{r}
+external_ari <- mclust::adjustedRandIndex(fit_k10$cluster, vowels$vowel)
+```
+
+The adjusted Rand index (ARI) against the withheld intended-vowel metadata is `r round(external_ari, 3)`. This number measures alignment between two partitions after the acoustic fit. Because the fit never used the intended-vowel labels, a high ARI would show that the acoustic partition recovers some of their structure. ARI alone leaves open whether any centroid corresponds to a vowel category and whether listeners perceive the same partition.
+
+## Alternation and local solutions
+
+Each assignment step cannot increase $W$ because every token chooses its nearest current centroid. Each update step cannot increase $W$ because each centroid becomes the mean of its assigned rows. The procedure thus decreases or preserves the objective until it reaches a local solution.
+
+K-means favors compact regions under squared Euclidean distance and assigns every token to exactly one region. Overlapping productions may not have that structure. A poor fit would diagnose this representation and objective, not the absence of organization in the production data.
+
+## Checking the alternating updates
+
+1. Which centroid receives the reference token, and what squared distance supports that assignment?
+2. How does `centroid_check` verify the update equation?
+3. Why can several starts improve the fitted loss without guaranteeing a global minimum?
+4. Why was $K=10$ fixed before the intended-vowel comparison?
+5. What does the post-fit ARI establish, and what does it leave open?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The smallest row in `reference_distances` identifies both the component and the
+   supporting squared distance.
+2. It recomputes each fitted center as the mean of its assigned observed rows.
+3. Multiple starts search more local solutions but cannot enumerate every partition.
+4. It keeps the post-fit comparison with ten elicitation categories separate from
+   component-count selection.
+5. ARI measures agreement between two partitions; it does not establish phonemic
+   identity or perceptual validity.
+
+</details>
+
+## Recap
+
+1. Fixed centroids imply nearest-center assignments.
+2. Fixed assignments imply coordinatewise mean centers.
+3. Alternation decreases the declared loss but may end at a local solution.
+
+The [next page](within-cluster-loss.qmd#loss-at-a-declared-centroid-count) varies
+the number of centroids and asks what the training objective can, and cannot,
+select.

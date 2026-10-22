@@ -1,10 +1,235 @@
 ---
 title: "Annotator effects"
-toc: false
-course-release-id: custom-model-design
-course-release-placeholder: true
 ---
 
-Joint probability models connect annotation protocols to linguistic measurement claims. We then test whether simulated data permit recovery of the model parameters.
+The Turkish PropBank analysis separated agreement from adjudication. We now return to the [UDS natural-parts responses](generative-stories.qmd), where each predicate node was judged by two or three annotators. A stable annotator term may separate an annotator's response location from the item propensities estimated from overlapping judgments.
 
-**Available Wednesday, December 2, 2026.**
+Recall that [conditional probability](../foundations/conditional-probability.qmd) restricts the reference set using supplied information. The response factors below are conditionally [independent](../foundations/independence.qmd) only after item and annotator effects are given; integrating those shared effects induces dependence among rows.
+
+We represent this pattern with an annotator-specific intercept, a stable upward or downward shift in log odds under this instrument. The recorded data contain responses under one protocol but no independent quality measure or second instrument. The fitted shift therefore describes response location within this task.
+
+For each observed pair, $Y_{ij}$ is Bernoulli with
+$\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j$. The
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+therefore multiplies the response probabilities over observed item--annotator pairs
+while holding the recorded responses fixed. The prior model is
+$\alpha\sim\mathcal N(0,2.5^2)$, positive item and annotator scales have half-normal
+$\mathcal N^+(0,2^2)$ priors, and standardized group deviations are normal before
+the zero-sum transformation. By [Bayes' rule](../foundations/bayes-rule.qmd), the
+[posterior distribution](../statistical-inference/posterior-distributions.qmd) is
+the normalized product of that likelihood and those priors. The loaded object
+stores summaries and joint draws from this posterior; every displayed effect
+inherits the stated likelihood, priors, and zero-sum coordinates.
+
+We add and identify the annotator intercept, compare posterior effects with raw response rates, and then delimit which forms of annotator variation this location term cannot represent.
+
+## Loading raw responses and fitted summaries
+
+```{r}
+#| label: load-uds-annotators
+#| message: false
+#| warning: false
+
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+uds_cache <- readRDS(
+  "data/uds/uds-natural-parts-posterior-cache.rds"
+)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$annotator_id)) == 12L,
+  setequal(unique(uds$natural_parts), 0:1),
+  nrow(uds_cache$annotator_summary) == 12L,
+  setequal(
+    uds_cache$annotator_summary$annotator_id,
+    unique(uds$annotator_id)
+  )
+)
+
+annotator_summary <- uds_cache$annotator_summary
+
+alpha_median <- stats::median(uds_cache$population_draws[, "alpha"])
+annotator_probability_example <- transform(
+  annotator_summary[1, c(
+    "annotator_id", "annotator_effect_median",
+    "observed_proportion", "responses"
+  )],
+  population_log_odds = alpha_median,
+  conditional_log_odds = alpha_median + annotator_effect_median,
+  conditional_probability_at_zero_item = stats::plogis(
+    alpha_median + annotator_effect_median
+  )
+)
+
+knitr::kable(annotator_probability_example, digits = 3)
+```
+
+The raw rate for annotator $j$ is
+
+$$
+\bar Y_{\cdot j}
+=\frac{1}{n_j}\sum_{i:(i,j)\in\mathcal O}Y_{ij}.
+$$
+
+This rate mixes annotator behavior with the particular items assigned to that annotator. The crossed model instead represents item and annotator locations simultaneously.
+
+## Adding one location term
+
+Let $u_i$ be item $i$'s deviation and $a_j$ annotator $j$'s location effect. The response model is
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
+$$
+
+$$
+\operatorname{logit}(\pi_{ij})=\alpha+u_i+a_j.
+$$
+
+The fitted model constructs its deviations from centered standard-normal vectors:
+
+$$
+u_i=\sigma_{\text{item}}
+\left(z_i^{\text{item}}-\bar z^{\text{item}}\right),
+\qquad
+z_i^{\text{item}}\sim\mathcal N(0,1),
+$$
+
+$$
+a_j=\sigma_{\text{annotator}}
+\left(z_j^{\text{annotator}}-\bar z^{\text{annotator}}\right),
+\qquad
+z_j^{\text{annotator}}\sim\mathcal N(0,1).
+$$
+
+A positive $a_j$ raises the log odds of a yes response for every item judged by annotator $j$; a negative value lowers them. The effect is shared across responses, so it is not trial noise.
+
+The normal population model supplies partial pooling and encodes exchangeability: before seeing responses, annotator labels do not predict which deviation is larger. This is plausible for anonymized workers sampled under one protocol, but it would be questionable if recorded training groups or response strategies implied distinct populations. The additive intercept also assumes the same shift for every item.
+
+## Fixing the coordinate system
+
+The decomposition is not identified without a reference. For any constant $c$,
+
+$$
+(\alpha+u_i+c)+(a_j-c)=\alpha+u_i+a_j.
+$$
+
+The response probabilities do not change. Centering the realized effects imposes
+
+$$
+\sum_i u_i=0,
+\qquad
+\sum_j a_j=0.
+$$
+
+This convention fixes the latent origin. It does not assert that an annotator with effect zero has no response behavior. Under the convention, $\operatorname{logit}^{-1}(\alpha+u_i)$ is the item probability with the annotator effect fixed at zero.
+
+The printed row above shows the scale conversion. Starting from the posterior median population log odds, add the annotator's posterior median $a_j$, then apply `plogis()` to obtain a conditional probability at $u_i=0$. This plug-in calculation is a bridge between scales, not a posterior interval: a full probability summary applies the transformation to every joint draw.
+
+## Raw rates and posterior effects
+
+The plot keeps raw measurements and fitted model quantities in separate panels because they use different scales. Clopper--Pearson intervals under an independent common-probability binomial working model summarize each raw rate; posterior intervals summarize each annotator-specific intercept.
+
+The raw intervals are [Clopper--Pearson intervals](../statistical-inference/exact-binomial-intervals.qmd) under an independent common-probability binomial working model. They condition on the annotator's realized item set and treat those binary responses as IID Bernoulli observations with one probability. Their coverage is exact for that working model. Repeated items, heterogeneous item probabilities, and the crossed assignment process violate its simplification, so these intervals neither adjust for which items were assigned nor target $a_j$.
+
+```{r}
+#| label: prepare-uds-annotator-plot
+
+raw_intervals <- t(vapply(
+  seq_len(nrow(annotator_summary)),
+  function(row) {
+    responses <- annotator_summary$responses[[row]]
+    successes <- round(
+      annotator_summary$observed_proportion[[row]] * responses
+    )
+    c(stats::binom.test(successes, responses)$conf.int)
+  },
+  numeric(2)
+))
+
+annotator_order <- annotator_summary$annotator_id[
+  order(annotator_summary$annotator_effect_median)
+]
+
+annotator_plot_data <- rbind(
+  data.frame(
+    annotator_id = annotator_summary$annotator_id,
+    estimate = annotator_summary$observed_proportion,
+    lower = raw_intervals[, 1],
+    upper = raw_intervals[, 2],
+    measure = "Raw yes probability"
+  ),
+  data.frame(
+    annotator_id = annotator_summary$annotator_id,
+    estimate = annotator_summary$annotator_effect_median,
+    lower = annotator_summary$annotator_effect_lower,
+    upper = annotator_summary$annotator_effect_upper,
+    measure = "Posterior location effect (log odds)"
+  )
+)
+annotator_plot_data$annotator_id <- factor(
+  annotator_plot_data$annotator_id,
+  levels = annotator_order
+)
+```
+
+```{r}
+#| label: plot-uds-annotator-effects
+#| fig-width: 8.0
+#| fig-height: 4.5
+#| fig-cap: "Raw natural-parts response rates and posterior annotator-specific intercepts. Panels have distinct horizontal scales."
+
+ggplot2::ggplot(
+  annotator_plot_data,
+  ggplot2::aes(estimate, annotator_id)
+) +
+  ggplot2::geom_vline(
+    data = data.frame(
+      measure = "Posterior location effect (log odds)",
+      reference = 0
+    ),
+    ggplot2::aes(xintercept = reference),
+    color = "grey70"
+  ) +
+  ggplot2::geom_errorbarh(
+    ggplot2::aes(xmin = lower, xmax = upper),
+    height = 0,
+    color = "grey40"
+  ) +
+  ggplot2::geom_point(color = "#2B6F8A", size = 2) +
+  ggplot2::facet_wrap(~ measure, scales = "free_x") +
+  ggplot2::labs(x = NULL, y = "Anonymized annotator") +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
+
+The plot shows why the location term matters: the raw rates span a broad range, and the fitted effects retain broad separation after item variation is represented. But the two panels are not interchangeable. Raw rates average over assigned items; fitted effects condition on the crossed model and its zero-sum coordinate convention.
+
+## Location is not every annotator difference
+
+Annotators may differ in response consistency, interpretation, or use of an ordered scale. A location effect cannot represent those patterns. It shifts every predicted log odds in the same direction. The current binary data and recovery study support this smaller term; they do not support adding discrimination or threshold parameters without a new design check.
+
+Item and annotator effects would be perfectly confounded if each item were judged by only one annotator. The prepared UDS extract instead forms one connected bipartite graph across `r length(unique(uds$item_id))` items and `r length(unique(uds$annotator_id))` annotators. Connectivity supplies paths of shared judgments, though sparse responses still limit the precision of individual item effects.
+
+A disconnected incidence graph would permit separate shifts within each component, so one global annotator coordinate system would not be informed by the likelihood. Connectivity is thus a design requirement for separating the two crossed locations. It does not by itself guarantee precise recovery; the [parameter-recovery study](parameter-recovery.qmd#evaluating-parameter-recovery) checks the remaining finite-data problem.
+
+::: {.callout-note title="Check the annotator location"}
+1. What response pattern does a positive $a_j$ represent?
+2. Why do raw annotator rates mix response behavior with item composition?
+3. What do the zero-sum constraints identify?
+4. Which annotator differences remain outside this model?
+
+**Answers.** (1) A positive $a_j$ represents a stable increase in yes-response log odds across that annotator's assigned items. (2) Raw rates change with both response behavior and which items were assigned. (3) The constraints choose one origin for the otherwise shift-invariant item/annotator decomposition. (4) Differences in consistency, item sensitivity, threshold use, and item-specific interactions remain outside a location-only model.
+:::
+
+## Recap
+
+1. The fitted effects summarize a Bernoulli--logit likelihood with explicit regularizing priors.
+2. A normal annotator population supplies exchangeability and partial pooling; the connected design helps separate annotator and item locations.
+3. Log-odds effects become conditional probabilities only after adding the other predictor terms and applying the inverse logit.
+4. Raw Clopper--Pearson intervals and posterior effect intervals have different targets and conditioning assumptions.
+5. The next page assembles these pieces in the [complete UDS measurement model](uds-measurement-model.qmd#writing-the-complete-model).
+
+[Previous: Annotations are measurements](annotations-as-measurements.qmd) · [Next: Measuring natural-parts judgments](uds-measurement-model.qmd)

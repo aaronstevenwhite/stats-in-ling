@@ -1,10 +1,262 @@
 ---
 title: "Centering and scaling"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+The [PHOIBLE measurement
+dossier](data-matrices.qmd#phoible-measurement-dossier) defines \(x_{ij}=1\) as a
+retained inventory-to-segment link and \(x_{ij}=0\) as “not listed.” Every column
+uses that same binary database-listing unit, but the columns differ in how often a
+segment is listed. Centering changes each column's origin. Standardization would
+additionally change its unit and, for binary data, its weight in the factorization.
 
-**Available Monday, November 30, 2026.**
+Recall that an [expected value](../random-variables-and-distributions/expected-values.qmd) is a probability-model average, whereas the column mean below is an empirical average over the training inventory records. [Variance](../random-variables-and-distributions/variance-and-covariance.qmd) measures squared departures from an average. The later [PCA page](principal-component-analysis.qmd) will use these centered empirical departures to define its component criterion.
+
+We derive both transformations, compute their PHOIBLE coordinate systems, and then examine the induced weighting decision and the rule for transforming new inventories.
+
+## Centering changes the origin
+
+For column $j$, the training mean is
+
+$$
+\widehat\mu_j
+=
+\frac{1}{n_{\mathcal T}}
+\sum_{i\in\mathcal T}x_{ij}.
+$$
+
+Because $x_{ij}$ is binary here, $\widehat\mu_j$ is the training proportion of inventory records that list segment $j$. The centered entry is
+
+$$
+z_{ij}=x_{ij}-\widehat\mu_j,
+$$
+
+and the complete centered training matrix is
+
+$$
+\mathbf Z_{\mathcal T}
+=
+\mathbf X_{\mathcal T}
+-
+\mathbf 1_{n_{\mathcal T}}\widehat{\boldsymbol\mu}^{\mathsf T}.
+$$
+
+Every column of $\mathbf Z_{\mathcal T}$ has mean zero. Centering does not alter differences between inventory records. It changes the reference point from “not listed” to the observed training prevalence.
+
+## Scaling changes the unit
+
+The sample standard deviation of column $j$ is
+
+$$
+s_j
+=
+\sqrt{
+\frac{1}{n_{\mathcal T}-1}
+\sum_{i\in\mathcal T}
+(x_{ij}-\widehat\mu_j)^2
+}.
+$$
+
+Collecting these values on the diagonal of $\mathbf S$, the standardized matrix is
+
+$$
+\widetilde{\mathbf Z}_{\mathcal T}
+=
+\mathbf Z_{\mathcal T}\mathbf S^{-1},
+$$
+
+or, cell by cell,
+
+$$
+\widetilde z_{ij}
+=
+\frac{x_{ij}-\widehat\mu_j}{s_j}.
+$$
+
+The transformation makes each nonconstant training column have mean zero and sample standard deviation one. Thus it gives every segment column the same variance before factorization.
+
+Recall from the [standard-deviation
+definition](../random-variables-and-distributions/standard-deviation.qmd#definition)
+that a standard deviation is the square root of an average squared departure from
+the mean. For a binary column with listing proportion \(p_j\),
+\(\bar x_j=p_j\), and the population-form standard deviation is
+\(\sqrt{p_j(1-p_j)}\). The sample version used here multiplies the variance by
+\(n_{\mathcal T}/(n_{\mathcal T}-1)\).
+
+For instance, if \(p_j=0.25\) in a large training set, then
+\(s_j\approx\sqrt{0.25(0.75)}=0.433\). A not-listed cell becomes
+
+$$
+\frac{0-0.25}{0.433}\approx-0.577,
+$$
+
+while a listed cell becomes
+
+$$
+\frac{1-0.25}{0.433}\approx1.732.
+$$
+
+The rare listed event is thus farther from the column mean. This is the
+frequency-sensitive weighting induced by variance standardization.
+
+## Computing the PHOIBLE coordinate systems
+
+This page independently reconstructs the row selection, split, and training-only column set introduced on the [previous page](data-matrices.qmd).
+
+```{r}
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+
+select_one <- function(inventories, seed = 20260827L) {
+  inventories <- inventories[
+    order(inventories$glottocode, as.integer(inventories$inventory_id)),
+  ]
+  groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+  RNGkind(sample.kind = "Rejection")
+  set.seed(seed)
+  rows <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+  inventories[unname(rows), ]
+}
+
+split_by_area <- function(selected, seed = 20261018L) {
+  area <- selected$macroarea
+  area[is.na(area) | area == ""] <- "Unclassified"
+  answer <- rep(NA_character_, nrow(selected))
+  set.seed(seed)
+  for (name in sort(unique(area))) {
+    index <- sample(which(area == name))
+    n_holdout <- floor(0.15 * length(index))
+    answer[index[seq_len(n_holdout)]] <- "validation"
+    answer[index[n_holdout + seq_len(n_holdout)]] <- "test"
+    answer[index[is.na(answer[index])]] <- "training"
+  }
+  answer
+}
+
+selected <- select_one(phoible$inventories)
+selected$split <- split_by_area(selected)
+training_rows <- which(selected$split == "training")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
+)
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
+
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+training_sd <- apply(X[training_rows, , drop = FALSE], 2, sd)
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+Z_standardized <- sweep(Z, 2, training_sd, "/")
+
+c(
+  largest_absolute_centered_mean = max(abs(colMeans(Z))),
+  largest_standardized_sd_error = max(abs(apply(Z_standardized, 2, sd) - 1))
+)
+```
+
+The training set contains `r nrow(Z)` inventory records and `r ncol(Z)` retained segments. No retained column is constant because the training-frequency rule removes segments with too few listings.
+
+If a column were constant, then \(s_j=0\), so division by \(s_j\) would be
+undefined. Such a column also supplies no training variation for PCA. The
+retention rule happens to avoid that case here, but zero-variance handling is a
+mathematical requirement rather than a reason for the threshold twenty.
+
+## The empirical weighting decision
+
+```{r}
+#| fig-width: 7
+#| fig-height: 3.6
+
+transformation <- data.frame(
+  prevalence = training_mean,
+  multiplier = 1 / training_sd
+)
+
+prevalence_plot <- ggplot(transformation, aes(x = prevalence)) +
+  geom_histogram(bins = 24, fill = "grey35", color = "white") + # dqr-allow: algorithm-setting
+  labs(x = "Training listing proportion", y = "Segment columns") +
+  theme_classic()
+
+multiplier_plot <- ggplot(transformation, aes(x = multiplier)) +
+  geom_histogram(bins = 24, fill = "grey35", color = "white") + # dqr-allow: algorithm-setting
+  labs(x = "Standardization multiplier (1 / s)", y = "Segment columns") +
+  theme_classic()
+
+if (requireNamespace("patchwork", quietly = TRUE)) {
+  prevalence_plot + multiplier_plot
+} else {
+  prevalence_plot
+  multiplier_plot
+}
+```
+
+The least variable retained column would be multiplied by `r round(max(transformation$multiplier), 2)`, whereas the most variable would be multiplied by `r round(min(transformation$multiplier), 2)`. Standardization would thus assign relatively greater weight to rare segment listings. That weighting may be useful for some questions, but it is not neutral.
+
+The primary PHOIBLE analysis centers without variance standardization. Every column already shares the same listing unit, and the analysis lets common patterns contribute their observed variance. This choice does not claim that common segments are linguistically more important. It defines the numerical target of this factorization.
+
+## Applying a fitted transformation
+
+Means and scales used for evaluation must come from training data. For a new matrix $\mathbf X_{\mathrm{new}}$, the fixed transformation is
+
+$$
+\mathbf Z_{\mathrm{new}}
+=
+(\mathbf X_{\mathrm{new}}-
+\mathbf 1\widehat{\boldsymbol\mu}^{\mathsf T})
+\mathbf S^{-1}.
+$$
+
+In R, that operation is:
+
+```{r}
+X_new <- X[selected$split == "validation", , drop = FALSE]
+X_new_centered <- sweep(X_new, 2, training_mean, "-")
+X_new_standardized <- sweep(X_new_centered, 2, training_sd, "/")
+```
+
+Recomputing the means or standard deviations on validation rows would let held-out records change their own coordinate system. That is [leakage through preprocessing](../model-criticism-and-prediction/training-and-test-data.qmd#leakage-through-preprocessing).
+
+## Checking the coordinate system
+
+1. What does zero mean in a centered PHOIBLE column?
+2. Why does centering preserve differences between rows?
+3. Why does standardization weight rare binary columns more heavily?
+4. Which data determine `training_mean` and `training_sd`?
+5. Why does the primary analysis retain `Z` rather than `Z_standardized`?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Zero means the training listing proportion for that segment.
+2. Subtracting the same column mean from two rows leaves their difference unchanged.
+3. Dividing by a smaller binary standard deviation magnifies a rare listed cell.
+4. Training rows alone determine `training_mean` and `training_sd`.
+5. Centering retains the common binary unit instead of equalizing column variances.
+
+</details>
+
+## Recap
+
+1. Centering changes the origin; scaling also changes the numerical unit.
+2. Binary standardization gives rare listings larger standardized magnitudes.
+3. Every transformation used at evaluation must be fitted on training rows.
+
+The [next page](rank-one-structure.qmd#constructing-one-outer-product) asks how
+much of this centered empirical matrix can be represented by one shared
+row-by-column pattern.

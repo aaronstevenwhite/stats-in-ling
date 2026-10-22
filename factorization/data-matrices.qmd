@@ -1,10 +1,305 @@
 ---
 title: "Linguistic data matrices"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+[PHOIBLE 2.0](https://doi.org/10.5281/zenodo.2593234) is a curated collection of phonological inventory records assembled from descriptive sources. PHOIBLE uses [**doculect**](https://phoible.org/faq) for the speech variety described by a particular source; the term avoids assuming that every source variety corresponds one-to-one with a language. A **Glottocode** is Glottolog's stable catalog identifier for a language or documented variety, and several contributed inventories may share one. We therefore call one matrix row an **inventory record**. Calling it a language would make a stronger identity claim than the source structure supports.
 
-**Available Monday, November 30, 2026.**
+We use PHOIBLE 2.0 under the CC BY-SA 3.0 license stated on its [project download page](https://phoible.org/download). We remove tone and marginal rows, then select one inventory within each Glottocode. After those operations, $x_{ij}=1$ means that a remaining PHOIBLE row links inventory $i$ to segment $j$, while $x_{ij}=0$ means that no remaining row supplies such a link. A **phone** here is a speech-sound category represented by an inventory symbol; the matrix contains listings of those categories rather than observed speech tokens. PHOIBLE supplies no stronger conclusion from a zero about whether speakers produce the corresponding phone.
+
+The apparent row-by-segment table hides three linked source units: inventory contributions, Glottocodes, and segment records. Recovering those units before constructing the matrix shows exactly what a binary cell retains and what the preparation discards.
+
+## PHOIBLE measurement dossier {#phoible-measurement-dossier}
+
+The source has three linked units. `InventoryID` identifies one inventory
+description contributed from a particular source. `Glottocode` links that
+record to Glottolog's catalog entry for the doculect, so several alternative
+inventory descriptions may share the same code. A **segment record** is a
+PHOIBLE entry for a transcribed sound category and its feature description; an
+inventory-to-segment link says that the source inventory lists that category.
+Finally, `macroarea` is Glottolog's broad geographic classification for the
+catalog entry. We use this label to balance the analysis split, while the
+matrix itself contains no macroarea column.
+
+The preparation samples one inventory per Glottocode so that doculects with many
+contributed inventories do not automatically receive more row weight. This discards
+variation among alternative source inventories for the same Glottocode. Seed
+20260827 fixes which record is selected when several are available; the seed is a
+reproducibility label, not a linguistic variable. Later, a training frequency
+threshold of twenty removes extremely sparse segment columns, while the
+macroarea-stratified 15% validation and 15% test allocations preserve broad area
+coverage. We choose the threshold to exclude extremely sparse columns and the split
+proportions to preserve enough records for fitting while retaining two evaluation
+sets; PHOIBLE itself supplies neither value.
+
+PHOIBLE also supplies Glottolog family metadata for most selected records. Family
+does not determine the primary split. Related inventories may consequently appear
+in training and evaluation, allowing reconstruction to benefit from patterns shared
+with genealogical relatives. Records without a family label are kept as separate
+unknown-family units rather than being treated as one family. The primary target is
+therefore hidden-cell completion under broad macroarea balance, with genealogical
+information potentially available across the split. Evaluating transfer to a
+previously unseen family would require a family-held-out split.
+
+## Defining the array and its indices
+
+Let there be $n$ linguistic objects and $p$ measured variables. A data matrix is
+
+$$
+\mathbf X\in\mathbb R^{n\times p}.
+$$
+
+Its entries are
+
+$$
+x_{ij}=\text{the value of variable }j\text{ for object }i.
+$$
+
+The complete row for object $i$ is
+
+$$
+\mathbf x_i^{\mathsf T}
+=
+\begin{bmatrix}
+x_{i1}&x_{i2}&\cdots&x_{ip} \quad\text{(symbolic indices)} % dqr-allow: symbolic-derivation
+\end{bmatrix},
+$$
+
+and the complete column for variable $j$ is
+
+$$
+\mathbf x_{\cdot j}
+=
+\begin{bmatrix}
+x_{1j}&x_{2j}&\cdots&x_{nj} \quad\text{(symbolic indices)} % dqr-allow: symbolic-derivation
+\end{bmatrix}^{\mathsf T}.
+$$
+
+A row asks how one inventory record is represented across segments. A column asks how one segment listing varies across inventory records. This is the earlier [unit-of-analysis decision](../foundations/linguistic-data.qmd) written in matrix form.
+
+## Constructing the PHOIBLE matrix
+
+The code below reproduces the row sample, the macroarea-stratified split, and the training-only column filter. The random seeds identify reproducible procedural choices; they are not linguistic measurements.
+
+```{r}
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+
+select_one_inventory <- function(inventories, seed = 20260827L) {
+  inventories <- inventories[
+    order(inventories$glottocode, as.integer(inventories$inventory_id)),
+  ]
+  groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+  RNGkind(sample.kind = "Rejection")
+  set.seed(seed)
+  keep <- vapply(
+    groups,
+    function(index) index[[sample.int(length(index), size = 1L)]],
+    integer(1)
+  )
+  inventories[unname(keep), ]
+}
+
+make_split <- function(selected, seed = 20261018L) {
+  area <- selected$macroarea
+  area[is.na(area) | area == ""] <- "Unclassified"
+  split <- rep(NA_character_, nrow(selected))
+  set.seed(seed)
+  for (name in sort(unique(area))) {
+    index <- sample(which(area == name))
+    n_validation <- floor(0.15 * length(index))
+    n_test <- floor(0.15 * length(index))
+    split[index[seq_len(n_validation)]] <- "validation"
+    split[index[n_validation + seq_len(n_test)]] <- "test"
+    split[index[is.na(split[index])]] <- "training"
+  }
+  factor(split, levels = c("training", "validation", "test"))
+}
+
+selected <- select_one_inventory(phoible$inventories)
+selected$split <- make_split(selected)
+selected$family_key <- ifelse(
+  is.na(selected$family_name) | selected$family_name == "",
+  paste0("Unclassified::", selected$glottocode),
+  selected$family_name
+)
+training_ids <- selected$glottocode[selected$split == "training"]
+
+family_by_split <- table(selected$family_key, selected$split)
+c(
+  selected_records = nrow(selected),
+  represented_family_units = nrow(family_by_split),
+  family_units_crossing_splits = sum(rowSums(family_by_split > 0) > 1L),
+  records_without_family_label = sum(grepl("^Unclassified::", selected$family_key))
+)
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+training_frequency <- table(
+  memberships$segment_id[memberships$glottocode %in% training_ids]
+)
+retained_segments <- sort(names(training_frequency)[training_frequency >= 20L])
+
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(retained_segments),
+  dimnames = list(selected$glottocode, retained_segments)
+)
+listed <- memberships[memberships$segment_id %in% retained_segments, ]
+X[cbind(
+  match(listed$glottocode, rownames(X)),
+  match(listed$segment_id, colnames(X))
+)] <- 1
+
+c(
+  source_value_rows = phoible$provenance$original_value_rows,
+  selected_inventory_records = nrow(X),
+  retained_segment_columns = ncol(X),
+  listed_cell_fraction = mean(X)
+)
+```
+
+One retained source record can now be traced to one matrix cell.
+
+```{r}
+example_membership <- listed[1, ]
+example_inventory <- selected[
+  match(example_membership$glottocode, selected$glottocode),
+]
+example_segment <- phoible$segments[
+  match(example_membership$segment_id, phoible$segments$segment_id),
+]
+example_cell <- data.frame(
+  inventory_id = example_inventory$inventory_id,
+  glottocode = example_inventory$glottocode,
+  language_name = example_inventory$language_name,
+  source_contribution = example_inventory$inventory_source,
+  macroarea = example_inventory$macroarea,
+  segment = example_segment$segment,
+  row_index = match(example_inventory$glottocode, rownames(X)),
+  column_index = match(example_segment$segment_id, colnames(X)),
+  x_ij = X[
+    example_inventory$glottocode,
+    example_segment$segment_id
+  ]
+)
+knitr::kable(example_cell)
+```
+
+The displayed retained membership supplies \(x_{ij}=1\) at the shown inventory row
+and segment column. A value of zero elsewhere means that this prepared source table
+contains no retained link for that pair. This trace from the source identifier to
+the displayed matrix cell fixes the interpretation of \(X_{ij}\) used on every
+later page.
+
+The resulting matrix has `r nrow(X)` inventory records and `r ncol(X)` segment columns. Of its `r format(length(X), big.mark = ",")` cells, `r scales::percent(mean(X), accuracy = 0.1)` are listed. This sparsity describes the prepared database matrix. Estimating how often phones occur in speech would require token recordings or transcriptions with a sampling design.
+
+## Seeing rows and columns
+
+The full matrix is too large to label. The following plot thus displays four training inventories from each classified macroarea and the twenty most common training segments. Every plotted cell is read directly from `X`.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 6
+
+training_index <- which(selected$split == "training")
+training_mean <- colMeans(X[training_index, , drop = FALSE])
+areas <- setdiff(sort(unique(selected$macroarea)), c("", NA, "Unclassified"))
+
+display_rows <- unlist(lapply(areas, function(area) {
+  candidates <- training_index[selected$macroarea[training_index] == area]
+  candidates <- candidates[order(rowSums(X[candidates, , drop = FALSE]))]
+  candidates[unique(round(seq(1, length(candidates), length.out = 4)))]
+}), use.names = FALSE)
+display_columns <- order(training_mean, decreasing = TRUE)[seq_len(20)]
+
+segments <- phoible$segments[
+  match(colnames(X), phoible$segments$segment_id),
+]
+slice <- X[display_rows, display_columns, drop = FALSE]
+plot_data <- as.data.frame(as.table(slice))
+names(plot_data) <- c("glottocode", "segment_id", "listed")
+plot_data$inventory <- selected$language_name[
+  match(plot_data$glottocode, selected$glottocode)
+]
+plot_data$area <- selected$macroarea[
+  match(plot_data$glottocode, selected$glottocode)
+]
+plot_data$inventory <- paste0(plot_data$inventory, " (", plot_data$area, ")")
+plot_data$segment <- segments$segment[
+  match(plot_data$segment_id, segments$segment_id)
+]
+plot_data$inventory <- factor(
+  plot_data$inventory,
+  levels = rev(unique(plot_data$inventory))
+)
+plot_data$segment <- factor(
+  plot_data$segment,
+  levels = segments$segment[display_columns]
+)
+
+ggplot(plot_data, aes(x = segment, y = inventory, fill = factor(listed))) +
+  geom_tile(color = "grey85", linewidth = 0.15) + # dqr-allow: algorithm-setting
+  scale_fill_manual(
+    values = c("0" = "white", "1" = "black"),
+    labels = c("Not listed", "Listed"),
+    name = NULL
+  ) +
+  labs(x = "Segment", y = "Inventory record") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+The cell in a particular row and column can now be interpreted only by using both index maps. The first displayed row, for instance, can be recovered without copying its values into the notes.
+
+```{r}
+first_displayed <- display_rows[[1]]
+data.frame(
+  glottocode = rownames(X)[first_displayed],
+  inventory = selected$language_name[first_displayed],
+  listed_retained_segments = sum(X[first_displayed, ])
+)
+```
+
+## Information retained by the matrix
+
+Changing a row from an inventory record to a Glottocode-level average would change the observational unit. Changing the columns would change which segment contrasts are available. Repeating a column would give the corresponding listing pattern extra numerical weight. Matrix methods cannot infer that an omitted distinction was theoretically intended, nor can they recover within-source detail removed before construction.
+
+Before factorization, record (i) the row unit, (ii) the row-selection rule, (iii) the column-retention rule, (iv) the cell coding, and (v) the collection to which those records belong. These choices fix the information available to every later operation.
+
+## Checking the representation
+
+1. What does $x_{ij}=1$ mean in this matrix?
+2. Why is “not listed” safer than “absent” for $x_{ij}=0$?
+3. Why is one sampled inventory record not necessarily one language?
+4. Which part of the code prevents validation and test inventories from selecting columns?
+5. What would change if the rows were individual PHOIBLE value records?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. A retained source membership links inventory row \(i\) to segment column \(j\).
+2. Source incompleteness and preparation choices make nonlisting weaker than
+   phonological absence.
+3. Several source inventories can share one Glottocode.
+4. `training_frequency` uses `training_ids` before `retained_segments` is defined.
+5. Rows would represent membership records rather than complete inventory profiles.
+
+</details>
+
+## Recap
+
+1. Rows are sampled inventory records, columns are training-retained segments, and
+   cells encode retained database links.
+2. One-record sampling, the frequency threshold, and the balanced split discard or
+   reweight information by design.
+3. A zero records “not listed under this preparation.” Linguistic absence would
+   require stronger evidence about the source inventory and its coverage.
+
+The [next page](centering-and-scaling.qmd) changes the origin and possible unit of
+each segment column while keeping the [cell
+meaning](#phoible-measurement-dossier) fixed.

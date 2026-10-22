@@ -1,10 +1,352 @@
 ---
 title: "Validating a mixture on held-out speakers"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+[BIC](choosing-a-mixture.qmd) penalizes the fitted
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood),
+the joint density of the training vectors viewed as a function of the mixture
+parameters. We now compare the fixed ten-component `EVI` model and the BIC-selected
+fourteen-component `EEI` model by predictive density on complete held-out speakers.
+This comparison retains the K10/G14 distinction and uses the same folds as the
+centroid validation.
 
-**Available Monday, November 23, 2026.**
+The **validation-target specification (VTS)** is:
+
+1. **Split unit:** all twenty tokens from one speaker move together.
+2. **Score unit:** token log losses are averaged within speaker, then speaker means
+   receive equal weight.
+3. **Held-out information:** the speaker's complete unlabeled panel defines
+   within-speaker F1 and F2 coordinates.
+4. **Fold-local fit:** weights, means, and covariances use training speakers only.
+5. **Transfer target:** predictive density for similarly calibrated speaker panels
+   from the historical sampling frame.
+
+This is the [calibration-panel
+target](unsupervised-validation.qmd#the-calibration-panel-target): the held-out
+speaker supplies an unlabeled coordinate system but never updates the mixture.
+
+We reconstruct those folds, score both fixed mixture candidates by held-out density, and then separate predictive comparison from post-fit label alignment and population transfer.
+
+## Reconstructing the data and speaker folds
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+suppressPackageStartupMessages(library(mclust))
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+speaker_labels <- c(c = "Children", m = "Men", w = "Women")
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    ),
+    speaker_type = factor(
+      speaker_labels[as.character(type)],
+      levels = c("Men", "Women", "Children")
+    )
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+seed <- 1952L
+
+set.seed(seed)
+speaker_folds <- vowels |>
+  dplyr::distinct(speaker, type, sex, speaker_type) |>
+  dplyr::arrange(type, speaker) |>
+  dplyr::group_by(type) |>
+  dplyr::mutate(fold = sample(rep(1:5, length.out = dplyr::n()))) |>
+  dplyr::ungroup()
+
+vowels <- vowels |>
+  dplyr::left_join(
+    speaker_folds |> dplyr::select(speaker, fold),
+    by = "speaker"
+  )
+
+stopifnot(all(tapply(vowels$fold, vowels$speaker, function(x) {
+  length(unique(x)) == 1L
+})))
+```
+
+The folds exclude every one of a held-out speaker's `r unique(as.integer(table(vowels$speaker)))` rows from mixture estimation. Each held-out speaker supplies an unlabeled panel for within-speaker standardization. The score therefore concerns density for a complete panel after adaptation to that panel's coordinate system. A first isolated token would not provide the mean and standard deviation needed for the transformation.
+
+## Held-out log loss
+
+For one held-out token, component \(k\) supplies conditional density
+\(\mathcal N(\mathbf x_i;\widehat{\boldsymbol\mu}_k,
+\widehat{\boldsymbol\Sigma}_k)\). Because the latent component is unobserved, the
+law of total probability gives
+
+$$
+\begin{aligned}
+p_M(\mathbf x_i\mid D_{\mathrm{train}})
+&=
+\sum_{k=1}^{K}
+\mathbb{P}(Z_i=k\mid D_{\mathrm{train}})
+p(\mathbf x_i\mid Z_i=k,D_{\mathrm{train}})\\
+&=
+\sum_{k=1}^{K}
+\widehat\pi_k
+\mathcal N(\mathbf x_i;
+\widehat{\boldsymbol\mu}_k,\widehat{\boldsymbol\Sigma}_k).
+\end{aligned}
+$$
+
+This is an application of [conditional probability](../foundations/conditional-probability.qmd): the component-specific density is weighted by the component probability and summed because the component label is unobserved. The full weighted sum, rather than the density under the winning hard component, is what `mclust::dens(..., logarithm = TRUE)` returns.
+
+For a mixture fit to training speakers, the log loss of token $i$ is
+
+$$
+L_i(M)
+=
+-\log p_M
+(\mathbf{x}_i\mid D_{\mathrm{train}}).
+$$
+
+Smaller loss means that the fitted model assigns greater density to the held-out acoustic vector. For two candidates $A$ and $B$, the paired token difference is
+
+$$
+d_i=L_i(B)-L_i(A).
+$$
+
+A negative value favors candidate $B$ for that token. Because speakers are the held-out groups, we first average token losses within speaker and compare the resulting paired speaker means.
+
+For speaker \(s\), let \(n_s\) denote the number of held-out tokens. The aggregation is
+
+$$
+\overline L_s(M)
+=
+\frac{1}{n_s}
+\sum_{i:\operatorname{speaker}(i)=s}
+-\log p_M(\mathbf x_i\mid D_{\mathrm{train}}).
+$$
+
+In these data, every speaker contributes `r unique(as.integer(table(vowels$speaker)))` summands. In the code, `negative_log_predictive_density` creates those summands and
+`group_by(speaker, fold, candidate)` followed by `mean()` creates one
+\(\overline L_s(M)\). Density is primary because a mixture is a probability model
+for acoustic vectors; hard-label accuracy would require a component-to-vowel map
+and would discard overlap.
+
+## Fitting and scoring both candidates
+
+```{r}
+candidates <- data.frame(
+  candidate = c("10-component EVI", "14-component EEI"),
+  components = c(10L, 14L),
+  covariance_model = c("EVI", "EEI")
+)
+
+token_loss <- list()
+for (fold in 1:5) {
+  train <- vowels$fold != fold
+  test <- !train
+
+  stopifnot(length(intersect(
+    unique(vowels$speaker[train]),
+    unique(vowels$speaker[test])
+  )) == 0L)
+
+  for (candidate_row in seq_len(nrow(candidates))) {
+    candidate <- candidates[candidate_row, ]
+    set.seed(seed + 1000L * fold + candidate$components)
+    fit <- mclust::Mclust(
+      X[train, , drop = FALSE],
+      G = candidate$components,
+      modelNames = candidate$covariance_model,
+      verbose = FALSE
+    )
+    log_density <- mclust::dens(
+      X[test, , drop = FALSE],
+      modelName = fit$modelName,
+      parameters = fit$parameters,
+      logarithm = TRUE
+    )
+    prediction <- stats::predict(fit, newdata = X[test, , drop = FALSE])
+
+    token_loss[[length(token_loss) + 1L]] <- data.frame(
+      speaker = vowels$speaker[test],
+      fold = fold,
+      intended_vowel = vowels$vowel[test],
+      candidate = candidate$candidate,
+      predicted_component = prediction$classification,
+      negative_log_predictive_density = -log_density
+    )
+  }
+}
+
+token_loss <- dplyr::bind_rows(token_loss)
+speaker_loss <- token_loss |>
+  dplyr::group_by(speaker, fold, candidate) |>
+  dplyr::summarise(
+    mean_negative_log_predictive_density =
+      mean(negative_log_predictive_density),
+    .groups = "drop"
+  )
+
+loss_summary <- speaker_loss |>
+  dplyr::group_by(candidate) |>
+  dplyr::summarise(
+    speakers = dplyr::n(),
+    mean_speaker_log_loss =
+      mean(mean_negative_log_predictive_density),
+    median_speaker_log_loss =
+      stats::median(mean_negative_log_predictive_density),
+    speaker_log_loss_sd =
+      stats::sd(mean_negative_log_predictive_density),
+    speaker_log_loss_q10 = stats::quantile(
+      mean_negative_log_predictive_density, 0.10, names = FALSE
+    ),
+    speaker_log_loss_q90 = stats::quantile(
+      mean_negative_log_predictive_density, 0.90, names = FALSE
+    ),
+    .groups = "drop"
+  )
+
+paired_loss <- speaker_loss |>
+  tidyr::pivot_wider(
+    names_from = candidate,
+    values_from = mean_negative_log_predictive_density
+  ) |>
+  dplyr::mutate(
+    difference_14_EEI_minus_10_EVI =
+      `14-component EEI` - `10-component EVI`
+  )
+
+stopifnot(
+  all(loss_summary$speakers == 76L),
+  nrow(paired_loss) == 76L
+)
+
+knitr::kable(loss_summary, digits = 3)
+```
+
+Mean speaker log loss is `r round(loss_summary$mean_speaker_log_loss[loss_summary$candidate == "10-component EVI"], 3)` for K10 and `r round(loss_summary$mean_speaker_log_loss[loss_summary$candidate == "14-component EEI"], 3)` for G14. The paired mean difference, G14 minus K10, is `r round(mean(paired_loss$difference_14_EEI_minus_10_EVI), 4)`, and G14 has lower loss for `r scales::percent(mean(paired_loss$difference_14_EEI_minus_10_EVI < 0), accuracy = 0.1)` of speakers.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 3.2
+#| fig-alt: "Paired speaker log-loss differences for fourteen-component EEI minus ten-component EVI mixtures, with a zero reference line."
+
+ggplot2::ggplot(paired_loss, ggplot2::aes(
+  x = difference_14_EEI_minus_10_EVI, y = 0
+)) +
+  ggplot2::geom_vline(
+    xintercept = 0,
+    color = "grey55",
+    linewidth = 0.55
+  ) +
+  ggplot2::geom_point(
+    position = ggplot2::position_jitter(
+      width = 0,
+      height = 0.075,
+      seed = seed
+    ),
+    color = "#2B6CB0",
+    alpha = 0.7, # dqr-allow: algorithm-setting
+    size = 1.4
+  ) +
+  ggplot2::scale_y_continuous(NULL, breaks = NULL) +
+  ggplot2::labs(
+    x = paste(
+      "Speaker log-loss difference:",
+      "14-component EEI minus 10-component EVI"
+    )
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The figure keeps the 76 paired speaker comparisons visible. Points left of zero favor G14 under predictive density; points right of zero favor K10.
+
+The table describes the 76 observed speaker means with their mean, median,
+standard deviation, and 10th and 90th percentiles under this fixed five-fold
+assignment. These are summaries of heterogeneity in the historical sample.
+They do not include uncertainty from the historical sampling frame, the
+within-speaker transformation, the candidate grid, or repeated fold
+construction. The paired scatter keeps that heterogeneity visible without
+giving the summaries a confidence-interval interpretation.
+
+## External alignment after prediction
+
+```{r}
+fold_alignment <- token_loss |>
+  dplyr::group_by(fold, candidate) |>
+  dplyr::summarise(
+    adjusted_rand_index = mclust::adjustedRandIndex(
+      predicted_component,
+      intended_vowel
+    ),
+    .groups = "drop"
+  )
+
+alignment_wide <- fold_alignment |>
+  tidyr::pivot_wider(
+    names_from = candidate,
+    values_from = adjusted_rand_index
+  )
+stopifnot(all(
+  alignment_wide$`10-component EVI` >
+    alignment_wide$`14-component EEI`
+))
+
+knitr::kable(fold_alignment, digits = 3)
+```
+
+K10 has the larger post-fit ARI in all `r nrow(alignment_wide)` folds. Thus, the model with slightly better mean held-out density aligns less closely with intended-vowel metadata. Predictive density and experimental-label alignment remain separate validation targets.
+
+## Information-set and dependence limits
+
+The coordinate system includes each held-out speaker's unlabeled calibration panel, though no held-out token enters mixture estimation. This is the same explicit [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd#the-prediction-information-set) used for centroid validation.
+
+The mixture likelihood still treats transformed token rows as [conditionally independent](../random-variables-and-distributions/conditional-independence.qmd): after the fitted mixture is supplied, their joint density factorizes into token terms. Shared speaker normalization makes that working factorization stronger than the design warrants. Fold averages reuse speakers through a common fold-level fit, so they are computational summaries rather than new sampling units. The paired values keep each of the 76 speakers visible and describe heterogeneity at the level relevant to the claim. <!-- dqr-allow: empirical-answer -->
+
+## Checking the validation design
+
+1. Why must all rows from one speaker stay in one test fold?
+2. What does a negative G14-minus-K10 difference mean?
+3. Which candidate has the lower mean held-out log loss?
+4. Which candidate has the higher external ARI in every fold?
+5. Why can predictive density, BIC, and intended-vowel alignment favor different candidates?
+6. Which first-token prediction is not evaluated here?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Speaker blocking prevents another token by the held-out participant from entering
+   mixture estimation.
+2. A negative value means G14 assigns the speaker's panel greater predictive density
+   on average.
+3. The reported paired mean identifies the lower held-out log-loss candidate.
+4. K10 has the higher external ARI in every fold.
+5. The three criteria target penalized in-sample density, held-out density, and
+   external partition alignment.
+6. The design does not evaluate a token from a new speaker with no calibration panel.
+
+</details>
+
+## Recap
+
+1. Held-out mixture density sums weighted component densities before taking a log.
+2. Speaker means, not tokens or folds, receive equal weight in the comparison.
+3. Predictive density and vowel-label alignment can favor different candidates
+   without contradiction.
+
+Speaker-blocked log loss slightly favors G14 on average, while external alignment
+favors K10 in every fold. This closes the latent-structure sequence by separating
+the probabilistic validation target from the linguistic interpretation that
+remains open.

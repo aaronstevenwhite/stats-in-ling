@@ -1,10 +1,124 @@
 ---
 title: "Bounded responses"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+A slider response on $[0,1]$ is bounded, can use exact endpoints, and may have a nonconstant variance. We use the public **MegaNegRaising** release described by An and White ([2020 paper](https://aclanthology.org/2020.scil-1.45/); [CC BY-SA data and documentation](https://megaattitude.io/projects/mega-negraising/)). The archive filename says v1, while its internal README identifies v1.1, released 2020-08-29.
 
-**Available Monday, November 2, 2026.**
+The conditional [variance and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) describe response spread on the chosen slider scale. A [residual](residuals.qmd) is observed minus fitted response, so its possible values also depend on the endpoints and fitted mean.
+
+The MegaNegRaising sliders put observations at both boundaries and change their spread across fitted locations. Defining the two prompts and the balanced subset makes those empirical failures of a Gaussian benchmark interpretable.
+
+Each raw row contains paired judgments: how likely matrix negation conveys embedded negation and how easy it is to imagine someone uttering the matrix-negated sentence. An and White call the ease response acceptability while noting the simplification. We use the prespecified balanced subset: native-American-English responses to past-tense active and passive eventive infinitivals, first- and third-person subjects, and the verbs present in all four cells.
+
+The first slider targets the **neg-raising inference**: how strongly a matrix-negated sentence supports interpreting the embedded proposition as negated. The second records how easy it is to imagine someone producing that sentence. The released table scales both responses to $[0,1]$, with zero and one as selectable endpoints. The balanced extract omits sentence text and the original verbal endpoint labels, so the page does not reconstruct either. The linked paper and project documentation remain the source for the complete prompt.
+
+```{r}
+#| label: load-meganegraising-bounds
+#| echo: true
+release_summary <- read.csv("data/meganegraising/meganegraising-release-summary.csv")
+mnr <- read.csv("data/meganegraising/meganegraising-balanced.csv")
+mnr$voice <- factor(mnr$voice, levels = c("active", "passive"))
+mnr$subject <- factor(mnr$subject, levels = c("first", "third"))
+stopifnot(nrow(mnr) == 7651L, length(unique(mnr$participant)) == 1091L,
+          length(unique(mnr$verb)) == 193L)
+release_summary
+slider_bounds <- range(c(mnr$negraising, mnr$acceptability))
+summary_table <- data.frame(
+  response = c("neg-raising", "ease"),
+  mean = c(mean(mnr$negraising), mean(mnr$acceptability)),
+  zero_probability = c(mean(mnr$negraising == slider_bounds[[1L]]),
+                       mean(mnr$acceptability == slider_bounds[[1L]])),
+  one_probability = c(mean(mnr$negraising == slider_bounds[[2L]]),
+                      mean(mnr$acceptability == slider_bounds[[2L]])),
+  endpoint_probability = c(mean(mnr$negraising %in% c(0, 1)),
+                           mean(mnr$acceptability %in% c(0, 1)))
+)
+summary_table
+```
+
+One actual retained response is:
+
+```{r}
+#| label: inspect-one-meganegraising-row
+mnr[1L, c(
+  "participant", "verb", "frame", "voice", "subject", "negraising",
+  "acceptability"
+)]
+```
+
+This row is one participant's paired measurement, not a verb mean. `frame`, `voice`, and `subject` identify the sentence template; `negraising` and `acceptability` are the two recorded slider locations. The balanced subset requires each retained verb to occur in all four voice-by-subject cells. That restriction supports those contrasts but changes the verb population to the upstream acceptability-selected, fully crossed subset.
+
+An ordinary Gaussian model assigns positive probability outside the response support. We fit the neg-raising benchmark with participant and verb intercepts, then calculate that illegal probability from its fitted population means and residual standard deviation.
+
+```{r}
+#| label: gaussian-bounded-benchmark
+#| echo: true
+gaussian <- lme4::lmer(
+  negraising ~ voice * subject + (1 | participant) + (1 | verb),
+  data = mnr, REML = FALSE,
+  control = lme4::lmerControl(optimizer = "bobyqa",
+                              optCtrl = list(maxfun = 200000L))
+)
+mnr$gaussian_mean <- predict(gaussian, re.form = NA)
+sigma_hat <- sigma(gaussian)
+mnr$illegal_probability <- pnorm(0, mnr$gaussian_mean, sigma_hat) +
+  pnorm(1, mnr$gaussian_mean, sigma_hat, lower.tail = FALSE)
+c(fixed_effects = lme4::fixef(gaussian),
+  average_illegal_probability = mean(mnr$illegal_probability))
+```
+
+For a fitted Gaussian mean $\widehat\mu_i$ and residual SD $\widehat\sigma$, the illegal predictive mass for row $i$ is
+
+$$
+\Phi\left(\frac{0-\widehat\mu_i}{\widehat\sigma}\right)
++
+1-
+\Phi\left(\frac{1-\widehat\mu_i}{\widehat\sigma}\right).
+$$
+
+The code computes these two tails with `pnorm()` and then averages them across fitted population means. This **endpoint-mass problem** is not merely that the Gaussian curve extends slightly beyond the plot: the model assigns positive probability to impossible responses while assigning probability zero to the exact endpoints.
+
+```{r}
+#| label: plot-bounded-responses
+#| echo: true
+library(ggplot2)
+density_grid <- data.frame(value = seq(-.2, 1.2, length.out = 301L))
+density_grid$fitted_density <- vapply(
+  density_grid$value,
+  function(value) mean(dnorm(value, mnr$gaussian_mean, sigma_hat)),
+  numeric(1)
+)
+ggplot(mnr, aes(negraising)) +
+  geom_histogram(aes(y = after_stat(density)), binwidth = .05, boundary = 0,
+                 color = "white", fill = "grey55") +
+  geom_line(data = density_grid, aes(value, fitted_density),
+            color = "#1F5A85", linewidth = .8) +
+  geom_vline(xintercept = slider_bounds, color = "grey65", linewidth = .4) +
+  coord_cartesian(xlim = range(density_grid$value)) +
+  labs(x = "Neg-raising slider response", y = "Density") +
+  theme_classic()
+```
+
+The Gaussian benchmark assigns `r scales::percent(mean(mnr$illegal_probability), accuracy = .01)` of its predictive mass outside $[0,1]$. The endpoint bars are genuine data, not rounding errors.
+
+The source paper uses the ease response to weight a KL loss in a latent lexical-and-structural model with participant-specific scale and shift terms. Our subset remains acceptability-selected upstream, but we never filter individual trials by ease. The benchmark is thus diagnostic, not a reproduction of that analysis.
+
+## Recap and check your understanding
+
+1. Why is an exact response of zero different from a small positive response?
+2. Which probability does the Gaussian benchmark assign to an exact endpoint?
+3. What population restriction is introduced by retaining verbs in all four cells?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Zero is a selectable endpoint in the measurement procedure, not an approximation to an interior value. <!-- dqr-allow: conceptual-answer -->
+2. A continuous Gaussian assigns probability zero to any exact point, including zero and one, while also assigning positive mass outside the legal interval. <!-- dqr-allow: conceptual-answer -->
+3. The target is limited to upstream-selected verbs represented in every voice-by-subject cell, not all clause-embedding verbs. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](why-not-beta-sliders.qmd) asks why ordinary beta regression still cannot represent the endpoint observations.

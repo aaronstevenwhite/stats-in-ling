@@ -1,10 +1,285 @@
 ---
 title: "Validation without outcome labels"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+A clustering has no observed cluster label that the fitting procedure is meant to predict. Recall that [K-means](k-means.qmd) represents a fitted group by its centroid, the coordinate-wise mean of the tokens assigned to that group. We can instead ask whether centroids estimated from training speakers place tokens from held-out speakers near a learned center. The held-out speaker supplies all 20 unlabeled tokens needed for speaker-relative standardization, and none enters centroid fitting. The resulting target is reconstruction of a complete calibrated panel; an isolated first token would not supply the same coordinate system.
 
-**Available Monday, November 23, 2026.**
+The **validation-target specification (VTS)** is:
+
+1. **Split unit:** all twenty rows from one speaker move together.
+2. **Score unit:** token losses are averaged within speaker, then speakers receive
+   equal weight.
+3. **Held-out information:** the complete unlabeled speaker panel remains available
+   for within-speaker standardization.
+4. **Fold-local fit:** centroids and assignments are estimated from training speakers
+   only.
+5. **Transfer target:** similarly calibrated speakers from the historical sampling
+   frame, not an isolated first token or a new population of English speakers.
+
+We construct the speaker folds, derive the held-out token loss, and then contrast this calibration-panel target with training reconstruction and other prediction information sets.
+
+## Reconstructing the rows and speaker folds
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+speaker_labels <- c(c = "Children", m = "Men", w = "Women")
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    ),
+    speaker_type = factor(
+      speaker_labels[as.character(type)],
+      levels = c("Men", "Women", "Children")
+    )
+  ) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+seed <- 1952L
+
+set.seed(seed)
+speaker_folds <- vowels |>
+  dplyr::distinct(speaker, type, sex, speaker_type) |>
+  dplyr::arrange(type, speaker) |>
+  dplyr::group_by(type) |>
+  dplyr::mutate(fold = sample(rep(1:5, length.out = dplyr::n()))) |>
+  dplyr::ungroup()
+
+vowels <- vowels |>
+  dplyr::left_join(
+    speaker_folds |> dplyr::select(speaker, fold),
+    by = "speaker"
+  )
+
+stopifnot(
+  dplyr::n_distinct(speaker_folds$speaker) == 76L,
+  all(table(speaker_folds$type, speaker_folds$fold) > 0),
+  all(tapply(vowels$fold, vowels$speaker, function(x) {
+    length(unique(x)) == 1L
+  }))
+)
+```
+
+The folds are balanced within the paper's men, women, and children speaker groups. All rows from one speaker stay in one fold.
+
+Balancing keeps each fold from accidentally becoming a comparison among the three
+source speaker types, whose raw acoustic locations differ. Five folds leave roughly
+four fifths of the `r dplyr::n_distinct(vowels$speaker)` speakers available for fitting while still producing several
+held-out panels in every source group. The choice is computational and descriptive;
+it is not a claim that five is an optimal number of folds.
+
+## Predicting a held-out token
+
+Let
+
+$$
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_1,
+\ldots,
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_K
+$$
+
+be centroids estimated without the held-out speaker. Token $i$ receives the nearest fixed center:
+
+$$
+\widehat z_i
+=
+\underset{k\in\{1,\ldots,K\}}{\operatorname{argmin}}
+\left\lVert
+\mathbf{x}_i-
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_k
+\right\rVert^2.
+$$
+
+Its squared reconstruction loss is
+
+$$
+L_i
+=
+\min_k
+\left\lVert
+\mathbf{x}_i-
+\widehat{\boldsymbol{\mu}}^{\mathrm{train}}_k
+\right\rVert^2.
+$$
+
+The held-out row does not update a centroid before it is scored.
+
+## Keeping the new unit new
+
+The relevant separation rule comes from [grouped cross-validation](../model-criticism-and-prediction/grouped-cross-validation.qmd): a test speaker cannot contribute another token to training. The following helper computes each held-out token's nearest training centroid.
+
+```{r}
+pairwise_squared_distance <- function(x, centers) {
+  x2 <- rowSums(x^2)
+  c2 <- rowSums(centers^2)
+  pmax(outer(x2, c2, "+") - 2 * tcrossprod(x, centers), 0)
+}
+
+nearest_centroid <- function(x, centers) {
+  squared <- pairwise_squared_distance(x, centers)
+  assignment <- max.col(-squared, ties.method = "first")
+  data.frame(
+    assignment = assignment,
+    squared_distance = squared[cbind(seq_len(nrow(x)), assignment)]
+  )
+}
+
+token_loss <- list()
+for (fold in 1:5) {
+  train <- vowels$fold != fold
+  test <- !train
+
+  stopifnot(length(intersect(
+    unique(vowels$speaker[train]),
+    unique(vowels$speaker[test])
+  )) == 0L)
+
+  for (k in 2:15) {
+    set.seed(seed + 100L * fold + k)
+    fit <- stats::kmeans(
+      X[train, , drop = FALSE],
+      centers = k,
+      nstart = 100L,
+      iter.max = 200L,
+      algorithm = "Hartigan-Wong"
+    )
+    predicted <- nearest_centroid(X[test, , drop = FALSE], fit$centers)
+
+    token_loss[[length(token_loss) + 1L]] <- data.frame(
+      speaker = vowels$speaker[test],
+      fold = fold,
+      k = k,
+      intended_vowel = vowels$vowel[test],
+      assigned_cluster = predicted$assignment,
+      squared_reconstruction_loss = predicted$squared_distance
+    )
+  }
+}
+
+token_loss <- dplyr::bind_rows(token_loss)
+speaker_loss <- token_loss |>
+  dplyr::group_by(speaker, fold, k) |>
+  dplyr::summarise(
+    mean_squared_reconstruction_loss =
+      mean(squared_reconstruction_loss),
+    .groups = "drop"
+  )
+
+loss_summary <- speaker_loss |>
+  dplyr::group_by(k) |>
+  dplyr::summarise(
+    speakers = dplyr::n(),
+    mean_speaker_loss = mean(mean_squared_reconstruction_loss),
+    median_speaker_loss = stats::median(mean_squared_reconstruction_loss),
+    speaker_loss_sd = stats::sd(mean_squared_reconstruction_loss),
+    speaker_loss_q10 = stats::quantile(
+      mean_squared_reconstruction_loss, 0.10, names = FALSE
+    ),
+    speaker_loss_q90 = stats::quantile(
+      mean_squared_reconstruction_loss, 0.90, names = FALSE
+    ),
+    .groups = "drop"
+  )
+
+stopifnot(all(loss_summary$speakers == 76L))
+knitr::kable(loss_summary, digits = 3)
+```
+
+Each speaker contributes one mean loss at each $K$, so speakers receive equal
+weight. The table reports their mean, median, [standard deviation](../random-variables-and-distributions/standard-deviation.qmd), and 10th and
+90th percentiles. These quantities directly describe how reconstruction loss
+varies among the 76 historical speakers under this fixed fold assignment. They
+do not turn the speakers into independent draws from a new population, and they
+do not propagate uncertainty from choosing the representation or fold
+construction.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4.2
+#| fig-alt: "Mean held-out speaker reconstruction loss across two through fifteen training centroids, with bars spanning the tenth through ninetieth percentiles of speaker losses."
+
+ggplot2::ggplot(loss_summary, ggplot2::aes(
+  x = k, y = mean_speaker_loss
+)) +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(
+      ymin = speaker_loss_q10,
+      ymax = speaker_loss_q90
+    ),
+    width = 0,
+    color = "grey45",
+    linewidth = 0.45
+  ) +
+  ggplot2::geom_line(color = "#2B6CB0", linewidth = 0.7) +
+  ggplot2::geom_point(color = "#2B6CB0", size = 1.7) +
+  ggplot2::scale_x_continuous(breaks = c(seq(2, 14, by = 2), 15)) + # dqr-allow: algorithm-setting
+  ggplot2::labs(
+    x = "Number of training centroids",
+    y = "Held-out mean squared distance"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+Held-out mean loss is `r round(loss_summary$mean_speaker_loss[loss_summary$k == 10], 3)` for ten centroids and `r round(loss_summary$mean_speaker_loss[loss_summary$k == 15], 3)` for fifteen. The vertical ranges show where the middle 80% of speaker losses fall. The decline shows that more centers represent the complete held-out panels more compactly under this loss.
+
+## Why reconstruction loss does not select a category count
+
+A codebook with $K+1$ centers can reproduce a $K$-center codebook by duplicating one center. Its population reconstruction loss can thus decrease or remain constant as capacity increases. Finite training samples and local optimization may make a validation curve wiggle, but the target still rewards added representational capacity.
+
+Held-out loss can compare how efficiently declared codebook sizes represent new panels, or it can be paired with a separately declared complexity budget. It does not estimate a phonological inventory by itself.
+
+## The calibration-panel target
+
+The within-speaker scores were computed from each speaker's complete unlabeled panel before the split. Thus, held-out speakers influence their own normalization but do not influence the fitted centroids. This [prediction information set](../model-criticism-and-prediction/prediction-targets.qmd#the-prediction-information-set) may be appropriate when a complete acoustic calibration panel is available. It is unavailable for a first isolated token.
+
+This use of test-panel measurements is deliberate rather than hidden [preprocessing leakage](../model-criticism-and-prediction/training-and-test-data.qmd#leakage-through-preprocessing). The claim must name the adapted target.
+
+## Checking the held-out target
+
+1. Why do all rows from a speaker move together?
+2. Which fitted objects exclude the held-out speaker entirely?
+3. What information from the held-out speaker is used for normalization?
+4. Why does lower held-out reconstruction loss favor larger codebooks?
+5. What new-speaker claim does this design not support?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Moving speakers as blocks prevents another production by the test speaker from
+   entering centroid estimation.
+2. The fitted centroids exclude the held-out speaker.
+3. That speaker's complete unlabeled panel supplies its within-speaker means and
+   standard deviations.
+4. More centers increase codebook capacity under squared reconstruction loss.
+5. The design does not support prediction for an isolated first token with no
+   calibration panel.
+
+</details>
+
+## Recap
+
+1. Speaker blocking aligns the split with the dependent observational unit.
+2. The score gives each speaker equal influence after averaging twenty token losses.
+3. The result transfers only to the declared complete-panel information set.
+
+The [next page](gaussian-mixtures.qmd#one-gaussian-component) replaces hard
+nearest-centroid geometry with a probability model that retains component spread
+and overlap.

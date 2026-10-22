@@ -1,10 +1,411 @@
 ---
 title: "Principal component analysis"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+Principal component analysis (PCA) finds directions along which centered rows vary. For the PHOIBLE matrix, a row is an inventory record and a column is a segment listing. PCA thus summarizes covariance among database-segment columns. It does not use phonological labels, family names, or macroareas to fit the directions.
 
-**Available Monday, November 30, 2026.**
+Recall that [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) are probability-model quantities for random variables. On this page, hats and $s^2$ mark empirical analogues computed across the realized training inventory records. The resulting components summarize this prepared database matrix and need not be universal articulatory axes.
+
+The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+develops matrix-vector multiplication from scalar multiplication and dot
+products. We will keep the componentwise calculation visible before using its
+compact matrix abbreviation.
+
+We derive the variance criterion, connect its solution to the SVD, verify that identity on PHOIBLE, and only then use metadata to interpret the fitted scores.
+
+## A two-dimensional case first
+
+Suppose two centered measurements have the sample covariance matrix
+
+$$
+\mathbf S=
+\begin{bmatrix}4&0\\0&1\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+The value 4 says that the horizontal measurement varies four times as much as
+the vertical measurement, whose variance is 1. <!-- dqr-allow: symbolic-derivation --> The off-diagonal zeros say that
+the two measurements have zero sample covariance. If we transform the
+horizontal vector \((1,0)^{\mathsf T}\), ordinary row-by-column multiplication
+gives <!-- dqr-allow: symbolic-derivation -->
+
+$$
+\begin{bmatrix}4&0\\0&1\end{bmatrix} % dqr-allow: symbolic-derivation
+\begin{bmatrix}1\\0\end{bmatrix} % dqr-allow: symbolic-derivation
+=
+\begin{bmatrix}4\\0\end{bmatrix} % dqr-allow: symbolic-derivation
+=
+4
+\begin{bmatrix}1\\0\end{bmatrix}. % dqr-allow: symbolic-derivation
+$$
+
+The vector becomes four times as long and keeps its direction. We call such a
+direction an **eigenvector** and call its multiplier the **eigenvalue**. By
+contrast, the diagonal vector \((1,1)^{\mathsf T}/\sqrt 2\) becomes
+\((4,1)^{\mathsf T}/\sqrt 2\), which points in a different direction.
+
+### Seeing a preserved direction {#eigenvectors-as-preserved-directions}
+
+The figure shows that contrast. The horizontal eigenvector stays horizontal
+after the transformation, while the diagonal vector turns toward the
+high-variance horizontal coordinate.
+
+~~~{r}
+#| label: fig-eigenvector-direction
+#| fig-cap: "A matrix transformation preserves an eigenvector's direction but changes a general vector's direction."
+#| fig-alt: "Two coordinate panels. In the eigenvector panel, an original horizontal arrow and its longer transformed arrow lie on the same line. In the non-eigenvector panel, the original diagonal arrow and transformed flatter arrow point in different directions."
+#| echo: false
+
+library(ggplot2)
+
+S_example <- diag(c(4, 1))
+eigen_direction <- c(1, 0)
+other_direction <- c(1, 1) / sqrt(2)
+
+make_transformation_arrows <- function(v, panel) {
+  transformed <- drop(S_example %*% v)
+  data.frame(
+    panel = panel,
+    stage = factor(
+      c("After transformation", "Original"),
+      levels = c("Original", "After transformation")
+    ),
+    x = 0,
+    y = 0,
+    xend = c(transformed[[1]], v[[1]]),
+    yend = c(transformed[[2]], v[[2]])
+  )
+}
+
+transformation_arrows <- rbind(
+  make_transformation_arrows(eigen_direction, "Eigenvector"),
+  make_transformation_arrows(other_direction, "Non-eigenvector")
+)
+
+ggplot(
+  transformation_arrows,
+  aes(x, y, xend = xend, yend = yend, color = stage)
+) +
+  geom_segment(
+    arrow = grid::arrow(length = grid::unit(0.16, "cm")),
+    linewidth = 1
+  ) +
+  facet_wrap(~panel) +
+  scale_color_manual(values = c("Original" = "black",
+                                "After transformation" = "#2C6E9B")) +
+  coord_equal(xlim = c(0, 4.3), ylim = c(0, 1.25), expand = FALSE) +
+  labs(x = "Coordinate 1", y = "Coordinate 2", color = NULL) +
+  theme_classic(base_size = 11) +
+  theme(legend.position = "bottom")
+~~~
+
+The horizontal direction also yields the largest possible variance after we
+project the two measurements onto any unit-length direction. We now derive why
+that maximum-variance direction must be an eigenvector.
+
+## Beginning with variation around column means
+
+For observed row \(i\) and column \(j\), let \(x_{ij}\) be the original cell and
+let \(\widehat\mu_j\) be the training mean of column \(j\). Centering subtracts
+that column mean:
+
+$$
+z_{ij}=x_{ij}-\widehat\mu_j.
+$$
+
+Collecting all centered cells into a matrix gives
+
+$$
+\mathbf Z
+=
+\mathbf X
+-
+\mathbf 1_n\widehat{\boldsymbol\mu}^{\mathsf T},
+$$
+
+where \(\mathbf 1_n\) supplies one copy of the column-mean vector for every
+training row. Let \(\mathbf v\) be a direction with length one, so
+\(\mathbf v^{\mathsf T}\mathbf v=1\). The score for row \(i\) is the sum
+of one product per centered segment-listing column:
+
+$$
+t_i
+=
+\sum_{j=1}^{p}z_{ij}v_j.
+$$
+
+Doing that calculation for every row gives the score vector
+
+$$
+\mathbf t=\mathbf Z\mathbf v.
+$$
+
+Their empirical variance across row scores is
+
+$$
+s_t^2
+=\widehat{\operatorname{Var}}_{\mathrm{rows}}(\mathbf t)
+=
+\frac{1}{n-1}\mathbf t^{\mathsf T}\mathbf t
+=
+\mathbf v^{\mathsf T}
+\left(\frac{\mathbf Z^{\mathsf T}\mathbf Z}{n-1}\right)
+\mathbf v.
+$$
+
+Define the sample covariance matrix
+
+$$
+\mathbf S
+=
+\frac{\mathbf Z^{\mathsf T}\mathbf Z}{n-1}.
+$$
+
+The first principal-component direction solves
+
+$$
+\mathbf v_1
+=
+\arg\max_{\mathbf v^{\mathsf T}\mathbf v=1}
+\mathbf v^{\mathsf T}\mathbf S\mathbf v.
+$$
+
+The unit-length condition matters because, without it, multiplying
+\(\mathbf v\) by a larger constant would make the criterion arbitrarily large.
+We therefore have a constrained problem: increase the variance while staying on
+the unit circle (or unit sphere in more dimensions).
+
+A **Lagrange multiplier** is an extra unknown that lets us solve an equality-
+constrained problem with ordinary derivatives. We subtract the constraint
+\(\mathbf v^{\mathsf T}\mathbf v-1=0\), multiplied by an unknown \(\eta\), from
+the objective. We then solve for both \(\mathbf v\) and \(\eta\); \(\eta\) is
+not chosen in advance.
+
+$$
+\mathcal L(\mathbf v,\eta)
+=
+\mathbf v^{\mathsf T}\mathbf S\mathbf v
+-\eta(\mathbf v^{\mathsf T}\mathbf v-1).
+$$
+
+The **gradient** collects one [local rate of
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+for each entry of \(\mathbf v\). Because \(\mathbf S\) is symmetric, the
+gradient of the Lagrange expression is
+
+$$
+\frac{\partial\mathcal L}{\partial\mathbf v}
+=
+2\mathbf S\mathbf v-2\eta\mathbf v.
+$$
+
+Setting it to zero finds a **stationary
+direction**, one for which every sufficiently small allowed move has zero
+first-order change. The resulting equation is
+
+$$
+\mathbf S\mathbf v=\eta\mathbf v.
+$$
+
+This is an **eigenvalue equation**. An **eigenvector** of \(\mathbf S\) is a
+nonzero direction whose direction is unchanged when \(\mathbf S\) acts on it;
+the **eigenvalue** is the multiplier by which its length is scaled. Thus every
+stationary direction here is an eigenvector, with \(\eta\) as its eigenvalue.
+Multiplying on the left by \(\mathbf v^{\mathsf T}\) shows that its objective
+value is that same
+eigenvalue, so the largest eigenvalue gives the first direction.
+
+Later directions maximize the same criterion while remaining orthogonal to the preceding directions.
+
+The factor \(1/(n-1)\) makes \(\mathbf S\) the sample covariance matrix under the
+usual convention. Replacing it by \(1/n\) multiplies every eigenvalue by the same
+positive constant and leaves every eigenvector unchanged. The convention affects
+reported variance magnitudes, not component directions.
+
+For a hand calculation, if a centered row is
+\(\mathbf z_i=(1,-1)\) and
+\(\mathbf v_1=(1/\sqrt2,1/\sqrt2)\), then
+\(t_{i1}=\mathbf z_i^{\mathsf T}\mathbf v_1=0\). If the two singular values are
+3 and 1, the first explained centered-sum-of-squares proportion is
+\(3^2/(3^2+1^2)=0.9\).
+
+## Connecting PCA to the SVD
+
+If
+
+$$
+\mathbf Z=\mathbf U\mathbf D\mathbf V^{\mathsf T},
+$$
+
+then
+
+$$
+\begin{aligned}
+\mathbf S
+&=\frac{1}{n-1}\mathbf Z^{\mathsf T}\mathbf Z\\
+&=\frac{1}{n-1}
+\mathbf V\mathbf D\mathbf U^{\mathsf T}
+\mathbf U\mathbf D\mathbf V^{\mathsf T}\\
+&=\mathbf V
+\frac{\mathbf D^2}{n-1}
+\mathbf V^{\mathsf T}.
+\end{aligned}
+$$
+
+Thus the PCA directions are the right singular vectors, and the covariance eigenvalues are
+
+$$
+\lambda_k=\frac{d_k^2}{n-1}.
+$$
+
+The component scores satisfy
+
+$$
+\mathbf T
+=
+\mathbf Z\mathbf V
+=
+\mathbf U\mathbf D.
+$$
+
+The two calculations give exactly the same score matrix. We established that
+equality algebraically above and verify it numerically below.
+
+## Verifying the identity on PHOIBLE
+
+```{r}
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+inventories <- phoible$inventories[
+  order(phoible$inventories$glottocode,
+        as.integer(phoible$inventories$inventory_id)),
+]
+groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+RNGkind(sample.kind = "Rejection")
+set.seed(20260827L)
+chosen <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+selected <- inventories[unname(chosen), ]
+
+area <- selected$macroarea
+area[is.na(area) | area == ""] <- "Unclassified"
+selected$split <- NA_character_
+set.seed(20261018L)
+for (name in sort(unique(area))) {
+  index <- sample(which(area == name))
+  n_holdout <- floor(0.15 * length(index))
+  selected$split[index[seq_len(n_holdout)]] <- "validation"
+  selected$split[index[n_holdout + seq_len(n_holdout)]] <- "test"
+  selected$split[index[is.na(selected$split[index])]] <- "training"
+}
+training_rows <- which(selected$split == "training")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
+)
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
+
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+decomposition <- svd(Z)
+covariance_fit <- eigen(crossprod(Z) / (nrow(Z) - 1), symmetric = TRUE)
+svd_eigenvalues <- decomposition$d^2 / (nrow(Z) - 1)
+scores_from_V <- Z %*% decomposition$v
+scores_from_UD <- sweep(decomposition$u, 2, decomposition$d, "*")
+
+c(
+  maximum_eigenvalue_difference =
+    max(abs(covariance_fit$values - svd_eigenvalues)),
+  maximum_score_difference = max(abs(scores_from_V - scores_from_UD))
+)
+```
+
+The largest eigenvalue difference is `r format(max(abs(covariance_fit$values - svd_eigenvalues)), scientific = TRUE, digits = 3)`. The largest difference between the two score calculations is `r format(max(abs(scores_from_V - scores_from_UD)), scientific = TRUE, digits = 3)`. These discrepancies reflect floating-point arithmetic.
+
+## Plotting scores, then adding metadata
+
+Macroarea did not enter the matrix, centering, SVD, or covariance calculation. We add it only after fitting to ask whether the unsupervised coordinates display broad descriptive differences.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5.5
+
+score_data <- data.frame(
+  PC1 = scores_from_V[, 1],
+  PC2 = scores_from_V[, 2],
+  macroarea = selected$macroarea[training_rows]
+)
+score_data$macroarea[
+  is.na(score_data$macroarea) | score_data$macroarea == ""
+] <- "Unclassified"
+
+ggplot(score_data, aes(x = PC1, y = PC2)) +
+  geom_point(color = "grey25", alpha = 0.42, size = 0.65) + # dqr-allow: algorithm-setting
+  facet_wrap(~macroarea) +
+  labs(x = "PC1 score", y = "PC2 score") +
+  theme_classic() +
+  theme(strip.background = element_blank())
+```
+
+The score clouds overlap substantially. Any apparent macroarea pattern may combine inventory size, source practices, genealogy, geography, and typological organization. The figure cannot distinguish those explanations because macroarea is neither a modeled cause nor the unit of the split.
+
+Thus a post-hoc component label based on this plot is a hypothesis about an
+empirical direction, not a recovered linguistic category. The [score and loading
+definitions](scores-and-loadings.qmd#scores-locate-row-objects) show exactly which
+row coordinates and segment weights such a hypothesis would need to explain.
+
+## Interpreting the variance criterion narrowly
+
+PCA maximizes variance in the supplied representation. Here that representation contains centered binary listings for training-retained segments. A direction with high variance is not necessarily the best direction for reconstruction of hidden cells, classification, or a linguistic theory. Those targets require an external criterion.
+
+PCA also does not discover a group contrast merely because groups can be colored after fitting. If a labeled contrast is the target, the evaluation must withhold appropriate units and assess it directly.
+
+## Checking the variance direction
+
+1. Why must the matrix be centered before this covariance interpretation?
+2. What quantity does $\mathbf v^{\mathsf T}\mathbf S\mathbf v$ measure?
+3. Why are $\mathbf V$ and $\mathbf D^2/(n-1)$ the covariance eigenvectors and eigenvalues?
+4. Which metadata enter the fit on this page?
+5. Why can the macroarea facets not isolate a causal explanation?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Centering makes the covariance interpretation concern departures from column
+   means rather than arbitrary binary origins.
+2. It is the empirical variance across the realized row projections onto \(\mathbf v\).
+3. Substituting the SVD into \(\mathbf Z^{\mathsf T}\mathbf Z/(n-1)\) produces that
+   eigendecomposition.
+4. Only centered segment listings enter; macroarea is joined afterward.
+5. The facets confound genealogy, geography, source practice, and inventory
+   composition.
+
+</details>
+
+## Recap
+
+1. The PCA direction follows from a constrained variance maximization and an
+   eigenvalue equation.
+2. The SVD supplies the same directions and their variance magnitudes.
+3. Post-fit metadata may motivate interpretation, but it does not define or validate
+   a component.
+
+The [next page](scores-and-loadings.qmd#scores-locate-row-objects) separates the
+row coordinates from the segment directions without changing the fitted
+decomposition.

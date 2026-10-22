@@ -1,10 +1,350 @@
 ---
-title: "Reconstruction from components"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
+title: "Reconstruction"
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+Scores and loadings rebuild a matrix cell by cell. We evaluate that reconstruction with a matrix-completion task: learn segment structure from training inventories, choose rank with validation inventories, and reconstruct six cells hidden from each test inventory while its other retained segment cells remain visible.
 
-**Available Monday, November 30, 2026.**
+We call $x_{ij}-\widehat x_{ij}$ a **matrix reconstruction residual**. Like a [regression residual](../regression-models/residuals.qmd), it is observed minus fitted, but its indices are an inventory record and segment column rather than a response row. The evaluation hides cells in otherwise visible inventory records; genealogical relatives may still appear in training.
+
+## Reconstructing with the first $K$ terms
+
+For centered training data,
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}
+=
+\mathbf T_K\mathbf V_K^{\mathsf T}.
+$$
+
+The reconstructed centered cell is
+
+$$
+\widehat z_{ij}^{(K)}
+=
+\sum_{k=1}^{K}t_{ik}v_{jk}.
+$$
+
+Returning to the original listing scale adds the training column mean:
+
+$$
+\widehat x_{ij}^{(K)}
+=
+\widehat\mu_j
++
+\widehat z_{ij}^{(K)}.
+$$
+
+For an observed training matrix, the residual is
+
+$$
+\mathbf E^{(K)}
+=
+\mathbf Z-\widehat{\mathbf Z}^{(K)},
+$$
+
+and the fraction of centered sum of squares represented is
+
+$$
+R_K
+=
+\frac{\sum_{k=1}^{K}d_k^2}
+     {\sum_{k=1}^{r}d_k^2}
+=
+1-
+\frac{\|\mathbf E^{(K)}\|_F^2}
+     {\|\mathbf Z\|_F^2}.
+$$
+
+This descriptive quantity assesses cells used in fitting. It is not held-out performance.
+
+## Reconstructing partially observed inventories
+
+Let \(\mathcal O_i\) and \(\mathcal M_i\) be the visible and masked columns of a
+held-out inventory. Let $\mathbf x_i^*$ be its mean-filled row:
+
+$$
+x_{ij}^*
+=
+\begin{cases}
+x_{ij},&j\in\mathcal O_i,\\
+\widehat\mu_j,&j\in\mathcal M_i.
+\end{cases}
+$$
+
+The centered masked cells are thus zero. For rank $K$,
+
+$$
+\widehat{\mathbf t}_i^{(K)}
+=
+(\mathbf x_i^*-\widehat{\boldsymbol\mu})^{\mathsf T}
+\mathbf V_K,
+$$
+
+and
+
+$$
+\widehat{\mathbf x}_i^{(K)}
+=
+\widehat{\boldsymbol\mu}
++
+\mathbf V_K\widehat{\mathbf t}_i^{(K)}.
+$$
+
+Coordinate \(k\) of the score makes the information set explicit:
+
+$$
+\widehat t_{ik}
+=
+\sum_{j\in\mathcal O_i}
+(x_{ij}-\widehat\mu_j)v_{jk}
++
+\sum_{j\in\mathcal M_i}
+0\cdot v_{jk}.
+$$
+
+This is the **one-step mean-filled projection**. It is not the score that would be
+available from the complete row, and it is not an iterative optimum over the
+missing cells. Every visible retained segment remains available; only the six
+masked cells are replaced by their training means.
+
+The projection is not a binary generative model, so fitted values may lie outside
+the unit interval. The code projects them to the interval, with a \(10^{-6}\)
+inset retained from the original audited procedure. Clipping can improve squared
+error against binary cells, but it does not turn the values into calibrated
+probabilities. We thus call the score **balanced squared reconstruction loss**,
+not Brier loss.
+
+## Building the split and masks
+
+```{r}
+library(ggplot2)
+
+balanced_squared_loss <- function(truth, prediction) {
+  prediction <- pmin(pmax(prediction, 1e-6), 1 - 1e-6)
+  loss <- (truth - prediction)^2
+  listed <- as.logical(truth)
+  mean(c(mean(loss[listed]), mean(loss[!listed])))
+}
+
+make_mask <- function(X, rows, seed, n_each = 3L) {
+  set.seed(seed)
+  mask <- matrix(FALSE, nrow = length(rows), ncol = ncol(X))
+  for (i in seq_along(rows)) {
+    listed <- which(X[rows[[i]], ] == 1)
+    not_listed <- which(X[rows[[i]], ] == 0)
+    mask[i, c(sample(listed, n_each), sample(not_listed, n_each))] <- TRUE
+  }
+  list(rows = rows, mask = mask)
+}
+
+reconstruct <- function(X, evaluation, mean, loadings, rank) {
+  observed <- X[evaluation$rows, , drop = FALSE]
+  mean_matrix <- matrix(rep(mean, each = nrow(observed)), nrow = nrow(observed))
+  observed[evaluation$mask] <- mean_matrix[evaluation$mask]
+  centered <- sweep(observed, 2, mean, "-")
+  prediction <- mean_matrix
+  if (rank > 0L) {
+    directions <- loadings[, seq_len(rank), drop = FALSE]
+    prediction <- prediction + centered %*% directions %*% t(directions)
+  }
+  pmin(pmax(prediction, 1e-6), 1 - 1e-6)
+}
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+inventories <- phoible$inventories[
+  order(phoible$inventories$glottocode,
+        as.integer(phoible$inventories$inventory_id)),
+]
+groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+RNGkind(sample.kind = "Rejection")
+set.seed(20260827L)
+chosen <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+selected <- inventories[unname(chosen), ]
+
+area <- selected$macroarea
+area[is.na(area) | area == ""] <- "Unclassified"
+selected$split <- NA_character_
+set.seed(20261018L)
+for (name in sort(unique(area))) {
+  index <- sample(which(area == name))
+  n_holdout <- floor(0.15 * length(index))
+  selected$split[index[seq_len(n_holdout)]] <- "validation"
+  selected$split[index[n_holdout + seq_len(n_holdout)]] <- "test"
+  selected$split[index[is.na(selected$split[index])]] <- "training"
+}
+training_rows <- which(selected$split == "training")
+validation_rows <- which(selected$split == "validation")
+test_rows <- which(selected$split == "test")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
+)
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
+
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+decomposition <- svd(Z, nu = 64L, nv = 64L)
+validation <- make_mask(X, validation_rows, seed = 20261019L)
+test <- make_mask(X, test_rows, seed = 20261020L)
+
+candidate_ranks <- c(0L, 1L, 2L, 3L, 5L, 8L, 12L, 16L,
+                     24L, 32L, 40L, 50L, 64L) # dqr-allow: algorithm-setting
+validation_loss <- vapply(candidate_ranks, function(rank) {
+  prediction <- reconstruct(X, validation, training_mean, decomposition$v, rank)
+  truth <- X[validation$rows, , drop = FALSE][validation$mask]
+  balanced_squared_loss(truth, prediction[validation$mask])
+}, numeric(1))
+selected_rank <- candidate_ranks[[which.min(validation_loss)]]
+
+test_prediction <- reconstruct(
+  X, test, training_mean, decomposition$v, selected_rank
+)
+test_baseline <- reconstruct(X, test, training_mean, decomposition$v, 0L)
+test_truth <- X[test$rows, , drop = FALSE][test$mask]
+
+c(
+  selected_rank = selected_rank,
+  hidden_test_cells = sum(test$mask),
+  baseline_balanced_squared_loss =
+    balanced_squared_loss(test_truth, test_baseline[test$mask]),
+  low_rank_balanced_squared_loss =
+    balanced_squared_loss(test_truth, test_prediction[test$mask])
+)
+```
+
+Validation selects rank `r selected_rank`. Only after that choice is fixed do we compute test loss. The segment-prevalence baseline has balanced squared reconstruction loss `r round(balanced_squared_loss(test_truth, test_baseline[test$mask]), 4)`, whereas the low-rank reconstruction has loss `r round(balanced_squared_loss(test_truth, test_prediction[test$mask]), 4)`.
+
+The formula-to-code map is:
+
+| Mathematical step | Code |
+|---|---|
+| replace \(j\in\mathcal M_i\) by \(\widehat\mu_j\) | `observed[evaluation$mask] <- mean_matrix[evaluation$mask]` |
+| center the partly observed row | `sweep(observed, 2, mean, "-")` |
+| compute \(\widehat{\mathbf t}_{i,K}\) | `centered %*% directions` |
+| reconstruct with \(\mathbf V_K^{\mathsf T}\) | `%*% t(directions)` |
+| return to the cell scale | `prediction + mean_matrix` |
+
+The three listed and three not-listed masked cells give the two database statuses
+equal representation within every held-out inventory while leaving nearly all
+retained columns visible. We choose six hidden cells so that each row retains enough
+visible entries to estimate its scores while still supplying multiple completion
+targets; a larger mask would
+ask about reconstruction from less inventory information. The rank grid is dense
+at small values and coarser at larger values to cover simple and moderately rich
+representations at manageable cost. Seeds fix the Glottocode selection,
+macroarea-balanced split, and masks; none changes the meaning of a cell.
+
+## Showing raw hidden cells and predictions
+
+```{r}
+#| fig-width: 6.5
+#| fig-height: 4
+
+cells <- which(test$mask, arr.ind = TRUE)
+prediction_data <- data.frame(
+  status = factor(test_truth, levels = c(0, 1),
+                  labels = c("Not listed", "Listed")),
+  prediction = test_prediction[test$mask]
+)
+
+ggplot(prediction_data, aes(x = status, y = prediction)) +
+  geom_jitter(width = 0.13, height = 0, color = "grey55",
+              alpha = 0.24, size = 0.6) + # dqr-allow: algorithm-setting
+  geom_boxplot(width = 0.34, outlier.shape = NA, fill = "white",
+               color = "#0072B2", linewidth = 0.65) + # dqr-allow: algorithm-setting
+  labs(x = "Hidden database status", y = "Rank-selected prediction") +
+  theme_classic()
+```
+
+The raw points show all `r sum(test$mask)` hidden test cells. The separated distributions indicate that the observed cells of a new inventory contain information about its hidden listings under this representation.
+
+## Estimating the test gain
+
+Balanced squared reconstruction loss gives listed and not-listed cells equal total
+weight:
+
+$$
+L_{\mathrm{bal}}
+=
+\frac{1}{2n_1}\sum_{x=1}(x-\widehat x)^2
++
+\frac{1}{2n_0}\sum_{x=0}(x-\widehat x)^2.
+$$
+
+The following bootstrap resamples complete inventory records, preserving all six masked cells from a record.
+
+```{r}
+test_cells <- which(test$mask, arr.ind = TRUE)
+cell_gain <- split(seq_along(test_truth), test_cells[, "row"])
+gain_by_inventory <- vapply(cell_gain, function(index) {
+  balanced_squared_loss(test_truth[index], test_baseline[test$mask][index]) -
+    balanced_squared_loss(test_truth[index], test_prediction[test$mask][index])
+}, numeric(1))
+
+set.seed(20261021L)
+bootstrap_gain <- replicate(5000L, mean(sample(gain_by_inventory, replace = TRUE)))
+gain_interval <- quantile(bootstrap_gain, c(0.025, 0.975))
+c(
+  mean_gain = mean(gain_by_inventory),
+  interval_low = gain_interval[[1]],
+  interval_high = gain_interval[[2]]
+)
+```
+
+The test loss gain is `r round(mean(gain_by_inventory), 4)`, with an inventory bootstrap interval from `r round(gain_interval[[1]], 4)` to `r round(gain_interval[[2]], 4)`. This interval describes inventory-record variability under the present split. It is not a family-level typological interval.
+
+## What reconstruction establishes
+
+Structure learned from the training inventory records improves completion of a few hidden database listings when most of the held-out record remains visible. Scores for that record are estimated from its visible cells, and related inventories may occur in training. The result consequently targets partial record completion under this split; wholly unseen inventories, phonological absence, and a universal component rank require different evidence.
+
+## Checking the rebuilt cells
+
+1. Why are hidden cells filled with training-column means before projection?
+2. Which cells estimate a held-out inventory's scores?
+3. Why is observed reconstruction error not held-out prediction error?
+4. Why does balanced squared reconstruction loss weight the two cell statuses equally?
+5. What is the unit resampled by the bootstrap?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Mean filling makes their centered contribution exactly zero.
+2. All unmasked cells in the held-out inventory estimate its score.
+3. Training reconstruction evaluates cells used to fit directions; this task hides
+   cells in unseen rows.
+4. The balanced squared loss gives listed and not-listed masked cells equal total
+   weight.
+5. The bootstrap resamples complete inventory records with their six cells intact.
+
+</details>
+
+## Recap
+
+1. The held-out score is a one-step projection from a partly observed row.
+2. Clipped SVD reconstructions are bounded real-valued scores, not calibrated
+   probabilities.
+3. The mask, loss weighting, candidate ranks, and split define the matrix-completion
+   target.
+
+The [next page](choosing-components.qmd#separating-fitting-selection-and-evaluation)
+isolates the validation step that selected the retained rank without inspecting
+test loss.

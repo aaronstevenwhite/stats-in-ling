@@ -1,10 +1,281 @@
 ---
 title: "Choosing a mixture with BIC"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+A Gaussian mixture requires both a component count and a covariance family. The
+[mixture page](gaussian-mixtures.qmd#one-gaussian-component) defines a covariance
+matrix as the component's joint spread and orientation; a covariance family
+constrains which entries may vary across components. We use the
+[**Bayesian information criterion (BIC)**](../model-criticism-and-prediction/information-criteria.qmd)
+to compare a declared grid on the
+[speaker-relative Peterson-Barney representation](distance-and-scaling.qmd). BIC
+combines maximized log
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+with a $q\log n$ penalty for the number of fitted parameters. The likelihood is the
+joint density of the observed acoustic vectors viewed as a function of the mixture
+parameters, so adding components must improve that fitted density enough to offset
+their added flexibility. We then distinguish the distributional model selected from
+that grid from the ten-component reference fixed earlier to compare membership with
+the ten elicitation labels.
 
-**Available Monday, November 23, 2026.**
+## Reconstructing the candidate data
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+suppressPackageStartupMessages(library(mclust))
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+candidate_models <- c("EEI", "EVI", "VEV", "VVI")
+candidate_components <- 2:16
+```
+
+For \(p=2\), write
+\(\boldsymbol\Sigma_k=\lambda_k\mathbf D_k\mathbf A_k\mathbf D_k^{\mathsf T}\),
+where \(\lambda_k\) is volume, \(\mathbf A_k\) is a determinant-one shape,
+and \(\mathbf D_k\) is orientation.
+
+| Family | Volume | Shape | Orientation | Covariance parameters in two dimensions |
+|---|---|---|---|---:|
+| `EEI` | equal | equal | coordinate axes | \(2\) |
+| `EVI` | equal | varying | coordinate axes | \(1+K\) |
+| `VEV` | varying | equal | varying | \(2K+1\) |
+| `VVI` | varying | varying | coordinate axes | \(2K\) |
+
+Thus `EEI`, `EVI`, and `VVI` use diagonal covariances, while `VEV` permits rotated
+ellipses. The 2--16 grid brackets the ten-component reference and permits
+some categories to occupy more than one region without making the candidate
+search unbounded. These four families expose contrasts in volume, shape, and
+orientation while keeping the grid small enough to inspect. Excluding other
+`mclust` families keeps the grid small enough to derive and inspect. Because
+those omitted families are never compared, the resulting ranking supplies no
+evidence about their plausibility.
+
+The covariance families and component range are fixed before intended-vowel agreement is inspected. A candidate specification contains the component count $K$, covariance family $\mathcal C$, and remaining procedure $\mathcal R$:
+
+$$
+M=\langle K,\mathcal C,\mathcal R\rangle.
+$$
+
+Changing the scaling or start policy during the comparison would change $\mathcal R$ and thus the candidate being ranked.
+
+## BIC and its sign convention
+
+For maximized likelihood $L$, $q$ estimated parameters, and $n$ likelihood contributions, define
+
+$$
+\operatorname{BIC}
+=
+-2\log L+q\log n.
+$$
+
+Smaller values are preferred under this convention. `mclust` reports the negative quantity,
+
+$$
+\operatorname{BIC}_{\texttt{mclust}}
+=
+2\log L-q\log n,
+$$
+
+so its larger value is better. We convert the sign before plotting.
+
+## Fitting the declared grid
+
+```{r}
+set.seed(1952L)
+bic_object <- mclust::mclustBIC(
+  X,
+  G = candidate_components,
+  modelNames = candidate_models,
+  verbose = FALSE
+)
+
+bic_grid <- as.data.frame(as.table(as.matrix(bic_object))) |>
+  dplyr::transmute(
+    components = as.integer(as.character(Var1)),
+    covariance_model = as.character(Var2),
+    mclust_bic_larger_is_better = as.numeric(Freq),
+    conventional_bic_smaller_is_better =
+      -mclust_bic_larger_is_better
+  ) |>
+  dplyr::filter(is.finite(mclust_bic_larger_is_better))
+
+best_bic <- bic_grid |>
+  dplyr::slice_min(
+    conventional_bic_smaller_is_better,
+    n = 1,
+    with_ties = FALSE
+  )
+
+set.seed(1952L)
+fit_g14 <- mclust::Mclust(
+  X,
+  G = best_bic$components,
+  modelNames = best_bic$covariance_model,
+  verbose = FALSE
+)
+set.seed(1952L)
+fit_g10 <- mclust::Mclust(
+  X,
+  G = 10L,
+  modelNames = "EVI",
+  verbose = FALSE
+)
+
+direct_bic_g14 <- -2 * fit_g14$loglik + fit_g14$df * log(nrow(X))
+direct_bic_g10 <- -2 * fit_g10$loglik + fit_g10$df * log(nrow(X))
+
+stopifnot(
+  best_bic$components == 14L,
+  best_bic$covariance_model == "EEI",
+  abs(direct_bic_g14 + fit_g14$bic) < 1e-7,
+  abs(direct_bic_g10 + fit_g10$bic) < 1e-7
+)
+
+fit_comparison <- data.frame(
+  candidate = c("14-component EEI", "10-component EVI"),
+  log_likelihood = c(fit_g14$loglik, fit_g10$loglik),
+  parameters = c(fit_g14$df, fit_g10$df),
+  conventional_bic = c(direct_bic_g14, direct_bic_g10)
+)
+knitr::kable(fit_comparison, digits = 3)
+```
+
+The grid selects the `r best_bic$components`-component `r best_bic$covariance_model` model with BIC `r round(best_bic$conventional_bic_smaller_is_better, 3)`. The fixed ten-component `EVI` model has BIC `r round(direct_bic_g10, 3)`. These values are obtained from the fitted likelihoods, parameter counts, and observed token count shown in the table.
+
+The parameter counts can also be reconstructed. Every model has \(K-1\) free
+weights and \(2K\) mean coordinates. In two dimensions, the covariance counts in
+the table give
+
+$$
+\begin{array}{ll}
+q_{\mathrm{EEI}}=(K-1)+2K+2=3K+1, &
+q_{\mathrm{EVI}}=(K-1)+2K+(K+1)=4K,\\
+q_{\mathrm{VEV}}=(K-1)+2K+(2K+1)=5K, &
+q_{\mathrm{VVI}}=(K-1)+2K+2K=5K-1.
+\end{array}
+$$
+
+For the selected row, \(K=`r fit_g14$G`\),
+\(\log L=`r round(fit_g14$loglik, 3)`\),
+\(q=`r fit_g14$df`\), and \(n=`r nrow(X)`\). Substitution gives
+
+$$
+-2(`r round(fit_g14$loglik, 3)`)
++`r fit_g14$df`\log(`r nrow(X)`)
+=
+`r round(direct_bic_g14, 3)`,
+$$
+
+which is the corresponding conventional BIC in the output table.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4.5
+#| fig-alt: "Conventional smaller-is-better BIC across two through sixteen Gaussian mixture components for four declared covariance families."
+
+ggplot2::ggplot(bic_grid, ggplot2::aes(
+  x = components,
+  y = conventional_bic_smaller_is_better,
+  group = covariance_model,
+  color = covariance_model
+)) +
+  ggplot2::geom_line(linewidth = 0.65) +
+  ggplot2::geom_point(size = 1.25) +
+  ggplot2::scale_x_continuous(breaks = seq(2, 16, by = 2)) +
+  ggplot2::scale_color_viridis_d(option = "D", end = 0.82) +
+  ggplot2::labs(
+    x = "Number of mixture components",
+    y = "BIC (smaller is better)",
+    color = "Covariance family"
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "top")
+```
+
+## Distributional fit and label alignment differ
+
+```{r}
+external_alignment <- data.frame(
+  candidate = c("14-component EEI", "10-component EVI"),
+  adjusted_rand_index = c(
+    mclust::adjustedRandIndex(fit_g14$classification, vowels$vowel),
+    mclust::adjustedRandIndex(fit_g10$classification, vowels$vowel)
+  )
+)
+knitr::kable(external_alignment, digits = 3)
+```
+
+The BIC-selected model has post-fit ARI `r round(external_alignment$adjusted_rand_index[external_alignment$candidate == "14-component EEI"], 3)`, while the ten-component `EVI` model has ARI `r round(external_alignment$adjusted_rand_index[external_alignment$candidate == "10-component EVI"], 3)`. BIC prefers the first density specification; the external intended-vowel partition aligns more closely with the second hard classification.
+
+The two comparisons answer different questions. We use the ten-component fit when asking how uncertain the model is about a ten-way category assignment, whereas BIC selects the fourteen-component fit when the question is which candidate best approximates the token density. We should not substitute the answer to one question for the answer to the other.
+
+## Interpreting the sample size
+
+The criterion uses $n=`r nrow(X)`$ token contributions because that is the likelihood fitted by the software. Under [independence](../foundations/independence.qmd), learning one contribution would not change the distribution of another. Here `r dplyr::n_distinct(vowels$speaker)` speakers contribute repeated productions, so the token count does not represent that many independent speaker-level units.
+
+The usual BIC approximation presumes an appropriate independence structure. A token-level mixture that omits repeated-speaker dependence does not gain that structure from the penalty. Thus, the values can rank these declared software fits, while their asymptotic evidence interpretation remains limited.
+
+## Candidate-set and fit limits
+
+BIC compares only the supplied component counts, covariance families, representation, and fitting controls. It cannot repair omitted F3 information, within-speaker dependence, or an unsuitable Gaussian family. Mixture label permutations and weakly represented components also complicate the regularity assumptions behind simple information-criterion arguments.
+
+There is a deeper approximation limit. The usual BIC derivation uses a regular
+Laplace approximation around an interior, locally identifiable maximum. Finite
+mixtures can violate these conditions because labels can be permuted, a component
+weight can approach zero, and a covariance can approach singularity. BIC remains
+a declared ranking rule for these fitted candidates, but its difference should
+not be read as exact log model evidence.
+
+The selected component count need not equal a phonological inventory. A vowel's productions may occupy several Gaussian regions, while overlapping intended vowels may share one region.
+
+## Checking the BIC comparison
+
+1. How is each displayed BIC reconstructed from log likelihood and parameter count?
+2. Why is the `mclust` sign reversed before plotting?
+3. Which declared model minimizes conventional BIC?
+4. Which fixed model aligns more closely with intended-vowel metadata?
+5. Why does the token count not represent independent speakers?
+6. What does the selected component count leave unresolved linguistically?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Insert each fit's `loglik`, `df`, and `r format(nrow(vowels), big.mark = ",")` token contributions into the displayed
+   formula.
+2. `mclust` reports \(2\log L-q\log n\), the negative of the convention used here.
+3. The fourteen-component `EEI` fit minimizes conventional BIC in this grid.
+4. The ten-component `EVI` hard classification has higher post-fit ARI.
+5. Twenty rows come from each speaker, so token contributions are not independent
+   sampled speakers.
+6. A selected density component count does not identify a phonological inventory.
+
+</details>
+
+## Recap
+
+1. A candidate includes component count, covariance family, and fitting procedure.
+2. BIC combines maximized token likelihood with an explicitly reconstructed
+   parameter-count penalty.
+3. Mixture singularities and repeated-speaker dependence limit the usual evidence
+   approximation.
+
+The [next page](validating-a-mixture.qmd#held-out-log-loss) compares the fixed K10
+and G14 candidates by predictive density on complete held-out speakers.

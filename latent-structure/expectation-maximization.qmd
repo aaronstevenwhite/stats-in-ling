@@ -1,10 +1,615 @@
 ---
 title: "Expectation-maximization"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+If component labels were observed, we could estimate a Gaussian from its assigned
+Peterson-Barney tokens. If component parameters were known, we could calculate the
+[responsibilities introduced on the preceding page](posterior-membership.qmd#conditioning-on-an-unobserved-component).
+The [**expectation-maximization (EM) algorithm**](https://scikit-learn.org/stable/modules/mixture.html)
+alternates those two calculations when neither side is known. Its E-step takes a
+[conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd);
+its M-step maximizes a
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood),
+the joint density of the observed acoustic vectors viewed as a function of the
+mixture parameters. The [mixture page](gaussian-mixtures.qmd#combining-components)
+constructs that particular likelihood.
 
-**Available Monday, November 23, 2026.**
+We derive both updates from the complete-data formulation, implement them on the acoustic vectors, and then check the component update, likelihood path, and dependence on local solutions.
+
+## One E--M update by hand
+
+Begin with three one-dimensional observations, $x=(-1,0,3)$, and two Gaussian
+components. Give the components equal weights and unit variances, with means $-1$
+and $2$. For each observation, the E-step asks how its fitted density is divided
+between the two components. The resulting responsibility pairs are
+
+$$
+\begin{array}{c|cc}
+x_i&r_{i1}&r_{i2}\\ \hline % dqr-allow: symbolic-derivation
+-1&0.9890&0.0110\\ % dqr-allow: symbolic-derivation
+0&0.8176&0.1824\\ % dqr-allow: symbolic-derivation
+3&0.0006&0.9994 % dqr-allow: symbolic-derivation
+\end{array}
+$$
+
+Each row sums to one because the two entries are conditional probabilities for the
+two exhaustive component possibilities. Thus the observation $-1$ counts almost as
+one complete observation for component 1, the observation $3$ counts almost as one
+for component 2, and the observation $0$ is divided between them.
+
+Adding responsibilities down each column gives the effective component counts:
+
+$$
+N_1=0.9890+0.8176+0.0006=1.8071,
+\qquad
+N_2=0.0110+0.1824+0.9994=1.1929.
+$$
+
+The counts sum to three, the number of observations. Dividing by three gives the
+updated weights, $\pi_1^{(1)}=0.6024$ and $\pi_2^{(1)}=0.3976$. The updated means
+use the same fractional counts as weights:
+
+$$
+\begin{aligned}
+\mu_1^{(1)}
+&=\frac{0.9890(-1)+0.8176(0)+0.0006(3)}{1.8071} % dqr-allow: symbolic-derivation
+=-0.5464,\\
+\mu_2^{(1)}
+&=\frac{0.0110(-1)+0.1824(0)+0.9994(3)}{1.1929} % dqr-allow: symbolic-derivation
+=2.5044.
+\end{aligned}
+$$
+
+Finally, each variance is the responsibility-weighted average squared distance from
+its updated mean:
+
+$$
+\begin{aligned}
+(\sigma_1^2)^{(1)}
+&=\frac{
+0.9890(-1+0.5464)^2+0.8176(0+0.5464)^2+0.0006(3+0.5464)^2
+}{1.8071}
+=0.2515,\\
+(\sigma_2^2)^{(1)}
+&=\frac{
+0.0110(-1-2.5044)^2+0.1824(0-2.5044)^2+0.9994(3-2.5044)^2
+}{1.1929}
+=1.2781.
+\end{aligned}
+$$
+
+This example contains the complete alternation: use the current component
+parameters to divide each observation across components, then use those fractional
+memberships to update the weights, means, and variances. We now write the same
+calculation for $N$ vectors and $K$ components.
+
+## Loading the acoustic vectors
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+```
+
+## Complete and observed data
+
+Let the current parameters be
+
+$$
+\boldsymbol{\theta}^{(t)}
+=
+\left\{
+\pi_k^{(t)},
+\boldsymbol{\mu}_k^{(t)},
+\boldsymbol{\Sigma}_k^{(t)}
+\right\}_{k=1}^{K}.
+$$
+
+If component label $Z_i$ were observed, define
+
+$$
+I_{ik}=\mathbf{1}[Z_i=k].
+$$
+
+The complete-data log likelihood would be
+
+$$
+\ell_{\mathrm{complete}}(\boldsymbol{\theta})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+I_{ik}
+\left[
+\log\pi_k+
+\log\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+The indicator retains the term for the token's component and zeros the others. But $I_{ik}$ is unobserved.
+
+## The expectation step
+
+Given $\boldsymbol{\theta}^{(t)}$, calculate
+
+$$
+r_{ik}^{(t)}
+=
+\mathbb{P}(Z_i=k\mid\mathbf{x}_i,\boldsymbol{\theta}^{(t)})
+=
+\frac{
+\pi_k^{(t)}
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k^{(t)},\boldsymbol{\Sigma}_k^{(t)})
+}{
+\sum_{j=1}^{K}
+\pi_j^{(t)}
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_j^{(t)},\boldsymbol{\Sigma}_j^{(t)})
+}.
+$$
+
+Since
+
+$$
+\mathbb{E}[I_{ik}\mid\mathbf{x}_i,\boldsymbol{\theta}^{(t)}]
+=r_{ik}^{(t)},
+$$
+
+the EM auxiliary objective is
+
+$$
+Q(\boldsymbol{\theta}\mid\boldsymbol{\theta}^{(t)})
+=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+r_{ik}^{(t)}
+\left[
+\log\pi_k+
+\log\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+The expectation step replaces each missing hard label with a probability vector under the current fit.
+
+The word *expectation* refers to a particular conditional expectation, not to an
+average of the acoustic values:
+
+$$
+\begin{aligned}
+Q(\boldsymbol\theta\mid\boldsymbol\theta^{(t)})
+&=
+\mathbb{E}_{\mathbf Z\mid\mathbf X,\boldsymbol\theta^{(t)}}
+\left[
+\ell_{\mathrm{complete}}(\boldsymbol\theta)
+\right]\\
+&=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+\mathbb{E}[I_{ik}\mid\mathbf x_i,\boldsymbol\theta^{(t)}]
+\left[
+\log\pi_k+\log\mathcal N(\mathbf x_i;\boldsymbol\mu_k,\boldsymbol\Sigma_k)
+\right]\\
+&=
+\sum_{i=1}^{N}\sum_{k=1}^{K}
+r_{ik}^{(t)}
+\left[
+\log\pi_k+\log\mathcal N(\mathbf x_i;\boldsymbol\mu_k,\boldsymbol\Sigma_k)
+\right].
+\end{aligned}
+$$
+
+The second line uses linearity of expectation, and the third uses the Bernoulli
+indicator mean \(\mathbb{E}[I_{ik}\mid\cdot]=r_{ik}^{(t)}\).
+
+## The maximization step
+
+The effective token count for component $k$ is
+
+$$
+N_k^{(t)}
+=
+\sum_{i=1}^{N}r_{ik}^{(t)}.
+$$
+
+The updated weight and mean are
+
+$$
+\pi_k^{(t+1)}
+=
+\frac{N_k^{(t)}}{N}
+$$
+
+and
+
+$$
+\boldsymbol{\mu}_k^{(t+1)}
+=
+\frac{1}{N_k^{(t)}}
+\sum_{i=1}^{N}r_{ik}^{(t)}\mathbf{x}_i.
+$$
+
+For an unrestricted Gaussian component, the covariance update is
+
+$$
+\boldsymbol{\Sigma}_k^{(t+1)}
+=
+\frac{1}{N_k^{(t)}}
+\sum_{i=1}^{N}
+r_{ik}^{(t)}
+\left(\mathbf{x}_i-\boldsymbol{\mu}_k^{(t+1)}\right)
+\left(\mathbf{x}_i-\boldsymbol{\mu}_k^{(t+1)}\right)^{\mathsf T}.
+$$
+
+The implementation below uses diagonal, component-specific covariance matrices,
+the `VVI` family in `mclust` terminology. We choose it because the covariance
+updates separate by component and coordinate, so every update can be computed
+directly. The central ten-component fit instead uses `EVI`; reproducing its
+equal-determinant optimizer remains a separate computational problem.
+
+## Deriving the maximization updates
+
+The derivation uses three pieces of matrix calculus. A
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+measures local change. A **partial derivative** measures change with respect to one
+argument while holding the others fixed, and a **gradient** collects all partial
+derivatives of a scalar objective into a vector. At a smooth maximum away from a
+parameter boundary, that gradient is zero because no sufficiently small move can increase the
+objective. These operations verify the updates already stated above; the numerical
+implementation does not require us to reproduce every derivative by hand.
+
+For the mixing weights, retain the part of \(Q\) that contains \(\pi_k\) and impose
+\(\sum_k\pi_k=1\) with a **Lagrange multiplier** \(\eta\). This extra scalar lets us
+maximize one augmented expression while enforcing that the weights sum to one:
+
+$$
+\mathcal L_{\pi}
+=
+\sum_{k=1}^{K}N_k^{(t)}\log\pi_k
++\eta\left(\sum_{k=1}^{K}\pi_k-1\right).
+$$
+
+Differentiating one weight at a time gives
+
+$$
+\frac{\partial\mathcal L_{\pi}}{\partial\pi_k}
+=
+\frac{N_k^{(t)}}{\pi_k}+\eta=0,
+\qquad
+\pi_k=-\frac{N_k^{(t)}}{\eta}.
+$$
+
+Summing over \(k\) and using
+\(\sum_kN_k^{(t)}=\sum_i\sum_kr_{ik}^{(t)}=N\) gives
+\(\eta=-N\), and thus \(\pi_k^{(t+1)}=N_k^{(t)}/N\).
+
+For the mean, the terms that vary with \(\boldsymbol\mu_k\) are
+
+$$
+-\frac12\sum_{i=1}^{N}r_{ik}^{(t)}
+(\mathbf x_i-\boldsymbol\mu_k)^{\mathsf T}
+\boldsymbol\Sigma_k^{-1}
+(\mathbf x_i-\boldsymbol\mu_k).
+$$
+
+Their gradient is
+
+$$
+\boldsymbol\Sigma_k^{-1}
+\sum_{i=1}^{N}r_{ik}^{(t)}
+(\mathbf x_i-\boldsymbol\mu_k).
+$$
+
+The inverse covariance $\boldsymbol\Sigma_k^{-1}$ weights movement by the
+component's spread: a displacement along a low-variance direction counts more than
+the same displacement along a high-variance direction. Multiplying by
+$\boldsymbol\Sigma_k$ cancels that weighting and exposes the weighted residual sum.
+
+Setting it to zero and multiplying by \(\boldsymbol\Sigma_k\) yields
+
+$$
+\sum_i r_{ik}^{(t)}\mathbf x_i
+-N_k^{(t)}\boldsymbol\mu_k=0,
+$$
+
+which gives the responsibility-weighted mean displayed above. Finally, maximizing
+the Gaussian covariance terms gives the responsibility-weighted residual
+cross-product divided by \(N_k^{(t)}\). Under the diagonal `VVI` restriction, the
+off-diagonal entries are fixed at zero, so coordinate \(j\) updates as
+
+$$
+\sigma_{kj}^{2(t+1)}
+=
+\frac{\sum_i r_{ik}^{(t)}
+(x_{ij}-\mu_{kj}^{(t+1)})^2}
+{N_k^{(t)}}.
+$$
+
+`VVI` allows both diagonal volume and shape to vary by component. The
+**determinant** of a covariance matrix measures its multidimensional scale; in two
+dimensions, its square root is proportional to the area of an equal-density
+ellipse. The [Gaussian-mixture page](gaussian-mixtures.qmd#one-gaussian-component)
+connects this volume to the plotted covariance ellipses. The central `EVI` model
+constrains that determinant to be equal across
+components while
+allowing diagonal shape to vary. We implement `VVI` below because its
+coordinate-specific variance updates separate cleanly and make every EM step
+visible. That calculation leaves the equal-determinant coupling unresolved; the
+central `mclust` fit imposes the `EVI` constraint directly.
+
+## Implementing EM on the observed vectors
+
+```{r}
+log_sum_exp_rows <- function(log_values) {
+  row_max <- apply(log_values, 1, max)
+  row_max + log(rowSums(exp(sweep(log_values, 1, row_max, "-"))))
+}
+
+diagonal_em <- function(
+    x, components, seed, max_iterations = 500L,
+    tolerance = 1e-9, variance_floor = 1e-4) {
+  set.seed(seed)
+  initial <- stats::kmeans(
+    x,
+    centers = components,
+    nstart = 1L,
+    iter.max = 50L,
+    algorithm = "Hartigan-Wong"
+  )
+
+  n <- nrow(x)
+  dimensions <- ncol(x)
+  means <- initial$centers
+  proportions <- as.numeric(table(factor(
+    initial$cluster,
+    levels = seq_len(components)
+  ))) / n
+  variances <- matrix(NA_real_, nrow = components, ncol = dimensions)
+
+  for (component in seq_len(components)) {
+    component_x <- x[initial$cluster == component, , drop = FALSE]
+    variances[component, ] <- pmax(
+      apply(component_x, 2, stats::var),
+      variance_floor
+    )
+  }
+
+  trace <- numeric(max_iterations)
+  responsibility <- matrix(NA_real_, nrow = n, ncol = components)
+
+  for (iteration in seq_len(max_iterations)) {
+    log_component_density <- sapply(
+      seq_len(components),
+      function(component) {
+        centered <- sweep(x, 2, means[component, ], "-")
+        log_variance <- matrix(
+          log(2 * pi * variances[component, ]),
+          nrow = n,
+          ncol = dimensions,
+          byrow = TRUE
+        )
+        log(proportions[component]) + rowSums(
+          -0.5 * (
+            log_variance +
+              sweep(centered^2, 2, variances[component, ], "/")
+          )
+        )
+      }
+    )
+
+    log_density <- log_sum_exp_rows(log_component_density)
+    trace[iteration] <- sum(log_density)
+    responsibility <- exp(sweep(
+      log_component_density,
+      1,
+      log_density,
+      "-"
+    ))
+
+    effective_n <- colSums(responsibility)
+    proportions <- effective_n / n
+    means <- sweep(t(responsibility) %*% x, 1, effective_n, "/")
+
+    for (component in seq_len(components)) {
+      centered <- sweep(x, 2, means[component, ], "-")
+      variances[component, ] <- pmax(
+        colSums(responsibility[, component] * centered^2) /
+          effective_n[component],
+        variance_floor
+      )
+    }
+
+    if (
+      iteration > 1L &&
+        abs(trace[iteration] - trace[iteration - 1L]) <
+          tolerance * (1 + abs(trace[iteration - 1L]))
+    ) {
+      break
+    }
+  }
+
+  trace <- trace[seq_len(iteration)]
+  list(
+    seed = seed,
+    trace = trace,
+    log_likelihood = trace[length(trace)],
+    iterations = iteration,
+    proportions = proportions,
+    means = means,
+    variances = variances,
+    responsibility = responsibility,
+    tolerance = tolerance,
+    variance_floor = variance_floor
+  )
+}
+
+em_seeds <- 1952L + 0:5
+em_fits <- lapply(em_seeds, function(current_seed) {
+  diagonal_em(X, components = 10L, seed = current_seed)
+})
+
+start_summary <- dplyr::bind_rows(lapply(em_fits, function(fit) {
+  data.frame(
+    seed = fit$seed,
+    iterations = fit$iterations,
+    final_log_likelihood = fit$log_likelihood,
+    minimum_iteration_gain = min(diff(fit$trace)),
+    variance_floor = fit$variance_floor,
+    tolerance = fit$tolerance
+  )
+}))
+
+stopifnot(all(start_summary$minimum_iteration_gain >= -1e-8))
+best_fit <- em_fits[[which.max(start_summary$final_log_likelihood)]]
+knitr::kable(start_summary, digits = 6)
+```
+
+All six observed-data traces are non-decreasing within numerical tolerance, but their final log likelihoods differ. The best three starts finish at `r round(max(start_summary$final_log_likelihood), 3)`, while the weakest finishes at `r round(min(start_summary$final_log_likelihood), 3)`. This is direct evidence of local-solution sensitivity in the PB52 fit.
+
+K-means supplies separated initial means rather than arbitrary points, but it does
+not remove local-optimum sensitivity. Six starts make that sensitivity visible
+without turning the lesson into a large search. The 500-iteration limit is a
+computational ceiling, \(10^{-9}\) is a strict relative-change tolerance, and
+\(10^{-4}\) is a numerical variance floor in standardized units. None of these
+values is a fact about vowels.
+
+The trace is evaluated before the M-step because the same log component densities
+produce the responsibilities used in that iteration. The convergence comparison
+thus asks whether successive pre-update parameter states have nearly the same
+observed likelihood; the returned parameters have undergone the corresponding
+final M-step. A production implementation would usually recompute the final
+likelihood after that update. Here the trace is used to diagnose ascent rather
+than to report a maximized likelihood to extra precision.
+
+## Verifying one component update
+
+```{r}
+component_updates <- data.frame(
+  component = seq_len(10L),
+  effective_token_count = colSums(best_fit$responsibility),
+  fitted_weight = best_fit$proportions,
+  weighted_mean_z_f1 = best_fit$means[, 1],
+  weighted_mean_z_f2 = best_fit$means[, 2],
+  fitted_variance_z_f1 = best_fit$variances[, 1],
+  fitted_variance_z_f2 = best_fit$variances[, 2]
+)
+
+reference_component <- which.max(component_updates$effective_token_count)
+manual_effective_count <- sum(
+  best_fit$responsibility[, reference_component]
+)
+manual_mean_f1 <- sum(
+  best_fit$responsibility[, reference_component] * X[, 1]
+) / manual_effective_count
+manual_mean_f2 <- sum(
+  best_fit$responsibility[, reference_component] * X[, 2]
+) / manual_effective_count
+
+stopifnot(
+  abs(manual_effective_count -
+        component_updates$effective_token_count[reference_component]) < 1e-10,
+  abs(manual_mean_f1 -
+        component_updates$weighted_mean_z_f1[reference_component]) < 1e-10,
+  abs(manual_mean_f2 -
+        component_updates$weighted_mean_z_f2[reference_component]) < 1e-10
+)
+
+knitr::kable(component_updates, digits = 3)
+```
+
+For component `r reference_component`, the effective count is `r round(manual_effective_count, 3)`, and the responsibility-weighted mean is (`r round(manual_mean_f1, 3)`, `r round(manual_mean_f2, 3)`). These values come from all observed token vectors, weighted by their fitted responsibilities.
+
+## Likelihood monotonicity
+
+The observed-data log likelihood is
+
+$$
+\ell(\boldsymbol{\theta})
+=
+\sum_{i=1}^{N}
+\log\left[
+\sum_{k=1}^{K}
+\pi_k
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+\right].
+$$
+
+Exact EM updates do not decrease this quantity. That guarantee concerns progress from one starting point; it does not guarantee the largest attainable likelihood.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4.2
+#| fig-alt: "Observed-data log likelihood across expectation-maximization iterations for the best diagonal ten-component fit to Peterson and Barney vowel tokens."
+
+trace_data <- data.frame(
+  iteration = seq_along(best_fit$trace),
+  observed_data_log_likelihood = best_fit$trace
+)
+
+ggplot2::ggplot(trace_data, ggplot2::aes(
+  x = iteration, y = observed_data_log_likelihood
+)) +
+  ggplot2::geom_line(color = "#2B6CB0", linewidth = 0.7) +
+  ggplot2::labs(
+    x = "EM iteration",
+    y = "Observed-data log likelihood"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+## Local solutions and variance constraints
+
+The variance floor prevents an estimated diagonal variance from approaching zero. Its value is chosen by the implementation to stabilize optimization; no acoustic measurement supplies it. Without such protection, a component may collapse around very few tokens and yield a misleadingly large likelihood.
+
+Several starts remain necessary because monotonic ascent can lead to distinct local optima. A fixed seed reproduces the collection of starts; it does not make the first solution globally best.
+
+## Checking the alternating algorithm
+
+1. Which quantities are calculated in the expectation step?
+2. How does the empirical effective count instantiate $N_k$?
+3. How are the displayed component means reconstructed from responsibilities?
+4. What does monotonic observed-data likelihood guarantee?
+5. What do the distinct final likelihoods show?
+6. Why is the variance floor computational rather than linguistic evidence?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The E-step calculates conditional component probabilities for every token.
+2. `colSums(responsibility)` instantiates \(N_k\).
+3. Each mean is the responsibility-weighted sum divided by its effective count.
+4. Exact updates cannot decrease the observed-data likelihood from the same start.
+5. Distinct endpoints show local-solution sensitivity.
+6. The floor prevents numerical covariance collapse; it is not measured from the
+   speech-production process.
+
+</details>
+
+## Recap
+
+1. The E-step is the conditional expectation of the complete-data log likelihood.
+2. The M-step follows from constrained weight optimization and weighted Gaussian
+   derivatives.
+3. Monotonic ascent, multiple starts, and variance floors address different
+   computational issues.
+
+The [next page](choosing-a-mixture.qmd#bic-and-its-sign-convention) compares
+declared component counts and covariance families while keeping the feature
+representation fixed.

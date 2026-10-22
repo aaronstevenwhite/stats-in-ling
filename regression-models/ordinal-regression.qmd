@@ -1,10 +1,153 @@
 ---
 title: "Ordinal regression"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+An ordinal response has ordered categories but no defensible numerical spacing. We use **MegaVeridicality v1**, the *no*–*maybe*–*yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012); [CC BY-SA project release](https://megaattitude.io/projects/mega-veridicality/)). Each row is one judgment for a verb, polarity, task, item, and task-specific respondent. The direct and conditional tasks recruited separate samples; the task prefix on `respondent_id` prevents 29 reused numeric labels from becoming false repeated measurements.
 
-**Available Monday, November 2, 2026.**
+The [CDF](../random-variables-and-distributions/cumulative-distribution-functions.qmd) supplies probabilities at or below each ordered threshold, and the latent response [variance](../random-variables-and-distributions/variance-and-covariance.qmd) is fixed by the chosen logistic scale. The likelihood is the product of observed category probabilities viewed as a function of coefficients and thresholds, following [maximum likelihood](../statistical-inference/maximum-likelihood.qmd).
+
+We first derive cumulative category probabilities, then interpret one shared predictor shift across both thresholds and check the proportional-odds restriction.
+
+The response asks whether the inference targeted by the item is supported, using the ordered labels *no*, *maybe*, and *yes*. The direct task presents the target without conditional embedding; the conditional task places the item in a conditional antecedent. Sentence text is absent from the prepared table, so the page does not reconstruct it. The table does retain verb, complement frame, polarity, task, ordinal response, and a separate 1--7 acceptability judgment.
+
+```{r}
+#| label: load-megaveridicality
+#| echo: true
+library(ordinal)
+mv <- read.csv("data/megaveridicality/megaveridicality-v1-active-native.csv")
+stopifnot(nrow(mv) == 14951L, length(unique(mv$verb)) == 375L,
+          length(unique(mv$respondent_id)) == 319L)
+mv$outcome <- ordered(mv$response, levels = c("no", "maybe", "yes"))
+mv$polarity <- factor(mv$polarity, levels = c("positive", "negative"))
+mv$task <- factor(mv$task, levels = c("direct", "conditional"))
+fit <- clm(outcome ~ polarity * task, data = mv, link = "logit", Hess = TRUE)
+coef(summary(fit))
+```
+
+The next rows show one actual direct record and one actual conditional record. They are measurement records, not verb-level summaries.
+
+```{r}
+#| label: inspect-megaveridicality-records
+rbind(
+  direct = mv[which(mv$task == "direct")[[1L]], c(
+    "respondent_id", "verb", "frame", "polarity", "task", "response",
+    "acceptability"
+  )],
+  conditional = mv[which(mv$task == "conditional")[[1L]], c(
+    "respondent_id", "verb", "frame", "polarity", "task", "response",
+    "acceptability"
+  )]
+)
+```
+
+## Cumulative logits
+
+For ordered cutpoints $\kappa_1<\kappa_2$ and linear predictor $\eta_i$,
+
+$$
+\operatorname{logit}\mathbb{P}(Y_i\leq c)=\kappa_c-\eta_i,
+\qquad c\in\{1,2\}.
+$$
+
+With the logistic CDF $F$, the category probabilities are
+
+$$
+\mathbb{P}(Y_i=\text{no})=F(\kappa_1-\eta_i),
+$$
+
+$$
+\mathbb{P}(Y_i=\text{maybe})=F(\kappa_2-\eta_i)-F(\kappa_1-\eta_i),
+$$
+
+$$
+\mathbb{P}(Y_i=\text{yes})=1-F(\kappa_2-\eta_i).
+$$
+
+The model preserves order without assigning equal distances to the labels.
+
+To see why adjacent differences appear, write $C_{ic}=\mathbb{P}(Y_i\leq c)$. Then
+
+$$
+\mathbb{P}(Y_i=1)=C_{i1}, % dqr-allow: symbolic-derivation
+\qquad
+\mathbb{P}(Y_i=2)=C_{i2}-C_{i1}, % dqr-allow: symbolic-derivation
+\qquad
+\mathbb{P}(Y_i=3)=1-C_{i2}. % dqr-allow: symbolic-derivation
+$$
+
+The logistic CDF is a modeling choice, not a consequence of order alone. It gives an interpretable odds scale and connects to [logistic regression](logistic-regression.qmd); a probit link would impose a different latent-error shape. The thresholds locate category boundaries on the model coordinate. They do not prove that respondents possess a literal continuous veridicality variable.
+
+## Interpreting one coefficient at both boundaries
+
+A positive coefficient increases the linear predictor and shifts probability toward higher responses. Under proportional odds, the same coefficient applies to *maybe* or *yes* versus *no* and to *yes* versus *no* or *maybe*. It does not imply an equal change in each category probability, which is why the complete fitted distribution remains the primary interpretation.
+
+```{r}
+#| label: ordinal-raw-and-fitted
+#| echo: true
+grid <- expand.grid(polarity = levels(mv$polarity), task = levels(mv$task))
+fitted_matrix <- predict(fit, newdata = grid, type = "prob")$fit
+fitted_long <- data.frame(
+  grid[rep(seq_len(nrow(grid)), each = ncol(fitted_matrix)), ],
+  response = factor(rep(colnames(fitted_matrix), times = nrow(grid)),
+                    levels = c("no", "maybe", "yes")),
+  fitted_probability = as.vector(t(fitted_matrix))
+)
+raw <- as.data.frame(table(mv$polarity, mv$task, mv$outcome,
+                           dnn = c("polarity", "task", "response")))
+names(raw)[[4L]] <- "responses"
+raw$empirical_probability <- ave(raw$responses, raw$polarity, raw$task,
+                                 FUN = function(x) x / sum(x))
+display <- merge(raw, fitted_long, by = c("polarity", "task", "response"))
+```
+
+```{r}
+#| label: plot-ordinal-fit
+#| echo: true
+library(ggplot2)
+ggplot(display, aes(response, group = polarity)) +
+  geom_point(aes(y = empirical_probability, shape = polarity), size = 2,
+             position = position_dodge(width = .18)) +
+  geom_line(aes(y = fitted_probability, linetype = polarity),
+            color = "#1F5A85", linewidth = .75,
+            position = position_dodge(width = .18)) +
+  facet_wrap(~ task) +
+  labs(x = "Response", y = "Response probability", shape = NULL, linetype = NULL) +
+  theme_classic()
+```
+
+## Checking the shared-shift restriction
+
+The proportional-odds model requires the same predictor shift at both boundaries. Two binary regressions expose how strained that restriction is here.
+
+```{r}
+#| label: threshold-check
+#| echo: true
+above_no <- glm(I(as.integer(outcome) > 1L) ~ polarity * task,
+                binomial(), mv)
+yes <- glm(I(as.integer(outcome) > 2L) ~ polarity * task,
+           binomial(), mv)
+rbind(`maybe-or-yes versus no` = coef(above_no),
+      `yes versus no-or-maybe` = coef(yes))
+```
+
+The negative-polarity and polarity-by-task coefficients differ across boundaries, so one shared location shift is a useful baseline but an imperfect description. This population fit leaves respondent and verb dependence outside the likelihood; the later ordinal mixed-model page adds them. White and Rawlins's responsivity analysis also normalizes participant thresholds and derives verb-level measures, whereas the present likelihood uses raw ordered responses and contains no latent verb-category variable.
+
+## Recap and check your understanding
+
+1. Why can the labels be ordered without assigning *maybe* the number halfway between *no* and *yes*?
+2. What does proportional odds require at the two cumulative boundaries?
+3. Why do the two binary diagnostics not replace the ordinal model automatically?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Order specifies which category is higher, but it does not specify distances between categories. <!-- dqr-allow: conceptual-answer -->
+2. The same predictor coefficient must shift both cumulative logits. Category-probability changes may still differ. <!-- dqr-allow: conceptual-answer -->
+3. Separate binary fits discard the joint three-category likelihood and need not yield coherent probabilities across all categories. They diagnose the shared-shift restriction. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](poisson-regression.qmd) changes both support and mean--variance assumptions to model counts.

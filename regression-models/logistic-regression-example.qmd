@@ -1,10 +1,101 @@
 ---
-title: "Verb type and temporal preposition choice"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+title: "A logistic-regression analysis"
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+We now carry the SuperTelicity one-predictor analysis from raw counts to fitted probabilities. The scientific question is descriptive: how does *in* completion use differ between manner and result verbs in this sample?
 
-**Available Monday, November 2, 2026.**
+The likelihood fixes the observed choices and compares coefficient values, as defined on the [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd). Its rowwise product uses an [independence](../foundations/independence.qmd) working assumption that repeated participants do not satisfy, so the simple fit is a benchmark for the later mixed model.
+
+We proceed from the observed group counts to the fitted log-odds contrast, its uncertainty, response-scale predictions, and a check of what the row-independent model leaves unresolved.
+
+The [data dossier](why-generalized-linear-models.qmd) defines the binary response and experimental units. Here the analysis sequence is: (i) inspect cell counts, (ii) state and fit the Bernoulli-logit model, (iii) interpret a response-scale contrast, (iv) quantify uncertainty, and (v) check the fit's scope.
+
+```{r}
+#| label: logistic-application-data
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+raw_counts <- as.data.frame(table(st$verb_type, st$preposition))
+names(raw_counts) <- c("verb_type", "preposition", "observations")
+raw_counts
+```
+
+```{r}
+#| label: logistic-application-fit
+#| echo: true
+fit <- glm(prep_in ~ verb_type, family = binomial(), data = st)
+groups <- aggregate(prep_in ~ verb_type, st, mean)
+groups$n <- as.integer(table(st$verb_type))
+link_prediction <- predict(fit, newdata = groups, se.fit = TRUE)
+groups$fitted <- plogis(link_prediction$fit)
+groups$lower <- plogis(link_prediction$fit - qnorm(.975) * link_prediction$se.fit)
+groups$upper <- plogis(link_prediction$fit + qnorm(.975) * link_prediction$se.fit)
+groups
+```
+
+The link-scale Wald interval used above is
+
+$$
+\widehat\eta_g\ \pm\ z_{.975}\operatorname{se}(\widehat\eta_g).
+$$
+
+Applying the inverse logit to each endpoint keeps the probability interval inside $(0,1)$. Because the inverse logit is nonlinear, equal distances around $\widehat\eta_g$ generally become unequal distances around $\widehat\pi_g$.
+
+The fit reproduces the higher sample probability for result verbs, and the plot places that raw contrast beside the row-independent GLM intervals. On the link scale, the likelihood is
+
+$$
+\ell(\boldsymbol\beta)=\sum_i\left[y_i\eta_i-
+\log(1+e^{\eta_i})\right],
+\qquad \eta_i=\beta_0+\beta_1\operatorname{result}_i.
+$$
+
+```{r}
+#| label: logistic-application-plot
+#| echo: true
+library(ggplot2)
+ggplot(groups, aes(verb_type, prep_in)) +
+  geom_linerange(aes(ymin = lower, ymax = upper), color = "#1F5A85") +
+  geom_point(size = 2.3) +
+  labs(x = "Verb type", y = "Probability of an in-completion") +
+  theme_classic()
+```
+
+Maximizing it yields the coefficient estimates printed below.
+
+```{r}
+#| label: logistic-application-coefficients
+#| echo: true
+summary(fit)$coefficients
+```
+
+The substantive target is the fitted result-minus-manner probability contrast:
+
+```{r}
+#| label: logistic-application-response-contrast
+#| echo: true
+with(groups, c(result_minus_manner = fitted[verb_type == "result"] -
+                                      fitted[verb_type == "manner"]))
+```
+
+For a likelihood-based comparison, `confint()` profiles the likelihood rather than assuming a quadratic log likelihood at the estimate. The endpoints below remain on the coefficient's log odds scale until transformed.
+
+```{r}
+#| label: logistic-profile-interval
+#| echo: true
+profile_link <- suppressMessages(confint(fit, parm = "verb_typeresult"))
+data.frame(scale = c("log odds", "odds ratio"),
+           lower = c(profile_link[1], exp(profile_link[1])),
+           upper = c(profile_link[2], exp(profile_link[2])))
+```
+
+The intervals shown are the row-independent GLM intervals and are included to expose the mechanics. They are not the inferential result of the source paper. The rows reuse participants and sentence materials, and the original analysis models that dependence. Nor does the observed contrast show that verb type causes a completion choice.
+
+## Recap, check, and scope
+
+1. Why are probability-scale interval widths asymmetric? The symmetric interval was constructed on the logit scale and then transformed nonlinearly.
+2. What does the fit establish? It describes a sample contrast under a row-independent Bernoulli model. It does not establish causality or participant-independent uncertainty.
+
+The [multiple-predictor analysis](logistic-regression-with-multiple-predictors.qmd) asks whether this contrast changes across contentfulness classes; [GLMMs](generalized-linear-mixed-models.qmd) later represent repeated units.

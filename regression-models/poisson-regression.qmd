@@ -1,10 +1,147 @@
 ---
 title: "Poisson regression"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+Poisson regression models a nonnegative count with a positive conditional mean. We use Nettle's ([1998](https://doi.org/10.1006/jaar.1998.0328)) country-level study of language diversity and climate. One row is one country; the response is its reported language count, mean growing season (MGS) is the ecological predictor, and area measures geographic opportunity. The prepared table comes from [Bodo Winter's course-data repository](https://github.com/bodowinter/applied_statistics_book_data/blob/master/nettle_1999_climate.csv). That repository states no data license, so these notes do not redistribute it.
 
-**Available Monday, November 2, 2026.**
+The Poisson restriction equates conditional [variance](../random-variables-and-distributions/variance-and-covariance.qmd) with the conditional mean. Its [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed country totals fixed while comparing coefficient values, and its product assumes [independence](../foundations/independence.qmd) across country rows after predictors. Shared regions, histories, and cross-border languages make that factorization a substantive approximation.
+
+The main modeling decision is whether country area may be treated as proportional
+exposure for a database count whose entries depend on geopolitical boundaries.
+Defining that response and opportunity structure gives the coefficient its units
+before the log-mean equation is fitted.
+
+## What the country count measures {#nettle-country-language-measurement}
+
+`Langs` is the source table's reported number of languages associated with a
+country. The course file contains only that total; it has no language identifiers,
+speaker counts, documentation records, or rule for distinguishing a language from
+a variety. Country totals consequently do not partition a single list of languages.
+A language used across a political border can contribute to more than one country
+total, and this table cannot audit that overlap.
+
+The row unit also matters. A country is a geopolitical aggregation whose borders,
+settlement history, contact patterns, and documentation practices may all affect
+the reported total. Mean growing season and area are country summaries attached to
+that same unit. The analysis below asks whether the 74 represented country totals
+vary with those summaries under a declared mean model. It does not sample
+individual languages or language users.
+
+| Stage | Quantity available here | Limit on the claim |
+|:--|:--|:--|
+| Source record | One reported language total per country | Language overlap and language-versus-variety decisions are unavailable. |
+| Predictor record | Country mean growing season and geographic area | Neither variable is an assigned intervention. |
+| Model row | One of 74 countries | Nearby countries and shared histories may remain dependent. |
+| Fitted target | Conditional variation among represented country totals | The coefficient does not identify a climate mechanism or a population of independent languages. |
+
+```{r}
+#| label: load-nettle-poisson
+#| echo: true
+path <- "data/nettle/nettle-1999-climate.csv"
+if (file.exists(path)) {
+  nettle <- read.csv(path)
+} else {
+  url <- paste0("https://raw.githubusercontent.com/bodowinter/",
+                "applied_statistics_book_data/master/nettle_1999_climate.csv")
+  source_file <- tempfile(fileext = ".csv")
+  download.file(url, source_file, mode = "wb")
+  stopifnot(digest::digest(source_file, "sha256", file = TRUE, serialize = FALSE) ==
+    "3c5abfbec7b2132a9b81ee9a178cbd5559426578032b60c6c4ad74046898793b")
+  raw <- read.csv(source_file)
+  nettle <- data.frame(
+    country = raw$Country, log10_population = raw$Population,
+    log10_area_km2 = raw$Area, log_area_km2 = log(10) * raw$Area,
+    mean_growing_season_months = raw$MGS, language_count = as.integer(raw$Langs)
+  )
+}
+stopifnot(nrow(nettle) == 74L)
+count_fit <- glm(language_count ~ mean_growing_season_months,
+                 family = poisson(link = "log"), data = nettle)
+fit <- glm(language_count ~ mean_growing_season_months + offset(log_area_km2),
+           family = poisson(link = "log"), data = nettle)
+```
+
+The Algeria row makes the units visible. The source stores population and area on a base-ten log scale, while the offset requires a natural logarithm.
+
+```{r}
+#| label: inspect-one-nettle-country
+transform(
+  nettle[nettle$country == "Algeria", c(
+    "country", "log10_population", "log10_area_km2", "log_area_km2",
+    "mean_growing_season_months", "language_count"
+  )],
+  population = 10^log10_population,
+  area_km2 = 10^log10_area_km2
+)
+```
+
+Before using area, the count-only model states
+
+$$
+\log\lambda_i=\beta_0+\beta_1\operatorname{MGS}_i.
+$$
+
+Its mean is an expected language count per country. The offset model below asks a stronger rate question by assuming that expected count is proportional to geographic area.
+
+The model is
+
+$$
+Y_i\sim\operatorname{Poisson}(\lambda_i),\qquad
+\mathbb{E}[Y_i]=\operatorname{Var}[Y_i]=\lambda_i,
+$$
+
+$$
+\log\lambda_i=\log A_i+\beta_0+\beta_1\operatorname{MGS}_i.
+$$
+
+Thus $\lambda_i/A_i=\exp(\beta_0+\beta_1\operatorname{MGS}_i)$ is the fitted language rate per square kilometer.
+
+The [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd) adds more than count support: conditional on the predictors, its variance equals its mean. The log link keeps $\lambda_i$ positive and makes a coefficient additive in log rate, hence multiplicative after exponentiation. [Conditional independence](../random-variables-and-distributions/conditional-independence.qmd) also requires the joint country-count distribution to factorize once MGS and area are supplied. Shared histories, cross-border languages, contact, and spatial proximity make that restriction substantive and checkable.
+
+```{r}
+#| label: nettle-poisson-summary
+#| echo: true
+c(mgs_coefficient = coef(fit)[["mean_growing_season_months"]],
+  one_month_rate_ratio = exp(coef(fit)[["mean_growing_season_months"]]))
+```
+
+```{r}
+#| label: nettle-poisson-plot
+#| echo: true
+library(ggplot2)
+nettle$observed_rate <- nettle$language_count / exp(nettle$log_area_km2)
+grid <- data.frame(mean_growing_season_months =
+                     seq(min(nettle$mean_growing_season_months),
+                         max(nettle$mean_growing_season_months), length.out = 200L))
+grid$fitted_rate <- exp(coef(fit)[[1L]] +
+                          coef(fit)[["mean_growing_season_months"]] *
+                          grid$mean_growing_season_months)
+ggplot(nettle, aes(mean_growing_season_months, observed_rate)) +
+  geom_point(size = 1.5) +
+  geom_line(data = grid, aes(y = fitted_rate), color = "#1F5A85", linewidth = .8) +
+  scale_y_log10() +
+  labs(x = "Mean growing season (months)",
+       y = "Languages per square kilometer") + theme_classic()
+```
+
+A one-month increase in MGS multiplies the fitted rate by `r round(exp(coef(fit)[[2L]]), 3)`, conditional on the fixed-area-exposure specification. Nettle instead estimated the log-area coefficient. Fixing it to one asserts that twice the area yields twice the expected reported country total at fixed MGS. The estimate therefore describes an area-normalized association among these 74 geopolitical records under that assumption; it supplies no climate intervention or sampling design for a causal claim.
+
+## Recap and check your understanding
+
+1. Which assumption is added when area becomes an offset rather than an estimated predictor?
+2. Why does nonnegative-integer support not establish the Poisson variance restriction?
+3. What does exponentiating the MGS coefficient produce?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The area coefficient is fixed at one on the log scale, so doubling area must double the expected count at fixed MGS. <!-- dqr-allow: conceptual-answer -->
+2. Many count distributions share the same support. Poisson additionally requires conditional mean and variance to be equal. <!-- dqr-allow: conceptual-answer -->
+3. It produces the fitted multiplicative change in expected count or rate for a one-month MGS increase, conditional on the remaining specification. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](exposure-offsets.qmd) examines the proportional-exposure claim directly.

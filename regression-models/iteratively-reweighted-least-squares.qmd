@@ -1,10 +1,190 @@
 ---
 title: "Iteratively reweighted least squares"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+Logistic regression has no ordinary least-squares solution because the inverse logit makes the likelihood nonlinear in the coefficients. **Iteratively reweighted least squares (IRLS)** solves a sequence of local weighted least-squares problems. We can follow that sequence for the SuperTelicity verb-type model.
 
-**Available Monday, November 2, 2026.**
+We first derive the working response and weights, then trace the numerical updates to the same maximum-likelihood estimate returned by `glm()`.
+
+Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the responses are held fixed while the coefficient vector varies. For Bernoulli logistic regression, the log likelihood is
+
+$$
+\ell(\boldsymbol\beta)
+=
+\sum_i
+\left[
+y_i\eta_i-\log(1+e^{\eta_i})
+\right],
+\qquad
+\boldsymbol\eta=\mathbf X\boldsymbol\beta.
+$$
+
+To find the coefficient vector that maximizes this function, we need to know
+both which way it is rising and how quickly that rise is changing. A
+[derivative](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+records the local rate of change in one direction. The **score** collects the
+log likelihood's first derivative with respect to each coefficient. The
+**Hessian** collects all second derivatives; its entries describe local
+curvature for individual coefficients and pairs of coefficients. The [Hessian
+discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+develops this curvature interpretation in detail. Here the two objects are
+
+$$
+\nabla\ell(\boldsymbol\beta)
+=\mathbf X^\top(\mathbf y-\boldsymbol\mu),
+$$
+
+$$
+\nabla^2\ell(\boldsymbol\beta)
+=-\mathbf X^\top\mathbf W\mathbf X,
+\qquad
+W_{ii}=\mu_i(1-\mu_i).
+$$
+
+The one-dimensional version of the next move is easier to see. If \(s(b)\) is
+the score at a current value \(b^{(t)}\), its tangent-line approximation is
+
+$$
+s(b)\approx s(b^{(t)})+s'(b^{(t)})(b-b^{(t)}).
+$$
+
+Setting this local line to zero gives
+\(b^{(t+1)}=b^{(t)}-s(b^{(t)})/s'(b^{(t)})\). **Newton--Raphson** repeats that
+operation: approximate the score by a line near the current value, move to the
+line's zero, and recalculate. For several coefficients, the Hessian supplies
+the multivariate curvature. Substituting the logistic score and Hessian gives
+
+$$
+\boldsymbol\beta^{(t+1)}
+=
+\boldsymbol\beta^{(t)}
++
+(\mathbf X^\top\mathbf W^{(t)}\mathbf X)^{-1}
+\mathbf X^\top(\mathbf y-\boldsymbol\mu^{(t)}).
+$$
+
+The weighted-least-squares form below is this same update after collecting terms.
+
+```{r}
+#| label: irls-data
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+y <- st$prep_in
+X <- model.matrix(~ verb_type, st)
+glm_fit <- glm(prep_in ~ verb_type, family = binomial(), data = st)
+```
+
+At iteration $t$, let
+
+$$
+\boldsymbol\eta^{(t)}=\mathbf X\boldsymbol\beta^{(t)},\quad
+\boldsymbol\mu^{(t)}=\operatorname{logit}^{-1}(\boldsymbol\eta^{(t)}),
+$$
+
+$$
+w_i^{(t)}=\mu_i^{(t)}[1-\mu_i^{(t)}],\quad
+z_i^{(t)}=\eta_i^{(t)}+\frac{y_i-\mu_i^{(t)}}{w_i^{(t)}}.
+$$
+
+The **working response** \(\mathbf z\) is the value that makes the current
+tangent-line approximation look like a weighted linear regression. It belongs
+to the algorithm rather than the linguistic measurements, and we recalculate it
+after every move. With these weights and working response, the update is
+
+$$
+\boldsymbol\beta^{(t+1)}=(\mathbf X^\mathsf T\mathbf W^{(t)}\mathbf X)^{-1}
+\mathbf X^\mathsf T\mathbf W^{(t)}\mathbf z^{(t)}.
+$$
+
+Indeed, $\mathbf W^{(t)}\mathbf z^{(t)}=\mathbf W^{(t)}\mathbf X\boldsymbol\beta^{(t)}+\mathbf y-\boldsymbol\mu^{(t)}$. Substituting that identity into the weighted-least-squares solution recovers the Newton step.
+
+```{r}
+#| label: run-irls
+#| echo: true
+beta <- rep(0, ncol(X))
+path <- data.frame()
+maximum_iterations <- 50L
+tolerance <- 1e-10
+first_iteration <- NULL
+for (iteration in seq_len(maximum_iterations)) {
+  eta <- drop(X %*% beta)
+  mu <- plogis(eta)
+  w <- pmax(mu * (1 - mu), .Machine$double.eps)
+  z <- eta + (y - mu) / w
+  beta_new <- solve(crossprod(X, X * w), crossprod(X, w * z))
+  if (iteration == 1L) {
+    first_iteration <- data.frame(
+      row = seq_len(min(6L, length(y))),
+      observed = y[seq_len(min(6L, length(y)))],
+      eta = eta[seq_len(min(6L, length(y)))],
+      probability = mu[seq_len(min(6L, length(y)))],
+      weight = w[seq_len(min(6L, length(y)))],
+      working_response = z[seq_len(min(6L, length(y)))]
+    )
+  }
+  maximum_change <- max(abs(beta_new - beta))
+  beta <- beta_new
+  path <- rbind(path, data.frame(
+    iteration = iteration, intercept = beta[[1L]], result = beta[[2L]],
+    maximum_change = maximum_change,
+    log_likelihood = sum(dbinom(y, 1L, plogis(drop(X %*% beta)), log = TRUE))
+  ))
+  if (maximum_change < tolerance) break
+}
+first_iteration
+path
+stopifnot(max(abs(beta - coef(glm_fit))) < 1e-7)
+```
+
+Starting at zero is a reproducible neutral location, since every initial
+probability is one half. This starting point helps the numerical search but does
+not change the Bernoulli model. `pmax()` prevents division by a floating-point
+zero when a fitted probability becomes numerically indistinguishable from zero
+or one. The tolerance stops when no coefficient moves appreciably; a fixed
+iteration count would not establish convergence. Persistent near-zero weights
+or a coefficient path that fails to stabilize can signal separation or weak
+support rather than a need to declare success after more iterations.
+
+```{r}
+#| label: plot-irls-path
+#| echo: true
+library(ggplot2)
+long <- rbind(
+  data.frame(iteration = path$iteration, coefficient = "intercept",
+             estimate = path$intercept),
+  data.frame(iteration = path$iteration, coefficient = "result",
+             estimate = path$result)
+)
+ggplot(long, aes(iteration, estimate, linetype = coefficient, shape = coefficient)) +
+  geom_line(color = "#1F5A85") + geom_point(size = 2) +
+  labs(x = "IRLS iteration", y = "Coefficient", linetype = NULL, shape = NULL) +
+  theme_classic()
+```
+
+The plotted path records successive local weighted-least-squares solutions. The
+working response $\mathbf z$ belongs to the algorithm; the observed response
+remains the original vector of *in* and *for* choices. The final coefficients
+agree with `glm()` to the asserted tolerance. Thus IRLS repeatedly solves a
+local least-squares problem without treating the Bernoulli observations as
+Gaussian.
+
+## Recap and check your understanding
+
+1. Which observed quantity remains unchanged across IRLS iterations?
+2. Why do observations near fitted probability one half receive more local weight than observations near zero or one?
+3. What does the stopping tolerance assess?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The binary response vector $\mathbf y$ remains unchanged. Probabilities, weights, and working responses are recomputed from the current coefficients. <!-- dqr-allow: conceptual-answer -->
+2. Bernoulli curvature $\mu_i(1-\mu_i)$ is largest at one half and approaches zero near the endpoints. <!-- dqr-allow: conceptual-answer -->
+3. It assesses numerical stabilization of the coefficient update, not scientific adequacy of the fitted model. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](deviance.qmd) uses the fitted likelihood to compare nested mean restrictions.

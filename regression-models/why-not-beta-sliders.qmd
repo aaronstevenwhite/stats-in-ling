@@ -1,10 +1,97 @@
 ---
-title: "Why standard beta regression fails for sliders"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+title: "Why ordinary beta regression does not fit endpoint sliders"
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+The [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) is absolutely continuous on $0<y<1$. Its PDF gives density height, not probability at a point: for any exact $a$ in its support, $\mathbb{P}(Y=a)=\int_a^a f(y)\,dy=0$. MegaNegRaising contains recorded zeros and ones on both sliders, where the ordinary beta likelihood is not defined.
 
-**Available Monday, November 2, 2026.**
+The [PDF definition](../random-variables-and-distributions/probability-density-functions.qmd) explains why probability comes from integration, and the [expected value](../random-variables-and-distributions/expected-values.qmd) of the beta model describes an interior mean. The likelihood holds the recorded slider values fixed while comparing shape parameters, following [maximum likelihood](../statistical-inference/maximum-likelihood.qmd).
+
+The first empirical question is whether the problematic endpoints actually occur. Once they do, moving them inward by a sample-size-dependent amount changes the recorded responses rather than repairing the ordinary beta likelihood.
+
+```{r}
+#| label: load-meganegraising-beta
+#| echo: true
+mnr <- read.csv("data/meganegraising/meganegraising-balanced.csv")
+endpoint_counts <- data.frame(
+  response = rep(c("neg-raising", "ease"), each = 3L),
+  region = rep(c("zero", "interior", "one"), times = 2L),
+  observations = c(sum(mnr$negraising == 0),
+                   sum(mnr$negraising > 0 & mnr$negraising < 1),
+                   sum(mnr$negraising == 1),
+                   sum(mnr$acceptability == 0),
+                   sum(mnr$acceptability > 0 & mnr$acceptability < 1),
+                   sum(mnr$acceptability == 1))
+)
+endpoint_counts
+```
+
+For $0<y<1$, a mean–precision beta parameterization is
+
+$$
+Y_i\sim\operatorname{Beta}(\mu_i\phi,(1-\mu_i)\phi),
+$$
+
+with
+
+$$
+\mathbb{E}[Y_i]=\mu_i,
+\qquad
+\operatorname{Var}[Y_i]=\frac{\mu_i(1-\mu_i)}{1+\phi}.
+$$
+
+Neither density value at an endpoint is a probability mass. A common workaround nudges every observation with
+
+$$
+y_i^*=\frac{y_i(n-1)+1/2}{n}.
+$$
+
+The consequence is data-dependent and should be computed, not illustrated with chosen values.
+
+```{r}
+#| label: actual-endpoint-nudge
+#| echo: true
+n <- nrow(mnr)
+transform_endpoint <- function(y) (y * (n - 1) + .5) / n
+data.frame(recorded = c(0, 1), transformed = transform_endpoint(c(0, 1)),
+           sample_size = n)
+```
+
+The dependence on sample size is visible by applying the same rule to the observed sample size and to a half-sample benchmark derived from it:
+
+```{r}
+#| label: endpoint-nudge-by-sample-size
+#| echo: true
+n_values <- unique(c(floor(n / 2), n))
+do.call(rbind, lapply(n_values, function(nn) {
+  data.frame(sample_size = nn, recorded = c(0, 1),
+             transformed = (c(0, 1) * (nn - 1) + .5) / nn)
+}))
+```
+
+```{r}
+#| label: plot-endpoint-nudge
+#| echo: true
+library(ggplot2)
+plot_data <- transform(endpoint_counts,
+                       probability = observations / ave(observations, response, FUN = sum))
+ggplot(plot_data, aes(region, probability, shape = response, group = response)) +
+  geom_point(position = position_dodge(width = .25), size = 2) +
+  labs(x = "Observed region", y = "Proportion", shape = NULL) +
+  theme_classic()
+```
+
+For the `r n` retained judgments, zero becomes `r format(transform_endpoint(0), digits = 6)` and one becomes `r format(transform_endpoint(1), digits = 6)`. The transformation makes the sample size part of the measurement model: adding unrelated rows moves the transformed endpoints. It also replaces observed endpoint events with extremely interior values.
+
+An endpoint can arise because a continuous intention was rounded to the displayed boundary or because a respondent deliberately selected the endpoint as a qualitatively meaningful response. Those mechanisms imply different measurement models. The prepared table cannot distinguish them, so an explicit endpoint-mass model states the retained assumption instead of silently moving the values.
+
+A likelihood that contains explicit endpoint probabilities is more faithful to the recorded response. The next page uses ordered-beta regression for both sliders without changing or filtering either outcome.
+
+## Recap and check
+
+1. Does a large beta density near zero assign positive probability to the exact value zero? No. Density over a nonzero interval can be positive; mass at one exact point remains zero.
+2. Why is the nudge not innocuous? It changes endpoint values when unrelated rows are added and assumes endpoints are merely interior measurements in disguise.
+
+The [ordered-beta page](ordered-beta-regression.qmd) makes its stronger assumptions explicit: a shared latent location orders zero, interior, and one, and two cutpoints determine the endpoint masses.

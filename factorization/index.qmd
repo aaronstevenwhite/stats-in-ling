@@ -1,10 +1,122 @@
 ---
 title: "Factorization"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+Okay. So why arrange phonological inventory records as a matrix? We can use one row for each inventory record, one column for each segment—that is, each listed speech-sound category—and a one whenever a retained PHOIBLE source row links that record to that segment. The basic idea is that many columns may vary together, allowing a smaller number of recurring patterns to reconstruct much of the original matrix.
 
-**Available Monday, November 30, 2026.**
+We will build this matrix from Moran and McCloy's [PHOIBLE 2.0 release](https://doi.org/10.5281/zenodo.2593234). An inventory record generally describes a **doculect**, meaning the speech variety described by a particular source. Several records may share the same **Glottocode**, the stable identifier that Glottolog assigns to a language or variety, and some sources aggregate multiple varieties. Thus each row in the course matrix represents an inventory record selected within a Glottocode. The PHOIBLE [download page](https://phoible.org/download) distributes the release under CC BY-SA 3.0, which we retain for the prepared data below.
+
+Two earlier ideas will do most of the mathematical work. [Variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) tell us how segment columns vary separately and together. Matrix multiplication, which we introduce from the viewpoint of applying a linear function, lets us combine row patterns and column patterns into a reconstructed matrix. We begin with [rank-one structure](rank-one-structure.qmd), where one row pattern and one column pattern reconstruct a matrix. [Singular value decomposition (SVD)](singular-value-decomposition.qmd) adds such patterns one at a time, and [principal component analysis (PCA)](principal-component-analysis.qmd) applies the same machinery after centering the columns. We then test reconstruction on held-out cells. The final application uses VALEX frame proportions to predict held-out MegaAcceptability judgment profiles.
+
+```{r}
+#| label: factorization-index-data
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+
+factorization_inventory <- data.frame(
+  object = c(
+    "source CLDF value rows",
+    "source inventory records",
+    "source Glottocodes",
+    "retained consonant and vowel memberships",
+    "retained segment records"
+  ),
+  count = c(
+    phoible$provenance$original_value_rows,
+    phoible$provenance$original_inventories,
+    phoible$provenance$original_glottocodes,
+    nrow(phoible$memberships),
+    nrow(phoible$segments)
+  )
+)
+
+factorization_inventory
+```
+
+The three small tables below use actual rows from PHOIBLE, VALEX, and
+MegaAcceptability, so we can read every displayed cell against its source
+definition.
+
+```{r}
+index_inventory <- phoible$inventories[1, ]
+index_memberships <- phoible$memberships[
+  phoible$memberships$inventory_id == index_inventory$inventory_id,
+]
+listed_ids <- unique(index_memberships$segment_id)
+unlisted_id <- setdiff(phoible$segments$segment_id, listed_ids)[1]
+index_segment_ids <- c(listed_ids[1:2], unlisted_id)
+index_segment_example <- data.frame(
+  language = index_inventory$language_name,
+  glottocode = index_inventory$glottocode,
+  segment = phoible$segments$segment[
+    match(index_segment_ids, phoible$segments$segment_id)
+  ],
+  database_cell = as.integer(index_segment_ids %in% listed_ids)
+)
+
+analysis_root <- "data/valex-megaacceptability/audited"
+index_valex <- read.csv(
+  gzfile(file.path(analysis_root, "valex-counts.csv.gz")),
+  check.names = FALSE
+)
+index_mega <- read.csv(
+  gzfile(file.path(analysis_root, "megaacceptability-responses.csv.gz")),
+  check.names = FALSE
+)
+index_verb <- index_mega$verb[[1]]
+index_judgments <- index_mega[index_mega$verb == index_verb, ][1:2, ]
+index_counts <- unlist(index_valex[index_valex$verb == index_verb, -1])
+index_nonzero <- order(index_counts, decreasing = TRUE)[1:2]
+index_valex_example <- data.frame(
+  verb = index_verb,
+  VALEX_frame = names(index_counts)[index_nonzero],
+  corpus_count = as.numeric(index_counts[index_nonzero])
+)
+
+knitr::kable(index_segment_example)
+knitr::kable(index_valex_example)
+knitr::kable(index_judgments)
+```
+
+The PHOIBLE row has one observed cell for each of three segment columns. A one records a remaining inventory-to-segment link; a zero records the absence of such a link after tone and marginal rows have been removed. PHOIBLE gives us no further basis for concluding that speakers lack the segment. The VALEX row has one corpus-derived count for each subcategorization frame. The two MegaAcceptability rows are participant judgments of two experimental frames for the same verb. We later average such responses within each verb--frame combination, producing a derived aggregate from the individual judgments.
+
+The first eight pages ask whether the visible database cells help predict hidden cells in the same inventory record. The other cells remain available during prediction, so the task concerns database completion from partial records. Recovering a complete phonological system from no observations would require a different task and different evidence.
+
+## Constructing and decomposing the matrix
+
+[Linguistic data matrices](data-matrices.qmd) define the row, column, and cell units, reproduce the Glottocode-level row selection, and retain segment columns using training records only. [Centering and scaling](centering-and-scaling.qmd) then compare two transformations of the empirical binary columns. The primary analysis centers without variance standardization because standardization would give relatively greater weight to rare listings.
+
+[Rank-one structure](rank-one-structure.qmd) fits the first singular triplet and places the observed centered cells beside their rank-one reconstruction. [Singular value decomposition](singular-value-decomposition.qmd) extends that fit to ordered orthogonal terms. [Principal component analysis](principal-component-analysis.qmd) derives the covariance identity from the same decomposition and adds macroarea only after fitting for descriptive interpretation.
+
+## Interpreting and evaluating components
+
+[Scores and loadings](scores-and-loadings.qmd) distinguish coordinates for inventory rows from directions over segment columns. A loading pattern may suggest a linguistic hypothesis, but the decomposition does not turn a component into a natural class, universal, or causal mechanism.
+
+[Reconstruction](reconstruction.qmd) hides listed and not-listed cells in each held-out record, estimates scores from the remaining cells, and returns predictions to the original cell scale. [Choosing components](choosing-components.qmd) selects rank on validation inventories with balanced reconstruction loss and reserves test inventories for one final comparison. Because families are not the split unit, the result does not establish transfer to unseen language families.
+
+## From decomposition to supervised prediction
+
+The final application changes both the dataset and the target. [VALEX](https://ilexir.co.uk/valex/) contains GPL-licensed, automatically acquired English verb subcategorization counts described by [Korhonen, Krymolowski, and Briscoe (2006)](https://www.cs.brandeis.edu/~marc/misc/proceedings/lrec-2006/pdf/558_pdf.pdf). The official [MegaAcceptability archive](https://megaattitude.io/projects/mega-acceptability/mega-acceptability-v1.zip) is CC BY-SA 4.0; its internal README identifies the release as v1.2. It contains ordinal judgments of English clause-embedding verbs in experimentally controlled frames, and [White and Rawlins (2020)](https://doi.org/10.5334/gjgl.1001) analyze how corpus distributions relate to those profiles.
+
+The [VALEX--MegaAcceptability page](valex-megaacceptability.qmd) predicts MegaAcceptability profiles from VALEX subcategorization-frame proportions and compares the direct proportions with a PCA-compressed representation for verbs absent during fitting. Participant normalization, response aggregation, predictor centering, PCA, and tuning all occur inside their training splits. The result bears on whether PCA compression improves held-out-verb prediction from these two resources. Claims about grammatical labels or abstract linguistic representations would require additional evidence.
+
+## Module recap and roadmap
+
+1. [Linguistic data matrices](data-matrices.qmd#phoible-measurement-dossier)
+   construct the PHOIBLE row, column, and cell units.
+2. [Centering and scaling](centering-and-scaling.qmd) fix the origin and weighting
+   of those cells.
+3. [Rank-one structure](rank-one-structure.qmd) and the
+   [SVD](singular-value-decomposition.qmd) decompose the centered matrix.
+4. [PCA](principal-component-analysis.qmd) and
+   [scores and loadings](scores-and-loadings.qmd) interpret row coordinates and
+   column directions.
+5. [Reconstruction](reconstruction.qmd) and
+   [rank selection](choosing-components.qmd) evaluate hidden PHOIBLE cells.
+6. The [VALEX--MegaAcceptability
+   application](valex-megaacceptability.qmd#valex-megaacceptability-measurement-dossier)
+   validates direct and compressed predictors on held-out verbs.
+
+Begin with the [PHOIBLE measurement
+dossier](data-matrices.qmd#phoible-measurement-dossier). We will carry its row,
+column, and cell definitions through SVD, PCA, and held-out reconstruction.

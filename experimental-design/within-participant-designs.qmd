@@ -1,10 +1,191 @@
 ---
 title: "Within-participant designs"
-toc: false
-course-release-id: experimental-design
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-We relate units of assignment to randomization, within-participant and between-participant designs, counterbalancing, exclusions, and statistical power.
+In the [ManyBabies 1 design](units-of-assignment.qmd#assignment-and-measurement-are-different-maps), speech register varies within infant. Each infant could hear both infant-directed speech (IDS) and adult-directed speech (ADS), and each register was represented by eight stimuli. Looking time is the recorded duration of attention during a trial: it may index attention to the two kinds of speech, but it is not a direct measure of a particular linguistic representation.
 
-**Available Monday, November 9, 2026.**
+We derive the infant-level register contrast, reconstruct it from the released trials, and then examine how unequal trial counts and order can qualify its interpretation.
+
+```{r}
+manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
+
+stopifnot(
+  nrow(manybabies) == 37264L,
+  length(unique(manybabies$infant_id)) == 2329L,
+  setequal(stats::na.omit(unique(manybabies$register)), c("ADS", "IDS"))
+)
+
+observed <- manybabies[
+  !manybabies$trial_missing & !is.na(manybabies$register),
+]
+stopifnot(nrow(observed) == 26895L)
+```
+
+In a [**within-participant design**](https://opentextbc.ca/researchmethods/chapter/experimental-design/), each participant contributes observations to more than one condition. The participant can thus supply the condition comparison before comparisons are averaged across participants.
+
+## Each infant supplies a register contrast
+
+Let $Y_{ir}$ be infant $i$'s mean included looking time in register $r$. The infant-level difference is
+
+$$
+D_i=Y_{i,\mathrm{IDS}}-Y_{i,\mathrm{ADS}},
+$$
+
+and the infant-weighted mean difference among infants observed in both registers is
+
+$$
+\overline D=\frac{1}{n}\sum_{i=1}^{n}D_i.
+$$
+
+The unit entering the final average is the infant, not the trial. If an infant-specific tendency $a_i$ adds the same amount in both registers, it cancels within that infant:
+
+$$
+(\mu_{\mathrm{IDS}}+a_i)-(\mu_{\mathrm{ADS}}+a_i)
+=\mu_{\mathrm{IDS}}-\mu_{\mathrm{ADS}}.
+$$
+
+This cancellation does not remove stimulus variation, condition-specific infant responses, trial order, or laboratory differences.
+
+## Reconstructing the paired summary
+
+We first average the included looking times within infant and register. We then reshape to one row per infant and retain infants with both means.
+
+```{r}
+infant_register <- aggregate(
+  looking_time_seconds ~ infant_id + lab_id + register,
+  data = observed,
+  FUN = mean
+)
+
+within_infant <- reshape(
+  infant_register,
+  idvar = c("infant_id", "lab_id"),
+  timevar = "register",
+  direction = "wide"
+)
+
+names(within_infant)[
+  names(within_infant) == "looking_time_seconds.ADS"
+] <- "mean_ads_seconds"
+names(within_infant)[
+  names(within_infant) == "looking_time_seconds.IDS"
+] <- "mean_ids_seconds"
+
+within_infant <- within_infant[stats::complete.cases(within_infant), ]
+within_infant$difference_seconds <- with(
+  within_infant,
+  mean_ids_seconds - mean_ads_seconds
+)
+
+within_infant[1L, c(
+  "infant_id", "mean_ads_seconds", "mean_ids_seconds", "difference_seconds"
+)]
+
+within_summary <- data.frame(
+  complete_infants = nrow(within_infant),
+  mean_ads_seconds = mean(within_infant$mean_ads_seconds),
+  mean_ids_seconds = mean(within_infant$mean_ids_seconds),
+  mean_difference_seconds = mean(within_infant$difference_seconds),
+  sd_difference_seconds = stats::sd(within_infant$difference_seconds),
+  se_difference_seconds = stats::sd(within_infant$difference_seconds) /
+    sqrt(nrow(within_infant))
+)
+
+knitr::kable(within_summary, digits = 4, format.args = list(big.mark = ","))
+```
+
+The paired analysis contains `r format(nrow(within_infant), big.mark = ",")` infants. Their mean IDS-minus-ADS difference is `r sprintf("%.3f", mean(within_infant$difference_seconds))` seconds. The [standard deviation](../random-variables-and-distributions/standard-deviation.qmd) of `r sprintf("%.3f", stats::sd(within_infant$difference_seconds))` seconds describes heterogeneity among the included infant contrasts. Dividing that value by the square root of the infant count gives `r sprintf("%.4f", stats::sd(within_infant$difference_seconds) / sqrt(nrow(within_infant)))` seconds, the usual [standard error of the mean](../statistical-inference/standard-errors.qmd#deriving-the-standard-error-of-a-mean) under a working model that treats these infant contrasts as independent draws from a target population of comparable infants. The release alone does not define that broader population or its recruitment mechanism. The observed mean and standard deviation still summarize the infants retained by the released pipeline, including the fact that their individual contrasts vary in sign and magnitude.
+
+The raw infant means make that heterogeneity visible. The gray diagonal marks equal means in the two registers; points above it have a positive infant-level difference.
+
+```{r}
+#| fig-width: 5.2
+#| fig-height: 5
+#| fig-alt: "Infant mean adult-directed looking time against infant mean infant-directed looking time, with an equality line."
+
+ggplot2::ggplot(
+  within_infant,
+  ggplot2::aes(x = mean_ads_seconds, y = mean_ids_seconds)
+) +
+  ggplot2::geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = "grey65",
+    linewidth = 0.5
+  ) +
+  ggplot2::geom_point(
+    alpha = 0.18, # dqr-allow: algorithm-setting
+    size = 0.8,
+    color = "grey20"
+  ) +
+  ggplot2::coord_equal(xlim = c(2, 18), ylim = c(2, 18)) +
+  ggplot2::labs(
+    x = "Mean ADS looking time (s)",
+    y = "Mean IDS looking time (s)"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+## Unequal trial counts remain part of the target
+
+An infant need not contribute the same number of included trials in the two registers. The following calculation recovers those counts before averaging.
+
+```{r}
+usable_counts <- aggregate(
+  looking_time_seconds ~ infant_id + register,
+  data = observed,
+  FUN = length
+)
+names(usable_counts)[3L] <- "included_trials"
+
+usable_count_summary <- aggregate(
+  included_trials ~ register,
+  data = usable_counts,
+  FUN = function(x) c(minimum = min(x), median = median(x), maximum = max(x))
+)
+usable_count_summary <- data.frame(
+  register = usable_count_summary$register,
+  usable_count_summary$included_trials
+)
+
+knitr::kable(usable_count_summary)
+```
+
+The unweighted mean of $D_i$ gives each complete infant one contribution, even when their register means rest on different numbers of trials. A row-weighted register difference would instead give more influence to infants with more included trials. Neither target is automatically preferable; the unit used in the average must match the question.
+
+Thus the data ladder is trial looking times $\rightarrow$ one ADS and one IDS mean per infant $\rightarrow$ one infant difference $D_i$ $\rightarrow$ an equally weighted mean across complete infants. Unequal trial counts affect the precision of each $D_i$, even though the final arithmetic gives each infant the same weight.
+
+The summary used here also differs from the paper's meta-analysis. The paper first paired IDS and ADS stimuli by stimulus number, computed an infant preference across complete pairs, and then formed laboratory and age-group effect sizes. We instead average each register within infant before subtraction so that the infant remains the unit of the displayed contrast. This operation does not reproduce the published confirmatory analysis or its laboratory and age-group weighting.
+
+## Order can modify a within-infant contrast
+
+A [**carryover effect**](https://opentextbc.ca/researchmethods/chapter/experimental-design/) occurs when an earlier condition changes a later response. Attention may decline over the session, and earlier speech may change what an infant attends to later. ManyBabies used four pseudorandom sequences that alternated register within four-trial blocks. This counterbalancing distributes register over position, but it does not make carryover impossible.
+
+::: {.callout-note title="Audit the within-infant contrast"}
+1. Why must the IDS and ADS means be joined by infant before subtraction?
+2. Which infant-specific component cancels under the additive expression above?
+3. How would trial weighting change the target of the mean difference?
+4. Why does order remain relevant after both registers occur within infant?
+:::
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Joining by infant makes both condition means belong to the same assignment and sampling unit.
+2. The stable additive infant component $a_i$ cancels in the subtraction.
+3. Trial weighting would give more influence to infants with more retained trials and thus change the estimand.
+4. Register position and earlier exposure can still affect later looking, so counterbalancing does not eliminate carryover.
+
+</details>
+
+A within-participant design makes the infant the source of the IDS-minus-ADS comparison. Stable additive infant differences may cancel, while stimulus, order, and condition-specific variation remain.
+
+## Recap and forward link
+
+1. Condition means are formed within infant before subtraction.
+2. Equal infant weighting and equal trial weighting define different targets.
+3. Pairing removes stable additive infant effects but not stimulus, order, or condition-specific heterogeneity.
+
+The next page contrasts this structure with the [between-infant order groups](between-participant-designs.qmd#a-group-contrast-over-assigned-order).

@@ -1,10 +1,165 @@
 ---
 title: "Group-specific estimates"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model gives each observed group a partially pooled estimate of its deviation from the population relation. In a frequentist `lme4` fit, `ranef()` reports these values as [**conditional modes**](https://lme4.github.io/lme4/reference/ranef.html).
 
-**Available Monday, November 16, 2026.**
+The shared model uses [variance, covariance, and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) to determine how strongly group estimates pool. These conditional model quantities combine a group's responses with the population distribution; they are therefore neither directly measured abilities nor context-free lexical difficulty scores.
+
+The conditional mode is a deviation from a population coefficient, so interpreting it requires both the optimization target and the addition that reconstructs the complete group-specific coefficient. Its conditional uncertainty belongs to the same fitted hierarchy.
+
+They are useful summaries of the fitted group structure. They are not raw group means, independently estimated coefficients, or error-free rankings.
+
+## Defining the conditional mode
+
+For participant $p$, collect the intercept and frequency-slope deviations in $\mathbf b_p$. Conditional on fitted population coefficients and variance components, the estimate is
+
+$$
+\widehat{\mathbf b}_p
+=\operatorname*{arg\,max}_{\mathbf b_p}
+\left{
+\log f(\mathbf y_p\mid\mathbf b_p,\widehat{\boldsymbol\beta},\widehat\sigma)
++\log g(\mathbf b_p\mid\widehat{\boldsymbol\Sigma}_p)
+\right}.
+$$
+
+The first term rewards values that fit the participant's trials. The second rewards values plausible under the estimated participant distribution. Their combination produces partial pooling.
+
+For a simple intercept-only normal model, the same balance appears in
+
+$$
+\widehat b_p
+=\frac{n_p\tau_p^2}{n_p\tau_p^2+\sigma^2}
+(\overline y_p-\beta_0).
+$$
+
+The MALD focal model uses a two-dimensional participant vector, so software performs the corresponding multivariate calculation.
+
+The scalar formula follows by minimizing
+
+$$
+\frac{n_p}{2\sigma^2}(\bar y_p-\beta_0-b_p)^2+
+\frac{b_p^2}{2\tau_p^2}.
+$$
+
+The first term pulls $b_p$ toward the participant's mean deviation; the second pulls it toward the population center. Their curvatures determine both the mode and, under this normal model, its conditional variance $(n_p/\sigma^2+1/\tau_p^2)^{-1}$.
+
+## Extracting estimates and conditional uncertainty
+
+```{r}
+#| label: mald-ranef
+library(lme4)
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
+
+standardize <- function(x) {
+  as.numeric(scale(x))
+}
+
+mald$z_frequency <- standardize(mald$log_frequency_subtlex)
+mald$z_duration <- standardize(mald$log_duration)
+mald$z_trial <- standardize(mald$trial_order)
+
+fit <- lmer(
+  log_rt ~ z_frequency + z_duration + z_trial +
+    (1 + z_frequency | participant_id) +
+    (1 | item),
+  data = mald,
+  control = lmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+participant_effects <- ranef(fit, condVar = TRUE)$participant_id
+conditional_variance <- attr(participant_effects, "postVar")
+
+intercepts <- data.frame(
+  participant = rownames(participant_effects),
+  estimate = participant_effects[["(Intercept)"]],
+  conditional_se = sqrt(conditional_variance[1L, 1L, ]),
+  row.names = NULL
+)
+intercepts <- intercepts[order(intercepts$estimate), ]
+intercepts$order <- seq_len(nrow(intercepts))
+
+head(intercepts)
+```
+
+The main extraction functions answer distinct questions:
+
+| Function | Returned quantity |
+|---|---|
+| `ranef(fit, condVar = TRUE)` | group deviations and their conditional variance |
+| `coef(fit)` | population coefficients plus each group's deviations |
+| `VarCorr(fit)` | fitted population covariance of group deviations |
+| `fixef(fit)` | population coefficients |
+
+The participant-level standard deviation in `VarCorr(fit)` describes variation across the modeled participant population. A row's `conditional_se` instead describes local uncertainty for one participant's conditional mode, conditional on the fitted population parameters. The two quantities answer different questions.
+
+```{r}
+#| label: plot-mald-ranef
+ggplot(intercepts, aes(x = estimate, y = order)) +
+  geom_errorbarh(
+    aes(
+      xmin = estimate - 1.96 * conditional_se,
+      xmax = estimate + 1.96 * conditional_se
+    ),
+    height = 0,
+    color = "grey65"
+  ) +
+  geom_vline(xintercept = 0, color = "grey80", linewidth = 0.4) +
+  geom_point(size = 0.9, color = "#1F5A85") +
+  labs(
+    x = "Participant conditional mode (log response time)",
+    y = "Participants ordered by conditional mode"
+  ) +
+  theme_classic() +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+The intervals overlap heavily through much of the ordering. A participant placed above another by point estimate need not have a stably higher baseline. Rank uncertainty is part of the result.
+
+## Distinguishing deviations from group-specific coefficients
+
+For participant $p$, the group-specific intercept is
+
+$$
+\widehat\beta_0+\widehat b_{0p},
+$$
+
+and the group-specific frequency slope is
+
+$$
+\widehat\beta_f+\widehat b_{1p}.
+$$
+
+`ranef(fit)` returns the deviations $\widehat b_{0p}$ and $\widehat b_{1p}$; `coef(fit)` adds the population coefficients. Both depend on the predictor reference points. Here the intercept refers to mean log frequency, mean log duration, and mean trial order because the predictors were standardized.
+
+```{r}
+#| label: one-participant-coefficient-identity
+#| echo: true
+p <- rownames(participant_effects)[1L]
+data.frame(
+  participant = p,
+  population_intercept = fixef(fit)["(Intercept)"],
+  intercept_deviation = participant_effects[p, "(Intercept)"],
+  sum = fixef(fit)["(Intercept)"] + participant_effects[p, "(Intercept)"],
+  coef_result = coef(fit)$participant_id[p, "(Intercept)"]
+)
+```
+
+Testing every conditional mode against zero would replace a population model with many separate hypotheses and would create a multiple-comparison problem. If a particular listener or dialect is a planned scientific target, that target should enter the population relation explicitly. The modes here describe modeled heterogeneity among sampled MALD listeners; they are not independently observed traits.
+
+## Recap and check
+
+1. Does the largest conditional mode identify the fastest listener without uncertainty? No. Modes are shrunken estimates with overlapping conditional uncertainty, so their rank is uncertain.
+2. Is `VarCorr()` the uncertainty for one participant? No. It estimates population variation across groups.
+
+The [next page](random-slopes.qmd) examines the participant-specific frequency associations.

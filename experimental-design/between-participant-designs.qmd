@@ -1,10 +1,177 @@
 ---
 title: "Between-participant designs"
-toc: false
-course-release-id: experimental-design
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-We relate units of assignment to randomization, within-participant and between-participant designs, counterbalancing, exclusions, and statistical power.
+ManyBabies 1 combines two condition structures. Speech register varies [within infant](within-participant-designs.qmd#each-infant-supplies-a-register-contrast), while the four pseudorandom trial orders vary between infants. One infant is associated with one order across all sixteen possible test-trial rows.
 
-**Available Monday, November 9, 2026.**
+Because order is attached to an infant rather than to a trial, the order-group contrast must first reduce each infant's retained trials to one response. That infant-level response fixes both the group membership and the replication count. We can then ask whether the recorded order allocation supports a causal comparison and why laboratory testing method, which was neither assigned nor separated from laboratory, supports only an observational comparison.
+
+The possible assignments form the outcomes of the design's randomization process, and a collection of such outcomes is an [event](../foundations/possibilities-and-events.qmd). The comparison below is causal only to the extent that the documented assignment mechanism licenses probabilities over those outcomes.
+
+```{r}
+manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
+
+stopifnot(
+  nrow(manybabies) == 37264L,
+  length(unique(manybabies$infant_id)) == 2329L,
+  all(table(manybabies$infant_id) == 16L)
+)
+
+order_by_infant <- vapply(
+  split(manybabies$counterbalance_order, manybabies$infant_id),
+  function(x) {
+    observed <- unique(stats::na.omit(x))
+    stopifnot(length(observed) == 1L)
+    as.integer(observed)
+  },
+  integer(1)
+)
+
+infants <- manybabies[
+  !duplicated(manybabies$infant_id),
+  c("infant_id", "lab_id")
+]
+infants$assigned_order <- unname(order_by_infant[infants$infant_id])
+stopifnot(length(unique(infants$assigned_order)) == 4L)
+```
+
+In a [**between-participant design**](https://opentextbc.ca/researchmethods/chapter/experimental-design/), each participant contributes observations to only one level of a factor. The factor comparison is across groups rather than within the same participant.
+
+## A group contrast over assigned order
+
+Let $Y_i$ be infant $i$'s mean log looking time over included trials, and let $Z_i$ identify the infant's assigned order. The mean in order group $z$ is
+
+$$
+\overline Y_z=\frac{1}{n_z}\sum_{i:Z_i=z}Y_i.
+$$
+
+Each infant contributes to one and only one $\overline Y_z$. Stable infant differences do not cancel through within-infant subtraction. This is the defining contrast with the IDS-minus-ADS summary on the preceding page.
+
+The response begins as looking time in seconds. We log each included trial before averaging because the analysis targets the mean of log durations, reducing right-skew and making additive differences correspond to multiplicative differences on the seconds scale. The [response-transformation page](../regression-models/response-transformations.qmd#what-the-prepared-response-means) explains why the mean of logs is not the log of the arithmetic mean.
+
+We construct $Y_i$ from the included looking times and then join the infant's single order label.
+
+```{r}
+observed <- manybabies[!manybabies$trial_missing, ]
+
+infant_mean_log <- aggregate(
+  log(looking_time_seconds) ~ infant_id,
+  data = observed,
+  FUN = mean
+)
+names(infant_mean_log)[2L] <- "mean_log_looking_time"
+
+between_data <- merge(
+  infants,
+  infant_mean_log,
+  by = "infant_id",
+  all.x = TRUE
+)
+
+between_data[which(!is.na(between_data$mean_log_looking_time))[1L], c(
+  "infant_id", "assigned_order", "mean_log_looking_time"
+)]
+
+between_summary <- aggregate(
+  mean_log_looking_time ~ assigned_order,
+  data = between_data,
+  FUN = function(x) c(
+    infants = length(x),
+    mean = mean(x),
+    sd = stats::sd(x)
+  )
+)
+
+between_summary <- data.frame(
+  assigned_order = between_summary$assigned_order,
+  infants_with_outcome = as.integer(
+    between_summary$mean_log_looking_time[, "infants"]
+  ),
+  mean_log_looking_time = between_summary$mean_log_looking_time[, "mean"],
+  sd_log_looking_time = between_summary$mean_log_looking_time[, "sd"]
+)
+
+knitr::kable(
+  between_summary,
+  digits = 3,
+  format.args = list(big.mark = ",")
+)
+```
+
+Among infants with an included outcome, the four groups contain `r paste(format(between_summary$infants_with_outcome, big.mark = ","), collapse = ", ")` infants. Their mean log looking times are `r paste(sprintf("%.3f", between_summary$mean_log_looking_time), collapse = ", ")`. The raw infant summaries and group means show the scale of between-infant variation.
+
+```{r}
+#| fig-width: 5.8
+#| fig-height: 4
+#| fig-alt: "Infant mean log looking times in each assigned trial-order group, with group means marked."
+
+ggplot2::ggplot(
+  between_data[!is.na(between_data$mean_log_looking_time), ],
+  ggplot2::aes(x = factor(assigned_order), y = mean_log_looking_time)
+) +
+  ggplot2::geom_jitter(
+    width = 0.16,
+    height = 0,
+    alpha = 0.18, # dqr-allow: algorithm-setting
+    size = 0.8,
+    color = "grey25"
+  ) +
+  ggplot2::stat_summary(
+    fun = mean,
+    geom = "point",
+    color = "#2C6E9B",
+    size = 2.2
+  ) +
+  ggplot2::labs(
+    x = "Assigned order",
+    y = "Infant mean log looking time"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+## Order is a nuisance assignment
+
+This plot does not estimate a linguistic treatment effect. Trial order was used to distribute register and paired stimulus identity over session position. It is a between-infant factor, but it is not the speech-register contrast that motivated the experiment.
+
+The documented evidence about allocation also limits interpretation. Because the public source does not specify each laboratory's infant-to-order allocation device, differences among these four realized groups are descriptive. They should not be labeled causal effects of order.
+
+Thus `assigned_order` is a recorded assignment label, but verified randomization is not available from the release alone. The terminology describes the field in the table; it does not strengthen the causal evidence.
+
+## Trials improve an infant summary, not group replication
+
+The release contains `r format(nrow(observed), big.mark = ",")` included trial outcomes from `r format(nrow(infant_mean_log), big.mark = ",")` infants. More included trials may make an infant's $Y_i$ less sensitive to a particular stimulus. They do not increase $n_z$, because order was attached once to the infant.
+
+A trial-weighted group mean would give more influence to infants with more included trials. The displayed analysis instead gives every infant with an outcome one group-level contribution. This choice matches the between-infant comparison in the equation, though the figure remains descriptive.
+
+## An observed laboratory attribute is not an assigned factor
+
+Testing method also differs across infants, but laboratories used their established head-turn preference, single-screen, or eye-tracking procedures. Method is partly tied to laboratory and was not assigned to infants. It is thus not interchangeable with the assigned order factor. A difference among method groups may combine method, laboratory, infant population, age coverage, and local implementation.
+
+::: {.callout-note title="Audit the between-infant comparison"}
+1. Why does each infant enter only one order-group mean?
+2. What does averaging trials within infant preserve about the assignment unit?
+3. Why is assigned order a nuisance factor rather than the linguistic treatment?
+4. Why can testing method not be analyzed as if it had been randomly assigned?
+:::
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Each infant received one order, so its trial summary belongs to one order group.
+2. Within-infant averaging prevents infants with more retained trials from becoming extra order assignments.
+3. Order distributes register and stimuli over session position; the motivating linguistic contrast is IDS versus ADS.
+4. Method is tied to laboratory practice and infant populations, so its groups combine several observational differences.
+
+</details>
+
+A between-participant design compares groups whose members occupy only one factor level. In ManyBabies 1, order has this structure, whereas register does not.
+
+## Recap and forward link
+
+1. One infant's retained trials become one mean log response and one order-group contribution.
+2. Infant averaging preserves the assignment unit and gives infants equal group weight.
+3. Recorded order groups are descriptive unless the local allocation mechanism is verified.
+
+The next page checks how the four orders [counterbalance register and paired stimuli](counterbalancing.qmd#reconstructing-the-order-templates).

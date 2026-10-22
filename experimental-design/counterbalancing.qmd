@@ -1,10 +1,209 @@
 ---
 title: "Counterbalancing"
-toc: false
-course-release-id: experimental-design
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-We relate units of assignment to randomization, within-participant and between-participant designs, counterbalancing, exclusions, and statistical power.
+ManyBabies 1 used four pseudorandom trial orders to distribute register and paired stimulus identity over the sixteen test positions. Each order contained four alternating blocks, each with two infant-directed-speech (IDS) and two adult-directed-speech (ADS) trials. The same IDS and ADS stimulus numbers formed pairs. We can recover the realized order templates from the [released trial table](units-of-assignment.qmd#assignment-and-measurement-are-different-maps).
 
-**Available Monday, November 9, 2026.**
+We reconstruct those templates from the recorded rows, compare the planned balance with the released records, and then delimit what counterbalancing does and does not identify.
+
+```{r}
+manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
+
+stopifnot(
+  nrow(manybabies) == 37264L,
+  setequal(stats::na.omit(unique(manybabies$register)), c("ADS", "IDS")),
+  setequal(stats::na.omit(unique(manybabies$counterbalance_order)), 1:4),
+  setequal(stats::na.omit(unique(manybabies$stimulus_id)), 1:8)
+)
+
+recorded_design <- manybabies[
+  manybabies$trial_metadata_observed &
+    !is.na(manybabies$counterbalance_order),
+]
+
+mode_value <- function(x) {
+  counts <- sort(table(x, useNA = "no"), decreasing = TRUE)
+  names(counts)[[1L]]
+}
+```
+
+[**Counterbalancing**](https://opentextbc.ca/researchmethods/chapter/experimental-design/) constrains how conditions and materials are distributed across orders. Under the [probabilistic definition of independence](../foundations/independence.qmd), trials that share an infant, laboratory, or stimulus remain dependent unless the data-generating model says otherwise. In this study, counterbalancing makes register available within infant while distributing register and paired stimulus identity over trial position.
+
+## Reconstructing the order templates
+
+Protocol deviations mean that the released rows need not agree perfectly within every order-by-position cell. We recover the modal register and stimulus number for each cell, then check the resulting template.
+
+```{r}
+template_register <- aggregate(
+  register ~ counterbalance_order + trial_number,
+  data = recorded_design,
+  FUN = mode_value
+)
+
+template_stimulus <- aggregate(
+  stimulus_id ~ counterbalance_order + trial_number,
+  data = recorded_design,
+  FUN = function(x) as.integer(mode_value(x))
+)
+
+order_template <- merge(
+  template_register,
+  template_stimulus,
+  by = c("counterbalance_order", "trial_number")
+)
+order_template <- order_template[
+  order(order_template$counterbalance_order, order_template$trial_number),
+]
+names(order_template)[1L] <- "assigned_order"
+
+order_template[order_template$assigned_order == 1L,
+  c("trial_number", "register", "stimulus_id")]
+
+balance_checks <- lapply(1:4, function(order) {
+  current <- order_template[order_template$assigned_order == order, ]
+  register_counts <- table(current$register)
+  pair_counts <- table(current$stimulus_id)
+  pair_by_register <- table(current$stimulus_id, current$register)
+
+  stopifnot(
+    nrow(current) == 16L,
+    all(register_counts == 8L),
+    all(pair_counts == 2L),
+    all(pair_by_register == 1L)
+  )
+
+  data.frame(
+    assigned_order = order,
+    positions = nrow(current),
+    ads_positions = unname(register_counts[["ADS"]]),
+    ids_positions = unname(register_counts[["IDS"]]),
+    paired_stimuli = length(pair_counts),
+    one_of_each_register_per_pair = all(pair_by_register == 1L)
+  )
+})
+
+balance_checks <- do.call(rbind, balance_checks)
+knitr::kable(balance_checks)
+```
+
+Let $R_{ot}$ and $P_{ot}$ denote the modal register and paired stimulus at position $t$ in order $o$. The checks above establish the empirical margins
+
+$$
+\sum_t I(R_{ot}=\mathrm{IDS})
+=\sum_t I(R_{ot}=\mathrm{ADS})=8,
+$$
+
+and, for every pair $p$ in every order $o$,
+
+$$
+\sum_t I(P_{ot}=p)=2,
+\qquad
+\sum_t I(P_{ot}=p,R_{ot}=r)=1
+$$
+
+for each register $r$. Thus every paired stimulus occurs once as IDS and once as ADS within an order.
+
+The displayed order-one rows are the concrete template: each trial position has one modal register and paired stimulus ID. The sequence is pseudorandom because it obeys balancing and blocking constraints rather than treating all $16!$ orders as equally possible.
+
+## A restrained order map
+
+The tile plot shows the register margin without placing a label in every cell. Pair identity remains checked in the code and table rather than added as sixty-four annotations.
+
+```{r}
+#| fig-width: 6.4
+#| fig-height: 2.5
+#| fig-alt: "Four trial-order rows across sixteen positions, with gray adult-directed and blue infant-directed speech tiles."
+
+ggplot2::ggplot(
+  order_template,
+  ggplot2::aes(
+    x = trial_number,
+    y = factor(assigned_order),
+    fill = register
+  )
+) +
+  ggplot2::geom_tile(color = "white", linewidth = 0.45) +
+  ggplot2::scale_fill_manual(
+    values = c(ADS = "grey78", IDS = "#2C6E9B") # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_x_continuous(
+    breaks = c(
+      min(order_template$trial_number),
+      4L * seq_len(max(order_template$trial_number) / 4L)
+    )
+  ) +
+  ggplot2::labs(x = "Trial number", y = "Assigned order", fill = NULL) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "top")
+```
+
+Each order contains both registers across the session rather than placing all IDS trials before all ADS trials. The four orders use different position patterns, which distributes a register contrast over earlier and later positions across infants.
+
+## Planned template and released records
+
+The modal template is a reconstruction from the release. We can compare every recorded metadata row with the relevant modal cell.
+
+```{r}
+template_key <- paste(order_template$assigned_order, order_template$trial_number)
+register_lookup <- setNames(order_template$register, template_key)
+stimulus_lookup <- setNames(order_template$stimulus_id, template_key)
+
+recorded_key <- paste(
+  recorded_design$counterbalance_order,
+  recorded_design$trial_number
+)
+
+recorded_design$register_matches_template <-
+  recorded_design$register == unname(register_lookup[recorded_key])
+recorded_design$stimulus_matches_template <-
+  recorded_design$stimulus_id == unname(stimulus_lookup[recorded_key])
+
+template_match <- data.frame(
+  recorded_metadata_rows = nrow(recorded_design),
+  register_match_proportion = mean(recorded_design$register_matches_template),
+  stimulus_match_proportion = mean(recorded_design$stimulus_matches_template)
+)
+
+knitr::kable(
+  template_match,
+  digits = 4,
+  format.args = list(big.mark = ",")
+)
+```
+
+The modal register template agrees with `r sprintf("%.2f%%", 100 * template_match$register_match_proportion)` of recorded metadata rows, and the modal stimulus template agrees with `r sprintf("%.2f%%", 100 * template_match$stimulus_match_proportion)`. These are agreement rates with the modal released pattern after documented protocol deviations. They are not coder-accuracy estimates.
+
+The mode reconstructs the most common released value in an order-by-position cell without pretending that every recorded row followed one exact template. A deviation row is any recorded trial whose register or stimulus differs from that cell's modal value. It remains part of the audit rather than being overwritten.
+
+## What counterbalancing does not do
+
+Counterbalancing separates register from a fixed position and paired stimulus in the planned sequence. It does not remove dependence: trials still repeat within infants, stimuli recur across infants, and infants remain nested within laboratories. Nor does balance verify how infants were allocated to sequences; the [random-assignment page](random-assignment.qmd) explains what the released records support.
+
+::: {.callout-note title="Audit the realized counterbalance"}
+1. Which margin verifies equal IDS and ADS counts within an order?
+2. Which margin verifies one IDS and one ADS occurrence for each paired stimulus?
+3. Why is a modal template needed for this release?
+4. Why does balanced sequencing not make trial rows independent?
+:::
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Each order has eight IDS and eight ADS positions.
+2. Each stimulus ID appears exactly twice within an order, once in each register.
+3. Documented deviations mean released rows do not define one perfectly unanimous value in every cell, so the modal value reconstructs the dominant template.
+4. Trials still share infants, laboratories, and recurring stimuli even when the sequence margins are balanced.
+
+</details>
+
+Counterbalancing distributes register and paired stimulus identity over order and position. The released template satisfies the intended margins, while a small share of metadata rows departs from the modal pattern.
+
+## Recap and forward link
+
+1. Counterbalancing constrains sequences; it does not randomize independent trial rows.
+2. The modal template summarizes the dominant released order-by-position values while preserving deviations for audit.
+3. Balance addresses confounding with position and paired stimulus, not every source of dependence.
+
+The next page distinguishes recorded rows from rows removed or completed by the [exclusion pipeline](exclusion-rules.qmd#retention-enters-the-estimand).

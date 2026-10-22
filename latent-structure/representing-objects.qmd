@@ -1,10 +1,233 @@
 ---
 title: "Representing objects for clustering"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+Peterson and Barney recorded repeated productions of ten /hVd/ words from adult and child speakers, then measured the fundamental frequency and the first three formants in a steady-state vowel section. Their primary report describes the production and separate listener experiments ([Peterson and Barney 1952](https://doi.org/10.1121/1.1906875)); we analyze the production table distributed as [`phonTools::pb52`](https://search.r-project.org/CRAN/refmans/phonTools/html/pb52.html). The [Praat documentation](https://www.fon.hum.uva.nl/praat/manual/Create_formant_table__Peterson___Barney_1952_.html) records the table's subsequent provenance.
 
-**Available Monday, November 23, 2026.**
+We use this table for every latent-structure analysis that follows. To prevent label leakage, intended-vowel labels may describe or evaluate a fitted representation, but they may not enter the feature matrix, initial values, component-count choice, or covariance-family choice. A [covariance](../random-variables-and-distributions/covariance.qmd) summarizes paired feature variation; a covariance family constrains which component-specific scales and orientations the later mixture model may fit.
+
+We inspect the production rows, define the object and feature matrix used for
+clustering, and then examine the geometry, repeated-row weighting, and information
+that representation leaves out.
+
+## Loading and checking the production table
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+expected_columns <- c(
+  "type", "sex", "speaker", "vowel", "repetition",
+  "f0", "f1", "f2", "f3"
+)
+
+stopifnot(
+  as.character(utils::packageVersion("phonTools")) == "0.2.2.2",
+  identical(dim(pb52), c(1520L, 9L)),
+  identical(names(pb52), expected_columns),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L),
+  all(table(pb52$speaker, pb52$vowel) == 2L),
+  all(stats::complete.cases(pb52))
+)
+
+source_file <- system.file("data", "pb52.rda", package = "phonTools")
+source_checksum <- digest::digest(file = source_file, algo = "sha256")
+object_checksum <- digest::digest(pb52, algo = "sha256")
+
+stopifnot(
+  source_checksum ==
+    "0084f2d0cd9882bca0652b011f31b91d5e0006be3fc761a962c95090aad7fa83",
+  object_checksum ==
+    "63e97096d62f0cab8b02d4f77a3d87cc8bf8df26fb5cf8b48acd2dd8561b28f4"
+)
+
+speaker_labels <- c(c = "Children", m = "Men", w = "Women")
+vowels <- pb52 |>
+  dplyr::mutate(
+    row_id = dplyr::row_number(),
+    token_id = sprintf(
+      "speaker-%02d-%s-repetition-%d", speaker, vowel, repetition
+    ),
+    speaker_type = factor(
+      speaker_labels[as.character(type)],
+      levels = c("Men", "Women", "Children")
+    )
+  )
+```
+
+The following key decodes the compact source labels before we build a numerical
+representation.
+
+```{r}
+word_key <- data.frame(
+  vowel = c("i", "I", "E", "{", "V", "A", "O", "U", "u", "3'"),
+  elicitation_word = c(
+    "heed", "hid", "head", "had", "hud",
+    "hod", "hawed", "hood", "who'd", "heard"
+  )
+)
+
+example_token <- vowels |>
+  dplyr::slice(1) |>
+  dplyr::left_join(word_key, by = "vowel") |>
+  dplyr::select(
+    token_id, elicitation_word, type, sex, speaker, vowel, repetition,
+    f0, f1, f2, f3
+  )
+
+knitr::kable(example_token)
+```
+
+The displayed row is the first recorded production of *heed* by speaker 1. The
+source code `type = m` means that the participant belongs to the men's speaker
+group; `w` and `c` mark the women and children groups. The separate `sex` field
+uses `m` and `f`. The numeric `speaker` value uniquely identifies a participant
+across those groups in this table, so `speaker = 1` is not merely the first man
+within a local panel.
+
+The frequency measurements are in hertz. F0 is the fundamental frequency, which
+is closely related to perceived pitch. F1, F2, and F3 are the first three vocal-
+tract resonances. In broad terms, F1 covaries with vowel height, F2 with frontness,
+and F3 can carry information that F1 and F2 omit, including information relevant
+to rhoticity. Peterson and Barney measured these values in a steady-state portion
+of the vowel, where the acoustic pattern is relatively stable rather than in the
+transitions into or out of the vowel. Thus the row describes one sustained region
+of one production, not the complete time course of the word.
+
+The checked table has `r format(nrow(vowels), big.mark = ",")` token rows from `r dplyr::n_distinct(vowels$speaker)` speakers. Each speaker contributes `r unique(as.integer(table(vowels$speaker)))` rows: two repetitions of each of ten elicitation words. A row therefore records one production by one speaker. Speaker summaries require grouping 20 rows; vowel-category summaries group labels across speakers; and listener judgments are absent because this package table contains no listener-level response, session, or seat variables from the paper's perception experiment.
+
+The two repetitions make within-speaker production variation visible. Under
+[independence](../foundations/independence.qmd), learning one outcome would not
+change the distribution assigned to another. Productions by the same speaker
+share anatomy and recording context, so later validation keeps both repetitions
+with the same participant. The historical sample was also designed
+for a particular mid-century laboratory study rather than drawn as a probability
+sample of contemporary English speakers. Later empirical summaries are conditional
+on that sampling frame.
+
+## Defining the represented objects
+
+Let $N$ linguistic objects be measured on $p$ numerical properties. Their representation is
+
+$$
+\mathbf{X}
+=
+\begin{bmatrix}
+\mathbf{x}_1^{\mathsf T}\\
+\vdots\\
+\mathbf{x}_N^{\mathsf T}
+\end{bmatrix}
+\in
+\mathbb{R}^{N\times p}.
+$$
+
+Row $i$ is the vector
+
+$$
+\mathbf{x}_i
+=
+\begin{bmatrix}
+x_{i1}&\cdots&x_{ip}
+\end{bmatrix}.
+$$
+
+For the main analysis, row $i$ is one token and the two columns are F1 and F2. The sampling group remains the speaker because each person contributes `r unique(as.integer(table(vowels$speaker)))` rows. Intended vowel, repetition, speaker type, and sex remain beside the matrix as external metadata.
+
+```{r}
+X_raw <- as.matrix(vowels[, c("f1", "f2")])
+identifiers <- vowels[, c("row_id", "token_id", "speaker")]
+external_metadata <- vowels[, c(
+  "vowel", "repetition", "speaker_type", "sex"
+)]
+
+role_table <- data.frame(
+  role = c(
+    "fitted feature", "fitted feature", "row identifier",
+    "sampling group", "post-fit metadata", "post-fit metadata"
+  ),
+  column = c("f1", "f2", "token_id", "speaker", "vowel", "speaker_type")
+)
+
+knitr::kable(role_table)
+```
+
+This separation matters. Adding the integer `speaker` code to `X_raw` would treat record-number differences as measured acoustic distances. Adding `vowel` would instead make the intended answer part of the fitted representation. Neither operation answers the clustering question posed here.
+
+We retain F1 and F2 because they provide a compact two-dimensional description of
+vowel quality whose distances we can inspect directly in a plot. We exclude F0
+because the present question concerns vowel quality rather than pitch, and we
+exclude F3 so that each token remains a point in two dimensions. A question about
+rhoticity or speaker identity might instead require F3, F0, dynamic trajectories,
+or all four measurements.
+
+## The observed acoustic geometry
+
+```{r}
+#| fig-width: 8.2
+#| fig-height: 3.3
+#| fig-alt: "Raw F2 by F1 measurements for Peterson and Barney vowel tokens, separated into panels for men, women, and children."
+
+ggplot2::ggplot(vowels, ggplot2::aes(x = f2, y = f1)) +
+  ggplot2::geom_point(color = "grey25", alpha = 0.28, size = 0.7) + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~speaker_type, nrow = 1) +
+  ggplot2::scale_x_reverse() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::labs(x = "F2 (Hz)", y = "F1 (Hz)") +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    strip.background = ggplot2::element_blank(),
+    strip.text = ggplot2::element_text(face = "plain")
+  )
+```
+
+The plot shows all observed F1-F2 vectors and retains speaker type only as a panel label. The broad differences across panels suggest why raw hertz can partly organize tokens by anatomy-related speaker groups. But the plot does not supply an intended-vowel label to a fitting algorithm.
+
+## Repeated rows change the target
+
+Treating the `r format(nrow(vowels), big.mark = ",")` tokens as rows produces a grouping of productions. Averaging each speaker-vowel pair first would instead produce `r dplyr::n_distinct(interaction(vowels$speaker, vowels$vowel))` speaker-vowel means and remove repetition-level variation. Averaging all `r unique(as.integer(table(vowels$speaker)))` rows for each speaker would produce a grouping of speakers and remove the within-speaker vowel space almost entirely.
+
+These are different represented objects. The present analysis keeps token rows, preserves speaker identifiers for grouped validation, and describes the resulting clusters as regions of a production space.
+
+## What the representation omits
+
+Peterson and Barney also measured F0 and F3. F3 is especially relevant to the rhotic vowel, while a steady-state section cannot capture every dynamic property of an /hVd/ word. We restrict the matrix to F1 and F2 so that the geometry can be plotted and derived in two dimensions. Any structure carried only by F0, F3, or vowel dynamics is consequently unavailable to the clustering algorithm.
+
+The paper used the measurements to examine experimental control, production variation, and the relation between acoustic patterns and listener classifications. It did not fit K-means or Gaussian mixtures. Our clustering is a descriptive reanalysis of the released production table.
+
+## Checking the represented object
+
+1. What does one row of `X_raw` represent?
+2. Why is `speaker` retained outside the feature matrix?
+3. Which variables are allowed to define similarity during fitting?
+4. How would averaging repetitions change the object represented by one row?
+5. Which part of the original listener experiment cannot be reconstructed from `pb52`?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. One row is one repetition of one elicited /hVd/ word by one speaker.
+2. It identifies dependence among twenty rows without pretending that an arbitrary
+   identifier is an acoustic measurement.
+3. Only F1 and F2 enter `X_raw`; the intended vowel and speaker metadata are withheld.
+4. It would replace token productions with speaker-by-vowel means and remove
+   repetition-level variation.
+5. The listener judgments cannot be recovered because the package table contains
+   only production measurements.
+
+</details>
+
+## Recap
+
+1. The represented object is a recorded word token; the dependence unit is its
+   speaker.
+2. F1 and F2 define the fitted acoustic space, while intended-vowel labels remain
+   post-fit metadata.
+3. Repetition, feature selection, and historical sampling delimit the claim before
+   any clustering algorithm is run.
+
+The [next page](distance-and-scaling.qmd#three-coordinate-systems) holds these token
+rows fixed and asks how three scale choices change their geometry.

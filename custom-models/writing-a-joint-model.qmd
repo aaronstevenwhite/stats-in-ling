@@ -1,10 +1,228 @@
 ---
 title: "Writing a joint model"
-toc: false
-course-release-id: custom-model-design
-course-release-placeholder: true
 ---
 
-Joint probability models connect annotation protocols to linguistic measurement claims. We then test whether simulated data permit recovery of the model parameters.
+The [preceding page](generative-stories.qmd) introduced the UDS natural-parts response and its item--annotator design. We now begin with a smaller item-only model so that every factor in the joint distribution has a visible empirical referent. Stable annotator location enters later.
 
-**Available Wednesday, December 2, 2026.**
+A **joint probability model** assigns one factor to every random step in a data-generating process. This is the [product rule](../foundations/probability-factorization.qmd) applied to the annotation process. The product states which quantities are conditionally independent and which observations share an unobserved item value.
+
+We construct the observed-pair set, translate the item process into factors, fit the item-only model, and then compare raw proportions with fitted probabilities while keeping observations and summaries distinct.
+
+## Loading the observed-pair set
+
+```{r}
+#| label: load-uds-joint
+#| message: false
+#| warning: false
+
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$item_id)) == 1000L,
+  length(unique(uds$annotator_id)) == 12L,
+  setequal(unique(uds$natural_parts), 0:1),
+  !anyDuplicated(paste(uds$item_id, uds$annotator_id, sep = "::"))
+)
+
+observed_pairs <- uds[c("item_id", "annotator_id", "natural_parts")]
+```
+
+Let $\mathcal O$ be the `r format(nrow(observed_pairs), big.mark = ",")` item--annotator pairs stored in `observed_pairs`. The [likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood) is the probability of this realized response table viewed as a function of the unknown model quantities. It has one response factor for each row in $\mathcal O$ and no response factor for an item--annotator combination that was never observed.
+
+## Translating steps into factors
+
+Let $\theta_i$ be the log odds of a yes response for predicate-node item $i$ in the item-only model. Then
+
+$$
+\pi_i=\operatorname{logit}^{-1}(\theta_i),
+\qquad
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_i),
+$$
+
+and the item values follow
+
+$$
+\theta_i\sim\mathcal N(\mu_\theta,\tau_\theta^2).
+$$
+
+Here $\tau_\theta^2$ is the
+[variance](../random-variables-and-distributions/variance-and-covariance.qmd) of the
+item population, while $\tau_\theta$ is its
+[standard deviation](../random-variables-and-distributions/standard-deviation.qmd),
+the square root of that variance.
+
+For observed responses $\mathbf y$ and item values $\boldsymbol\theta$, the joint distribution is
+
+$$
+f(\mathbf y,\boldsymbol\theta\mid\mu_\theta,\tau_\theta)
+=
+\prod_i f(\theta_i\mid\mu_\theta,\tau_\theta)
+\prod_{(i,j)\in\mathcal O}p(y_{ij}\mid\theta_i).
+$$
+
+The first product generates one item value per predicate node. The second generates each recorded response conditional on the item value named by that row. Repeated occurrences of $\theta_i$ record the fact that responses to one predicate node share information.
+
+The factorization asserts
+[conditional independence](../foundations/independence.qmd) explicitly. Once the
+item values are supplied, learning the response on one row does not change the
+model probability assigned to another row:
+
+$$
+Y_{ij}\perp Y_{i'j'}\mid\boldsymbol\theta
+\quad\text{for distinct observed rows},
+$$
+
+while responses sharing item $i$ are generally dependent after $\theta_i$ is integrated out. Item values are themselves independent draws conditional on $\mu_\theta$ and $\tau_\theta$. These are modeling claims, not consequences of writing products.
+
+For two items, with observed-pair subsets $\mathcal O_1$ and $\mathcal O_2$, the same expression expands to
+
+$$
+\begin{aligned}
+f(&\mathbf y,\theta_1,\theta_2\mid\mu_\theta,\tau_\theta)
+={}&f(\theta_1\mid\mu_\theta,\tau_\theta)
+\prod_{j:(1,j)\in\mathcal O_1}p(y_{1j}\mid\theta_1)\\
+&\times f(\theta_2\mid\mu_\theta,\tau_\theta)
+\prod_{j:(2,j)\in\mathcal O_2}p(y_{2j}\mid\theta_2).
+\end{aligned}
+$$
+
+Lowercase $\mathbf y$ denotes the responses in the realized table; uppercase $\mathbf Y$ denotes the random response matrix before observation. Likewise, the observed-pair set $\mathcal O$ is fixed by the released incidence design. Unobserved item--annotator combinations do not contribute response factors.
+
+The order of multiplication does not describe temporal order. Multiplication is commutative; the conditional arguments carry the dependency claim.
+
+## Fitting the item-only model
+
+The following fit evaluates the empirical item-only model. It uses every row in $\mathcal O$ and partially pools the `r length(unique(uds$item_id))` item deviations. At this intermediate stage the linear predictor contains no annotator term, so any stable annotator response-location difference remains available to the item estimates or Bernoulli variation.
+
+The simplification lets us connect the factorization to software before adding a second crossed effect. It is potentially biased when annotators with different response locations see different item compositions: item deviations may then absorb stable annotator differences. The [annotator-effects page](annotator-effects.qmd#adding-one-location-term) repairs that omission.
+
+```{r}
+#| label: fit-uds-item-only
+#| message: false
+#| warning: false
+
+item_only_fit <- lme4::glmer(
+  natural_parts ~ 1 + (1 | item_id),
+  data = uds,
+  family = stats::binomial(),
+  control = lme4::glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 100000)
+  )
+)
+
+stopifnot(
+  is.null(item_only_fit@optinfo$conv$lme4$messages),
+  !lme4::isSingular(item_only_fit, tol = 1e-4)
+)
+
+item_levels <- rownames(lme4::ranef(item_only_fit)$item_id)
+item_effect <- lme4::ranef(item_only_fit)$item_id[, 1]
+item_fit <- data.frame(
+  item_id = item_levels,
+  fitted_probability = stats::plogis(
+    unname(lme4::fixef(item_only_fit)[[1]]) + item_effect
+  ),
+  raw_proportion = as.numeric(tapply(
+    uds$natural_parts,
+    factor(uds$item_id, levels = item_levels),
+    mean
+  ))
+)
+
+joint_summary <- data.frame(
+  quantity = c(
+    "population location",
+    "item scale",
+    "integrated log likelihood"
+  ),
+  value = c(
+    unname(lme4::fixef(item_only_fit)[[1]]),
+    sqrt(unname(lme4::VarCorr(item_only_fit)$item_id[1, 1])),
+    as.numeric(stats::logLik(item_only_fit))
+  )
+)
+
+knitr::kable(joint_summary, digits = 3)
+```
+
+The integrated log likelihood combines the response factors with the item population rather than treating the fitted item deviations as independent observations. Its numerical value depends on the complete UDS response matrix and the stated item-only model.
+
+More explicitly, `glmer()` maximizes the marginal likelihood
+
+$$
+L(\mu_\theta,\tau_\theta;\mathbf y)
+=\prod_i\int
+f(\theta_i\mid\mu_\theta,\tau_\theta)
+\prod_{j:(i,j)\in\mathcal O}
+p(y_{ij}\mid\theta_i)\,d\theta_i.
+$$
+
+The call `natural_parts ~ 1 + (1 | item_id)` maps the fixed intercept to $\mu_\theta$, the item-intercept standard deviation to $\tau_\theta$, and each binary row to one Bernoulli factor. The `bobyqa` optimizer is a derivative-free default that is often stable for variance parameters; `maxfun = 100000` raises the evaluation budget rather than changing the model. The two `stopifnot()` checks expose optimizer messages and a near-zero variance boundary. For the underlying link, revisit [logistic regression](../regression-models/logistic-regression.qmd); for partial pooling, revisit [random effects](../regression-models/random-effects.qmd). <!-- dqr-allow: algorithm-setting -->
+
+## Comparing raw summaries with fitted item probabilities
+
+```{r}
+#| label: plot-uds-item-only
+#| fig-width: 5.8
+#| fig-height: 4.2
+#| fig-cap: "Raw item response proportions and fitted probabilities from the item-only model."
+
+ggplot2::ggplot(
+  item_fit,
+  ggplot2::aes(raw_proportion, fitted_probability)
+) +
+  ggplot2::geom_abline(slope = 1, intercept = 0, color = "grey70") +
+  ggplot2::geom_point(color = "steelblue4", alpha = 0.25, size = 1) + # dqr-allow: algorithm-setting
+  ggplot2::scale_x_continuous(
+    breaks = c(0, 1 / 3, 1 / 2, 2 / 3, 1), # dqr-allow: scale-boundary
+    labels = c("0", "1/3", "1/2", "2/3", "1") # dqr-allow: scale-boundary
+  ) +
+  ggplot2::scale_y_continuous(limits = c(0, 1)) +
+  ggplot2::labs(
+    x = "Raw item yes proportion",
+    y = "Item-only fitted probability"
+  ) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
+
+The vertical bands arise because `r sum(table(uds$item_id) == 2L)` items have two responses and `r sum(table(uds$item_id) == 3L)` have three. The shared item distribution moves raw endpoints toward the fitted population center. Each resulting value still describes a predicate node in its sentence context under the natural-parts prompt; the model contains no operation that removes context or assigns a lexical category.
+
+## Separating observations from summaries
+
+For item $i$ with $n_i$ responses, the raw mean
+
+$$
+\bar Y_i=\frac{1}{n_i}\sum_{j:(i,j)\in\mathcal O}Y_{ij}
+$$
+
+is determined by response rows already in the likelihood. Multiplying the joint model by a second likelihood term for $\bar Y_i$ would count the same annotations twice. The mean may appear in a plot or predictive check, as it does above, but it is not another measurement.
+
+Each probability factor must correspond to a distinct random quantity in the recorded measurement process. If two likelihood factors point to the same recorded responses without a second measurement process, one factor is duplicated.
+
+::: {.callout-note title="Check the joint model"}
+1. Which product generates the latent item values?
+2. Why is the response product indexed by $\mathcal O$?
+3. Why does multiplication order not state the dependency structure?
+4. Why is an item mean not an additional response?
+5. Which simplification does the item-only fit make?
+
+**Answers.** (1) The normal-density product generates one latent $\theta_i$ per item. (2) $\mathcal O$ includes exactly the recorded item--annotator pairs and excludes unrealized combinations. (3) Dependency is expressed by conditional arguments and shared latent quantities, not the written order of factors. (4) The item mean is a deterministic summary of response rows already counted. (5) The fit omits stable annotator-location differences, which items may partly absorb under a sparse crossed design.
+:::
+
+A joint model translates each random step into one probability factor. Before fitting the larger crossed model to released responses, we test whether its parameters can be [recovered under the observed incidence design](parameter-recovery.qmd).
+
+## Recap
+
+1. One latent-density factor belongs to each item and one Bernoulli factor belongs to each observed response row.
+2. Conditional independence holds only after the shared item values are supplied; integrating them induces within-item dependence.
+3. `glmer()` integrates over the item values to evaluate the likelihood for the population location and scale.
+4. The item-only fit isolates item pooling before the annotator term is added; omitting that term changes the response model and may shift item estimates.
+5. The next page begins with the [recovery target and design](parameter-recovery.qmd#loading-released-design-and-completed-fits), asking whether the larger crossed model can recover known generating values.
+
+[Previous: Data-generating processes](generative-stories.qmd) · [Next: Parameter recovery](parameter-recovery.qmd)

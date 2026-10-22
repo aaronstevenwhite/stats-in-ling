@@ -1,10 +1,184 @@
 ---
 title: "Within-cluster loss"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+K-means requires a centroid count before fitting. Recall that its
+[objective](k-means.qmd#assignments-centroids-and-loss) adds each token's squared
+distance to its assigned centroid. We now trace that training loss across a
+declared grid using the same speaker-relative Peterson-Barney representation,
+seed policy, and multi-start fitting rule at every count.
 
-**Available Monday, November 23, 2026.**
+We define the loss at a fixed count, explain why its optimized curve cannot rise, fit the observed curve, and then separate a visual elbow from a validated category count.
+
+## Reconstructing the acoustic representation
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+```
+
+## Loss at a declared centroid count
+
+For the K-means fit with $K$ centroids, write
+
+$$
+W_K
+=
+\sum_{i=1}^{N}
+\left\lVert
+\mathbf{x}_i-\boldsymbol{\mu}_{z_i,K}
+\right\rVert^2.
+$$
+
+The subscript records that both assignments and centroids were estimated under candidate count $K$. The reduction obtained by adding centroid $K$ is
+
+$$
+\Delta_K
+=
+W_{K-1}-W_K,
+\qquad K\geq2.
+$$
+
+A larger $\Delta_K$ means that the additional centroid removes more squared reconstruction error from the fitted rows.
+
+## Why the optimal curve cannot rise
+
+A model with $K+1$ centroids can reproduce a $K$-centroid solution by duplicating one existing center and retaining the assignments. Since the larger model can do at least this well,
+
+$$
+W_{K+1}\leq W_K.
+$$
+
+Thus, the globally minimized training loss reaches its smallest value at the largest permitted $K$. A computed curve can rise after a poor local solution; multiple starts reduce this algorithmic failure without changing the mathematical relation.
+
+The inequality compares the mathematical capacities of the two model classes.
+`kmeans()` need not return the duplicated-center construction: software may
+reject or immediately separate identical centers because an empty cluster has
+no mean. The mathematical \(K+1\) class nevertheless
+contains solutions arbitrarily close to the \(K\)-center fit, so adding capacity
+cannot worsen the global infimum.
+
+## Fitting the observed loss curve
+
+```{r}
+seed <- 1952L
+k_grid <- 1:15
+kmeans_fits <- vector("list", length(k_grid))
+loss_rows <- vector("list", length(k_grid))
+
+for (k in k_grid) {
+  set.seed(seed + k)
+  fit <- stats::kmeans(
+    X,
+    centers = k,
+    nstart = 100L,
+    iter.max = 200L,
+    algorithm = "Hartigan-Wong"
+  )
+  kmeans_fits[[k]] <- fit
+  loss_rows[[k]] <- data.frame(
+    k = k,
+    total_within_cluster_loss = fit$tot.withinss,
+    iterations = fit$iter
+  )
+}
+
+loss_curve <- dplyr::bind_rows(loss_rows) |>
+  dplyr::mutate(
+    absolute_drop = dplyr::lag(total_within_cluster_loss) -
+      total_within_cluster_loss,
+    proportional_drop = absolute_drop /
+      dplyr::lag(total_within_cluster_loss)
+  )
+
+stopifnot(all(diff(loss_curve$total_within_cluster_loss) <= 1e-8))
+knitr::kable(loss_curve, digits = 3)
+```
+
+The grid 1--15 includes the experiment's ten intended categories and enough
+smaller and larger values to show the low-\(K\) descent and later flattening.
+We chose this range to display the curve around ten; no analysis here bounds
+the number of English vowel categories. We keep 100 starts
+and 200 iterations at every \(K\), while `seed + k` gives each candidate a
+reproducible but distinct initialization stream. Changing that seed policy is a
+computational sensitivity analysis, not a new linguistic hypothesis.
+
+The observed curve falls from `r round(loss_curve$total_within_cluster_loss[loss_curve$k == min(k_grid)], 3)` at the smallest candidate to `r round(loss_curve$total_within_cluster_loss[loss_curve$k == max(k_grid)], 3)` at the largest. The ten-centroid fit has loss `r round(loss_curve$total_within_cluster_loss[loss_curve$k == 10], 3)`, and adding the eleventh centroid reduces the loss by `r round(loss_curve$absolute_drop[loss_curve$k == 11], 3)`.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4.2
+#| fig-alt: "Within-cluster sum of squares for K-means fits to the Peterson and Barney vowel tokens across one through fifteen centroids."
+
+ggplot2::ggplot(loss_curve, ggplot2::aes(
+  x = k, y = total_within_cluster_loss
+)) +
+  ggplot2::geom_line(color = "#2B6CB0", linewidth = 0.7) +
+  ggplot2::geom_point(color = "#2B6CB0", size = 1.7) +
+  ggplot2::scale_x_continuous(breaks = seq(1, 15, by = 2)) +
+  ggplot2::labs(
+    x = "Number of centroids",
+    y = "Within-cluster sum of squares"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+## The elbow is a visual judgment
+
+An [**elbow plot**](https://online.stat.psu.edu/stat505/Lesson14) displays $W_K$ against $K$. The [**elbow method**](https://online.stat.psu.edu/stat505/Lesson14) looks for a count after which additional centroids produce much smaller reductions. The Peterson-Barney curve supplies real reductions, but it does not supply a universal cutoff for what counts as small.
+
+The curve drops quickly at low counts and then flattens. More than one bend remains visually defensible, however. Reporting the complete curve keeps this judgment visible.
+
+## Loss remains tied to the representation
+
+Within-cluster loss depends on feature units, columns, and row count. Replacing speaker-relative scores with raw hertz would change the vertical scale and could change the fitted partitions. Duplicating F2 would give it twice the influence.
+
+Training compactness also does not establish a vowel inventory. Every additional centroid increases representational capacity on the same observations used to estimate it. The monotone loss curve cannot decide that one count is linguistically correct merely by reaching a minimum.
+
+## Checking the loss curve
+
+1. Why must an optimal $W_{K+1}$ be no greater than $W_K$?
+2. Which additions produce the largest empirical reductions in this table?
+3. Why can two readers locate different elbows on the same curve?
+4. Why is the loss scale not comparable with a raw-hertz analysis?
+5. What linguistic claim is not licensed by the smallest displayed loss?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The larger class can duplicate, or approach a duplicate of, an existing center.
+2. `absolute_drop` identifies the largest fitted reductions.
+3. An elbow has no probability model or universal cutoff.
+4. Raw hertz changes both coordinate units and the squared distances being added.
+5. The minimum does not identify the number of phonological categories or the best
+   held-out predictor.
+
+</details>
+
+## Recap
+
+1. Training loss is monotone in representational capacity at the global optimum.
+2. The 1--15 grid and seed policy are declared computational choices.
+3. An elbow summarizes fitted compactness but cannot certify category recovery.
+
+The [next page](silhouette-scores.qmd#cohesion-and-the-nearest-alternative) adds
+the distance to the nearest competing fitted group.

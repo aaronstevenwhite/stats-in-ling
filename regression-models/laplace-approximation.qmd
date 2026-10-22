@@ -1,10 +1,310 @@
 ---
 title: "The Laplace approximation"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. The [marginal-distribution page](../random-variables-and-distributions/marginal-distributions.qmd) reminds us that marginalization sums or integrates a joint distribution over an unobserved quantity. A likelihood for the observed responses must thus average over every possible random-effect value.
 
-**Available Monday, November 16, 2026.**
+The [random-effect framework](fixed-and-random-effects.qmd) defines the group deviations being integrated. Their [standard deviations and covariances](../random-variables-and-distributions/variance-and-covariance.qmd) set the local geometry. The likelihood is the density of the realized responses viewed as a function of fixed coefficients and group-distribution parameters, as defined on the [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd).
+
+This page first identifies that integral, then constructs its local quadratic approximation and compares the approximation with direct integration for a restricted SuperTelicity model.
+
+This integral usually has no elementary form for a logistic mixed model. The [**Laplace approximation**](https://doi.org/10.1080/01621459.1986.10478240) replaces the log integrand with a quadratic near its highest point. We expose that computation with one participant intercept from the SuperTelicity release introduced on the GLMM page.
+
+## Why the integral appears
+
+For participant $p$, let $\mathbf y_p$ denote the binary preposition choices and $b_p$ the participant intercept. Conditional on $b_p$, the participant likelihood is
+
+$$
+p(\mathbf y_p\mid b_p,\boldsymbol\beta).
+$$
+
+The group model supplies the density $f_B(b_p\mid\tau)$. The observed-data contribution is
+
+$$
+p(\mathbf y_p\mid\boldsymbol\beta,\tau)
+=\int_{-\infty}^{\infty}
+p(\mathbf y_p\mid b_p,\boldsymbol\beta)
+f_B(b_p\mid\tau)\,db_p.
+$$
+
+Integration adds support over every intercept value. Selecting only the best-fitting intercept would omit uncertainty about that latent value.
+
+Before observation, $\mathbf Y_p$ and $B_p$ are random. After the responses are recorded, $\mathbf y_p$ is fixed in the likelihood while $b$ indexes possible unobserved intercept values. The integrand is explicitly
+
+$$
+\underbrace{\prod_i
+\pi_i(b)^{y_i}[1-\pi_i(b)]^{1-y_i}}_{\text{Bernoulli likelihood}}
+\times
+\underbrace{\frac{1}{\tau\sqrt{2\pi}}
+\exp\left(-\frac{b^2}{2\tau^2}\right)}_{\text{normal group density}}.
+$$
+
+The integral is area. The Laplace approximation estimates that area from two
+local features: the integrand's height at its **mode**, the value of \(b\) where
+the integrand is highest, and the peak's width. A high but very narrow peak can
+thus have less area than a lower, wider peak. We will derive the quantity that
+measures that width rather than assume its form.
+
+## Expanding the log integrand
+
+Recall that a [first derivative measures local
+change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
+A second derivative measures how that rate of change itself changes, which is
+why it describes **curvature**: a large negative second derivative marks a
+sharply bending peak, while a value near zero marks a flatter one. The [Hessian
+discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+extends this idea to several parameters.
+
+A **Taylor approximation** replaces a smooth function near a chosen point by a
+polynomial that has the same value and derivatives there. Keeping terms through
+the second derivative gives a local quadratic. We use that quadratic because
+exponentiating a downward-opening quadratic produces the shape of a normal
+density, whose area we know how to calculate.
+
+Define
+
+$$
+h(b)
+=\log p(\mathbf y_p\mid b,\boldsymbol\beta)
++\log f_B(b\mid\tau).
+$$
+
+Let $\widehat b$ maximize $h(b)$. At this mode, a small move to either side has
+no first-order advantage, so
+
+$$
+h'(\widehat b)=0.
+$$
+
+The second-order Taylor expansion is
+
+$$
+h(b)
+\approx h(\widehat b)
++h'(\widehat b)(b-\widehat b)
++\frac{1}{2}h''(\widehat b)(b-\widehat b)^2.
+$$
+
+The first-derivative term vanishes at the mode. The second derivative is
+negative at an ordinary local maximum, so we write its negative as the positive
+curvature magnitude
+
+$$
+H=-h''(\widehat b)>0
+$$
+
+and obtain
+
+$$
+h(b)
+\approx h(\widehat b)-\frac{H}{2}(b-\widehat b)^2.
+$$
+
+Exponentiating produces a normal-shaped approximation whose integral is
+
+$$
+\int \exp\{h(b)\}\,db
+\approx
+\exp\{h(\widehat b)\}
+\sqrt{\frac{2\pi}{H}}.
+$$
+
+Equivalently,
+
+$$
+\log L
+\approx h(\widehat b)
++\frac{1}{2}\log(2\pi)
+-\frac{1}{2}\log H.
+$$
+
+The height records support at the conditional mode. The curvature records how quickly support falls away from it.
+
+## Constructing the SuperTelicity integrand
+
+The fuller GLMM has participant, verb, and sentence intercepts. To make one integration step directly inspectable, we restrict the worked model to a participant intercept. The comparison therefore studies Laplace error for that one-dimensional integral rather than the complete crossed model.
+
+```{r}
+#| label: supertelicity-laplace
+library(lme4)
+library(ggplot2)
+
+supertelicity <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity$participant_id <- factor(supertelicity$participant_id)
+supertelicity$verb_type <- factor(
+  supertelicity$verb_type,
+  levels = c("manner", "result")
+)
+supertelicity$contentfulness <- factor(
+  supertelicity$contentfulness,
+  levels = c("contentful", "bleached", "templatic")
+)
+contrasts(supertelicity$verb_type) <- contr.sum(2)
+contrasts(supertelicity$contentfulness) <- contr.sum(3)
+
+fit <- glmer(
+  prep_in ~ verb_type * contentfulness +
+    (1 | participant_id),
+  data = supertelicity,
+  family = binomial(link = "logit"),
+  nAGQ = 1L,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+participant_sizes <- sort(table(supertelicity$participant_id))
+selected_participant <- names(participant_sizes)[
+  ceiling(length(participant_sizes) / 2)
+]
+participant_data <- supertelicity[
+  supertelicity$participant_id == selected_participant,
+]
+
+fixed_matrix <- model.matrix(
+  delete.response(terms(fit, fixed.only = TRUE)),
+  participant_data
+)
+fixed_location <- drop(fixed_matrix %*% fixef(fit))
+participant_sd <- attr(
+  VarCorr(fit)$participant_id,
+  "stddev"
+)[[1L]]
+
+log1pexp <- function(x) {
+  pmax(x, 0) + log1p(exp(-abs(x)))
+}
+
+log_integrand <- function(b) {
+  bernoulli_part <- sum(
+    participant_data$prep_in * (fixed_location + b) -
+      log1pexp(fixed_location + b)
+  )
+  normal_part <- dnorm(
+    b,
+    sd = participant_sd,
+    log = TRUE
+  )
+  bernoulli_part + normal_part
+}
+
+mode_result <- optimize(
+  function(b) -log_integrand(b),
+  interval = c(-6 * participant_sd, 6 * participant_sd)
+)
+conditional_mode <- mode_result$minimum
+mode_probability <- plogis(fixed_location + conditional_mode)
+curvature <- sum(mode_probability * (1 - mode_probability)) +
+  1 / participant_sd^2
+```
+
+The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below come from the release.
+
+`optimize()` performs a bounded one-dimensional search for the conditional mode. We extend the interval six fitted random-effect standard deviations in each direction, which covers the practically relevant normal density while keeping numerical integration finite. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
+
+## Comparing the exact integral with its local approximation
+
+Numerical integration is stabilized by subtracting the log integrand at the mode before exponentiation.
+
+That subtraction rescales the largest exponentiated value to one and prevents numerical overflow or underflow. Adding `log_height` back after integration restores the original log integral; it does not alter the mathematical target.
+
+```{r}
+#| label: supertelicity-laplace-summary
+log_height <- log_integrand(conditional_mode)
+
+centered_integral <- integrate(
+  function(b) {
+    vapply(
+      b,
+      function(value) {
+        exp(log_integrand(value) - log_height)
+      },
+      numeric(1)
+    )
+  },
+  lower = -Inf,
+  upper = Inf,
+  rel.tol = 1e-11
+)$value
+
+exact_log_integral <- log(centered_integral) + log_height
+laplace_log_integral <- log_height +
+  0.5 * log(2 * pi) -
+  0.5 * log(curvature)
+
+laplace_summary <- data.frame(
+  participant_id = selected_participant,
+  trials = nrow(participant_data),
+  conditional_mode = conditional_mode,
+  negative_second_derivative = curvature,
+  exact_log_integral = exact_log_integral,
+  laplace_log_integral = laplace_log_integral,
+  laplace_minus_exact = laplace_log_integral - exact_log_integral
+)
+laplace_summary
+```
+
+The small difference is an empirical computation diagnostic for these observed trials. It is not an invented likelihood example and does not guarantee equal accuracy for every participant or for the higher-dimensional crossed model.
+
+```{r}
+#| label: plot-laplace
+intercept_grid <- data.frame(
+  participant_intercept = seq(
+    conditional_mode - 4 / sqrt(curvature),
+    conditional_mode + 4 / sqrt(curvature),
+    length.out = 240L
+  )
+)
+intercept_grid$exact <- vapply(
+  intercept_grid$participant_intercept,
+  log_integrand,
+  numeric(1)
+) - log_height
+intercept_grid$quadratic <- -0.5 * curvature *
+  (intercept_grid$participant_intercept - conditional_mode)^2
+
+plot_data <- rbind(
+  data.frame(
+    participant_intercept = intercept_grid$participant_intercept,
+    relative_log_integrand = intercept_grid$exact,
+    curve = "Exact log integrand"
+  ),
+  data.frame(
+    participant_intercept = intercept_grid$participant_intercept,
+    relative_log_integrand = intercept_grid$quadratic,
+    curve = "Local quadratic"
+  )
+)
+
+ggplot(
+  plot_data,
+  aes(
+    x = participant_intercept,
+    y = relative_log_integrand,
+    linetype = curve
+  )
+) +
+  geom_line(color = "#1F5A85", linewidth = 0.8) +
+  labs(
+    x = "Participant random intercept",
+    y = "Log integrand relative to its mode",
+    linetype = NULL
+  ) +
+  theme_classic()
+```
+
+The approximation changes how we evaluate the integral; it leaves the response
+model unchanged. It cannot add a predictor, repair a missing random slope, or
+make an inappropriate link valid. It tends to be most accurate when the
+integrand is concentrated and roughly symmetric near its mode; sparse groups,
+rare responses, boundary variances, or strong asymmetry may make the local
+quadratic less adequate.
+
+In `glmer`, `nAGQ = 1` selects this one-point Laplace calculation. The one-intercept restriction exists only to expose it in one dimension. In the crossed participant, verb, and sentence model, the integral is high-dimensional and can be skewed or weakly concentrated along some covariance directions. Agreement in the selected one-dimensional example thus cannot guarantee equal accuracy in that fitted crossed model.
+
+## Recap and check
+
+1. Why not insert only $\widehat b$ into the conditional likelihood? Doing so retains peak height but discards the width that represents uncertainty over possible random-effect values.
+2. What does subtracting `log_height` change? Only numerical scale; the value is added back on the log scale after integration.
+3. Does `nAGQ = 1` change the Bernoulli response model? No. It chooses an approximation for the same random-effect integral.
+
+The [model-criticism module](../model-criticism-and-prediction/) develops the predictive and diagnostic checks needed when a computationally successful approximation still supports an inadequate model.

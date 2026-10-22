@@ -1,10 +1,377 @@
 ---
 title: "Gaussian mixtures"
-toc: false
-course-release-id: latent-structure
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-Clustering and finite mixture models represent recurring groups that are not supplied as response labels.
+The [Peterson-Barney production space](representing-objects.qmd) contains overlapping F1-F2 regions. K-means represents each region by one point and assigns every token to exactly one centroid. A [**Gaussian mixture model (GMM)**](https://scikit-learn.org/stable/modules/mixture.html) instead represents regions by weighted [normal distributions](../random-variables-and-distributions/normal-distribution.qmd), each with an estimated mean and [covariance](../random-variables-and-distributions/covariance.qmd). The mean locates a region; the covariance controls its spread and orientation.
 
-**Available Monday, November 23, 2026.**
+We build the mixture from one Gaussian component, fit the declared ten-component model, and then inspect [posterior membership uncertainty](posterior-membership.qmd), external alignment, and covariance-collapse limits. Posterior membership is the conditional distribution over a token's latent component after its acoustic vector is observed.
+
+## Reconstructing the feature matrix
+
+```{r}
+source_environment <- new.env(parent = emptyenv())
+utils::data("pb52", package = "phonTools", envir = source_environment)
+pb52 <- source_environment$pb52
+suppressPackageStartupMessages(library(mclust))
+
+stopifnot(
+  identical(dim(pb52), c(1520L, 9L)),
+  length(unique(pb52$speaker)) == 76L,
+  all(table(pb52$speaker) == 20L)
+)
+
+vowels <- pb52 |>
+  dplyr::mutate(row_id = dplyr::row_number()) |>
+  dplyr::group_by(speaker) |>
+  dplyr::mutate(
+    z_f1 = (f1 - mean(f1)) / stats::sd(f1),
+    z_f2 = (f2 - mean(f2)) / stats::sd(f2)
+  ) |>
+  dplyr::ungroup()
+
+X <- as.matrix(vowels[, c("z_f1", "z_f2")])
+stopifnot(
+  max(abs(tapply(vowels$z_f1, vowels$speaker, mean))) < 1e-12,
+  max(abs(tapply(vowels$z_f2, vowels$speaker, mean))) < 1e-12
+)
+```
+
+## One Gaussian component
+
+The observation-process argument has four parts. First, each transformed token is
+represented on the continuous plane \(\mathbb R^2\). Second, conditional on one
+component, an elliptical density allows graded spread around a component mean.
+Third, the fitted
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)—the
+joint density of the observed token vectors viewed as a function of the mixture
+parameters—treats token vectors as [conditionally independent](../random-variables-and-distributions/conditional-independence.qmd)
+given the mixture parameters: after those parameters are supplied, the joint
+density is assumed to factor into token-level densities. Repeated tokens share
+speakers, so that working assumption is stronger than the collection design. Fourth,
+departures such as skew, multimodality within a component, or dependence after
+conditioning would count against the Gaussian token model. A mixture is useful
+here because overlapping acoustic regions make a hard boundary doubtful, not
+because Gaussianity follows from the elicitation protocol.
+
+Let $\mathbf{x}_i\in\mathbb{R}^p$ be token $i$'s measurements. Component $k$ has mean
+
+$$
+\boldsymbol{\mu}_k\in\mathbb{R}^p
+$$
+
+and covariance
+
+$$
+\boldsymbol{\Sigma}_k\in\mathbb{R}^{p\times p}.
+$$
+
+A valid Gaussian covariance matrix is **positive definite**: every nonzero
+direction has positive variance. This condition makes
+$\boldsymbol\Sigma_k^{-1}$ exist and makes the Gaussian density finite. The
+**determinant** $|\boldsymbol\Sigma_k|$ measures joint spread across all dimensions;
+in two dimensions, its square root is proportional to the area of an equal-density
+ellipse. The inverse covariance in the exponent then measures distance relative to
+that spread, so deviations along a low-variance direction count more heavily.
+
+Its density is
+
+$$
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k)
+=
+\frac{
+\exp\left[
+-\frac{1}{2}
+(\mathbf{x}_i-\boldsymbol{\mu}_k)^{\mathsf T}
+\boldsymbol{\Sigma}_k^{-1}
+(\mathbf{x}_i-\boldsymbol{\mu}_k)
+\right]
+}{
+(2\pi)^{p/2}|\boldsymbol{\Sigma}_k|^{1/2}
+}.
+$$
+
+For F1 and F2,
+
+$$
+\boldsymbol{\Sigma}_k
+=
+\begin{bmatrix}
+\sigma^2_{F1,k}&\sigma_{F1,F2,k}\\
+\sigma_{F1,F2,k}&\sigma^2_{F2,k}
+\end{bmatrix}.
+$$
+
+The mean locates the component, while the covariance controls the scale and orientation of its equal-density ellipses.
+
+## Combining components
+
+Component $k$ receives weight
+
+$$
+\pi_k\geq0,
+$$
+
+with
+
+$$
+\sum_{k=1}^{K}\pi_k=1.
+$$
+
+The mixture density is
+
+$$
+f(\mathbf{x}_i)
+=
+\sum_{k=1}^{K}
+\pi_k
+\mathcal{N}
+(\mathbf{x}_i;\boldsymbol{\mu}_k,\boldsymbol{\Sigma}_k).
+$$
+
+Every component contributes density to every token, even when one contribution is much larger than the others.
+
+Under the conditional-independence assumption, the token-level likelihood is
+
+$$
+L(\boldsymbol\theta;\mathbf x_1,\ldots,\mathbf x_N)
+=
+\prod_{i=1}^{N}
+\left[
+\sum_{k=1}^{K}
+\pi_k\mathcal N(\mathbf x_i;\boldsymbol\mu_k,\boldsymbol\Sigma_k)
+\right].
+$$
+
+This product is the modeled object. The repeated-speaker limitation concerns the
+factorization across \(i\), not the normalization of any one component density.
+
+## Fitting the declared ten-component model
+
+We fix a ten-component `EVI` covariance family before fitting because we want to
+compare the resulting partition with the ten elicitation categories after the
+fit. The data analysis on this page therefore holds $K=10$ fixed; the
+[next model-selection page](choosing-a-mixture.qmd) asks what happens when the
+number of components is allowed to vary. In `mclust`, `EVI` is diagonal with equal
+volume and varying shape. Here **equal volume** means equal covariance determinant,
+not equal variance on each acoustic dimension. One way to write the restriction is
+
+$$
+\boldsymbol\Sigma_k=\lambda\mathbf A_k,
+\qquad
+\mathbf A_k=\operatorname{diag}(a_{1k},a_{2k}),
+\qquad
+|\mathbf A_k|=1.
+$$
+
+The shared \(\lambda\) fixes equal determinant, the diagonal form fixes
+axis-aligned orientation, and \(\mathbf A_k\) lets the F1-to-F2 variance ratio
+change across components. Sharing volume and fixing orientation reduce the
+number of covariance parameters while still allowing differently shaped
+acoustic regions. Component-specific volumes and rotated regions remain outside
+this specification; the [model-selection comparison](choosing-a-mixture.qmd)
+later includes families that relax those constraints.
+
+```{r}
+seed <- 1952L
+set.seed(seed)
+fit_g10 <- mclust::Mclust(
+  X,
+  G = 10L,
+  modelNames = "EVI",
+  verbose = FALSE
+)
+
+stopifnot(
+  fit_g10$G == 10L,
+  fit_g10$modelName == "EVI",
+  abs(sum(fit_g10$parameters$pro) - 1) < 1e-12
+)
+
+sigma <- fit_g10$parameters$variance$sigma
+component_parameters <- dplyr::bind_rows(lapply(
+  seq_len(fit_g10$G),
+  function(component) {
+    covariance <- sigma[, , component]
+    stopifnot(all(eigen(covariance, symmetric = TRUE)$values > 0))
+    data.frame(
+      component = component,
+      weight = fit_g10$parameters$pro[component],
+      mean_z_f1 = fit_g10$parameters$mean[1, component],
+      mean_z_f2 = fit_g10$parameters$mean[2, component],
+      variance_z_f1 = covariance[1, 1],
+      covariance_z_f1_z_f2 = covariance[1, 2],
+      variance_z_f2 = covariance[2, 2]
+    )
+  }
+))
+
+knitr::kable(component_parameters, digits = 3)
+```
+
+The fitted weights sum to `r round(sum(component_parameters$weight), 3)`, and every
+covariance matrix is positive definite, so every directional variance is positive
+and each inverse covariance used in the density exists. These checks show that the
+fitted parameters define a valid mixture density. Giving a component number a
+linguistic interpretation still requires a separate comparison with withheld
+metadata.
+
+## Plotting the fitted distributions with the data
+
+```{r}
+ellipse_points <- function(mean, covariance, component, level = 0.90) { # dqr-allow: algorithm-setting
+  eig <- eigen(covariance, symmetric = TRUE)
+  angles <- seq(0, 2 * pi, length.out = 181L)
+  unit_circle <- rbind(cos(angles), sin(angles))
+  transform <- eig$vectors %*%
+    diag(sqrt(eig$values), nrow = 2L) *
+    sqrt(stats::qchisq(level, df = 2L))
+  points <- t(transform %*% unit_circle)
+  data.frame(
+    component = factor(component),
+    z_f1 = points[, 1] + mean[1],
+    z_f2 = points[, 2] + mean[2]
+  )
+}
+
+ellipses <- dplyr::bind_rows(lapply(
+  seq_len(fit_g10$G),
+  function(component) {
+    ellipse_points(
+      fit_g10$parameters$mean[, component],
+      sigma[, , component],
+      component
+    )
+  }
+))
+```
+
+```{r}
+#| fig-width: 7
+#| fig-height: 4.5
+#| fig-alt: "Peterson and Barney vowel tokens in standardized F1-F2 space with ten fitted component means and closed ninety-percent covariance ellipses. The ellipses differ in their horizontal-to-vertical shape but have equal area under the EVI determinant constraint, and each has nonzero width in every direction."
+
+ggplot2::ggplot(vowels, ggplot2::aes(x = z_f2, y = z_f1)) +
+  ggplot2::geom_point(color = "grey35", alpha = 0.24, size = 0.6) + # dqr-allow: algorithm-setting
+  ggplot2::geom_path(
+    data = ellipses,
+    ggplot2::aes(x = z_f2, y = z_f1, group = component),
+    inherit.aes = FALSE,
+    color = "#2B6CB0",
+    linewidth = 0.65
+  ) +
+  ggplot2::geom_point(
+    data = component_parameters,
+    ggplot2::aes(x = mean_z_f2, y = mean_z_f1),
+    inherit.aes = FALSE,
+    color = "black",
+    shape = 4,
+    size = 2.1,
+    stroke = 0.9
+  ) +
+  ggplot2::scale_x_reverse() +
+  ggplot2::scale_y_reverse() +
+  ggplot2::labs(
+    x = "Within-speaker standardized F2",
+    y = "Within-speaker standardized F1"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The ellipses show 90% contours under each fitted Gaussian component. Because `EVI`
+shares the covariance determinant, contours at the same probability level have the
+same theoretical area even though their horizontal-to-vertical variance ratios
+differ. Each closed ellipse has positive width in every direction, the geometric
+consequence of positive definiteness. These are model summaries laid over the raw
+transformed points; intended-vowel labels did not determine their boundaries.
+
+For component \(k\), the ellipse contains points satisfying
+
+$$
+(\mathbf x-\boldsymbol\mu_k)^{\mathsf T}
+\boldsymbol\Sigma_k^{-1}
+(\mathbf x-\boldsymbol\mu_k)
+=
+\chi^2_{2}(0.90).
+$$
+
+The square root of this chi-squared quantile scales the unit circle in
+`ellipse_points()`. Ninety percent is a display choice that shows substantial
+component spread without claiming a 90% uncertainty interval for a phoneme.
+
+## Post-fit alignment and uncertainty
+
+The **adjusted Rand index (ARI)** compares two partitions by asking which pairs of
+tokens they place together or apart, then corrects the agreement expected by chance.
+An ARI of one means that the two partitions agree completely; values near zero
+indicate chance-level pairwise agreement under its correction.
+
+```{r}
+external_ari <- mclust::adjustedRandIndex(
+  fit_g10$classification,
+  vowels$vowel
+)
+mean_uncertainty <- mean(fit_g10$uncertainty)
+```
+
+The hard component assignments have ARI `r round(external_ari, 3)` against the withheld intended-vowel metadata, while mean classification uncertainty is `r round(mean_uncertainty, 3)`. The former describes post-fit alignment. The latter summarizes how much posterior mass remains outside the most probable component.
+
+## Components are not phonemes
+
+A fitted Gaussian component is a distributional object under the chosen measurements, transformation, component count, and covariance restriction. Several components may cover productions from one elicitation category, and one component may cover overlapping productions from several categories.
+
+The speaker-relative transformation may reduce anatomy-related differences, but it can also remove sociolinguistically relevant variation. Moreover, F3 and dynamic information remain outside the model. A potential worry is thus that a sharp component reflects an incomplete acoustic representation. Post-fit alignment cannot eliminate that limitation.
+
+## Covariance collapse
+
+An unrestricted Gaussian component can concentrate around very few rows while its
+covariance approaches **singularity**, meaning that variance collapses toward zero
+in at least one direction and the inverse covariance ceases to be stable. The
+likelihood may then grow without representing a recurring acoustic region.
+Positive-definiteness checks, covariance restrictions, and fitting diagnostics must
+precede interpretation.
+
+The `EVI` restriction used here limits the fitted geometry. It does not establish that every acoustic region truly has diagonal covariance.
+
+K-means appears as a limiting geometric neighbor when Gaussian components have
+equal spherical covariance and assignments become concentrated: maximizing the
+dominant component density then approaches minimizing squared distance to a mean.
+The present mixture is broader. It estimates weights and component-specific
+diagonal shapes, and it retains overlap rather than discarding all but the nearest
+center.
+
+## Checking the observation model
+
+1. What do the fitted means and covariance matrices represent?
+2. Why must the fitted weights sum to one?
+3. Which covariance properties does `EVI` hold equal or allow to vary?
+4. Why are the intended-vowel labels unnecessary for the displayed ellipses?
+5. What does the post-fit ARI establish, and why does it not identify components with phonemes?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Means locate fitted acoustic regions; covariances describe their modeled spread.
+2. The weights form a probability distribution over the latent component label.
+3. `EVI` holds volume and axis orientation fixed while allowing diagonal shape to vary.
+4. The fit uses only transformed F1 and F2 coordinates.
+5. ARI measures partition agreement after fitting; phonemic identity requires
+   evidence outside this mixture.
+
+</details>
+
+## Recap
+
+1. A Gaussian component is an elliptical observation model for a continuous token.
+2. The mixture likelihood sums weighted component densities before multiplying over
+   tokens.
+3. We fix ten components to compare the fitted partition with ten elicitation
+   labels, use `EVI` to constrain covariance structure, and draw 90% ellipses to
+   display fitted concentration. These decisions address different parts of the
+   analysis and should be varied separately.
+
+The [next page](posterior-membership.qmd#conditioning-on-an-unobserved-component)
+normalizes weighted component contributions into conditional membership
+probabilities.

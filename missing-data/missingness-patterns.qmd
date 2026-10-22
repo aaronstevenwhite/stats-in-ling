@@ -1,10 +1,199 @@
 ---
 title: "Missingness patterns"
-toc: false
-course-release-id: missing-data
-course-release-placeholder: true
 ---
 
-Missingness patterns describe which values are absent, while missingness mechanisms concern why they are absent. We evaluate complete case analysis and imputation.
+The Tanaka corpus provides a useful first case because each absence can be
+located within a linguistic analysis pipeline. In the Redwoods-style workflow described by [Tanaka et al. (2005)](https://aclanthology.org/P05-1041/), the Jacy grammar generates analyses for a Japanese sentence and a human annotator selects among them using discriminants. [Bond, Kuribayashi, and Hashimoto (2008)](https://www.anlp.jp/proceedings/annual_meeting/2008/pdf_dir/PC1-7.pdf) describe the Tanaka annotation cycle. A selected analysis carries a grammar-derived [Minimal Recursion Semantics (MRS)](https://www.cl.cam.ac.uk/~aac10/papers/mrs.pdf) representation; its predicates and links are thus not separate hand annotations.
 
-**Available Wednesday, December 2, 2026.**
+We use the current profile extract from the [official Jacy documentation](https://delph-in.github.io/docs/grammars/JacyHinoki/) and the [version of Jacy analyzed here](https://github.com/delph-in/jacy/tree/82c282e2592841478d07aa81a83489344bb16e00). The row unit is one sentence in one `[incr tsdb()]` profile. This version is later than the annotation stage reported in the 2008 paper. The counts below are calculated from the newer profile files and will thus differ from the paper's table.
+
+We inspect the profile fields, map the binary availability indicator into three
+observed pipeline states, compare their profile distribution, and then separate a
+pattern from a causal missingness mechanism. The binary indicator is a
+[random variable](../random-variables-and-distributions/why-random-variables.qmd):
+it maps each sentence outcome to whether this release contains at least one selected
+analysis.
+
+## Jacy measurement dossier {#jacy-measurement-dossier}
+
+A **profile** is a named test-suite partition. Within a profile, `item_id` identifies one sentence. The released `sentence` field is whitespace-delimited, so `item_length` counts those profile tokens rather than linguistic words under an independent tokenizer. `parse_readings` counts positive analyses returned by the grammar; the sentinel `-1` reports a nonpositive pipeline outcome and is not an arithmetic count. `preferred_analysis_count` counts accepted preference records, while `selected_analysis` records whether that count is positive.
+
+The processing chain is thus sentence $\rightarrow$ grammar readings $\rightarrow$ human discriminant choices $\rightarrow$ selected analysis $\rightarrow$ downstream MRS measurement. For instance, item `tc-006::109000` is *彼 は その 運動 に 関係 が ある の です か 。* It has 12 released tokens, 11 readings, and one preferred analysis. The sentence is an actual corpus record; the English gloss is not included in the extract, so we do not invent one.
+
+## Loading and checking the profile table
+
+```{r}
+#| label: load-jacy-patterns
+#| message: false
+#| warning: false
+
+jacy <- utils::read.csv(
+  "data/jacy-mrs/tanaka-selection.csv",
+  check.names = FALSE
+)
+
+item_key <- paste(jacy$profile, jacy$item_id, sep = "::")
+
+stopifnot(
+  nrow(jacy) == 15000L,
+  !anyDuplicated(item_key),
+  sum(jacy$preferred_analysis_count) == 9128L,
+  sum(jacy$preferred_analysis_count > 0L) == 8670L,
+  sum(jacy$parse_readings == -1L) == 318L
+)
+
+jacy[jacy$profile == "tc-006" & jacy$item_id == 109000L,
+     c("profile", "item_id", "item_text", "item_length",
+       "parse_readings", "preferred_analysis_count", "selected_analysis")]
+```
+
+The table has `r format(nrow(jacy), big.mark = ",")` items and `r format(sum(jacy$preferred_analysis_count), big.mark = ",")` preference records. Those are different units: `r sum(jacy$preferred_analysis_count > 1L)` items have more than one accepted result. Thus the selected-item count is `r format(sum(jacy$preferred_analysis_count > 0L), big.mark = ",")`, not the number of preference records.
+
+## From a binary indicator to three observed states
+
+Let $Y_i$ denote a downstream quantity calculated from the selected MRS for item $i$. Its availability indicator is
+
+$$
+R_i=
+\begin{cases}
+1 & \text{if at least one analysis was selected},\\
+0 & \text{if no analysis was selected}.
+\end{cases}
+$$
+
+The binary indicator records whether $Y_i$ is available, but it merges two observed pipeline outcomes. Some unselected items have positive parse readings, while others have no positive reading recorded. We thus define a three-state categorical variable:
+
+$$
+C_i=
+\begin{cases}
+\text{selected analysis} & \text{if a preference record exists},\\
+\text{parsed, unselected} & \text{if positive readings exist but none was selected},\\
+\text{no positive reading} & \text{otherwise}.
+\end{cases}
+$$
+
+The release uses `-1` as a parser sentinel. It is not minus one analysis and should not enter an arithmetic count. The following recoding tests the positive-reading condition instead.
+
+```{r}
+#| label: recode-jacy-patterns
+
+jacy$selected <- jacy$preferred_analysis_count > 0L
+jacy$analysis_state <- ifelse(
+  jacy$selected,
+  "Selected analysis",
+  ifelse(
+    jacy$parse_readings > 0L,
+    "Parsed, unselected",
+    "No positive reading"
+  )
+)
+jacy$analysis_state <- factor(
+  jacy$analysis_state,
+  levels = c(
+    "Selected analysis",
+    "Parsed, unselected",
+    "No positive reading"
+  )
+)
+
+state_counts <- as.data.frame(table(jacy$analysis_state))
+names(state_counts) <- c("analysis_state", "items")
+state_counts$proportion <- state_counts$items / nrow(jacy)
+
+stopifnot(
+  state_counts$items[state_counts$analysis_state ==
+    "Selected analysis"] == 8670L,
+  state_counts$items[state_counts$analysis_state ==
+    "Parsed, unselected"] == 3666L,
+  state_counts$items[state_counts$analysis_state ==
+    "No positive reading"] == 2664L,
+  all(jacy$analysis_state[jacy$parse_readings == -1L] ==
+    "No positive reading")
+)
+
+state_counts
+
+jacy[jacy$profile == "tc-006" & jacy$item_id == 109000L,
+     c("profile", "item_id", "parse_readings",
+       "preferred_analysis_count", "selected", "analysis_state")]
+```
+
+The `r format(state_counts$items[1], big.mark = ",")` selected items account for `r scales::percent(state_counts$proportion[1], accuracy = 0.1)` of the release. Another `r format(state_counts$items[2], big.mark = ",")` items were parsed but have no accepted preference record, and `r format(state_counts$items[3], big.mark = ",")` have no positive reading. Thus a zero in $R_i$ does not identify one kind of failure.
+
+## The pattern varies across profiles
+
+The same states can be summarized within each profile. This plot shows the observed composition directly; it does not attach a causal explanation to the differences.
+
+```{r}
+#| label: plot-jacy-patterns
+#| fig-width: 7.2
+#| fig-height: 4.2
+
+profile_pattern <- as.data.frame(
+  table(jacy$profile, jacy$analysis_state)
+)
+names(profile_pattern) <- c("profile", "analysis_state", "items")
+profile_pattern$proportion <- with(
+  profile_pattern,
+  items / ave(items, profile, FUN = sum)
+)
+
+stopifnot(all(rowSums(
+  xtabs(proportion ~ profile + analysis_state, profile_pattern)
+) > 0.999999))
+
+ggplot2::ggplot(
+  profile_pattern,
+  ggplot2::aes(profile, proportion, fill = analysis_state)
+) +
+  ggplot2::geom_col(width = 0.78) +
+  ggplot2::scale_fill_manual(
+    values = c("#2B6F8A", "#9E9E9E", "#D1D1D1") # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_y_continuous(
+    labels = scales::label_percent(accuracy = 1) # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::labs(
+    x = "Jacy profile",
+    y = "Proportion of profile items",
+    fill = NULL
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+```
+
+The three-state variable records whether a selected grammar analysis is
+available and, when it is unavailable, whether the grammar produced any
+readings. Meaning, grammaticality, and frequency in Japanese usage fall outside
+this measurement protocol. Explaining a failed selection would require
+stage-specific evidence: the grammar may not span the sentence, available
+analyses may be rejected, or another stage may intervene.
+
+## A pattern does not identify its mechanism
+
+A missingness pattern is observed data. A missingness mechanism is an assumption about the process that produced it. The profile differences above may challenge a description in which selected analyses are equally available everywhere, but they cannot establish why selection varies.
+
+This boundary matters for downstream MRS analyses. Restricting attention to selected items changes the analyzed population to sentences for which this grammar-and-selection pipeline supplied an accepted analysis. That population may be appropriate for a narrowly stated grammar evaluation. It is not automatically a sample of all Japanese sentences.
+
+## Inspecting the pattern
+
+1. Why are `preferred_analysis_count` and the number of selected items different units?
+2. What information is lost when the three analysis states are collapsed to $R_i$?
+3. Why must `parse_readings = -1` be treated as a sentinel rather than a count?
+4. Which claims about Japanese sentences remain unsupported by the profile plot?
+
+**Answers.** (1) An item may have more than one accepted preference record. (2) $R_i=0$ merges positive readings with no selection and the absence of a positive reading. (3) The release assigns `-1` as a pipeline sentinel, so treating it as a count would create a nonexistent negative number of analyses. (4) The plot does not establish grammaticality, meaning, frequency, or a causal explanation for nonselection.
+
+A selected-analysis indicator represents availability, while the three-state variable retains the observed distinction between parsing and selection outcomes. Neither object identifies its own cause. The [next page](missingness-mechanisms.qmd) asks what the association with observed profile length can and cannot establish.
+
+## Recap
+
+1. The row is a sentence within a named Jacy profile, and length is the released whitespace-delimited token count.
+2. Readings, accepted preference records, and selected items are different pipeline quantities.
+3. $R_i$ answers whether a downstream selected-analysis measurement is available; $C_i$ preserves two distinct unselected states.
+4. The [mechanism page](missingness-mechanisms.qmd#separating-observed-and-unobserved-quantities) next asks what these observed states can support about an observation process.
+
+[Previous: Missing data](index.qmd) · [Next: Missingness mechanisms](missingness-mechanisms.qmd)

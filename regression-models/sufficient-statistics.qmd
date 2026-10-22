@@ -1,10 +1,86 @@
 ---
 title: "Sufficient statistics"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+A statistic is **sufficient** for a parameter when, under the stated model, it retains all sample information about that parameter. The [maximum-likelihood page](../statistical-inference/maximum-likelihood.qmd) treats the observed responses as fixed while comparing parameter values, and the [binomial page](../random-variables-and-distributions/binomial-distribution.qmd) describes a count obtained from independent Bernoulli trials. The factorization theorem makes the compression claim precise in the equation below.
 
-**Available Monday, November 2, 2026.**
+The row model uses [independence](../foundations/independence.qmd) to multiply Bernoulli contributions, while the corresponding [PMF](../random-variables-and-distributions/probability-mass-functions.qmd) assigns mass to the resulting count. Sufficiency is always relative to that declared model and parameter; it does not imply that linguistic preprocessing is lossless for every later question.
+
+We first factor the intercept-only Bernoulli likelihood through a count, then show exactly why predictor-bearing row arrangements prevent the same compression.
+
+$$
+p(\mathbf y\mid\theta)=g(T(\mathbf y),\theta)h(\mathbf y),
+$$
+
+where $h$ does not depend on $\theta$. For an intercept-only Bernoulli model of the SuperTelicity choices, $T(\mathbf y)=(n,\sum_i y_i)$.
+
+```{r}
+#| label: supertelicity-sufficient-statistic
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+y <- st$prep_in
+n <- length(y)
+s <- sum(y)
+data.frame(outcome = c("for", "in"), count = c(n - s, s))
+```
+
+The joint likelihood is
+
+$$
+L(\pi;\mathbf y)=\prod_{i=1}^{n}\pi^{y_i}(1-\pi)^{1-y_i}
+=\pi^{\sum_i y_i}(1-\pi)^{n-\sum_i y_i}.
+$$
+
+For these data, R computes $n=$ `r n` and $s=\sum_i y_i=$ `r s`. Substitution into the parameter-dependent part gives
+
+$$
+\pi^{`r s`}(1-\pi)^{`r n - s`}.
+$$
+
+Every arrangement with these same two totals has the same likelihood for the intercept-only $\pi$. In the four-row illustration below, $1100$ and $1010$ both reduce to $\pi^2(1-\pi)^2$ before predictors are attached to row positions.
+
+```{r}
+#| label: compare-row-and-compressed-likelihood
+#| echo: true
+pi_hat <- s / n
+row_log_likelihood <- sum(dbinom(y, 1L, pi_hat, log = TRUE))
+compressed_parameter_part <- dbinom(s, n, pi_hat, log = TRUE) - lchoose(n, s)
+c(row_form = row_log_likelihood,
+  compressed_parameter_part = compressed_parameter_part,
+  difference = row_log_likelihood - compressed_parameter_part)
+```
+
+The combinatorial term in the binomial mass does not involve $\pi$; removing it gives the same parameter-dependent log likelihood as the row product.
+
+The Bernoulli row model and the binomial count model are related but not identical sample descriptions. The row likelihood gives one particular response arrangement probability. The binomial PMF sums over all $\binom ns$ arrangements having $s$ successes, which produces the combinatorial constant.
+
+This equivalence breaks as soon as a predictor attaches meaning to row position. The two response vectors below contain the same number of successes. They have the same intercept-only likelihood but different likelihoods when the first two rows have predictor value zero and the last two have value one.
+
+```{r}
+#| label: sufficiency-breaks-with-predictors
+#| echo: true
+x <- c(0, 0, 1, 1) # dqr-allow: symbolic-derivation
+y_a <- c(1, 1, 0, 0) # dqr-allow: symbolic-derivation
+y_b <- c(1, 0, 1, 0) # dqr-allow: symbolic-derivation
+pi0 <- .5
+pi_x <- plogis(-1 + 2 * x)
+data.frame(
+  arrangement = c("1100", "1010"),
+  intercept_only = c(sum(dbinom(y_a, 1, pi0, log = TRUE)),
+                     sum(dbinom(y_b, 1, pi0, log = TRUE))),
+  predictor_model = c(sum(dbinom(y_a, 1, pi_x, log = TRUE)),
+                      sum(dbinom(y_b, 1, pi_x, log = TRUE)))
+)
+```
+
+This compression is model-specific. Once verb type, contentfulness, participant, or sentence enters the model, the allocation of responses across those units matters. Sufficiency for one intercept thus does not license deleting participant and sentence identifiers. It states exactly what the intercept-only Bernoulli likelihood uses and no more.
+
+## Recap and check
+
+1. May we discard participant IDs because the total number of *in* responses is sufficient for an intercept? No. The sufficiency statement holds only for the stated intercept-only independent Bernoulli model.
+2. Why does `dbinom()` include `choose(n, s)`? It gives the probability of any arrangement with $s$ successes; the row likelihood concerns the particular observed arrangement.
+
+The [odds page](odds-and-log-odds.qmd) now returns to the parameterization used by logistic regression.

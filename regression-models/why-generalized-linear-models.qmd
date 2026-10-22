@@ -1,10 +1,129 @@
 ---
 title: "When ordinary linear regression cannot model the response"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+Ordinary linear regression lets a conditional mean range over the real line and treats residual variance as constant. A binary linguistic response violates both commitments. We can see the problem in the **SuperTelicity cloze data** associated with White, Cao, Grimm, and Glass's unpublished, access-restricted manuscript *The Preservation of Telicity under Sense Locality* (n.d.); no public bibliographic record is currently available for independent verification. The prepared [CC BY-SA table](../data/supertelicity/supertelicity-cloze.csv) preserves the analyzed response fields while removing sentence text. Each row records one participant's choice of *in* or *for* after an event description. Participants contribute multiple rows, so the responses share participant-specific information.
 
-**Available Monday, November 2, 2026.**
+For a Bernoulli response, the [conditional probability](../foundations/conditional-probability.qmd) of an *in* choice equals its conditional [expectation](../random-variables-and-distributions/expected-values.qmd), and its [variance](../random-variables-and-distributions/variance-and-covariance.qmd) changes with that probability. Repeated participants block an [independence](../foundations/independence.qmd) claim for raw rows. The [sampling distribution](../statistical-inference/properties-of-estimators.qmd) of fitted coefficients and the [residual](residuals.qmd) discrepancy therefore depend on the model that replaces the Gaussian line.
+
+The prompt supplies an event description followed by a temporal-phrase choice. `prep_in=1` means that the participant selected *in*; `prep_in=0` means that the participant selected *for*. `numeral` and `time_unit` record the magnitude selected with that phrase, and `log_duration_minutes` converts it to natural-log minutes. The prepared table cannot display the source sentence because text was deliberately removed, so the notes show an actual nontext row rather than fabricating a stimulus.
+
+```{r}
+#| label: load-supertelicity
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+stopifnot(nrow(st) == 9160L, all(st$prep_in %in% 0:1))
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+st$duration_centered <- st$log_duration_minutes -
+  mean(st$log_duration_minutes, na.rm = TRUE)
+st_duration <- st[!is.na(st$duration_centered), ]
+c(rows = nrow(st), duration_rows = nrow(st_duration),
+  participants = length(unique(st$participant_id)),
+  sentences = length(unique(st$sentence_id)))
+```
+
+```{r}
+#| label: inspect-one-supertelicity-row
+st[1L, c(
+  "participant_id", "sentence_id", "verb", "verb_type",
+  "contentfulness", "clause_type", "preposition", "prep_in", "numeral",
+  "time_unit", "log_duration_minutes"
+)]
+```
+
+The duration comparison uses only rows with a selected temporal magnitude. Thus it describes `r nrow(st_duration)` of the `r nrow(st)` cloze choices; missing durations keep it from representing the full experiment.
+
+## The support problem in observed data
+
+For $Y_i=1$ when participant $i$ chooses *in* and $Y_i=0$ otherwise,
+
+$$
+\mathbb{E}[Y_i\mid\mathbf x_i]=\mathbb{P}(Y_i=1\mid\mathbf x_i)=\pi_i,
+\qquad
+\operatorname{Var}[Y_i\mid\mathbf x_i]=\pi_i(1-\pi_i).
+$$
+
+These identities follow directly from the [Bernoulli distribution](../random-variables-and-distributions/bernoulli-distribution.qmd). Conditional on the predictors,
+
+$$
+\mathbb{E}[Y_i\mid\mathbf x_i]
+=0(1-\pi_i)+1(\pi_i)=\pi_i,
+$$
+
+and, because $Y_i^2=Y_i$ for a zero--one variable,
+
+$$
+\operatorname{Var}[Y_i\mid\mathbf x_i]
+=\mathbb{E}[Y_i^2\mid\mathbf x_i]-\mathbb{E}[Y_i\mid\mathbf x_i]^2
+=\pi_i-\pi_i^2.
+$$
+
+This is the **support-and-variance problem**: the mean must remain between zero and one, and the conditional variance changes with that mean.
+
+A linear probability model, $\pi_i=\mathbf x_i^\mathsf T\boldsymbol\beta$, does not constrain $\pi_i$ to $[0,1]$. A logit model instead sets $\operatorname{logit}(\pi_i)=\mathbf x_i^\mathsf T\boldsymbol\beta$.
+
+```{r}
+#| label: fit-support-models
+#| echo: true
+lpm <- lm(prep_in ~ duration_centered + verb_type, data = st_duration)
+logit_fit <- glm(prep_in ~ duration_centered + verb_type,
+                 family = binomial(link = "logit"), data = st_duration)
+grid <- expand.grid(
+  duration_centered = seq(min(st_duration$duration_centered),
+                          max(st_duration$duration_centered), length.out = 201L),
+  verb_type = levels(st_duration$verb_type)
+)
+grid$log_duration_minutes <- grid$duration_centered +
+  mean(st$log_duration_minutes, na.rm = TRUE)
+grid$linear <- predict(lpm, newdata = grid)
+grid$logistic <- predict(logit_fit, newdata = grid, type = "response")
+breaks <- unique(quantile(st_duration$log_duration_minutes,
+                          probs = seq(0, 1, length.out = 13L)))
+st_duration$duration_bin <- cut(st_duration$log_duration_minutes,
+                                breaks, include.lowest = TRUE)
+binned <- aggregate(cbind(prep_in, log_duration_minutes) ~ duration_bin + verb_type,
+                    st_duration, mean)
+range(grid$linear)
+```
+
+```{r}
+#| label: plot-support-models
+#| echo: true
+library(ggplot2)
+ggplot() +
+  geom_hline(yintercept = c(0, 1), color = "grey75", linewidth = .35) +
+  geom_point(data = binned,
+             aes(log_duration_minutes, prep_in, shape = verb_type), size = 1.7) +
+  geom_line(data = grid, aes(log_duration_minutes, linear, linetype = verb_type),
+            color = "grey55", linewidth = .6) +
+  geom_line(data = grid, aes(log_duration_minutes, logistic, linetype = verb_type),
+            color = "#1F5A85", linewidth = .8) +
+  coord_cartesian(ylim = c(-.4, 1.1)) +
+  labs(x = "Selected duration (log minutes)",
+       y = "Probability of an in-completion", shape = NULL, linetype = NULL) +
+  theme_classic()
+```
+
+Points are observed bin proportions; grey lines are linear-probability fits; blue lines are logistic fits. The fitted linear means range from `r round(min(grid$linear), 3)` to `r round(max(grid$linear), 3)`, leaving the probability scale. The logistic curves remain inside it.
+
+This is also a variance problem: Bernoulli variance is determined by the mean, rather than by one constant residual variance. A generalized linear model repairs both pieces by choosing a response family with the right support and a link that constrains the mean. These population fits expose that architecture; they do not reproduce the manuscript's Bayesian mixed model or account for repeated participants and sentences.
+
+## Recap and check your understanding
+
+1. Why does binary support motivate a Bernoulli response but not uniquely select the logit link?
+2. What population does the duration-complete subset omit?
+3. Why does a different variance at different fitted probabilities not count as an extra nuisance in a Bernoulli model?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Bernoulli supplies the zero--one sampling distribution. Several one-to-one links, including logit and probit, can map an unconstrained predictor to a probability. <!-- dqr-allow: conceptual-answer -->
+2. It omits cloze responses for which no temporal magnitude was retained, so its target is conditional on duration availability. <!-- dqr-allow: conceptual-answer -->
+3. The Bernoulli model fixes the conditional variance at $\pi_i(1-\pi_i)$ once the mean is specified. Mean-dependent variance is part of the family, not a separate constant residual parameter. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](link-functions.qmd) asks why the logit is useful without pretending that response support uniquely determines it.

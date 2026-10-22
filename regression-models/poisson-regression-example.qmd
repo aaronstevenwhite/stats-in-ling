@@ -1,10 +1,129 @@
 ---
-title: "Poisson regression for linguistic diversity"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+title: "A Poisson-regression analysis"
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+The Nettle language-rate model asks whether expected reported language density changes with mean growing season. The [country-language measurement dossier](poisson-regression.qmd#nettle-country-language-measurement) defines the geopolitical row and explains why country totals may overlap in the languages they include; the raw Algeria row supplies the numerical units. The [offset page](exposure-offsets.qmd) states the fixed proportional-area assumption. We ask four questions: Does a longer mean growing season correspond to a different expected language rate? How uncertain is that association under the row-independence approximation? Does the Poisson mean--variance relation fit the observed counts? And which claims remain unavailable because countries and reported languages do not form independent biological sampling units? <!-- dqr-allow: reference-metadata --> Because the upstream course repository states no license, the fallback below downloads and verifies the exact source.
 
-**Available Monday, November 2, 2026.**
+The fitted Poisson [variance](../random-variables-and-distributions/variance-and-covariance.qmd) equals its fitted mean. The printed interval uses a row-[independence](../foundations/independence.qmd) approximation, even though the country-language measurement story gives several reasons that neighboring rows may remain related.
+
+```{r}
+#| label: load-nettle-application
+#| echo: true
+path <- "data/nettle/nettle-1999-climate.csv"
+if (file.exists(path)) {
+  nettle <- read.csv(path)
+} else {
+  url <- paste0("https://raw.githubusercontent.com/bodowinter/",
+                "applied_statistics_book_data/master/nettle_1999_climate.csv")
+  source_file <- tempfile(fileext = ".csv")
+  download.file(url, source_file, mode = "wb")
+  stopifnot(digest::digest(source_file, "sha256", file = TRUE, serialize = FALSE) ==
+    "3c5abfbec7b2132a9b81ee9a178cbd5559426578032b60c6c4ad74046898793b")
+  raw <- read.csv(source_file)
+  nettle <- data.frame(country = raw$Country, log10_population = raw$Population,
+    log10_area_km2 = raw$Area, log_area_km2 = log(10) * raw$Area,
+    mean_growing_season_months = raw$MGS, language_count = as.integer(raw$Langs))
+}
+correct <- glm(language_count ~ mean_growing_season_months + offset(log_area_km2),
+               poisson(), nettle)
+mismatched <- glm(language_count ~ mean_growing_season_months + offset(log10_area_km2),
+                  poisson(), nettle)
+data.frame(
+  offset = c("natural log area", "base-10 log area inserted directly"),
+  mgs_coefficient = c(coef(correct)[[2L]], coef(mismatched)[[2L]]),
+  rate_ratio = exp(c(coef(correct)[[2L]], coef(mismatched)[[2L]]))
+)
+```
+
+The primary model is
+
+$$
+Y_i\mid\lambda_i\sim\operatorname{Poisson}(\lambda_i),
+\qquad
+\log\lambda_i=\log A_i+\beta_0+\beta_1\operatorname{MGS}_i.
+$$
+
+Thus $\exp(\widehat\beta_1)$ is the fitted multiplicative change in expected languages per square kilometer for one additional month of mean growing season. A Wald interval on the log-rate scale becomes a rate-ratio interval after exponentiation.
+
+```{r}
+#| label: nettle-rate-ratio-uncertainty
+#| echo: true
+b <- coef(summary(correct))["mean_growing_season_months", ]
+link_interval <- b["Estimate"] + qnorm(c(.025, .975)) * b["Std. Error"]
+rate_ratio <- exp(b["Estimate"])
+rate_ratio_interval <- exp(link_interval)
+
+mgs_example <- range(nettle$mean_growing_season_months)
+common_area_km2 <- median(exp(nettle$log_area_km2))
+example_counts <- exp(
+  log(common_area_km2) + coef(correct)[[1L]] +
+    coef(correct)[[2L]] * mgs_example
+)
+data.frame(estimate = exp(b["Estimate"]), lower = exp(link_interval[1]),
+           upper = exp(link_interval[2]))
+```
+
+For one additional month of mean growing season, the fitted language rate per
+square kilometer is multiplied by `r sprintf("%.3f", rate_ratio)`, with a
+row-independent 95% Wald interval from
+`r sprintf("%.3f", rate_ratio_interval[[1L]])` to
+`r sprintf("%.3f", rate_ratio_interval[[2L]])`. At the common illustrative area
+of `r format(round(common_area_km2), big.mark = ",")` square kilometers, the two
+observed MGS endpoints `r sprintf("%.1f", mgs_example[[1L]])` and
+`r sprintf("%.1f", mgs_example[[2L]])` months give fitted expected counts of
+`r sprintf("%.2f", example_counts[[1L]])` and
+`r sprintf("%.2f", example_counts[[2L]])`. Their ratio is determined entirely by
+the fitted MGS coefficient and the endpoint difference. It describes the model's
+country-row association; countries were not assigned to climates, so the
+calculation does not identify a causal climate effect.
+
+The mismatch changes the coefficient because it no longer encodes $\lambda_i=A_i r_i$ with an exposure coefficient of one.
+
+```{r}
+#| label: nettle-application-plot
+#| echo: true
+library(ggplot2)
+nettle$observed_rate <- nettle$language_count / exp(nettle$log_area_km2)
+grid <- data.frame(mean_growing_season_months =
+  seq(min(nettle$mean_growing_season_months),
+      max(nettle$mean_growing_season_months), length.out = 200L))
+grid$fitted_rate <- exp(coef(correct)[[1L]] + coef(correct)[[2L]] *
+                          grid$mean_growing_season_months)
+ggplot(nettle, aes(mean_growing_season_months, observed_rate)) +
+  geom_point(size = 1.5) +
+  geom_line(data = grid, aes(y = fitted_rate), color = "#1F5A85", linewidth = .8) +
+  scale_y_log10() +
+  labs(x = "Mean growing season (months)", y = "Languages per square kilometer") +
+  theme_classic()
+```
+
+The fitted positive association describes the 74 represented country totals under a
+fixed-area-exposure assumption. Country boundaries collect languages, histories,
+and documentation practices into one row, while some languages can cross those
+boundaries. Countries were not assigned to climates, and the data contain no
+intervention that could separate growing season from those other processes.
+Nettle's original specification also estimated the area coefficient rather than
+fixing it to one.
+
+The Poisson variance restriction should also be checked rather than assumed. Pearson dispersion and the most influential countries diagnose different problems: variance misspecification versus sensitivity to particular design points.
+
+```{r}
+#| label: nettle-poisson-checks
+#| echo: true
+pearson_dispersion <- sum(residuals(correct, type = "pearson")^2) /
+  df.residual(correct)
+cooks <- cooks.distance(correct)
+data.frame(pearson_dispersion,
+           most_influential_country = nettle$country[which.max(cooks)],
+           maximum_cooks_distance = max(cooks))
+```
+
+## Recap and check
+
+1. What happens if base-10 log area is inserted as a natural-log offset? The fixed coefficient no longer represents proportional exposure, and the climate estimate changes.
+2. Does a positive fitted rate ratio establish a climate effect? No. It is a descriptive association under the distribution, mean, exposure, and independence assumptions.
+
+The [overdispersion page](count-overdispersion.qmd) interprets the Pearson statistic and routes different failures to different models.

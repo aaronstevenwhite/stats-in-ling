@@ -1,10 +1,504 @@
 ---
 title: "Parameter recovery"
-toc: false
-course-release-id: custom-model-design
-course-release-placeholder: true
 ---
 
-Joint probability models connect annotation protocols to linguistic measurement claims. We then test whether simulated data permit recovery of the model parameters.
+A model may fit without warnings even when the observed design contains too little information to separate its quantities. **Parameter recovery** tests the complete inference procedure on simulated responses whose generating values are known. Here the simulation preserves the exact item--annotator incidence pattern of the UDS natural-parts extract introduced on the [first page](generative-stories.qmd).
 
-**Available Wednesday, December 2, 2026.**
+We generate synthetic responses from the proposed model on the observed
+item--annotator incidence graph and then refit the complete procedure. Recovery of
+the known generating quantities checks computation and the information supplied by
+that design, conditional on the generator. Evidence that real annotations follow
+the generator must instead come from the measurement argument and
+[posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd),
+which compare observed response summaries with the same summaries computed from
+response tables generated under posterior draws. The rows, identities, and imbalance
+come from the released annotation design; the generating values and acceptance
+criteria were fixed before the released responses were fit.
+
+We state the complete generator and Stan model, then evaluate whether repeated fits
+recover the known population and group-level quantities under the released design.
+
+## The released design and recovery runs {#loading-released-design-and-completed-fits}
+
+```{r}
+#| label: load-uds-recovery
+#| message: false
+#| warning: false
+
+uds <- utils::read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+cache_path <- "data/uds/uds-natural-parts-posterior-cache.rds"
+uds_cache <- readRDS(cache_path)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$item_id)) == 1000L,
+  length(unique(uds$annotator_id)) == 12L,
+  nrow(uds_cache$recovery) == 12L,
+  nrow(uds_cache$population_draws) == 400L,
+  ncol(uds_cache$item_effect_draws) == 1000L,
+  ncol(uds_cache$annotator_effect_draws) == 12L,
+  identical(uds_cache$item_levels, unique(uds$item_id)),
+  identical(uds_cache$annotator_levels, unique(uds$annotator_id)),
+  identical(
+    digest::digest(file = cache_path, algo = "sha256"),
+    "19b9920f55506717d9b54667f9495f9703d6e5fc213b5f4fb4350f99096bfb08"
+  ),
+  identical(
+    unname(uds_cache$provenance$source_csv_sha256),
+    "a9d49305fe6b4780a0f3da845bd3d6bc8ed8908c3664c6931180d4346a46e2f8"
+  ),
+  identical(
+    unname(uds_cache$provenance$source_fit_sha256),
+    "f48a5b9d37fc91728804366515b8c34864fa69f9ece7755f33a6007a4641005c"
+  ),
+  identical(
+    unname(uds_cache$provenance$stan_sha256),
+    "5d85750a5090c6b1cd709844336372e945ec85e68f8391f0c72d7a8141329fc0"
+  ),
+  identical(uds_cache$provenance$fit_seeds, 880001:880004),
+  identical(
+    uds_cache$provenance$retained_cache_rows,
+    seq(4L, 3200L, by = 8L)
+  )
+)
+
+uds$item_index <- match(uds$item_id, uds_cache$item_levels)
+uds$annotator_index <- match(
+  uds$annotator_id,
+  uds_cache$annotator_levels
+)
+
+recovery <- uds_cache$recovery
+generating_values <- c(
+  alpha = -2.1, # dqr-allow: algorithm-setting
+  sigma_item = 1.6, # dqr-allow: algorithm-setting
+  sigma_annotator = 1.6 # dqr-allow: algorithm-setting
+)
+
+stopifnot(
+  all(abs(
+    recovery$alpha_estimate - recovery$alpha_error -
+      generating_values[["alpha"]]
+  ) < 1e-10),
+  all(abs(
+    recovery$sigma_item_estimate /
+      (1 + recovery$sigma_item_relative_error) -
+      generating_values[["sigma_item"]]
+  ) < 1e-10),
+  all(abs(
+    recovery$sigma_annotator_estimate /
+      (1 + recovery$sigma_annotator_relative_error) -
+      generating_values[["sigma_annotator"]]
+  ) < 1e-10)
+)
+```
+
+The analysis contains `r nrow(uds_cache$recovery)` complete recovery replicates. In
+each one, responses are generated from known population and group quantities and the
+same model is fit back to those responses. We can therefore compare each posterior
+summary with the value that generated its data.
+
+## The complete Stan program
+
+The crossed response model uses a **non-centered parameterization**. Rather than
+sampling each deviation $u_i$ directly on a scale set by an unknown $\sigma$, we
+sample a standard-normal coordinate $z_i$ and construct $u_i=\sigma z_i$. The two
+forms describe the same conditional distribution, but their sampling coordinates
+can have different posterior dependence; the
+[divergence page](../statistical-inference/divergent-transitions.qmd) develops this
+computational motivation. Here we also center the realized standard-normal vectors,
+which fixes the finite-sample sums of the resulting item and annotator deviations at
+zero.
+
+```{r}
+#| label: define-uds-stan-program
+#| eval: false
+
+stan_program <- '
+data {
+  int<lower=1> N;
+  int<lower=1> I;
+  int<lower=1> A;
+  array[N] int<lower=1, upper=I> item;
+  array[N] int<lower=1, upper=A> annotator;
+  array[N] int<lower=0, upper=1> response;
+}
+
+parameters {
+  real alpha;
+  real<lower=0> sigma_item;
+  real<lower=0> sigma_annotator;
+  vector[I] z_item_raw;
+  vector[A] z_annotator_raw;
+}
+
+transformed parameters {
+  vector[I] z_item = z_item_raw - mean(z_item_raw);
+  vector[A] z_annotator = z_annotator_raw - mean(z_annotator_raw);
+  vector[I] item_effect = sigma_item * z_item;
+  vector[A] annotator_effect = sigma_annotator * z_annotator;
+}
+
+model {
+  alpha ~ normal(0, 2.5);
+  sigma_item ~ normal(0, 2);
+  sigma_annotator ~ normal(0, 2);
+  z_item_raw ~ std_normal();
+  z_annotator_raw ~ std_normal();
+
+  response ~ bernoulli_logit(
+    alpha + item_effect[item] + annotator_effect[annotator]
+  );
+}
+'
+```
+
+The priors provide **regularization** by combining the sparse evidence for each
+group-specific deviation with a shared population distribution. Weakly informed
+deviations are consequently pulled toward the population center, much as the
+penalty in [ridge regression](../regression-models/ridge-regression.qmd) pulls weakly
+supported coefficients toward zero. Here `normal(0, 2.5)` places the population log
+odds near no directional preference while allowing a wide range of gate
+probabilities. Because the two scale parameters are constrained positive,
+`normal(0, 2)` becomes a half-normal prior: it favors smaller heterogeneity while
+retaining substantial positive mass. The standard-normal raw deviations implement
+the non-centered parameterization defined above, which often reduces posterior
+dependence between group effects and their scales. These weakly regularizing choices
+are assumptions we make before fitting, rather than facts learned from the response
+table; the [full measurement model](uds-measurement-model.qmd#writing-the-complete-model)
+checks their implications with prior and posterior prediction.
+
+## The exact recovery generator and fitting call
+
+The code below is the executable core of one replicate. It uses the observed row
+indices without changing which annotator saw which item. We ran replicates 1 through
+12; simulation seed $7300+s$ generated replicate $s$, and the two fitting chains
+used seeds $740000+100s+c$ for chain $c$.
+
+```{r}
+#| label: recovery-generator-and-fit
+#| eval: false
+
+model <- cmdstanr::cmdstan_model(
+  cmdstanr::write_stan_file(stan_program)
+)
+
+recover_one <- function(replicate, generating_values) {
+  set.seed(7300L + replicate)
+
+  z_item <- stats::rnorm(length(uds_cache$item_levels))
+  z_item <- z_item - mean(z_item)
+  z_annotator <- stats::rnorm(length(uds_cache$annotator_levels))
+  z_annotator <- z_annotator - mean(z_annotator)
+
+  true_item_effect <- generating_values[["sigma_item"]] * z_item
+  true_annotator_effect <-
+    generating_values[["sigma_annotator"]] * z_annotator
+  eta <-
+    generating_values[["alpha"]] +
+    true_item_effect[uds$item_index] +
+    true_annotator_effect[uds$annotator_index]
+
+  simulated_response <- stats::rbinom(
+    nrow(uds),
+    size = 1,
+    prob = stats::plogis(eta)
+  )
+
+  stan_data <- list(
+    N = nrow(uds),
+    I = length(uds_cache$item_levels),
+    A = length(uds_cache$annotator_levels),
+    item = uds$item_index,
+    annotator = uds$annotator_index,
+    response = simulated_response
+  )
+
+  lapply(seq_len(2L), function(chain) {
+    model$sample(
+      data = stan_data,
+      chains = 1,
+      parallel_chains = 1,
+      chain_ids = chain,
+      iter_warmup = 400,
+      iter_sampling = 400,
+      seed = 740000L + 100L * replicate + chain,
+      adapt_delta = 0.95,
+      refresh = 0
+    )
+  })
+}
+
+recovery_fits <- lapply(
+  seq_len(12L),
+  recover_one,
+  generating_values = generating_values
+)
+```
+
+Two chains with 400 warmup and 400 retained draws made twelve complete fits feasible
+while still permitting an $\widehat R$ comparison. This design provides less
+between-chain information and smaller
+[effective sample sizes](../statistical-inference/effective-sample-size.qmd) than the
+four or more chains appropriate for a final high-dimensional fit. `adapt_delta =
+0.95` asks Stan for smaller integration steps than its default and was chosen to
+reduce divergent transitions in the hierarchical geometry. It can improve numerical
+exploration, but it cannot identify a weakly informed parameter.
+
+Only the baseline generating regime was simulated and fit. A stronger recovery
+analysis should cross the observed incidence design with at least three additional
+conditions fixed before inspecting the results:
+
+| Regime | $\alpha$ | $\sigma_{\mathrm{item}}$ | $\sigma_{\mathrm{annotator}}$ | Stress being tested |
+|---|---:|---:|---:|---|
+| Baseline | -2.1 | 1.6 | 1.6 | evaluated here | <!-- dqr-allow: algorithm-setting -->
+| Weak heterogeneity | -2.1 | 0.5 | 0.5 | separation of scales near zero | <!-- dqr-allow: algorithm-setting -->
+| Rarer yes responses | -3.2 | 1.6 | 1.6 | information under a lower event rate | <!-- dqr-allow: algorithm-setting -->
+| Strong annotator spread | -2.1 | 1.6 | 2.4 | separation under dominant annotator variation | <!-- dqr-allow: algorithm-setting -->
+
+The revised `recover_one()` accepts the generating vector as an argument, so those regimes can use the same fitting code and incidence design. Their rows state planned stress tests; numerical results are available only for the twelve completed baseline fits.
+
+## Evaluating parameter recovery
+
+For replicate $s$, an error is $\widehat\theta_s-\theta_s$. Across $S$ replicates, estimated bias and root mean squared error are
+
+$$
+\widehat{\operatorname{Bias}}
+=\frac{1}{S}\sum_{s=1}^S(\widehat\theta_s-\theta_s),
+$$
+
+$$
+\operatorname{RMSE}
+=\sqrt{\frac{1}{S}\sum_{s=1}^S
+(\widehat\theta_s-\theta_s)^2}.
+$$
+
+For a positive scale, the relative error used below is
+
+$$
+e^{\mathrm{rel}}_s
+=\frac{\widehat\sigma_s-\sigma}{\sigma}
+=\frac{\widehat\sigma_s}{\sigma}-1.
+$$
+
+Dividing by the generating scale makes item and annotator scale errors comparable,
+though it becomes unstable when the truth approaches zero. A
+[correlation](../random-variables-and-distributions/correlation.qmd) standardizes
+covariance. The latent-effect correlations compare the generated and
+posterior-median vectors after their zero-sum coordinate constraint. They measure
+recovery of ordering and relative spacing, not equality of every effect. The
+item-probability correlation asks the same ordering question after the nonlinear
+inverse-logit map.
+
+We use medians and recovery correlations because the target includes population
+scales and high-dimensional latent orderings. We call the cutoffs fixed before
+fitting the **recovery acceptance criteria for this analysis**. They are decision
+rules tied to the later use of these quantities: intercept and scale errors
+constrain population summaries, latent correlations constrain item and annotator
+ordering, and the computational thresholds screen unstable fits. Fixing the values
+beforehand prevents us from choosing favorable cutoffs after seeing the fits, but
+it does not make them disciplinary standards.
+
+The baseline criteria have concrete scales. An intercept error of $.25$ is a quarter log-odds unit; around the generating intercept $-2.1$, shifts of that size move the zero-effect yes probability from about $.109$ to roughly $.087$ or $.136$. Relative scale errors of $.15$ and $.25$ permit deviations of $.24$ and $.40$ from the generating scale $1.6$. Correlation cutoffs assess preservation of latent ordering, with the stricter annotator cutoff reflecting the fact that only 12 annotator effects must be ranked. The $\widehat R$ and divergence rules screen the numerical fits rather than measurement validity. <!-- dqr-allow: algorithm-setting -->
+
+The baseline thresholds are: median absolute intercept error at most $.25$; median absolute relative errors at most $.15$ for the item scale and $.25$ for the annotator scale; median correlations at least $.60$ for item effects, $.90$ for annotator effects, and $.65$ for conditional item probabilities; maximum key-parameter $\widehat R$ at most $1.05$; and no divergent transitions.
+
+```{r}
+#| label: summarize-uds-recovery
+
+recovery_summary <- data.frame(
+  quantity = c(
+    "Median absolute intercept error",
+    "Median absolute relative item-scale error",
+    "Median absolute relative annotator-scale error",
+    "Median item-effect correlation",
+    "Median annotator-effect correlation",
+    "Median item-probability correlation",
+    "Largest key-parameter R-hat",
+    "Divergent transitions"
+  ),
+  result = c(
+    stats::median(abs(recovery$alpha_error)),
+    stats::median(abs(recovery$sigma_item_relative_error)),
+    stats::median(abs(recovery$sigma_annotator_relative_error)),
+    stats::median(recovery$item_effect_correlation),
+    stats::median(recovery$annotator_effect_correlation),
+    stats::median(recovery$item_probability_correlation),
+    max(recovery$maximum_key_rhat),
+    sum(recovery$divergences)
+  ),
+  # Prespecified decision criteria, fixed before the released-data fit.
+  threshold = c(0.25, 0.15, 0.25, 0.60, 0.90, 0.65, 1.05, 0) # dqr-allow: algorithm-setting
+)
+
+stopifnot(
+  recovery_summary$result[[1]] <= recovery_summary$threshold[[1]],
+  recovery_summary$result[[2]] <= recovery_summary$threshold[[2]],
+  recovery_summary$result[[3]] <= recovery_summary$threshold[[3]],
+  recovery_summary$result[[4]] >= recovery_summary$threshold[[4]],
+  recovery_summary$result[[5]] >= recovery_summary$threshold[[5]],
+  recovery_summary$result[[6]] >= recovery_summary$threshold[[6]],
+  recovery_summary$result[[7]] <= recovery_summary$threshold[[7]],
+  recovery_summary$result[[8]] == recovery_summary$threshold[[8]]
+)
+
+knitr::kable(recovery_summary, digits = 3)
+```
+
+To show how much the conclusion depends on those choices, we also apply a stricter sensitivity rule: maximum errors of $.20$, $.10$, and $.20$; minimum correlations of $.70$, $.95$, and $.75$; maximum $\widehat R$ of $1.01$; and zero divergences.
+
+```{r}
+#| label: summarize-uds-recovery-sensitivity
+
+strict_threshold <- c(0.20, 0.10, 0.20, 0.70, 0.95, 0.75, 1.01, 0) # dqr-allow: algorithm-setting
+direction <- c("at most", "at most", "at most", "at least",
+               "at least", "at least", "at most", "equal to")
+baseline_pass <- c(
+  recovery_summary$result[1:3] <= recovery_summary$threshold[1:3],
+  recovery_summary$result[4:6] >= recovery_summary$threshold[4:6],
+  recovery_summary$result[[7]] <= recovery_summary$threshold[[7]],
+  recovery_summary$result[[8]] == recovery_summary$threshold[[8]]
+)
+strict_pass <- c(
+  recovery_summary$result[1:3] <= strict_threshold[1:3],
+  recovery_summary$result[4:6] >= strict_threshold[4:6],
+  recovery_summary$result[[7]] <= strict_threshold[[7]],
+  recovery_summary$result[[8]] == strict_threshold[[8]]
+)
+recovery_sensitivity <- data.frame(
+  quantity = recovery_summary$quantity,
+  result = recovery_summary$result,
+  direction = direction,
+  baseline_threshold = recovery_summary$threshold,
+  baseline_pass = baseline_pass,
+  stricter_threshold = strict_threshold,
+  stricter_pass = strict_pass
+)
+knitr::kable(recovery_sensitivity, digits = 3)
+```
+
+The baseline rule passes all eight criteria. Under the stricter rule, `r sum(strict_pass)` of eight pass. This comparison makes the decision sensitivity visible; it does not turn either threshold set into a scientific constant.
+
+Medians can hide variation across only twelve simulations. The following interval
+records the central 80% of the replicate-level diagnostics. It describes
+[Monte Carlo](../statistical-inference/monte-carlo-integration.qmd) variation across
+these simulated fits. It is not a
+[confidence interval](../statistical-inference/confidence-intervals.qmd) for
+real-data performance.
+
+```{r}
+#| label: summarize-uds-recovery-variation
+
+recovery_variation <- data.frame(
+  quantity = c(
+    "Absolute intercept error",
+    "Absolute relative item-scale error",
+    "Absolute relative annotator-scale error",
+    "Item-effect correlation",
+    "Annotator-effect correlation",
+    "Item-probability correlation"
+  ),
+  lower_10 = vapply(
+    list(
+      abs(recovery$alpha_error),
+      abs(recovery$sigma_item_relative_error),
+      abs(recovery$sigma_annotator_relative_error),
+      recovery$item_effect_correlation,
+      recovery$annotator_effect_correlation,
+      recovery$item_probability_correlation
+    ),
+    stats::quantile,
+    numeric(1), probs = 0.10, names = FALSE
+  ),
+  upper_90 = vapply(
+    list(
+      abs(recovery$alpha_error),
+      abs(recovery$sigma_item_relative_error),
+      abs(recovery$sigma_annotator_relative_error),
+      recovery$item_effect_correlation,
+      recovery$annotator_effect_correlation,
+      recovery$item_probability_correlation
+    ),
+    stats::quantile,
+    numeric(1), probs = 0.90, names = FALSE
+  )
+)
+
+knitr::kable(recovery_variation, digits = 3)
+```
+
+## Seeing variation across complete fits
+
+```{r}
+#| label: plot-uds-recovery
+#| fig-width: 7.4
+#| fig-height: 3.5
+#| fig-cap: "Posterior medians from twelve complete recovery fits. Horizontal lines mark the generating values."
+
+recovery_plot <- rbind(
+  data.frame(
+    replicate = recovery$replicate,
+    quantity = "Population location",
+    truth = generating_values[["alpha"]],
+    estimate = recovery$alpha_estimate
+  ),
+  data.frame(
+    replicate = recovery$replicate,
+    quantity = "Item scale",
+    truth = generating_values[["sigma_item"]],
+    estimate = recovery$sigma_item_estimate
+  ),
+  data.frame(
+    replicate = recovery$replicate,
+    quantity = "Annotator scale",
+    truth = generating_values[["sigma_annotator"]],
+    estimate = recovery$sigma_annotator_estimate
+  )
+)
+
+ggplot2::ggplot(
+  recovery_plot,
+  ggplot2::aes(replicate, estimate)
+) +
+  ggplot2::geom_hline(
+    data = unique(recovery_plot[c("quantity", "truth")]),
+    ggplot2::aes(yintercept = truth),
+    color = "grey65"
+  ) +
+  ggplot2::geom_point(color = "steelblue4", alpha = 0.8, size = 2) + # dqr-allow: algorithm-setting
+  ggplot2::facet_wrap(~ quantity, scales = "free_y") +
+  ggplot2::scale_x_continuous(
+    breaks = c(1, 4, 8, 12) # dqr-allow: scale-boundary
+  ) +
+  ggplot2::labs(x = "Recovery replicate", y = "Posterior median") +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+```
+
+The prespecified recovery criteria are met. With two or three responses per item, the fitted population distribution supplies substantial pooling, so recovery concerns aggregate regularized ordering. Precise lexical interpretation of every predicate node would require more item-specific information.
+
+Successful recovery shows that the fitter can retrieve the declared targets when data arise from this model under this incidence design. It does not establish that real annotators follow the generator. The released-data analysis still requires posterior predictive checks and measurement limitations.
+
+Twelve replicates can detect large failures, but they estimate tail behavior and pass rates imprecisely. Likewise, $\widehat R$ and divergences diagnose parts of Markov-chain computation, not measurement validity. Revisit [Markov chain Monte Carlo](../statistical-inference/markov-chain-monte-carlo.qmd) for the draw-based approximation and [checking Markov chains](../statistical-inference/checking-markov-chains.qmd) for convergence checks.
+
+::: {.callout-note title="Check the recovery claim"}
+1. Why is the observed incidence pattern held fixed?
+2. Why must fitting occur inside every replicate?
+3. Which recovery target is weakest in this design?
+4. What does successful recovery fail to establish?
+
+**Answers.** (1) Holding the incidence pattern fixed tests the information supplied by the actual sparse crossing rather than an easier balanced design. (2) Recovery evaluates the complete estimator, so every simulated response matrix must be fit anew. (3) The weakest target is the one with the lowest recorded recovery correlation or largest relative error, which the table makes explicit rather than naming from intuition. (4) Success does not show that the model generated the real annotations, that every item effect is precise, or that untested regimes would pass.
+:::
+
+## Recap
+
+1. Recovery simulates known parameters under the released item--annotator incidence design and refits the whole model.
+2. Absolute error, relative scale error, and latent-vector correlation answer different recovery questions.
+3. The twelve completed fits evaluate the prespecified baseline regime; the additional stress regimes remain planned rather than evaluated.
+4. MCMC diagnostics assess computation, while posterior predictive checks assess consequences of the fitted observation model.
+5. The next page grounds agreement in the [Turkish PropBank measurement dossier](annotations-as-measurements.qmd#turkish-propbank-measurement-dossier) before fitting another crossed model.
+
+[Previous: Writing a joint model](writing-a-joint-model.qmd) · [Next: Annotations are measurements](annotations-as-measurements.qmd)

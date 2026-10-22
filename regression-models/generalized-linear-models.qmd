@@ -1,10 +1,90 @@
 ---
-title: "Components of a generalized linear model"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+title: "Generalized linear models"
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+A **generalized linear model (GLM)** has three distinct parts: (i) a response distribution, (ii) a linear predictor, and (iii) a link between the distribution's conditional mean and that predictor. The [motivation page](why-generalized-linear-models.qmd) explains why a Gaussian response model fails for binary choices, and the [link page](link-functions.qmd) explains how a constrained mean is connected to a real-valued predictor. The SuperTelicity *in* versus *for* response makes each part observable.
 
-**Available Monday, November 2, 2026.**
+A [random variable](../random-variables-and-distributions/why-random-variables.qmd) maps outcomes to response values, and a [conditional probability](../foundations/conditional-probability.qmd) restricts the reference set to rows with supplied predictors. The likelihood is the joint response probability viewed as a function of coefficients; its product form invokes [independence](../foundations/independence.qmd). The response [variance](../random-variables-and-distributions/variance-and-covariance.qmd) and coefficient [standard error](../statistical-inference/standard-errors.qmd) are different objects.
+
+| GLM component | General notation | SuperTelicity mapping |
+|---|---|---|
+| Random component | $Y_i\mid\mu_i$ and its distribution | `prep_in` is $Y_i\in\{0,1\}$; $Y_i\mid\pi_i\sim\operatorname{Bernoulli}(\pi_i)$ |
+| Conditional mean | $\mu_i=\mathbb{E}[Y_i\mid\mathbf x_i]$ | $\pi_i=\mathbb{P}(Y_i=1\mid\text{verb type}_i)$ |
+| Linear predictor | $\eta_i=\mathbf x_i^\top\boldsymbol\beta$ | $\beta_0+\beta_1\operatorname{result}_i$ |
+| Link | $g(\mu_i)=\eta_i$ | $\operatorname{logit}(\pi_i)=\eta_i$ |
+| Prediction | $g^{-1}(\eta_i)$ | `plogis(eta)` |
+| Variance | $\operatorname{Var}[Y_i\mid\mathbf x_i]$ | $\pi_i(1-\pi_i)$ |
+
+The distribution is on the random response $Y_i$, not on its parameter $\pi_i$. In this frequentist GLM, $\pi_i$ is an unknown conditional mean determined by the coefficients and predictors.
+
+```{r}
+#| label: fit-supertelicity-glm
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+fit <- glm(prep_in ~ verb_type, family = binomial(link = "logit"), data = st)
+raw <- aggregate(prep_in ~ verb_type, st, mean)
+raw$n <- as.integer(table(st$verb_type))
+raw$fitted <- predict(fit, newdata = raw, type = "response")
+raw
+```
+
+The response component is $Y_i\mid\pi_i\sim\operatorname{Bernoulli}(\pi_i)$, the systematic component is
+
+$$
+\eta_i=\beta_0+\beta_1\operatorname{result}_i,
+$$
+
+and the link gives
+
+$$
+\log\frac{\pi_i}{1-\pi_i}=\eta_i,
+\qquad
+\pi_i=\frac{1}{1+\exp[-(\beta_0+\beta_1\operatorname{result}_i)]}.
+$$
+
+```{r}
+#| label: plot-glm-components
+#| echo: true
+library(ggplot2)
+plot_data <- rbind(
+  transform(raw, estimate = prep_in, kind = "observed"),
+  transform(raw, estimate = fitted, kind = "fitted")
+)
+ggplot(plot_data, aes(verb_type, estimate, shape = kind, group = kind)) +
+  geom_point(position = position_dodge(width = .18), size = 2.2) +
+  labs(x = "Verb type", y = "Probability of an in-completion", shape = NULL) +
+  theme_classic()
+```
+
+The fitted values coincide with the two raw group proportions because a two-parameter model is saturated for two group means. This agreement does not erase the row structure: the likelihood is built from `r nrow(st)` binary choices contributed by repeated participants and sentences.
+
+To see what changes in a nonsaturated model, add duration with only one common slope. The model now estimates fewer cell-specific features than the data could support, so fitted probabilities need not equal every empirical subgroup proportion.
+
+```{r}
+#| label: nonsaturated-supertelicity-glm
+#| echo: true
+st$duration_centered <- st$log_duration_minutes -
+  mean(st$log_duration_minutes, na.rm = TRUE)
+nonsaturated_rows <- complete.cases(
+  st[, c("prep_in", "verb_type", "duration_centered")]
+)
+nonsaturated <- glm(prep_in ~ verb_type + duration_centered,
+                    family = binomial(link = "logit"),
+                    data = st[nonsaturated_rows, ])
+head(data.frame(observed = st$prep_in[nonsaturated_rows],
+                linear_predictor = predict(nonsaturated, type = "link"),
+                fitted_probability = predict(nonsaturated, type = "response")))
+```
+
+The population GLM is useful for exposing the machinery. It is not the SuperTelicity paper's inferential model, which includes supported participant and item dependence. Thus the model describes the observed population contrast but does not authorize participant-independent standard errors or a causal interpretation of verb type.
+
+## Recap and check
+
+1. Is $Y_i$ a probability? No. $Y_i$ is the observed binary random variable; $\pi_i$ is its conditional mean.
+2. Does the inverse link repair an invalid response distribution? No. The family determines the response support and variance; the link only relates its mean to $\eta_i$.
+
+The [exponential-family page](exponential-family.qmd) next shows why several GLMs share score and curvature calculations without becoming the same probability model.

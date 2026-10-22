@@ -1,10 +1,267 @@
 ---
 title: "Missingness mechanisms"
-toc: false
-course-release-id: missing-data
-course-release-placeholder: true
 ---
 
-Missingness patterns describe which values are absent, while missingness mechanisms concern why they are absent. We evaluate complete case analysis and imputation.
+The [preceding page](missingness-patterns.qmd) distinguished selected analyses, parsed but unselected items, and items with no positive reading. We now ask whether the binary outcome $S_i=1$ for a selected analysis is associated with two measurements observed for every profile item: its profile and its released token count. The calculation describes how selection varies across the analyzed Jacy profiles. Choosing among possible causes would require information about the grammar-development and annotation decisions that produced each status.
 
-**Available Wednesday, December 2, 2026.**
+A [**missingness mechanism**](https://academic.oup.com/biomet/article-abstract/63/3/581/270932) states how an observation probability depends on observed and unobserved quantities. Recall that [conditional probability](../foundations/conditional-probability.qmd) changes the reference set to outcomes satisfying the stated conditions. MCAR, MAR, and MNAR differ in which observed or unavailable quantities enter that conditioning set; they are not labels for three visual arrangements of blank cells.
+
+We first write those claims in a common observed--unobserved ledger, then fit the released selection outcome, and finally explain why an observed association cannot by itself classify the mechanism.
+
+## Separating observed and unobserved quantities
+
+Let $Y_i$ be an intended measurement that is unavailable when $R_i=0$, and let $X_i$ collect quantities observed regardless of availability. The observation mechanism concerns
+
+$$
+\mathbb{P}(R_i=1\mid X_i,Y_i).
+$$
+
+The labels MCAR, MAR, and MNAR restrict which named quantities that probability may depend on.
+
+Keep the observed/unobserved ledger visible. For every released Jacy row, we observe $R_i$, profile, and released token count. When $R_i=0$, we do not observe a downstream property that would have been calculated from an accepted MRS. MCAR, MAR, and MNAR differ over the dependence of $R_i$ on precisely these named quantities; they are not labels attached after looking at a heat map.
+
+### Missing completely at random
+
+Values are [**missing completely at random (MCAR)**](https://stefvanbuuren.name/fimd/sec-MCAR.html) when the observation probability depends on neither the observed covariates nor the unobserved measurement:
+
+$$
+\mathbb{P}(R_i=1\mid X_i,Y_i)=\mathbb{P}(R_i=1).
+$$
+
+Under this account, observed rows form a random subset with respect to the variables in the statement. Failure to find a visible association would not establish MCAR, because a finite dataset contains no direct information about the missing $Y_i$ values.
+
+Symbolically, MCAR assigns the same constant observation probability $p$ after profile, length, and the unavailable MRS property are supplied. The point is the absence of dependence, not a particular numeric value of $p$.
+
+### Missing at random
+
+Values are [**missing at random (MAR)**](https://stefvanbuuren.name/fimd/sec-MCAR.html) when observation may depend on observed measurements but does not additionally depend on the unavailable value after conditioning on them:
+
+$$
+\mathbb{P}(R_i=1\mid X_i,Y_i)=\mathbb{P}(R_i=1\mid X_i).
+$$
+
+MAR may thus produce systematic, visible missingness. The claim is conditional: once the stated $X_i$ is held fixed, $Y_i$ supplies no further information about observation.
+
+For instance, a probability $p(L_i,P_i)$ that varies with observed length and profile may still be MAR if no unavailable MRS property changes it after those quantities are held fixed. MAR does not mean that every item has the same observation probability.
+
+### Missing not at random
+
+Values are [**missing not at random (MNAR)**](https://stefvanbuuren.name/fimd/sec-MCAR.html) when observation still depends on the unavailable value after the observed quantities have been considered:
+
+$$
+\mathbb{P}(R_i=1\mid X_i,Y_i)
+\neq \mathbb{P}(R_i=1\mid X_i).
+$$
+
+The observed data generally do not identify this residual dependence. Domain knowledge about the data-producing process and sensitivity analyses are needed to study plausible MNAR departures.
+
+If the probability instead has the form $p(L_i,P_i,Y_i)$ and still changes with the defined unavailable $Y_i$ at fixed length and profile, the mechanism is MNAR for that property.
+
+## Loading the Jacy availability outcome
+
+The row unit and sources are documented on the [Jacy pattern page](missingness-patterns.qmd). Here $S_i$ marks whether at least one grammar analysis has an accepted preference record, $L_i$ is standardized released token count, and $P_i$ is profile.
+
+```{r}
+#| label: load-jacy-mechanisms
+#| message: false
+#| warning: false
+
+jacy <- utils::read.csv(
+  "data/jacy-mrs/tanaka-selection.csv",
+  check.names = FALSE
+)
+
+jacy$selected <- as.integer(jacy$preferred_analysis_count > 0L)
+jacy$length_z <- as.numeric(scale(jacy$item_length))
+
+stopifnot(
+  nrow(jacy) == 15000L,
+  !anyDuplicated(paste(jacy$profile, jacy$item_id, sep = "::")),
+  sum(jacy$selected) == 8670L,
+  sum(jacy$parse_readings == -1L) == 318L
+)
+```
+
+The descriptive model is
+
+$$
+S_i\sim\operatorname{Bernoulli}(\pi_i),
+\qquad
+\operatorname{logit}(\pi_i)
+=\alpha+\beta_1L_i+\beta_2L_i^2+\gamma_{P_i}.
+$$
+
+The Bernoulli family matches a binary endpoint. The logit link maps an unrestricted linear predictor to a probability in $(0,1)$ and makes coefficient differences interpretable as log odds. The profile fixed effects compare the `r length(unique(jacy$profile))` observed profiles without assuming that they are a random sample from a larger profile population. The linear term allows a monotone length association; the squared term allows one bend. We compare the squared term with a linear-length model below, rather than choosing curvature only because it looks plausible. These terms do not turn token count into a causal explanation. For the Bernoulli--logit construction, revisit [logistic regression](../regression-models/logistic-regression.qmd); locally, the reminder is $\operatorname{logit}(p)=\log[p/(1-p)]$.
+
+```{r}
+#| label: fit-jacy-mechanisms
+
+profile_only <- stats::glm(
+  selected ~ profile,
+  family = stats::binomial(),
+  data = jacy
+)
+
+linear_length_model <- stats::glm(
+  selected ~ length_z + profile,
+  family = stats::binomial(),
+  data = jacy
+)
+
+length_model <- stats::glm(
+  selected ~ length_z + I(length_z^2) + profile,
+  family = stats::binomial(),
+  data = jacy
+)
+
+length_test <- stats::anova(
+  profile_only,
+  length_model,
+  test = "LRT"
+)
+
+curvature_test <- stats::anova(
+  linear_length_model,
+  length_model,
+  test = "LRT"
+)
+
+length_terms <- data.frame(
+  term = c("Standardized length", "Squared standardized length"),
+  estimate = stats::coef(length_model)[c("length_z", "I(length_z^2)")],
+  row.names = NULL
+)
+
+model_comparison <- data.frame(
+  comparison = c(
+    "Profile only -> linear plus squared length",
+    "Linear length -> squared length"
+  ),
+  degrees_of_freedom = c(length_test$Df[2], curvature_test$Df[2]),
+  deviance_reduction = c(length_test$Deviance[2], curvature_test$Deviance[2])
+)
+
+stopifnot(
+  abs(length_terms$estimate[1] - (-0.56974)) < 1e-4,
+  abs(length_terms$estimate[2] - (-0.112317)) < 1e-4,
+  abs(model_comparison$deviance_reduction[1] - 1271.390) < 0.01
+)
+
+length_terms
+model_comparison
+```
+
+The estimated length terms are `r sprintf("%.3f", length_terms$estimate[1])` and
+`r sprintf("%.3f", length_terms$estimate[2])` on the log-odds scale. A
+[likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+holds these observed selection outcomes fixed and varies the model parameters.
+[Deviance](../regression-models/deviance.qmd) is twice the log-likelihood gap from a
+saturated reference, so a deviance reduction measures how much closer the larger
+fitted model moves toward that reference. Adding the length terms to the profile-only
+model reduces deviance by `r sprintf("%.2f", model_comparison$deviance_reduction[1])`
+on `r model_comparison$degrees_of_freedom[1]` degrees of freedom. The second row asks
+the narrower question: does the quadratic term improve on a model that already
+contains linear length and profile? A likelihood-ratio comparison assumes nested
+models fitted to the same rows and uses a large-sample chi-squared reference
+distribution; see
+[likelihood-ratio tests](../model-criticism-and-prediction/likelihood-ratio-tests.qmd).
+These quantities summarize an association in this release.
+
+## Raw proportions and the fitted model
+
+We plot the raw selection proportion at each released token count together with the model's mean fitted probability among items of that length. Point size records the number of items but is left unlabelled to keep the graph focused.
+
+```{r}
+#| label: plot-jacy-mechanisms
+#| fig-width: 6.4
+#| fig-height: 4
+
+jacy$fitted_probability <- stats::predict(
+  length_model,
+  type = "response"
+)
+
+raw_by_length <- stats::aggregate(
+  selected ~ item_length,
+  jacy,
+  function(x) c(items = length(x), probability = mean(x))
+)
+raw_by_length <- data.frame(
+  item_length = raw_by_length$item_length,
+  items = raw_by_length$selected[, "items"],
+  raw_probability = raw_by_length$selected[, "probability"]
+)
+
+fitted_by_length <- stats::aggregate(
+  fitted_probability ~ item_length,
+  jacy,
+  mean
+)
+
+length_plot_data <- merge(
+  raw_by_length,
+  fitted_by_length,
+  by = "item_length",
+  all.x = TRUE,
+  sort = TRUE
+)
+length_plot_data <- subset(length_plot_data, items >= 20L)
+
+ggplot2::ggplot(
+  length_plot_data,
+  ggplot2::aes(item_length, raw_probability)
+) +
+  ggplot2::geom_point(
+    ggplot2::aes(size = items),
+    color = "grey35",
+    alpha = 0.8 # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::geom_line(
+    ggplot2::aes(y = fitted_probability),
+    color = "#2B6F8A",
+    linewidth = 0.9
+  ) +
+  ggplot2::scale_y_continuous(
+    limits = c(0, 1),
+    labels = scales::label_percent(accuracy = 1) # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::scale_size_continuous(range = c(1.5, 5), guide = "none") +
+  ggplot2::labs(
+    x = "Sentence length in the profile (tokens)",
+    y = "Probability of a selected analysis"
+  ) +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+The raw and fitted quantities decrease as released token count increases, conditional on the model's profile terms. This pattern challenges an equal-availability description with respect to these observed covariates. It does not show that longer Japanese sentences are intrinsically less grammatical, meaningful, or frequent.
+
+## Why the association does not classify the mechanism
+
+If a downstream MRS property is the intended $Y_i$, selection is its availability indicator. But for an item with no acceptable grammar analysis, the counterfactual value of that property may itself require a more precise definition. Thus a mechanism label is meaningful only after the missing quantity and target population have been specified.
+
+Even under such a specification, the plot contains $S_i$, profile, and length, not the unavailable $Y_i$. The association is compatible with an MAR account based on observed pipeline covariates. It is also compatible with an MNAR account involving properties of an unavailable acceptable analysis. And profile or length may stand in for unrecorded stages of parsing and annotation. The model cannot adjudicate among these accounts.
+
+One way to make this limit operational is a **selection-odds sensitivity parameter** $\delta$. Extend the fitted logit with $\delta Y_i$ for a precisely defined but unavailable binary property. The observed data cannot estimate $\delta$ where $Y_i$ is missing, but an analyst can repeat the downstream analysis over a substantively defended grid. Each candidate $\delta$ multiplies the conditional odds of selection by $\exp(\delta)$. Stability across the grid would not prove MAR; instability would show that the substantive conclusion depends on an untestable selection assumption.
+
+Mechanisms can also differ by level. A sentence outside the corpus has no profile row; a profile item with no positive reading has a row but no positive parse; and a parsed item may remain unselected. Treating all three as the same blank would merge a coverage problem with two observed pipeline states.
+
+## Classifying the claim
+
+1. Which dependence is removed by MCAR but permitted by MAR?
+2. Why does the fitted length association challenge equal availability without establishing MAR?
+3. What additional dependence would make the mechanism MNAR for a defined downstream MRS quantity?
+4. Why is a sentence absent from the corpus not a missing profile item?
+
+**Answers.** (1) MCAR removes dependence on both named observed covariates and the unavailable measurement; MAR permits the first but removes the second after conditioning. (2) Length is observed, so its association is compatible with MAR and with MNAR accounts that add unavailable quantities. (3) Residual dependence of selection on the defined unavailable MRS property would be MNAR. (4) A sentence outside the corpus has no realized unit in this table and thus poses a coverage problem rather than a missing cell.
+
+A missingness mechanism restricts how availability may depend on named observed and unavailable quantities. In the analyzed Jacy profiles, selection is associated with observed profile length and profile. The table contains no record of the decisions that caused a particular analysis to be selected, so the fitted association cannot choose among causal explanations. The [next page](complete-case-analysis.qmd) turns to a raw acoustic table in which the intended measurements and complete rows are directly defined.
+
+## Recap
+
+1. MCAR, MAR, and MNAR are conditional-dependence claims over a named ledger of observed and unavailable quantities.
+2. A Bernoulli--logit model is appropriate for the selected-analysis indicator, while profile and length encode descriptive associations rather than causes.
+3. The quadratic comparison exposes why curvature enters the model, and the likelihood-ratio reference requires nested fits to the same rows.
+4. Because the unavailable MRS property is not observed, an MNAR departure requires a sensitivity analysis rather than a data-only verdict.
+5. The next page begins with the [Hillenbrand measurement dossier](complete-case-analysis.qmd#hillenbrand-measurement-dossier) before defining deletion.
+
+[Previous: Missingness patterns](missingness-patterns.qmd) · [Next: Complete-case analysis](complete-case-analysis.qmd)

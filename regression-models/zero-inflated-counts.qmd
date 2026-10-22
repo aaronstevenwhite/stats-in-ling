@@ -1,10 +1,174 @@
 ---
-title: "Zero-inflated counts"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+title: "Zeros in count data"
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+More observed zeros than a Poisson model predicts do not by themselves establish a separate zero-generating process. We examine this ambiguity in Storme's ([2024](https://doi.org/10.1007/s11525-024-09429-8)) French liaison study and its [Zenodo release](https://doi.org/10.5281/zenodo.12733801), whose record specifies CC BY 4.0. The derived course table follows those terms and retains source attribution. One prepared row is a final-morpheme, final-consonant, and liaison-status combination. Following the released code, the numerical response is integer truncation of 100 times summed `freqfilms2`. We call it a **truncated frequency proxy** because it is derived from normalized frequency rather than counted liaison tokens with a known corpus exposure.
 
-**Available Monday, November 2, 2026.**
+A spike at zero can come from the measurement rule, an ordinary one-process
+distribution, or a genuinely separate state. Auditing how the released proxy
+creates zeros is thus a prerequisite for deciding what either likelihood can
+teach.
+
+```{r}
+#| label: load-storme-zero
+#| echo: true
+path <- "data/storme-liaison/storme-liaison-counts.csv"
+if (file.exists(path)) {
+  storme <- read.csv(path)
+} else {
+  url <- paste0("https://zenodo.org/api/records/12733801/files/",
+                "study1-data.csv/content")
+  source_file <- tempfile(fileext = ".csv")
+  download.file(url, source_file, mode = "wb")
+  stopifnot(unname(tools::md5sum(source_file)) ==
+              "8a7788489b6820822cda3f338881f77e")
+  raw <- read.csv(source_file, check.names = FALSE)
+  storme <- aggregate(freqfilms2 ~ final_morph + FinalConsonant + Liaison,
+                      raw, sum)
+  storme$reconstructed_count <- as.integer(storme$freqfilms2 * 100)
+  names(storme)[1:4] <- c("final_morpheme", "final_consonant", "liaison",
+                          "frequency_per_million_sum")
+}
+stopifnot(nrow(storme) == 11195L)
+storme$liaison <- factor(storme$liaison, levels = c("no", "yes"))
+storme$final_consonant <- factor(storme$final_consonant)
+storme$truncated_frequency_proxy <- storme$reconstructed_count
+```
+
+The first prepared row is an actual release-derived cell:
+
+```{r}
+#| label: inspect-one-storme-cell
+storme[1L, c(
+  "final_morpheme", "final_consonant", "liaison",
+  "frequency_per_million_sum", "reconstructed_count"
+)]
+```
+
+If $f_{h}$ denotes `freqfilms2` for source row $h$ in a particular morpheme--consonant--liaison cell, the released preparation computes
+
+$$
+y
+=
+\operatorname{trunc}
+\left(
+100\sum_h f_h
+\right).
+$$
+
+Algebraically, a positive sum below $.01$ would also become zero after the
+transformation. The prepared values contain no such case: their smallest positive
+sum is exactly $.01$, and every proxy zero corresponds to an exact zero summed
+frequency. That empirical coincidence makes the zero/nonzero boundary stable in
+this table. It does not turn the positive integers into observed token counts or
+supply a count exposure and sampling process.
+
+```{r}
+#| label: audit-storme-frequency-proxy
+data.frame(
+  rows = nrow(storme),
+  exact_zero_frequency = sum(storme$frequency_per_million_sum == 0),
+  zero_truncated_proxy = sum(storme$truncated_frequency_proxy == 0),
+  minimum_positive_frequency = min(
+    storme$frequency_per_million_sum[storme$frequency_per_million_sum > 0]
+  ),
+  median_positive_frequency = median(
+    storme$frequency_per_million_sum[storme$frequency_per_million_sum > 0]
+  )
+)
+```
+
+A measurement-aligned two-part analysis would model whether summed frequency is
+zero and then model `frequency_per_million_sum` among positive cells. That target
+concerns presence and the magnitude of a normalized frequency. It differs from a
+negative-binomial token-count target and would require a declared continuous
+positive distribution. The integer fits below are therefore likelihood stress
+tests for the released proxy, not preferred generative models of corpus tokens.
+
+We fit additive Poisson and negative-binomial baselines with the same mean
+formula. For both fits, the
+[likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed
+proxy values fixed and compares parameter values under the declared response
+distribution. The negative binomial allows
+
+$$
+\operatorname{Var}[Y_i\mid\mu_i]=\mu_i+\frac{\mu_i^2}{\theta},
+$$
+
+so ordinary heterogeneity can increase both tails, including zero mass.
+
+A zero-inflated count model would instead introduce a second process. With structural-zero probability $\omega_i$ and count mean $\mu_i$,
+
+$$
+\mathbb{P}(Y_i=0)
+=
+\omega_i+(1-\omega_i)f_{\text{count}}(0\mid\mu_i),
+$$
+
+and for $y>0$,
+
+$$
+\mathbb{P}(Y_i=y)
+=(1-\omega_i)f_{\text{count}}(y\mid\mu_i).
+$$
+
+Both processes can thus generate an observed zero. A linguistic analysis needs a mechanism that makes some cells structurally unable to occur before it interprets $\omega_i$.
+
+```{r}
+#| label: compare-zero-probabilities
+#| echo: true
+poisson_fit <- glm(truncated_frequency_proxy ~ liaison + final_consonant,
+                   poisson(), storme)
+nb_fit <- MASS::glm.nb(truncated_frequency_proxy ~ liaison + final_consonant,
+                       data = storme, control = glm.control(maxit = 100L))
+storme$observed_zero <- storme$truncated_frequency_proxy == 0L
+storme$poisson_zero <- dpois(0L, fitted(poisson_fit))
+storme$nb_zero <- dnbinom(0L, size = nb_fit$theta, mu = fitted(nb_fit))
+zeros <- aggregate(cbind(observed_zero, poisson_zero, nb_zero) ~ liaison,
+                   storme, mean)
+zeros
+```
+
+```{r}
+#| label: plot-zero-comparison
+#| echo: true
+library(ggplot2)
+zero_long <- rbind(
+  data.frame(liaison = zeros$liaison, model = "Observed", value = zeros$observed_zero),
+  data.frame(liaison = zeros$liaison, model = "Poisson", value = zeros$poisson_zero),
+  data.frame(liaison = zeros$liaison, model = "Negative binomial", value = zeros$nb_zero)
+)
+zero_long$model <- factor(zero_long$model,
+                          levels = c("Observed", "Poisson", "Negative binomial"))
+ggplot(zero_long, aes(model, value, shape = liaison)) +
+  geom_point(position = position_dodge(width = .35), size = 2) +
+  labs(x = NULL, y = "Probability of a zero", shape = NULL) +
+  theme_classic()
+```
+
+The Poisson stress test assigns almost no zero mass, while the negative-binomial
+stress test moves toward the observed proportions without a structural-zero
+component. We thus do not fit a zero-inflated model here. Such a model would need
+a linguistically motivated process that makes some morpheme cells deterministically
+absent, together with a defensible observation model for the positive frequency
+measure.
+
+## Recap and check your understanding
+
+1. Why is the truncated frequency proxy not a direct token tally?
+2. Which two components of a zero-inflated model can produce zero?
+3. Why does extra-Poisson zero mass not prove a structural-zero process?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. It is a truncated transformation of summed frequency-per-million values. <!-- dqr-allow: conceptual-answer -->
+2. The structural component and the ordinary count component can both produce zero. <!-- dqr-allow: conceptual-answer -->
+3. Unmodeled heterogeneity or a negative-binomial count process can also increase zero probability. The mixture needs an independently motivated state. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](negative-binomial-regression.qmd) derives that heterogeneous count model.

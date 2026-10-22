@@ -1,10 +1,470 @@
 ---
 title: "Singular value decomposition"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+One rank-one pattern leaves substantial structure in the centered [PHOIBLE matrix](rank-one-structure.qmd). The singular value decomposition (SVD) expresses that matrix as a sequence of rank-one terms, ordered by the centered sum of squares each term represents.
 
-**Available Monday, November 30, 2026.**
+The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+builds matrix operations from scalar multiplication and dot products. The
+[rank-one picture](rank-one-structure.qmd#rank-one-reconstruction-picture)
+shows the first such term and the cells it leaves behind.
+
+The SVD arranges the terms so that their directions are perpendicular. Two
+directions are **orthogonal** when their dot product is zero, the algebraic
+version of that perpendicular relationship. Orthogonality does not assert
+[probabilistic independence](../foundations/independence.qmd) among inventory
+records or segment listings. The omitted terms form a **reconstruction
+residual**, the observed centered matrix minus its low-rank reconstruction; the
+[reconstruction page](reconstruction.qmd) makes that cellwise discrepancy the
+main object.
+
+We begin by rebuilding a two-by-two matrix from two visible patterns. We then
+ask how the same addition is written for an arbitrary matrix, why keeping the
+first \(K\) patterns minimizes squared reconstruction error, and what the
+resulting spectrum says about the PHOIBLE training matrix.
+
+## Two visible patterns before the general form
+
+Begin with the small matrix
+
+$$
+\mathbf Z=
+\begin{bmatrix}
+3&0\\ % dqr-allow: symbolic-derivation
+0&1 % dqr-allow: symbolic-derivation
+\end{bmatrix}.
+$$
+
+We can reconstruct every cell by adding two rank-one patterns:
+
+$$
+\mathbf Z
+=
+\underbrace{
+3
+\begin{bmatrix}1\\0\end{bmatrix}
+\begin{bmatrix}1&0\end{bmatrix}
+}_{\text{pattern 1}}
++
+\underbrace{
+1
+\begin{bmatrix}0\\1\end{bmatrix}
+\begin{bmatrix}0&1\end{bmatrix}
+}_{\text{pattern 2}}. % dqr-allow: symbolic-derivation
+$$
+
+In pattern 1, the row direction
+\(\mathbf u_1=(1,0)^{\mathsf T}\) selects the first row, the nonnegative
+multiplier \(d_1=3\) supplies the pattern's strength, and the column direction
+\(\mathbf v_1=(1,0)^{\mathsf T}\) selects the first column. Pattern 2 uses
+\(\mathbf u_2=(0,1)^{\mathsf T}\), \(d_2=1\), and
+\(\mathbf v_2=(0,1)^{\mathsf T}\). We call the multipliers \(d_1,d_2\)
+**singular values**.
+
+The pictures below show the same addition cell by cell. Each component has a
+visible job before we collect its symbols into matrices.
+
+~~~{r}
+#| label: fig-svd-two-rank-one-patterns
+#| fig-cap: "A two-by-two matrix reconstructed by adding two rank-one singular-value patterns."
+#| fig-alt: "Four two-by-two heatmaps on a shared scale. The observed matrix has three in its upper-left cell and one in its lower-right cell. Pattern 1 contains only the upper-left three. Pattern 2 contains only the lower-right one. Their sum exactly matches the observed matrix."
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3
+
+library(ggplot2)
+
+svd_observed <- matrix(
+  c(3, 0, 0, 1), # dqr-allow: symbolic-derivation
+  nrow = 2,
+  byrow = TRUE
+)
+svd_pattern_1 <- 3 * outer(c(1, 0), c(1, 0)) # dqr-allow: symbolic-derivation
+svd_pattern_2 <- 1 * outer(c(0, 1), c(0, 1)) # dqr-allow: symbolic-derivation
+svd_reconstruction <- svd_pattern_1 + svd_pattern_2
+
+svd_panel <- function(matrix_value, panel_name) {
+  panel <- as.data.frame(as.table(matrix_value))
+  names(panel) <- c("row", "column", "value")
+  panel$panel <- panel_name
+  panel
+}
+
+svd_picture <- rbind(
+  svd_panel(svd_observed, "Observed matrix"),
+  svd_panel(svd_pattern_1, "Pattern 1"),
+  svd_panel(svd_pattern_2, "Pattern 2"),
+  svd_panel(svd_reconstruction, "Pattern 1 + pattern 2")
+)
+svd_picture$panel <- factor(
+  svd_picture$panel,
+  levels = c(
+    "Observed matrix",
+    "Pattern 1",
+    "Pattern 2",
+    "Pattern 1 + pattern 2"
+  )
+)
+svd_picture$row <- factor(
+  svd_picture$row,
+  levels = rev(unique(svd_picture$row))
+)
+svd_picture$column <- factor(
+  svd_picture$column,
+  levels = unique(svd_picture$column)
+)
+
+ggplot(svd_picture, aes(column, row, fill = value)) +
+  geom_tile(color = "grey80", linewidth = 0.4) +
+  geom_text(aes(label = value), size = 4) +
+  facet_wrap(~panel, nrow = 1) +
+  scale_fill_gradient2(
+    low = "#2166AC",
+    mid = "white",
+    high = "#B2182B",
+    midpoint = 0,
+    limits = c(-3, 3), # dqr-allow: symbolic-derivation
+    name = "Cell value"
+  ) +
+  coord_equal() +
+  labs(x = "Column", y = "Row") +
+  theme_classic(base_size = 11) +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    legend.position = "bottom"
+  )
+~~~
+
+Collecting \(\mathbf u_1,\mathbf u_2\) as the columns of \(\mathbf U\),
+placing \(d_1,d_2\) on the diagonal of \(\mathbf D\), and collecting
+\(\mathbf v_1,\mathbf v_2\) as the columns of \(\mathbf V\) gives
+\(\mathbf U=\mathbf V=\mathbf I_2\) and
+\(\mathbf D=\operatorname{diag}(3,1)\). The compact product
+\(\mathbf U\mathbf D\mathbf V^{\mathsf T}\) abbreviates the two visible
+rank-one patterns and their sum.
+
+## Stating the reduced decomposition
+
+Suppose \(\mathbf Z\in\mathbb R^{n\times p}\) has rank \(r\), meaning that it
+has \(r\) linearly independent columns (and equally many linearly independent
+rows). For every cell, the SVD adds \(r\) scalar products:
+
+$$
+z_{ij}
+=
+\sum_{k=1}^{r}u_{ik}d_kv_{jk}.
+$$
+
+Here \(d_k\) is a nonnegative multiplier, \(u_{ik}\) is the entry for row
+\(i\) in direction \(k\), and \(v_{jk}\) is the entry for column \(j\) in that
+same direction. Collecting these cellwise calculations into matrices gives the
+reduced SVD:
+
+$$
+\mathbf Z
+=
+\mathbf U\mathbf D\mathbf V^{\mathsf T},
+$$
+
+where
+
+$$
+\mathbf U\in\mathbb R^{n\times r},
+\qquad
+\mathbf D\in\mathbb R^{r\times r},
+\qquad
+\mathbf V\in\mathbb R^{p\times r}.
+$$
+
+We call a vector **normalized** when its Euclidean length is one. A collection is
+**orthonormal** when both conditions hold: distinct columns are perpendicular,
+and every column has length one. Thus
+
+$$
+\mathbf U^{\mathsf T}\mathbf U=\mathbf I_r,
+\qquad
+\mathbf V^{\mathsf T}\mathbf V=\mathbf I_r,
+$$
+
+and $\mathbf D$ is diagonal with ordered nonnegative entries,
+
+$$
+d_1\ge d_2\ge\cdots\ge d_r>0.
+$$
+
+The entries \(d_k\) are the **singular values**. The vectors
+$\mathbf u_k$ locate the row objects along component $k$, the vectors
+$\mathbf v_k$ define the corresponding column directions, and $d_k$ gives the
+component's strength.
+
+The **full SVD** pads these matrices to square orthogonal **bases**, collections
+of directions from which every vector in the corresponding space can be built,
+\(\mathbf U_{\mathrm{full}}\in\mathbb R^{n\times n}\) and
+\(\mathbf V_{\mathrm{full}}\in\mathbb R^{p\times p}\), with additional zero
+singular values. The reduced SVD keeps only the \(r\) nonzero directions needed
+to reconstruct \(\mathbf Z\). These notes use the reduced form because the padded
+null-space directions contribute no fitted matrix.
+
+## From a matrix product to rank-one terms
+
+Multiplying by the diagonal matrix scales matched columns of $\mathbf U$ and $\mathbf V$. Thus
+
+$$
+\mathbf Z
+=
+\sum_{k=1}^{r}
+d_k\mathbf u_k\mathbf v_k^{\mathsf T}.
+$$
+
+Every summand is rank one. The rank-$K$ approximation keeps the first $K$ terms:
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\sum_{k=1}^{K}
+d_k\mathbf u_k\mathbf v_k^{\mathsf T}
+=
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}.
+$$
+
+Among all rank-$K$ matrices, this approximation minimizes squared reconstruction error:
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\arg\min_{\operatorname{rank}(\mathbf A)\le K}
+\|\mathbf Z-\mathbf A\|_F^2.
+$$
+
+The **Frobenius inner product** treats two matrices as long vectors of cells:
+
+$$
+\langle\mathbf A,\mathbf B\rangle_F
+=
+\sum_i\sum_j a_{ij}b_{ij}
+=
+\operatorname{tr}(\mathbf A^{\mathsf T}\mathbf B).
+$$
+
+Here \(\operatorname{tr}(\mathbf C)\), the **trace**, is the sum of the diagonal
+entries of a square matrix \(\mathbf C\). The corresponding **Frobenius norm**
+measures matrix length, so its square is the sum of squared cells:
+
+$$
+\|\mathbf A\|_F^2
+=
+\sum_i\sum_j a_{ij}^2.
+$$
+
+Orthogonality yields
+
+$$
+\|\mathbf Z\|_F^2
+=
+\sum_{k=1}^{r}d_k^2,
+\qquad
+\|\mathbf Z-\widehat{\mathbf Z}^{(K)}\|_F^2
+=
+\sum_{k=K+1}^{r}d_k^2.
+$$
+
+Thus the singular values order components by their contribution to the observed centered matrix.
+
+## Why truncation is optimal: a proof sketch {#why-truncation-is-the-best-rank-k-approximation}
+
+The squared Frobenius norm of one singular term is
+
+$$
+\begin{aligned}
+\left\|d_k\mathbf u_k\mathbf v_k^{\mathsf T}\right\|_F^2
+&=
+d_k^2
+\operatorname{tr}\left(
+\mathbf v_k\mathbf u_k^{\mathsf T}
+\mathbf u_k\mathbf v_k^{\mathsf T}
+\right)\\
+&=
+d_k^2
+(\mathbf u_k^{\mathsf T}\mathbf u_k)
+(\mathbf v_k^{\mathsf T}\mathbf v_k)\\
+&=d_k^2.
+\end{aligned}
+$$
+
+Distinct singular terms have Frobenius inner product zero because
+the corresponding columns of \(\mathbf U\) and \(\mathbf V\) are orthogonal.
+That calculation gives the error of the truncated SVD. To compare it with every
+other rank-$K$ matrix, the Eckart--Young--Mirsky theorem uses the fact that
+rotating or reflecting the row and column coordinates does not change the sum
+of squared cells. This preservation is called **unitary invariance** (or
+orthogonal invariance for the real-valued matrices used here). It establishes
+the lower bound
+
+$$
+\|\mathbf Z-\mathbf B\|_F^2
+\geq
+\sum_{k>K}d_k^2
+\qquad
+\text{for every }\operatorname{rank}(\mathbf B)\le K.
+$$
+
+The truncated SVD attains that bound because its residual consists exactly of
+the omitted orthogonal singular terms. Hence
+
+$$
+\min_{\operatorname{rank}(\mathbf B)\le K}
+\|\mathbf Z-\mathbf B\|_F^2
+=
+\sum_{k>K}d_k^2.
+$$
+
+This is a proof sketch rather than a derivation of the theorem's lower bound from
+first principles. It identifies the missing global step and shows why the
+truncated construction attains the bound. The result establishes optimality for
+squared cell reconstruction; linguistic interpretation and held-out binary
+prediction require separate criteria.
+
+## Computing the PHOIBLE decomposition
+
+```{r}
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+inventories <- phoible$inventories[
+  order(phoible$inventories$glottocode,
+        as.integer(phoible$inventories$inventory_id)),
+]
+groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+RNGkind(sample.kind = "Rejection")
+set.seed(20260827L)
+chosen <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+selected <- inventories[unname(chosen), ]
+
+area <- selected$macroarea
+area[is.na(area) | area == ""] <- "Unclassified"
+selected$split <- NA_character_
+set.seed(20261018L)
+for (name in sort(unique(area))) {
+  index <- sample(which(area == name))
+  n_holdout <- floor(0.15 * length(index))
+  selected$split[index[seq_len(n_holdout)]] <- "validation"
+  selected$split[index[n_holdout + seq_len(n_holdout)]] <- "test"
+  selected$split[index[is.na(selected$split[index])]] <- "training"
+}
+training_rows <- which(selected$split == "training")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
+)
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
+
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+decomposition <- svd(Z)
+
+orthogonality_checks <- c(
+  U = max(abs(crossprod(decomposition$u) - diag(ncol(decomposition$u)))),
+  V = max(abs(crossprod(decomposition$v) - diag(ncol(decomposition$v))))
+)
+orthogonality_checks
+```
+
+The R-to-mathematics crosswalk is direct:
+
+| R value | Mathematical object |
+|---|---|
+| `decomposition$u` | \(\mathbf U\) |
+| `diag(decomposition$d)` | \(\mathbf D\) |
+| `decomposition$v` | \(\mathbf V\) |
+| `decomposition$u[, k]` | \(\mathbf u_k\) |
+| `decomposition$d[k]` | \(d_k\) |
+| `decomposition$v[, k]` | \(\mathbf v_k\) |
+
+The empirical training matrix is `r nrow(Z)` by `r ncol(Z)`. The largest absolute departures from the two orthogonality identities are `r format(max(orthogonality_checks), scientific = TRUE, digits = 3)` under this numerical fit.
+
+## Reading the empirical spectrum
+
+```{r}
+#| fig-width: 6.5
+#| fig-height: 4
+
+spectrum <- data.frame(
+  component = seq_along(decomposition$d),
+  singular_value = decomposition$d,
+  variance_fraction = decomposition$d^2 / sum(decomposition$d^2),
+  cumulative_fraction = cumsum(decomposition$d^2) / sum(decomposition$d^2)
+)
+
+ggplot(spectrum[spectrum$component <= 64, ],
+       aes(x = component, y = variance_fraction)) +
+  geom_line(color = "grey30", linewidth = 0.65) +
+  geom_point(color = "grey20", size = 1.2) + # dqr-allow: algorithm-setting
+  labs(x = "Component", y = "Fraction of centered sum of squares") +
+  theme_classic()
+```
+
+The first component accounts for `r scales::percent(spectrum$variance_fraction[[1]], accuracy = 0.1)` of centered sum of squares. The first forty account for `r scales::percent(spectrum$cumulative_fraction[[40]], accuracy = 0.1)`. These are descriptive properties of the training matrix. They do not select a predictive rank and do not turn the components into linguistic categories.
+
+## Sign and directional limits
+
+For any component,
+
+$$
+d_k\mathbf u_k\mathbf v_k^{\mathsf T}
+=
+d_k(-\mathbf u_k)(-\mathbf v_k)^{\mathsf T}.
+$$
+
+Software may thus reverse both signs without changing the fitted matrix. Interpretation should concern contrasts among loadings or scores, not a privileged positive orientation.
+
+If singular values are equal or nearly equal, rotations within the corresponding subspace can also leave the fit unchanged or nearly unchanged. The subspace may then be more stable than any one plotted axis. This is a stronger limitation than sign indeterminacy.
+
+## Checking the ordered patterns
+
+1. What are the dimensions of $\mathbf U$, $\mathbf D$, and $\mathbf V$?
+2. Why is each term $d_k\mathbf u_k\mathbf v_k^{\mathsf T}$ rank one?
+3. Why do squared singular values add to centered sum of squares?
+4. What does the scree plot summarize, and what does it not select?
+5. Why may an SVD component reverse sign across software runs?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. In the reduced form they are \(n\times r\), \(r\times r\), and \(p\times r\).
+2. It is an outer product of two nonzero vectors.
+3. Orthogonal singular terms have squared norms \(d_k^2\), so the Pythagorean
+   identity applies.
+4. It summarizes in-sample centered sum of squares, not predictive rank.
+5. Reversing both singular vectors leaves their outer product unchanged.
+
+</details>
+
+## Recap
+
+1. The reduced SVD expresses the observed matrix as ordered orthogonal rank-one
+   terms.
+2. Each term captures \(d_k^2\) centered sum of squares.
+3. Truncation is optimal for rank-constrained squared reconstruction and no broader
+   target by itself.
+
+The [next page](principal-component-analysis.qmd#beginning-with-variation-around-column-means)
+shows why the same right singular vectors are the principal-component directions
+of the centered PHOIBLE matrix.

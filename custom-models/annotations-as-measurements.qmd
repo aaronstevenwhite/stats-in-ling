@@ -1,10 +1,340 @@
 ---
 title: "Annotations are measurements"
-toc: false
-course-release-id: custom-model-design
-course-release-placeholder: true
 ---
 
-Joint probability models connect annotation protocols to linguistic measurement claims. We then test whether simulated data permit recovery of the model parameters.
+[Şahin and Adalı (2018)](https://doi.org/10.1007/s10579-017-9390-y) describe the ITU/IMST Turkish PropBank: predicate-specific frames were paired with argument candidates from the IMST dependency treebank, Turkish-speaking crowd workers selected plain-language role descriptions, and unresolved cases were adjudicated. The [official project release](https://turkishpropbank.github.io/) provides the frames, crowd layers, and final annotations. The table used here comes from [this project version](https://github.com/turkishpropbank/turkishpropbank.github.io/tree/5cd9c9918c8a7f4fd62802387e04d14b995ecb66); it removes platform identifiers, locations, timestamps, and free text.
 
-**Available Wednesday, December 2, 2026.**
+The project site states that resources built in the project are distributed under CC BY-NC-SA 4.0, while the repository's short license header names the Turkish frame files specifically. We use the derived table for this noncommercial course under the project-wide statement and retain that scope qualification.
+
+This release lets us analyze annotations as measurements. One row records whether one worker's selected description matches the final adjudicated description, so selection--adjudication agreement is directly observed. Evaluating whether the adjudicated description correctly captures the argument role would require an external validity comparison that the table does not supply.
+
+An [event](../foundations/possibilities-and-events.qmd) is a set of possible outcomes; here agreement is the event that the selected and adjudicated descriptions coincide. [Conditional independence](../random-variables-and-distributions/conditional-independence.qmd) below means that response rows factor after the item and worker effects are supplied. A [regression residual](../regression-models/residuals.qmd) is observed minus fitted, and the posterior checks later compare analogous discrepancies in observed and replicated tables.
+
+We trace that row-level measurement from prompt to recorded response, separate three
+agreement summaries, fit a crossed item--worker model, and then compare its fitted
+rates with the raw role-class patterns.
+
+## Turkish PropBank measurement dossier {#turkish-propbank-measurement-dossier}
+
+The row unit is one worker judgment of one predicate-specific argument candidate. `predicate_lemma` and `sense_id` identify the predicate frame, `adjudicated_label` names the final role label, `selected_role_description` records the worker's choice, and `adjudicated_role_description` records the comparison target. `correct` is 1 exactly when those two descriptions match. Core roles are predicate-specific numbered arguments; adjunct descriptions concern more general circumstantial relations. We compare these two groups and exclude `not_argument` and `unresolved` because neither supplies the same core-versus-adjunct target.
+
+The protocol gives workers plain-language descriptions associated with the
+predicate-specific numbered roles, together with general adjunct and nonargument
+choices. The sanitized table keeps only the selected description and the later
+adjudicated description. It does not retain the exact number, wording order, or
+composition of the alternatives shown for each item. Consequently, the
+core-versus-adjunct coefficient may combine role class with differences in the
+number or confusability of the available descriptions. A frame- or option-set
+sensitivity analysis cannot be reconstructed from this table.
+
+Adjudication occurred after the crowd layer, and the project documentation says
+that an experienced annotator reviewed items lacking complete crowd agreement.
+Neither the table nor the project documentation states whether this reviewer was
+blind to the crowd responses. The adjudicated description is thus a later project
+decision against which agreement can be measured. Treating it as an independently
+elicited gold label would require information that the documentation does not
+supply.
+
+For instance, row `item_00001` records worker `worker_087` judging lemma `başla`, sense 1, and adjudicated core label `A1`. Both retained description fields are `neye başladığı`, so `correct = 1`. The privacy extract does not retain the source sentence or candidate span. We can thus inspect the actual retained judgment, but we cannot responsibly reconstruct its full Turkish context or supply a translation as if it came from the release.
+
+## Loading individual judgments
+
+```{r}
+#| label: load-turkish-propbank
+#| message: false
+#| warning: false
+
+turkish <- utils::read.csv(
+  "data/turkish-propbank/role-agreement-judgments.csv",
+  check.names = FALSE
+)
+
+stopifnot(
+  nrow(turkish) == 55207L,
+  length(unique(turkish$item_id)) == 18306L,
+  length(unique(turkish$worker_id)) == 144L,
+  setequal(unique(turkish$correct), 0:1),
+  sum(turkish$correct) == 46078L,
+  !anyDuplicated(paste(
+    turkish$item_id,
+    turkish$judgment_index,
+    sep = "::"
+  ))
+)
+
+turkish_analysis <- subset(
+  turkish,
+  role_group %in% c("core", "adjunct")
+)
+turkish_analysis$role_group <- stats::relevel(
+  factor(turkish_analysis$role_group),
+  ref = "core"
+)
+
+stopifnot(
+  nrow(turkish_analysis) == 52784L,
+  length(unique(turkish_analysis$item_id)) == 17502L,
+  length(unique(turkish_analysis$worker_id)) == 144L,
+  sum(turkish_analysis$role_group == "core") == 36672L,
+  sum(turkish_analysis$role_group == "adjunct") == 16112L
+)
+
+turkish[turkish$item_id == "item_00001" &
+          turkish$worker_id == "worker_087",
+        c("item_id", "worker_id", "predicate_lemma", "sense_id",
+          "adjudicated_label", "role_group",
+          "selected_role_description", "adjudicated_role_description",
+          "correct")]
+
+table(turkish$role_group, useNA = "ifany")
+```
+
+The binary response is
+
+$$
+Y_{ij}=
+\begin{cases}
+1 & \text{worker }j\text{ selected item }i\text{'s adjudicated description},\\
+0 & \text{otherwise}.
+\end{cases}
+$$
+
+Here zero records disagreement with adjudication. Because adjudication supplies the comparison target, this value alone cannot establish that the worker's linguistic judgment was wrong.
+
+## Keeping three agreement quantities distinct
+
+The paper reports Cohen's $\kappa=.936$ for an expert versus trust-weighted aggregate answers on 2,000 deliberately unambiguous test questions. It reports Fleiss' $\kappa=.65$ across varying workers on roughly 18,000 ordinary multi-category questions. The response above is a third quantity: an individual worker's binary match with the later adjudicated description. The three quantities have different observational units and denominators.
+
+This lesson asks whether individual agreement with adjudication differs between predicate-specific core descriptions and general adjunct-like descriptions. The fitted probability describes agreement with adjudication in this task. Estimating worker competence would require independently validated answers; reproducing either $\kappa$ statistic would require its raters, aggregation, categories, and denominator.
+
+## Raw agreement by adjudicated role class
+
+```{r}
+#| label: summarize-turkish-propbank
+
+turkish_raw <- do.call(
+  rbind,
+  lapply(split(turkish_analysis, turkish_analysis$role_group), function(d) {
+    agreements <- sum(d$correct)
+    judgments <- nrow(d)
+    interval <- stats::binom.test(agreements, judgments)$conf.int
+    data.frame(
+      role_group = as.character(unique(d$role_group)),
+      judgments = judgments,
+      agreements = agreements,
+      raw_probability = agreements / judgments,
+      raw_lower = interval[[1]],
+      raw_upper = interval[[2]]
+    )
+  })
+)
+rownames(turkish_raw) <- NULL
+
+knitr::kable(turkish_raw, digits = 3)
+```
+
+The raw proportions retain every individual judgment but do not account for repeated items or workers. Items may differ in difficulty, and workers may differ in response behavior.
+
+## Fitting a crossed measurement model
+
+Let $u_i$ be an item intercept and $v_j$ a worker intercept. The model is
+
+$$
+Y_{ij}\sim\operatorname{Bernoulli}(\pi_{ij}),
+$$
+
+$$
+\operatorname{logit}(\pi_{ij})
+=\beta_0+\beta_1\operatorname{Adjunct}_i+u_i+v_j,
+$$
+
+$$
+u_i\sim\mathcal N(0,\sigma_{\text{item}}^2),
+\qquad
+v_j\sim\mathcal N(0,\sigma_{\text{worker}}^2).
+$$
+
+The [fixed-effect coefficient](../regression-models/fixed-and-random-effects.qmd#beginning-with-the-scientific-target) describes the systematic adjunct-versus-core contrast. The two random-effect terms introduce shared normal distributions for item- and worker-specific deviations, retaining the crossed repeated-measurement structure.
+
+For fixed observed rows, the [likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood) is their joint model probability viewed as a function of the unknown coefficients and variance parameters. The Bernoulli likelihood matches the binary agreement record, and its [conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd) is $\mathbb{E}[Y_{ij}\mid u_i,v_j,\operatorname{Adjunct}_i]=\pi_{ij}$. The logit link maps the additive predictor to that valid probability. Normal item and worker intercepts assume exchangeable, approximately symmetric log-odds deviations; [conditional independence](../random-variables-and-distributions/conditional-independence.qmd) assumes that the joint row probability factorizes after those shared intercepts and role group are supplied. The additive form excludes role-specific worker effects. These choices follow the crossed measurement structure, but they remain assumptions that a [residual](../regression-models/residuals.qmd) or predictive check may challenge. Revisit [logistic regression](../regression-models/logistic-regression.qmd) for the inverse-logit map and [random effects](../regression-models/random-effects.qmd) for partial pooling.
+
+```{r}
+#| label: fit-turkish-propbank
+#| message: false
+#| warning: false
+
+turkish_control <- lme4::glmerControl(
+  optimizer = "bobyqa",
+  optCtrl = list(maxfun = 200000)
+)
+
+turkish_baseline <- lme4::glmer(
+  correct ~ 1 + (1 | item_id) + (1 | worker_id),
+  data = turkish_analysis,
+  family = stats::binomial(),
+  control = turkish_control
+)
+
+turkish_role_model <- lme4::glmer(
+  correct ~ role_group + (1 | item_id) + (1 | worker_id),
+  data = turkish_analysis,
+  family = stats::binomial(),
+  control = turkish_control
+)
+
+turkish_comparison <- stats::anova(
+  turkish_baseline,
+  turkish_role_model,
+  test = "Chisq"
+)
+turkish_fixed <- lme4::fixef(turkish_role_model)
+
+stopifnot(
+  is.null(turkish_role_model@optinfo$conv$lme4$messages),
+  !lme4::isSingular(turkish_role_model, tol = 1e-4)
+)
+
+turkish_design <- stats::model.matrix(
+  ~ role_group,
+  data.frame(
+    role_group = factor(
+      c("core", "adjunct"),
+      levels = c("core", "adjunct")
+    )
+  )
+)
+turkish_vcov <- as.matrix(stats::vcov(turkish_role_model))
+turkish_eta <- as.vector(turkish_design %*% turkish_fixed)
+turkish_eta_se <- sqrt(diag(
+  turkish_design %*% turkish_vcov %*% t(turkish_design)
+))
+turkish_fitted <- data.frame(
+  role_group = c("core", "adjunct"),
+  fitted_probability = stats::plogis(turkish_eta),
+  fitted_lower = stats::plogis(turkish_eta - 1.96 * turkish_eta_se),
+  fitted_upper = stats::plogis(turkish_eta + 1.96 * turkish_eta_se)
+)
+turkish_summary <- merge(
+  turkish_raw,
+  turkish_fitted,
+  by = "role_group",
+  sort = FALSE
+)
+
+model_result <- data.frame(
+  quantity = c(
+    "Adjunct versus core coefficient",
+    "Adjunct versus core odds ratio",
+    "Reference core fitted probability",
+    "Reference adjunct fitted probability",
+    "Likelihood-ratio chi-square",
+    "Likelihood-ratio degrees of freedom"
+  ),
+  value = c(
+    unname(turkish_fixed[["role_groupadjunct"]]),
+    exp(unname(turkish_fixed[["role_groupadjunct"]])),
+    turkish_fitted$fitted_probability[turkish_fitted$role_group == "core"],
+    turkish_fitted$fitted_probability[turkish_fitted$role_group == "adjunct"],
+    turkish_comparison$Chisq[[2]],
+    turkish_comparison$Df[[2]]
+  )
+)
+
+knitr::kable(model_result, digits = 3)
+```
+
+The first coefficient is a conditional log-odds difference. Exponentiating gives a conditional odds ratio; applying `plogis()` to the two design rows gives the reference probabilities for zero-valued item and worker intercepts. These are not marginal probabilities averaged over the random-effect populations.
+
+The likelihood-ratio comparison asks whether adding one role-group coefficient improves the nested baseline model fitted to the same rows. Its chi-squared calibration is asymptotic and presumes that both model fits are adequate. It does not compare the validity of core and adjunct adjudications; see [likelihood-ratio tests](../model-criticism-and-prediction/likelihood-ratio-tests.qmd).
+
+## Showing raw and fitted agreement together
+
+```{r}
+#| label: plot-turkish-propbank
+#| fig-width: 6.1
+#| fig-height: 3.8
+#| fig-cap: "Individual agreement with adjudication. Raw proportions use Clopper--Pearson intervals under an independent common-probability binomial working model; fitted probabilities condition on zero item and worker intercepts."
+
+turkish_plot_data <- rbind(
+  data.frame(
+    role_group = turkish_summary$role_group,
+    estimate = turkish_summary$raw_probability,
+    lower = turkish_summary$raw_lower,
+    upper = turkish_summary$raw_upper,
+    estimate_type = "Raw"
+  ),
+  data.frame(
+    role_group = turkish_summary$role_group,
+    estimate = turkish_summary$fitted_probability,
+    lower = turkish_summary$fitted_lower,
+    upper = turkish_summary$fitted_upper,
+    estimate_type = "Crossed model"
+  )
+)
+turkish_plot_data$role_group <- factor(
+  turkish_plot_data$role_group,
+  levels = c("core", "adjunct")
+)
+
+ggplot2::ggplot(
+  turkish_plot_data,
+  ggplot2::aes(role_group, estimate, color = estimate_type)
+) +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(ymin = lower, ymax = upper),
+    width = 0.08,
+    position = ggplot2::position_dodge(width = 0.25)
+  ) +
+  ggplot2::geom_point(
+    size = 2.4,
+    position = ggplot2::position_dodge(width = 0.25)
+  ) +
+  ggplot2::scale_color_manual(
+    values = c("Raw" = "grey35", "Crossed model" = "steelblue4")
+  ) +
+  ggplot2::scale_y_continuous(
+    limits = c(0.6, 1),
+    labels = scales::label_percent(accuracy = 1) # dqr-allow: algorithm-setting
+  ) +
+  ggplot2::labs(
+    x = "Adjudicated role class",
+    y = "Agreement with adjudicated description",
+    color = NULL
+  ) +
+  ggplot2::theme_minimal(base_size = 11) +
+  ggplot2::theme(
+    panel.grid.minor = ggplot2::element_blank(),
+    legend.position = "top"
+  )
+```
+
+Individual judgments agree with adjudicated core descriptions more often than with adjunct-like descriptions in this extract. We collapse the paper's multi-category role inventory into two release-based groups to ask whether agreement changes between numbered core roles and circumstantial descriptions. The calculation uses individual selections against final adjudication, whereas the paper's agreement statistics use different aggregation and denominators. It supplies no independent measure of worker competence or final-label validity, and numbered core roles remain predicate-specific rather than universal thematic categories.
+
+The plot deliberately combines two uncertainty summaries with different targets.
+The raw interval is a Clopper--Pearson interval under an independent
+common-probability binomial working model. Its coverage calculation is exact for
+that model, but repeated items, repeated workers, and heterogeneous item
+probabilities violate the assumptions needed to transfer that claim to this
+crossed task. The crossed-model interval is a large-sample Wald interval for a
+reference fitted probability, transformed from the linear-predictor scale.
+Agreement between them is descriptive evidence about this extract; the two
+intervals do not share an uncertainty model.
+
+::: {.callout-note title="Check the measurement target"}
+1. What event makes `correct` equal to one?
+2. Why is this response not the paper's Cohen or Fleiss $\kappa$?
+3. Which repeated units enter the crossed model?
+4. Why is the fitted probability not a worker-competence estimate?
+
+**Answers.** (1) `correct = 1` when the selected and adjudicated descriptions match. (2) It is an individual binary comparison to later adjudication, while the reported $\kappa$ statistics use different raters, aggregation, categories, and denominators. (3) Argument-candidate items and workers enter as crossed intercepts. (4) The outcome is agreement under one protocol and one adjudicated target; it does not observe general competence or independent truth.
+:::
+
+## Recap
+
+1. One retained row is one worker's role-description choice for one predicate-specific argument candidate.
+2. Agreement with adjudication, adjudication validity, and published $\kappa$ statistics are different quantities.
+3. The crossed Bernoulli--logit model separates the role-group contrast from repeated item and worker variation under exchangeability and additivity assumptions.
+4. Clopper--Pearson intervals under the independent common-probability working model and crossed-model Wald intervals answer different uncertainty questions.
+5. The next page isolates the meaning of an [annotator location effect](annotator-effects.qmd#adding-one-location-term) in the UDS model.
+
+[Previous: Parameter recovery](parameter-recovery.qmd) · [Next: Annotator effects](annotator-effects.qmd)

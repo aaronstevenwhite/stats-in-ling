@@ -1,10 +1,275 @@
 ---
 title: "Generalized linear mixed models"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+The Gaussian pages represented repeated observations with group-specific deviations. A **generalized linear mixed model (GLMM)** keeps that group structure while replacing the Gaussian response with a distribution and link appropriate to the outcome. The [SuperTelicity dossier](why-generalized-linear-models.qmd), [GLM template](generalized-linear-models.qmd), and [random-intercept derivation](random-intercepts.qmd) supply the three prerequisites: what one binary row measures, how a link connects its mean to predictors, and why repeated units induce dependence.
 
-**Available Monday, November 16, 2026.**
+The response [event](../foundations/possibilities-and-events.qmd) is an *in* choice, and its [conditional probability](../foundations/conditional-probability.qmd) becomes the Bernoulli expected value. [Variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) describe response and group spread. The [random-effect page](fixed-and-random-effects.qmd) defines shared deviations; conditional [independence](../foundations/independence.qmd) applies only after they are supplied. The likelihood is the joint observed-response probability viewed as a function of coefficients and variance components.
+
+This page first assembles those pieces into one conditional model, then fits crossed intercepts and distinguishes conditional from population-averaged prediction.
+
+We use cloze judgments associated with White, Cao, Grimm, and Glass's unpublished, access-restricted manuscript *The Preservation of Telicity under Sense Locality* (n.d.); no public bibliographic record is currently available for independent verification. The prepared [CC BY-SA table](../data/supertelicity/supertelicity-cloze.csv) was derived from the credential-gated source at commit `e45277ce466719c1a03629f6ccf1e12db9904421`. On each trial, a participant selected *in* or *for*, a numeral, and a time unit for an event description. The preposition is a noisy behavioral measure related to telicity; habitual and other interpretations can also license a temporal modifier, so the choice does not directly reveal a semantic category.
+
+All participant and trial totals below are computed from the course CSV. No linked record verifies the broader recruitment counts reported in an earlier working draft, so the discussion and fitted quantities concern only the participants and trials represented in this table.
+
+## Combining a Bernoulli response with group variation
+
+Let $Y_i=1$ when trial $i$ has an *in* response. Conditional on the random effects,
+
+$$
+Y_i\mid u_{p[i]},v_{w[i]},s_{q[i]}
+\sim\operatorname{Bernoulli}(\pi_i),
+$$
+
+and
+
+$$
+\operatorname{logit}(\pi_i)
+=\log\frac{\pi_i}{1-\pi_i}
+=\mathbf x_i^{\mathsf T}\boldsymbol\beta
++u_{p[i]}+v_{w[i]}+s_{q[i]}.
+$$
+
+The vector $\mathbf x_i$ contains verb class, contentfulness, and their interaction. Participant $p$, verb $w$, and sentence $q$ receive independent random intercepts:
+
+$$
+u_p\sim\mathcal N(0,\tau_p^2),\qquad
+v_w\sim\mathcal N(0,\tau_w^2),\qquad
+s_q\sim\mathcal N(0,\tau_q^2).
+$$
+
+Conditional on these deviations, the Bernoulli likelihood is
+
+$$
+p(\mathbf y\mid\boldsymbol\pi)
+=\prod_i \pi_i^{y_i}(1-\pi_i)^{1-y_i}.
+$$
+
+The inverse logit keeps every fitted value inside the probability interval. The random intercepts represent which rows share persistent participant, verb, or sentence tendencies.
+
+The participant intercept accounts for repeated choices by a listener, the verb intercept for lexical recurrence across frames, and the sentence intercept for repeated judgments of the same item. Independence among these three distributions is an explicit simplification: the identifiers index distinct populations, and the prepared table does not support cross-population covariance parameters. We begin with crossed intercepts so that the marginalization and prediction calculations remain tractable. This choice assumes that the verb-type and contentfulness associations do not vary across participants or items, which a richer random-slope model would relax.
+
+## Fitting the crossed-intercept model
+
+```{r}
+#| label: fit-supertelicity-glmm
+library(lme4)
+library(ggplot2)
+
+supertelicity <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity$participant_id <- factor(supertelicity$participant_id)
+supertelicity$verb <- factor(supertelicity$verb)
+supertelicity$sentence_id <- factor(supertelicity$sentence_id)
+supertelicity$verb_type <- factor(
+  supertelicity$verb_type,
+  levels = c("manner", "result")
+)
+supertelicity$contentfulness <- factor(
+  supertelicity$contentfulness,
+  levels = c("contentful", "bleached", "templatic")
+)
+
+contrasts(supertelicity$verb_type) <- contr.sum(2)
+contrasts(supertelicity$contentfulness) <- contr.sum(3)
+
+fit <- glmer(
+  prep_in ~ verb_type * contentfulness +
+    (1 | participant_id) +
+    (1 | verb) +
+    (1 | sentence_id),
+  data = supertelicity,
+  family = binomial(link = "logit"),
+  nAGQ = 1L,
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+data_summary <- c(
+  trials = nrow(supertelicity),
+  participant_identifiers = nlevels(supertelicity$participant_id),
+  verbs = nlevels(supertelicity$verb),
+  sentences = nlevels(supertelicity$sentence_id),
+  in_responses = sum(supertelicity$prep_in),
+  for_responses = sum(1L - supertelicity$prep_in)
+)
+data_summary
+```
+
+One retained observation and the repetition counts make the unit structure visible:
+
+```{r}
+#| label: supertelicity-glmm-observation-and-repetition
+#| echo: true
+supertelicity[1L, c("participant_id", "verb", "sentence_id", "verb_type",
+                    "contentfulness", "preposition", "prep_in")]
+c(participant_repetitions = max(table(supertelicity$participant_id)),
+  verb_repetitions = max(table(supertelicity$verb)),
+  sentence_repetitions = max(table(supertelicity$sentence_id)))
+```
+
+Sum coding assigns the two verb levels opposite signed values whose column sums are zero; the two contentfulness contrast columns compare the three levels around the coding center. Consequently, the printed `verb_type1` coefficient is one half of the manner-minus-result log odds contrast at the contentfulness coding center. The explicit `-2` transformation below changes its sign and doubles it to produce result minus manner.
+
+`nAGQ = 1` requests the Laplace approximation: each random-effect integral is approximated locally around its conditional mode. The [Laplace page](laplace-approximation.qmd) derives that approximation. `bobyqa` and `maxfun` govern numerical search; they do not alter the Bernoulli likelihood or compensate for missing random slopes.
+
+The course formula is deliberately smaller than the source analysis, which uses a richer Bayesian random structure involving additional participant, lexical, duration, list, and argument-form terms. This GLMM illustrates the architecture; it does not replace the manuscript's model.
+
+## Raw sentence proportions and fitted probabilities
+
+One raw point below is the proportion of *in* responses for one sentence. The fitted points set all three random intercepts to zero, so they describe a participant, verb, and sentence at the center of the fitted link-scale distributions.
+
+```{r}
+#| label: plot-supertelicity-glmm
+sentence_proportions <- aggregate(
+  prep_in ~ verb_type + contentfulness + sentence_id,
+  data = supertelicity,
+  FUN = mean
+)
+
+prediction_grid <- expand.grid(
+  verb_type = factor(
+    c("manner", "result"),
+    levels = levels(supertelicity$verb_type)
+  ),
+  contentfulness = factor(
+    c("contentful", "bleached", "templatic"),
+    levels = levels(supertelicity$contentfulness)
+  )
+)
+prediction_grid$conditional_probability <- predict(
+  fit,
+  newdata = prediction_grid,
+  type = "response",
+  re.form = NA
+)
+
+ggplot(
+  sentence_proportions,
+  aes(x = verb_type, y = prep_in)
+) +
+  geom_jitter(
+    width = 0.08,
+    height = 0,
+    shape = 1,
+    size = 1.1,
+    color = "grey55"
+  ) +
+  geom_point(
+    data = prediction_grid,
+    aes(y = conditional_probability),
+    color = "#1F5A85",
+    size = 2.2
+  ) +
+  facet_wrap(~contentfulness) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(x = "Verb class", y = "Probability of an in-response") +
+  theme_classic()
+```
+
+With sum coding, the result-minus-manner contrast averaged over the contentfulness coding is
+
+```{r}
+#| label: supertelicity-verb-contrast
+result_minus_manner_log_odds <- -2 * fixef(fit)[["verb_type1"]]
+c(
+  result_minus_manner_log_odds = result_minus_manner_log_odds,
+  result_minus_manner_odds_ratio = exp(result_minus_manner_log_odds)
+)
+```
+
+The interaction terms modify this comparison at particular contentfulness levels. The coefficient remains a conditional log-odds contrast: it compares trials with the same random-effect values.
+
+## Conditional and population-averaged prediction
+
+A prediction at zero random effects is not generally the probability for a randomly drawn participant, verb, and sentence. Let $B$ be the sum of the three independent intercepts. Its variance is
+
+$$
+\tau_B^2=\tau_p^2+\tau_w^2+\tau_q^2.
+$$
+
+For fixed-effect location $\eta$, the random-effect-averaged probability is
+
+$$
+\mathbb{P}(Y=1\mid\mathbf x)
+=\int_{-\infty}^{\infty}
+\operatorname{logit}^{-1}(\eta+b)
+\phi(b;0,\tau_B^2)\,db.
+$$
+
+Because the inverse logit is nonlinear,
+
+$$
+\operatorname{E}_{B}
+\left[\operatorname{logit}^{-1}(\eta+B)\right]
+\ne
+\operatorname{logit}^{-1}(\eta)
+$$
+
+in general.
+
+```{r}
+#| label: plot-supertelicity-marginal
+variance_components <- as.data.frame(VarCorr(fit))
+total_random_variance <- sum(
+  variance_components$vcov[is.na(variance_components$var2)]
+)
+population_location <- predict(
+  fit,
+  newdata = prediction_grid,
+  type = "link",
+  re.form = NA
+)
+
+prediction_grid$marginal_probability <- vapply(
+  population_location,
+  function(eta) {
+    integrate(
+      function(b) {
+        plogis(eta + b) *
+          dnorm(b, sd = sqrt(total_random_variance))
+      },
+      lower = -Inf,
+      upper = Inf,
+      rel.tol = 1e-10
+    )$value
+  },
+  numeric(1)
+)
+
+prediction_grid[1L, c("verb_type", "contentfulness",
+                       "conditional_probability", "marginal_probability")]
+
+ggplot(
+  prediction_grid,
+  aes(
+    x = conditional_probability,
+    y = marginal_probability,
+    shape = verb_type
+  )
+) +
+  geom_abline(slope = 1, intercept = 0, color = "grey70") +
+  geom_point(color = "#1F5A85", size = 2.2) +
+  facet_wrap(~contentfulness) +
+  coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(
+    x = "Probability at zero random effects",
+    y = "Probability averaged over random effects",
+    shape = "Verb class"
+  ) +
+  theme_classic()
+```
+
+Predictions for returning participants or observed lexical material may condition on their fitted deviations. Predictions for new participants or verbs cannot reuse deviations from observed groups. Every response-scale summary should state which target it uses.
+
+The displayed row computes both targets for one fixed cell: `conditional_probability` applies the inverse logit at zero deviations, whereas `marginal_probability` numerically averages the same inverse link over the fitted random-intercept distribution. Their difference comes from nonlinearity, not from a different coefficient vector.
+
+The release includes missing numerals on many trials, so we use the complete binary preposition response rather than conditioning on a selected duration. Together with the restricted random structure and the release/manuscript participant mismatch, this choice keeps the response target aligned with what the connected data can support.
+
+## Recap and check
+
+1. Does `re.form = NA` average over random effects? No. It sets deviations to zero; averaging requires the integration shown above.
+2. Why are three intercepts present? They correspond to repeated participants, verbs, and sentences in the incidence table. Their inclusion is a design claim, not a generic preference for more terms.
+
+The [next page](ordinal-mixed-models.qmd) applies the same logic to an ordered response.

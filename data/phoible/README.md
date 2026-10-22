@@ -11,3 +11,11 @@ Rscript data/phoible/prepare_data.R
 The script downloads the pinned Zenodo archive to a temporary directory, verifies both recorded checksums, extracts the CLDF tables, and writes `phoible-pilot.rds`. The generated R object is ignored by Git because it can be reconstructed from the archived release.
 
 The PHOIBLE project describes PHOIBLE 2.0 as licensed under Creative Commons Attribution ShareAlike 3.0 Unported. Any redistributed derivative must preserve attribution and the share alike condition. See `research/homework-validation/ps5/data-card.md` for source and license links.
+
+The consolidated later-course validator checks the embedded source commit and
+archive checksum together with the prepared membership, inventory, and segment
+schemas:
+
+```bash
+Rscript scripts/data-grounding/validate_later_course.R
+```

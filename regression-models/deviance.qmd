@@ -1,10 +1,104 @@
 ---
 title: "Deviance"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+**Deviance** measures how far a fitted likelihood is from the saturated model, which assigns one fitted mean to each observation. If $\ell(\widehat\theta)$ is the fitted log likelihood and $\ell_{\mathrm{sat}}$ is the saturated log likelihood, the gap has the form stated below.
 
-**Available Monday, November 2, 2026.**
+The likelihood definition comes from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd): observed outcomes are fixed while parameter values vary. An [event](../foundations/possibilities-and-events.qmd) determines which response occurred, [independence](../foundations/independence.qmd) licenses the rowwise product, and a [residual](residuals.qmd) records observed-minus-fitted response on a chosen scale. Deviance aggregates likelihood discrepancies rather than raw residual squares.
+
+We first define the saturated comparison, then connect deviance differences to nested models, and finally separate training fit from held-out predictive performance.
+
+$$
+D=2\{\ell_{\mathrm{sat}}-\ell(\widehat\theta)\}.
+$$
+
+This definition follows the likelihood-ratio construction from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd). Consider two Bernoulli observations, $y_1=1$ and $y_2=0$. A saturated model sets $\widehat\pi_1=1$ and $\widehat\pi_2=0$, so
+
+$$
+\ell_{\mathrm{sat}}
+=
+\log(1)+\log(1)=0.
+$$
+
+For any nonsaturated fitted probabilities $0<\widehat\pi_i<1$,
+
+$$
+\ell(\widehat{\boldsymbol\pi})
+=
+\sum_i
+\left[
+y_i\log\widehat\pi_i
++(1-y_i)\log(1-\widehat\pi_i)
+\right]
+\leq 0.
+$$
+
+For Bernoulli rows, the saturated contribution is zero, so residual deviance is $-2\ell(\widehat\theta)$. We compare four population models for the same SuperTelicity rows.
+
+```{r}
+#| label: fit-deviance-sequence
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+st$contentfulness <- factor(st$contentfulness,
+                            levels = c("contentful", "bleached", "templatic"))
+models <- list(
+  intercept = glm(prep_in ~ 1, binomial(), st),
+  verb_type = glm(prep_in ~ verb_type, binomial(), st),
+  additive = glm(prep_in ~ verb_type + contentfulness, binomial(), st),
+  interaction = glm(prep_in ~ verb_type * contentfulness, binomial(), st)
+)
+comparison <- data.frame(
+  model = factor(names(models), levels = names(models)),
+  parameters = vapply(models, function(x) length(coef(x)), integer(1)),
+  residual_deviance = vapply(models, deviance, numeric(1))
+)
+comparison$deviance_reduction <- c(NA, -diff(comparison$residual_deviance))
+comparison
+```
+
+```{r}
+#| label: plot-deviance-sequence
+#| echo: true
+library(ggplot2)
+ggplot(comparison, aes(model, residual_deviance, group = 1)) +
+  geom_line(color = "#1F5A85") + geom_point(size = 2) +
+  labs(x = NULL, y = "Residual deviance") + theme_classic()
+```
+
+For nested models fit to identical rows with the same family, the deviance difference is
+
+$$
+\Delta D=2\{\ell(\widehat\theta_{\mathrm{larger}})-
+\ell(\widehat\theta_{\mathrm{smaller}})\}.
+$$
+
+It is a likelihood-ratio statistic under the usual regularity conditions. The sequence shows how much each added structure improves row-level fit. It does not correct repeated participant and sentence dependence, and comparisons across different response families or different row sets generally do not have this interpretation.
+
+If the smaller model has $p_0$ free coefficients and the larger nested model has $p_1$, the reference degrees of freedom are $p_1-p_0$. Under interior parameters, identifiable models, independent rows, and a sufficiently regular large-sample approximation,
+
+$$
+\Delta D\overset{\cdot}{\sim}\chi^2_{p_1-p_0}
+$$
+
+when the smaller restriction generates the data. This is the same asymptotic argument developed for [likelihood-ratio tests](../model-criticism-and-prediction/likelihood-ratio-tests.qmd). A smaller deviance establishes better in-sample likelihood for the nested comparison. It does not establish that the larger model is scientifically adequate.
+
+## Recap and check your understanding
+
+1. Why is the saturated Bernoulli log likelihood zero?
+2. When does a deviance difference equal a likelihood-ratio statistic?
+3. Does a large deviance reduction repair repeated-participant dependence?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Each fitted probability equals its observed zero or one, so every observed outcome receives probability one and log probability zero. <!-- dqr-allow: conceptual-answer -->
+2. The models must be nested, use the same observations and likelihood family, and be compared at their maximum-likelihood estimates. <!-- dqr-allow: conceptual-answer -->
+3. No. The comparison still uses the declared row-level likelihood and inherits its dependence assumptions. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [next page](odds-and-log-odds.qmd) gives the link-scale arithmetic needed to interpret logistic coefficients.

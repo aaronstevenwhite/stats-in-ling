@@ -1,10 +1,643 @@
 ---
 title: "Power by simulation"
-toc: false
-course-release-id: experimental-design
-course-release-placeholder: true
+execute:
+  cache: false
 ---
 
-We relate units of assignment to randomization, within-participant and between-participant designs, counterbalancing, exclusions, and statistical power.
+The preceding pages established the ManyBabies 1 design: register varies within infant, orders vary between infants, paired stimuli recur across infants, and infants are nested within laboratories. A design simulation should reproduce those units. Drawing independent looking times would answer a different question, no matter how many draws were used.
 
-**Available Monday, November 9, 2026.**
+The [random-intercept derivation](../regression-models/random-intercepts.qmd#deriving-the-induced-covariance) showed why shared intercepts induce dependence: two trials from the same infant share the same infant term, and two infants from the same laboratory share the same laboratory term. The [fixed-and-random-effects page](../regression-models/fixed-and-random-effects.qmd#beginning-with-the-scientific-target) explains the distinct population-average and grouping roles used below.
+
+We take the [released ManyBabies trial table](units-of-assignment.qmd) as the design
+to be reproduced. We calibrate a hierarchical data-generating process from that
+table, generate new trials under its recorded unit structure, and then connect the
+estimated rejection rate to its Monte Carlo uncertainty and target population.
+
+```{r}
+manybabies <- readRDS("data/manybabies/manybabies1-trials.rds")
+
+stopifnot(
+  nrow(manybabies) == 37264L,
+  length(unique(manybabies$infant_id)) == 2329L,
+  length(unique(manybabies$lab_id)) == 67L,
+  sum(!manybabies$trial_missing) == 26895L
+)
+
+observed <- manybabies[
+  !manybabies$trial_missing & !is.na(manybabies$register),
+]
+
+mode_value <- function(x) {
+  counts <- sort(table(x, useNA = "no"), decreasing = TRUE)
+  names(counts)[[1L]]
+}
+
+recorded_design <- manybabies[
+  manybabies$trial_metadata_observed &
+    !is.na(manybabies$counterbalance_order),
+]
+
+template_register <- aggregate(
+  register ~ counterbalance_order + trial_number,
+  data = recorded_design,
+  FUN = mode_value
+)
+template_stimulus <- aggregate(
+  stimulus_id ~ counterbalance_order + trial_number,
+  data = recorded_design,
+  FUN = function(x) as.integer(mode_value(x))
+)
+order_template <- merge(
+  template_register,
+  template_stimulus,
+  by = c("counterbalance_order", "trial_number")
+)
+order_template <- order_template[
+  order(order_template$counterbalance_order, order_template$trial_number),
+]
+names(order_template)[1L] <- "assigned_order"
+
+for (order in 1:4) {
+  current <- order_template[order_template$assigned_order == order, ]
+  stopifnot(
+    nrow(current) == 16L,
+    all(table(current$register) == 8L),
+    all(table(current$stimulus_id) == 2L),
+    all(table(current$stimulus_id, current$register) == 1L)
+  )
+}
+```
+
+## Calibrating a data-generating process
+
+Power is conditional on a data-generating process. We first fit a compact model to the `r format(nrow(observed), big.mark = ",")` included looking times:
+
+$$
+\log Y_{lsip}
+=\beta_0+\beta_{\mathrm{IDS}}I_{\mathrm{IDS}}
++\beta_t(t-\overline t)+b_l+b_{i(l)}+b_p+\epsilon,
+$$
+
+where $l$ indexes laboratory, $i$ infant, $p$ paired stimulus, and $t$ trial
+position. The random intercepts and residual are normally distributed with their
+own variances. We report the square root of each variance, its
+[standard deviation](../random-variables-and-distributions/standard-deviation.qmd),
+because those are the scales used to generate new values below.
+
+Each term has one job. $\beta_0$ is the expected log looking time for ADS at the centered trial position. $\beta_{\mathrm{IDS}}$ is the modeled IDS-minus-ADS log contrast. $\beta_t$ represents a linear change over trial position. The laboratory, infant, and stimulus intercepts induce dependence among rows that share those units, while $\epsilon$ is trial-level residual variation.
+
+The generator assumes **exchangeable normal intercepts** within each grouping
+factor. Exchangeability means that, before seeing outcomes, permuting the laboratory,
+infant, or stimulus labels would not change the joint model; members of one grouping
+factor are drawn from the same normal population rather than assigned label-specific
+positions in advance. This is the same symmetry introduced for an
+[exchangeable population model](../statistical-inference/posterior-distributions.qmd).
+The generator also assumes normally distributed residuals, a linear position
+effect, constant variance, and no random register slopes. It treats the observed
+log-transformed included outcomes as the calibration target. The
+[variance--covariance decomposition](../random-variables-and-distributions/variance-and-covariance.qmd#covariance-and-a-variance-decomposition)
+explains why the shared intercepts contribute covariance to rows from the same
+infant or laboratory, while the
+[residual page](../regression-models/residuals.qmd) distinguishes the simulated error
+term from a fitted residual. The design itself does not supply these distributional
+assumptions.
+
+```{r}
+model_data <- observed
+model_data$ids <- as.integer(model_data$register == "IDS")
+model_data$trial_centered <-
+  model_data$trial_number - mean(model_data$trial_number)
+model_data$log_looking_time <- log(model_data$looking_time_seconds)
+
+empirical_model <- lme4::lmer(
+  log_looking_time ~ ids + trial_centered +
+    (1 | lab_id) + (1 | infant_id) + (1 | stimulus_id),
+  data = model_data,
+  REML = TRUE,
+  control = lme4::lmerControl(optimizer = "bobyqa")
+)
+
+stopifnot(!lme4::isSingular(empirical_model))
+
+fixed <- summary(empirical_model)$coefficients
+fixed_effects <- data.frame(
+  term = rownames(fixed),
+  estimate = fixed[, "Estimate"],
+  standard_error = fixed[, "Std. Error"]
+)
+row.names(fixed_effects) <- NULL
+
+variance_components <- as.data.frame(lme4::VarCorr(empirical_model))
+variance_components <- variance_components[, c("grp", "var1", "sdcor")]
+names(variance_components) <- c("group", "term", "standard_deviation")
+
+knitr::kable(fixed_effects, digits = 5)
+knitr::kable(variance_components, digits = 5)
+```
+
+The estimated IDS coefficient is `r sprintf("%.6f", fixed_effects$estimate[fixed_effects$term == "ids"])` on the log-looking-time scale. The published confirmatory analyses included a cross-laboratory meta-analysis and richer trial-level predictors; the planned random-effects structure was pruned when it did not converge. We choose the compact model here to estimate the register, position, laboratory, infant, stimulus-pair, and residual quantities that the simulation generator requires. Its simulated detection rates therefore describe that declared generator and planned analysis, rather than reproducing the paper's confirmatory model.
+
+Using the fitted IDS coefficient asks a conditional question: what detection rate would this planned analysis have if the future effect equaled the estimate from this release and the remaining fitted assumptions held? It does not identify a smallest effect of scientific interest, and reusing an estimate from the same release does not turn the simulation into new evidence.
+
+## Raw summaries and the fitted model
+
+Before simulating, we compare raw register-by-position means with the model's fitted marginal lines. The points are computed from observed trials. The blue lines set all random intercepts to zero and vary only register and trial position.
+
+```{r}
+beta <- lme4::fixef(empirical_model)
+beta_intercept <- unname(beta[["(Intercept)"]])
+beta_ids <- unname(beta[["ids"]])
+beta_trial <- unname(beta[["trial_centered"]])
+
+sd_lookup <- setNames(
+  variance_components$standard_deviation,
+  variance_components$group
+)
+sd_lab <- unname(sd_lookup[["lab_id"]])
+sd_infant <- unname(sd_lookup[["infant_id"]])
+sd_stimulus <- unname(sd_lookup[["stimulus_id"]])
+sd_residual <- unname(sd_lookup[["Residual"]])
+
+stopifnot(
+  abs(beta_ids - 0.106804) < 0.00001,
+  all(c(sd_lab, sd_infant, sd_stimulus, sd_residual) > 0)
+)
+
+shift_check_data <- model_data
+shift_check_data$log_looking_time <-
+  shift_check_data$log_looking_time + beta_ids * shift_check_data$ids
+shift_check_fit <- suppressMessages(lme4::lmer(
+  log_looking_time ~ ids + trial_centered +
+    (1 | lab_id) + (1 | infant_id) + (1 | stimulus_id),
+  data = shift_check_data,
+  REML = TRUE,
+  control = lme4::lmerControl(optimizer = "bobyqa")
+))
+
+shift_check <- data.frame(
+  quantity = c("IDS coefficient shift", "IDS standard-error change"),
+  observed = c(
+    lme4::fixef(shift_check_fit)[["ids"]] -
+      lme4::fixef(empirical_model)[["ids"]],
+    summary(shift_check_fit)$coefficients["ids", "Std. Error"] -
+      summary(empirical_model)$coefficients["ids", "Std. Error"]
+  ),
+  required_by_identity = c(beta_ids, 0)
+)
+stopifnot(
+  abs(shift_check$observed[[1L]] - beta_ids) < 1e-6,
+  abs(shift_check$observed[[2L]]) < 1e-6
+)
+
+raw_register_trial <- aggregate(
+  log_looking_time ~ register + trial_number,
+  data = model_data,
+  FUN = function(x) c(
+    mean = mean(x),
+    se = stats::sd(x) / sqrt(length(x)),
+    trials = length(x)
+  )
+)
+
+raw_register_trial <- data.frame(
+  register = raw_register_trial$register,
+  trial_number = raw_register_trial$trial_number,
+  mean_log_looking_time = raw_register_trial$log_looking_time[, "mean"],
+  standard_error = raw_register_trial$log_looking_time[, "se"],
+  trials = as.integer(raw_register_trial$log_looking_time[, "trials"])
+)
+
+raw_register_trial$fitted_log_looking_time <-
+  beta_intercept +
+  beta_ids * as.integer(raw_register_trial$register == "IDS") +
+  beta_trial * (
+    raw_register_trial$trial_number - mean(model_data$trial_number)
+  )
+```
+
+```{r}
+#| fig-width: 6
+#| fig-height: 4
+#| fig-alt: "Observed mean log looking time by register and trial position, with fitted marginal lines from the calibration model."
+
+ggplot2::ggplot(
+  raw_register_trial,
+  ggplot2::aes(
+    x = trial_number,
+    y = mean_log_looking_time,
+    shape = register
+  )
+) +
+  ggplot2::geom_point(color = "grey20", size = 1.6) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      y = fitted_log_looking_time,
+      linetype = register
+    ),
+    color = "#2C6E9B",
+    linewidth = 0.75
+  ) +
+  ggplot2::scale_x_continuous(
+    breaks = c(
+      min(raw_register_trial$trial_number),
+      4L * seq_len(max(raw_register_trial$trial_number) / 4L)
+    )
+  ) +
+  ggplot2::labs(
+    x = "Trial number",
+    y = "Mean log looking time",
+    shape = "Register",
+    linetype = "Register"
+  ) +
+  ggplot2::theme_classic(base_size = 11) +
+  ggplot2::theme(legend.position = "top")
+```
+
+The raw summaries show both the register difference and the decline over trial position. The fitted lines provide a direct visual check on the two fixed effects used by the generator. The additional refit checks the coefficient-shift identity used below: adding the IDS design column times $\beta_{\mathrm{IDS}}$ shifts that fitted coefficient by $\beta_{\mathrm{IDS}}$ while leaving its standard error unchanged to numerical tolerance.
+
+## Power and Monte Carlo error
+
+Let $G$ be the complete generating process and let $A(Y)$ be the decision returned
+by the planned analysis for simulated data $Y$. The set of complete simulated
+studies for which $A(Y)=1$ is an
+[event](../foundations/possibilities-and-events.qmd). If that event occurs when the
+two-sided Wald interval for the IDS coefficient excludes zero, then
+
+$$
+\operatorname{Power}(G)=\mathbb{P}_G\{A(Y)=1\}.
+$$
+
+With $S$ simulated studies and detection proportion $\widehat p$, the estimated Monte Carlo standard error is
+
+$$
+\operatorname{MCSE}
+=\sqrt{\frac{\widehat p(1-\widehat p)}{S}}.
+$$
+
+Increasing $S$ reduces numerical uncertainty about the simulation result. It does not add infants or laboratories to the planned experiment.
+
+This is the [standard error](../statistical-inference/standard-errors.qmd) of the Monte Carlo estimator $\widehat p$, not the standard error of the IDS coefficient inside any simulated study. The [Monte Carlo page](../statistical-inference/monte-carlo-integration.qmd#two-uncertainties) develops the same distinction between uncertainty in a numerical approximation and uncertainty under the fitted statistical model.
+
+With only $S=200$ studies per scenario, the worst-case MCSE occurs near $\widehat p=.5$ and is about $\sqrt{.25/200}=.035$. Thus a nominal two-MCSE error bar can be roughly seven percentage points wide. We use 200 studies to compare scenarios whose detection rates differ substantially; differences of only a few percentage points remain unresolved. A final design decision near a power threshold would require more repetitions.
+
+## Simulating the ManyBabies structure
+
+The generator assigns each simulated infant one empirical order template, samples complete IDS-ADS stimulus pairs, draws laboratory, infant, stimulus-pair, and residual terms from the fitted standard deviations, and fits the same model. The design grid varies one dimension at a time around a baseline.
+
+Begin with ordinary linear regression containing one predictor $x$. If we add
+$cx_i$ to every response, then increasing the fitted slope by $c$ restores every
+fitted residual:
+
+$$
+[y_i+cx_i]-[\widehat\beta_0+(\widehat\beta_1+c)x_i]
+=
+y_i-[\widehat\beta_0+\widehat\beta_1x_i].
+$$
+
+Thus the slope shifts by $c$, while the residuals and the slope standard error stay
+the same. The matrix form applies this argument to one selected coefficient. Suppose
+the simulated null response is $\mathbf y_0$ and the model matrix contains an IDS
+column. Adding $\mathbf X\mathbf c$, where only the IDS entry of $\mathbf c$ is
+nonzero, gives
+
+$$
+\widehat{\boldsymbol\beta}(\mathbf y_0+\mathbf X\mathbf c)
+=\widehat{\boldsymbol\beta}(\mathbf y_0)+\mathbf c.
+$$
+
+For the Gaussian linear mixed model used here, the same shift leaves the fitted
+residuals, estimated variance components, and IDS standard error unchanged. The
+`shift_check_fit` calculation above verifies those equalities by refitting the
+analyzed design after the shift. We can therefore reuse the same simulated random
+effects and residuals across effect scenarios, which makes differences between
+scenarios easier to attribute to the declared IDS effect. This shortcut requires a
+Gaussian linear model that contains the shifted column; logistic, Poisson, and other
+nonlinear mixed models do not inherit it automatically.
+
+```{r}
+simulation_seed <- 20261018L
+simulations_per_scenario <- 200L
+
+designs <- data.frame(
+  scenario = c(
+    "fewer labs", "baseline", "more labs",
+    "fewer infants per lab", "more infants per lab",
+    "fewer usable trials", "more usable trials"
+  ),
+  varied_dimension = c(
+    "labs", "baseline", "labs", "infants per lab",
+    "infants per lab", "usable trials", "usable trials"
+  ),
+  labs = c(4L, 8L, 16L, 8L, 8L, 8L, 8L), # dqr-allow: algorithm-setting
+  infants_per_lab = c(24L, 24L, 24L, 12L, 48L, 24L, 24L), # dqr-allow: algorithm-setting
+  usable_trials_per_infant = c(8L, 8L, 8L, 8L, 8L, 4L, 16L), # dqr-allow: algorithm-setting
+  stringsAsFactors = FALSE
+)
+
+knitr::kable(designs)
+```
+
+The baseline uses `r designs$labs[designs$scenario == "baseline"]` laboratories, `r designs$infants_per_lab[designs$scenario == "baseline"]` infants per laboratory, and `r designs$usable_trials_per_infant[designs$scenario == "baseline"]` usable trials per infant. The effect and variance values come from the empirical fit; the grid values are planning choices.
+
+The grid uses 4, 8, and 16 laboratories to represent halving and doubling an eight-laboratory baseline; 12, 24, and 48 infants per laboratory do the same around 24; and 4, 8, and 16 usable trials span one quarter, one half, and all of the planned trial positions. These values make one-factor-at-a-time contrasts easy to read. They are not optimized recommendations and should be replaced by feasible values for an actual study.
+
+```{r}
+#| output: false
+
+simulate_one <- function(n_labs, infants_per_lab, usable_trials_per_infant) {
+  stopifnot(
+    usable_trials_per_infant %in% c(4L, 8L, 16L) # dqr-allow: algorithm-setting
+  )
+
+  infant_grid <- expand.grid(
+    lab_index = seq_len(n_labs),
+    infant_within_lab = seq_len(infants_per_lab)
+  )
+  infant_grid$lab_id <- paste0("L", infant_grid$lab_index)
+  infant_grid$infant_id <- paste0(
+    infant_grid$lab_id,
+    ":I",
+    infant_grid$infant_within_lab
+  )
+  infant_grid$assigned_order <- sample(
+    1:4,
+    nrow(infant_grid),
+    replace = TRUE
+  )
+
+  pair_count <- usable_trials_per_infant / 2L
+  rows <- lapply(seq_len(nrow(infant_grid)), function(i) {
+    current_order <- infant_grid$assigned_order[[i]]
+    pairs <- if (pair_count == 8L) {
+      1:8
+    } else {
+      sample(1:8, pair_count, replace = FALSE)
+    }
+    template <- order_template[
+      order_template$assigned_order == current_order &
+        order_template$stimulus_id %in% pairs,
+    ]
+    template$lab_id <- infant_grid$lab_id[[i]]
+    template$infant_id <- infant_grid$infant_id[[i]]
+    template
+  })
+
+  simulated <- do.call(rbind, rows)
+  row.names(simulated) <- NULL
+
+  zero_center <- beta_ids - beta_ids
+  lab_effect <- stats::rnorm(n_labs, zero_center, sd_lab)
+  names(lab_effect) <- paste0("L", seq_len(n_labs))
+  infant_effect <- stats::rnorm(nrow(infant_grid), zero_center, sd_infant)
+  names(infant_effect) <- infant_grid$infant_id
+  stimulus_effect <- stats::rnorm(
+    length(unique(order_template$stimulus_id)),
+    zero_center,
+    sd_stimulus
+  )
+  names(stimulus_effect) <- as.character(1:8)
+
+  simulated$ids <- as.integer(simulated$register == "IDS")
+  simulated$trial_centered <-
+    simulated$trial_number - mean(model_data$trial_number)
+  simulated$log_looking_time <-
+    beta_intercept +
+    beta_trial * simulated$trial_centered +
+    lab_effect[simulated$lab_id] +
+    infant_effect[simulated$infant_id] +
+    stimulus_effect[as.character(simulated$stimulus_id)] +
+    stats::rnorm(nrow(simulated), zero_center, sd_residual)
+
+  fit <- tryCatch(
+    suppressMessages(suppressWarnings(lme4::lmer(
+      log_looking_time ~ ids + trial_centered +
+        (1 | lab_id) + (1 | infant_id) + (1 | stimulus_id),
+      data = simulated,
+      REML = TRUE,
+      control = lme4::lmerControl(optimizer = "bobyqa")
+    ))),
+    error = function(e) NULL
+  )
+
+  if (is.null(fit)) {
+    return(data.frame(
+      estimate_null = NA_real_,
+      standard_error = NA_real_,
+      singular = NA,
+      converged = FALSE
+    ))
+  }
+
+  coefficient <- summary(fit)$coefficients["ids", ]
+  data.frame(
+    estimate_null = unname(coefficient[["Estimate"]]),
+    standard_error = unname(coefficient[["Std. Error"]]),
+    singular = lme4::isSingular(fit, tol = 1e-4),
+    converged = TRUE
+  )
+}
+
+set.seed(simulation_seed)
+simulation_rows <- vector(
+  "list",
+  nrow(designs) * simulations_per_scenario
+)
+row_index <- 1L
+
+for (i in seq_len(nrow(designs))) {
+  for (simulation in seq_len(simulations_per_scenario)) {
+    current <- simulate_one(
+      designs$labs[[i]],
+      designs$infants_per_lab[[i]],
+      designs$usable_trials_per_infant[[i]]
+    )
+    current$scenario <- designs$scenario[[i]]
+    current$simulation <- simulation
+    simulation_rows[[row_index]] <- current
+    row_index <- row_index + 1L
+  }
+}
+
+simulation_results <- do.call(rbind, simulation_rows)
+row.names(simulation_results) <- NULL
+# The Gaussian coefficient-shift identity was derived and checked above.
+simulation_results$estimate_empirical <-
+  simulation_results$estimate_null + beta_ids
+simulation_results$reject_null_under_null <- with(
+  simulation_results,
+  abs(estimate_null / standard_error) > stats::qnorm(0.975)
+)
+simulation_results$detect_empirical_effect <- with(
+  simulation_results,
+  abs(estimate_empirical / standard_error) > stats::qnorm(0.975)
+)
+simulation_results$covers_empirical_effect <- with(
+  simulation_results,
+  estimate_empirical - stats::qnorm(0.975) * standard_error <= beta_ids &
+    estimate_empirical + stats::qnorm(0.975) * standard_error >= beta_ids
+)
+
+summaries <- lapply(
+  split(simulation_results, simulation_results$scenario),
+  function(x) {
+    ok <- x$converged & is.finite(x$standard_error)
+    n_ok <- sum(ok)
+    power <- mean(x$detect_empirical_effect[ok])
+    type_i <- mean(x$reject_null_under_null[ok])
+    coverage <- mean(x$covers_empirical_effect[ok])
+    data.frame(
+      completed_simulations = n_ok,
+      failed_simulations = sum(!ok),
+      singular_proportion = mean(x$singular[ok]),
+      power_at_empirical_effect = power,
+      power_mcse = sqrt(power * (1 - power) / n_ok),
+      type_i_error_at_zero = type_i,
+      type_i_mcse = sqrt(type_i * (1 - type_i) / n_ok),
+      coverage_at_empirical_effect = coverage,
+      coverage_mcse = sqrt(coverage * (1 - coverage) / n_ok)
+    )
+  }
+)
+
+simulation_summary <- do.call(rbind, summaries)
+simulation_summary$scenario <- rownames(simulation_summary)
+row.names(simulation_summary) <- NULL
+simulation_summary <- merge(
+  designs,
+  simulation_summary,
+  by = "scenario",
+  sort = FALSE
+)
+simulation_summary <- simulation_summary[
+  match(designs$scenario, simulation_summary$scenario),
+]
+
+stopifnot(
+  all(
+    simulation_summary$completed_simulations >=
+      0.98 * simulations_per_scenario
+  ),
+  all(simulation_summary$type_i_error_at_zero < 0.15)
+)
+```
+
+```{r}
+simulation_display <- simulation_summary[, c(
+  "scenario",
+  "labs",
+  "infants_per_lab",
+  "usable_trials_per_infant",
+  "power_at_empirical_effect",
+  "power_mcse",
+  "type_i_error_at_zero",
+  "coverage_at_empirical_effect",
+  "singular_proportion"
+)]
+
+knitr::kable(simulation_display, digits = 3)
+```
+
+The table reports `r simulations_per_scenario` simulations per scenario at seed `r simulation_seed`. The same simulated noise is evaluated with a zero IDS coefficient to estimate Type I error and with the fitted coefficient to estimate detection and coverage. Singular fits remain in the summary as a design diagnostic rather than being silently discarded.
+
+The Wald decision uses $|\widehat\beta_{\mathrm{IDS}}/\widehat{\operatorname{SE}}|>z_{.975}$, equivalently asking whether the approximate two-sided interval excludes zero. The zero-effect calculation checks whether this rule rejects too often under the generator's null case. A singular fit indicates that at least one fitted random-effect dimension is effectively on a boundary; its frequency is part of the procedure's behavior, not a row to hide.
+
+The [**power curve**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=187) shows how detection changes when one design dimension changes. The error bars are twice the estimated Monte Carlo standard error.
+
+```{r}
+plot_power <- simulation_summary[
+  simulation_summary$varied_dimension != "baseline",
+]
+baseline_power <- simulation_summary[
+  simulation_summary$varied_dimension == "baseline",
+]
+baseline_copies <- do.call(rbind, lapply(
+  c("labs", "infants per lab", "usable trials"),
+  function(dimension) {
+    current <- baseline_power
+    current$varied_dimension <- dimension
+    current
+  }
+))
+plot_power <- rbind(plot_power, baseline_copies)
+plot_power$axis_value <- ifelse(
+  plot_power$varied_dimension == "labs",
+  plot_power$labs,
+  ifelse(
+    plot_power$varied_dimension == "infants per lab",
+    plot_power$infants_per_lab,
+    plot_power$usable_trials_per_infant
+  )
+)
+```
+
+```{r}
+#| fig-width: 7.2
+#| fig-height: 3.2
+#| fig-alt: "Detection probability against number of laboratories, infants per laboratory, and usable trials, with Monte Carlo error bars."
+
+ggplot2::ggplot(
+  plot_power,
+  ggplot2::aes(x = axis_value, y = power_at_empirical_effect)
+) +
+  ggplot2::geom_line(color = "#2C6E9B", linewidth = 0.75) +
+  ggplot2::geom_point(color = "#2C6E9B", size = 1.8) +
+  ggplot2::geom_errorbar(
+    ggplot2::aes(
+      ymin = pmax(0, power_at_empirical_effect - 2 * power_mcse),
+      ymax = pmin(1, power_at_empirical_effect + 2 * power_mcse)
+    ),
+    width = 0,
+    color = "grey30"
+  ) +
+  ggplot2::facet_wrap(
+    ~ varied_dimension,
+    scales = "free_x",
+    nrow = 1
+  ) +
+  ggplot2::scale_y_continuous(
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.25)
+  ) +
+  ggplot2::labs(x = "Design value", y = "Detection probability") +
+  ggplot2::theme_classic(base_size = 11)
+```
+
+## What the simulation supports
+
+The projection retains (i) the recorded within-infant register contrast and order templates, (ii) recurrence of paired stimuli across infants, (iii) laboratory and infant clustering through random intercepts, (iv) the fitted linear trial-position effect, and (v) the fitted Gaussian residual scale. It omits age, method, language-community differences, random register slopes, nonlinear position effects, nonnormal tails, and the observed missingness and exclusion process.
+
+The fitted IDS coefficient comes from the same release used to calibrate the generator. A future-study interpretation thus requires the new laboratories, infants, materials, and measurement pipeline to reproduce the retained mechanisms closely enough, and it requires the future effect to equal the fitted coefficient used here. A smallest effect of linguistic interest would have to be supplied separately. Under those conditions, the plotted values estimate the decision probability of the stated generator and analysis; changing the conditions defines a different power calculation.
+
+Each omission corresponds to a possible sensitivity analysis. Age or community heterogeneity may change the fixed contrast; method and laboratory practice may change both mean and variance; random condition slopes may weaken the information supplied by repeated trials; nonnormal tails may alter Wald behavior; and the [retention process](exclusion-rules.qmd#retention-enters-the-estimand) may change which outcomes enter the analysis.
+
+A production design analysis should vary the target IDS effect and the omitted assumptions. It should also decide whether inference concerns these eight stimuli or a broader population of speech materials. Adding infants cannot substitute indefinitely for broadening a stimulus sample when the scientific claim concerns new materials.
+
+::: {.callout-note title="Audit the hierarchical simulation"}
+1. Which fitted quantities calibrate the data-generating process?
+2. Why are complete IDS-ADS stimulus pairs sampled together?
+3. What uncertainty is measured by the Monte Carlo standard error?
+4. Why are the empirical-effect detection rates not new evidence about IDS preference?
+5. Which omitted process would you vary first for a planned replication?
+:::
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The fitted fixed effects, laboratory/infant/stimulus standard deviations, and residual standard deviation calibrate the generator.
+2. Sampling complete pairs preserves one IDS and one ADS realization of the same paired stimulus identity.
+3. MCSE measures numerical uncertainty in the estimated detection proportion across finitely many simulated studies.
+4. The fitted effect is inserted into a generator calibrated from the original release; simulated detections add no new observed infants or trials.
+5. A defensible first sensitivity target is the missingness process, because the released analysis conditions on retained outcomes and the generator currently assumes complete planned simulated rows.
+
+</details>
+
+Simulation-based design analysis evaluates a complete procedure under stated assumptions. Here the procedure preserves laboratories, infants, paired stimuli, order templates, and trial position, then fits the same model used for calibration. The result is useful because every numerical assumption is either estimated from ManyBabies 1 or identified as a planning choice.
+
+## Recap and forward link
+
+1. Power is conditional on a complete generator, analysis rule, effect size, and design.
+2. Random intercepts reproduce laboratory, infant, and stimulus dependence.
+3. Monte Carlo error, Type I error, coverage, failed fits, and singular fits all belong in the design report.
+4. A production analysis should vary scientifically relevant effects and omitted processes rather than treat one fitted generator as truth.
+
+This completes the design sequence by returning the proposed future analysis to the units, allocation, counterbalancing, and retention decisions developed on the preceding pages.

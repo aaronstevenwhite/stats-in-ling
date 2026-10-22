@@ -1,10 +1,219 @@
 ---
-title: "Random slope models"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+title: "Random slopes"
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+The [random-intercept model](random-intercepts.qmd) allows participant baselines to vary while holding the lexical-frequency association constant. A random-slope model also lets that association vary across participants. The [structured-data page](structured-data.qmd) identifies which predictors vary within each grouping unit, and the [correlated-predictors page](correlated-predictors.qmd) explains why a partial association still depends on available predictor combinations.
 
-**Available Monday, November 16, 2026.**
+The [random-effect framework](fixed-and-random-effects.qmd) treats participant-specific slopes as deviations from a population slope. Their [standard deviations and covariances](../random-variables-and-distributions/variance-and-covariance.qmd) describe variation and co-variation across the fitted participant population. A varying lexical-frequency association is supported by repeated MALD trials; it should not be promoted to a stable participant phenotype beyond this task.
+
+A participant-specific slope is supported only when participants contribute within-person predictor contrasts. The MALD incidence table supplies that check before the added covariance is derived and fitted.
+
+## Adding a participant-specific association
+
+For MALD trial $i$, participant $p$, and word $w$, write
+
+$$
+Y_{pwi}
+=\beta_0+b_{0p}
++(\beta_f+b_{1p})x_{wi}^{(f)}
++\beta_d x_{wi}^{(d)}
++\beta_t x_{pwi}^{(t)}
++c_w+\varepsilon_{pwi}.
+$$
+
+The population frequency association is $\beta_f$. Participant $p$ has association
+
+$$
+\beta_f+b_{1p}.
+$$
+
+The intercept and slope deviations are modeled jointly:
+
+$$
+\begin{pmatrix}b_{0p}\\b_{1p}\end{pmatrix}
+\sim
+\mathcal N
+\left(
+\begin{pmatrix}0\\0\end{pmatrix},
+\boldsymbol\Sigma_p
+\right).
+$$
+
+The frequency-slope standard deviation describes how much the fitted lexical-frequency association varies across the participant population.
+
+## Checking that the design contains the contrast
+
+A participant-specific frequency association requires frequency variation within participants. A word has one lexical frequency, so repeated responses to that word cannot identify an item-specific frequency slope.
+
+```{r}
+#| label: mald-random-slopes
+library(lme4)
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
+
+standardize <- function(x) {
+  as.numeric(scale(x))
+}
+
+mald$z_frequency <- standardize(mald$log_frequency_subtlex)
+mald$z_duration <- standardize(mald$log_duration)
+mald$z_trial <- standardize(mald$trial_order)
+
+within_participant_range <- aggregate(
+  z_frequency ~ participant_id,
+  data = mald,
+  FUN = function(x) diff(range(x))
+)
+within_item_range <- aggregate(
+  z_frequency ~ item,
+  data = mald,
+  FUN = function(x) diff(range(x))
+)
+
+fit <- lmer(
+  log_rt ~ z_frequency + z_duration + z_trial +
+    (1 + z_frequency | participant_id) +
+    (1 | item),
+  data = mald,
+  control = lmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+support_summary <- c(
+  minimum_participant_range = min(within_participant_range$z_frequency),
+  maximum_participant_range = max(within_participant_range$z_frequency),
+  maximum_item_range = max(within_item_range$z_frequency)
+)
+support_summary
+```
+
+Every participant spans a nonzero range of standardized frequency, whereas the maximum within-item range is `r sprintf("%.1f", max(within_item_range$z_frequency))`. The data thus support participant frequency slopes but not word-specific frequency slopes.
+
+Two actual participants make the support requirement concrete:
+
+```{r}
+#| label: two-participant-frequency-ranges
+#| echo: true
+range_examples <- within_participant_range[
+  order(within_participant_range$z_frequency)[c(1L, nrow(within_participant_range))],
+]
+range_examples
+```
+
+Both have nonzero within-listener contrasts, though their ranges differ. By contrast, every repetition of a given word carries the same lexical-frequency value, so an item-specific frequency slope would ask the data to identify a within-item contrast that does not exist.
+
+## Comparing raw and fitted participant relations
+
+We display six participants selected across the fitted slope distribution. Points are within-participant raw bin means. Lines include participant intercept and frequency-slope deviations, set duration and trial order to their standardized means, and set the word effect to zero.
+
+```{r}
+#| label: plot-mald-slopes
+participant_effects <- ranef(fit)$participant_id
+participant_slopes <- data.frame(
+  participant_id = rownames(participant_effects),
+  slope_deviation = participant_effects[["z_frequency"]],
+  row.names = NULL
+)
+participant_slopes <- participant_slopes[
+  order(participant_slopes$slope_deviation),
+]
+
+selected_index <- unique(round(seq(
+  1,
+  nrow(participant_slopes),
+  length.out = 6L
+)))
+selected_participants <- participant_slopes$participant_id[selected_index]
+
+selected_raw <- mald[
+  mald$participant_id %in% selected_participants,
+]
+selected_raw$participant_id <- factor(
+  selected_raw$participant_id,
+  levels = selected_participants
+)
+selected_raw$frequency_bin <- ave(
+  selected_raw$z_frequency,
+  selected_raw$participant_id,
+  FUN = function(x) {
+    cut(
+      x,
+      breaks = unique(quantile(x, seq(0, 1, length.out = 7L))),
+      include.lowest = TRUE,
+      labels = FALSE
+    )
+  }
+)
+selected_bins <- aggregate(
+  cbind(z_frequency, log_rt) ~ participant_id + frequency_bin,
+  data = selected_raw,
+  FUN = mean
+)
+
+participant_grid <- expand.grid(
+  participant_id = factor(
+    selected_participants,
+    levels = selected_participants
+  ),
+  z_frequency = seq(-2, 2, length.out = 80L),
+  z_duration = 0,
+  z_trial = 0
+)
+participant_grid$item <- factor(
+  levels(factor(mald$item))[[1L]],
+  levels = levels(factor(mald$item))
+)
+participant_grid$fitted_log_rt <- predict(
+  fit,
+  newdata = participant_grid,
+  re.form = ~(1 + z_frequency | participant_id),
+  allow.new.levels = TRUE
+)
+
+ggplot(selected_bins, aes(x = z_frequency, y = log_rt)) +
+  geom_point(color = "grey45", size = 1.2) +
+  geom_line(
+    data = participant_grid,
+    aes(y = fitted_log_rt),
+    color = "#1F5A85",
+    linewidth = 0.7
+  ) +
+  facet_wrap(~participant_id, ncol = 3) +
+  labs(
+    x = "SUBTLEX log frequency (standardized)",
+    y = "Log response time"
+  ) +
+  theme_classic()
+```
+
+## How the dependence changes
+
+Two trials from participant $p$ share $b_{0p}$, and their covariance also contains the slope contribution
+
+$$
+x_{pwi}^{(f)}x_{pwi'}^{(f)}\tau_1^2
+$$
+
+plus intercept-slope covariance terms when the deviations are correlated. Writing $\tau_{01}=\operatorname{Cov}(b_{0p},b_{1p})$, the full participant contribution is
+
+$$
+\operatorname{Cov}(Y_{pi},Y_{pi'})
+=\tau_0^2+(x_i^{(f)}+x_{i'}^{(f)})\tau_{01}
++x_i^{(f)}x_{i'}^{(f)}\tau_1^2.
+$$
+
+Trial pairs at different frequency values thus need not have the same covariance. A constant participant ICC no longer summarizes every pair.
+
+The model still imposes one population frequency coefficient. The random slope states that this average is incomplete as a description of individual listeners. Its inclusion is licensed by both the within-participant frequency range and the goal of generalizing the frequency association across listeners.
+
+## Recap and check
+
+1. Is a random slope the same as a fixed interaction with participant labels? No. Separate fixed interactions do not impose a shared population distribution or partial pooling.
+2. Why is no item frequency slope fit? Frequency has zero within-item variation, so that slope is unidentified from repeated responses to the same word.
+
+The [next page](random-effect-correlations.qmd) examines the covariance between participant baselines and these frequency slopes.

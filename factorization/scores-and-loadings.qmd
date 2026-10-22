@@ -1,10 +1,267 @@
 ---
 title: "Scores and loadings"
-toc: false
-course-release-id: factorization
-course-release-placeholder: true
 ---
 
-Low rank factorization represents a data matrix using fewer dimensions. We consider singular value decomposition, principal component analysis, reconstruction, and component choice.
+The PHOIBLE decomposition produces two related objects with different units. Scores locate inventory records in the fitted component coordinates. Loadings describe directions across segment columns. Keeping these index sets separate prevents a segment contrast from being described as if it were an inventory property.
 
-**Available Monday, November 30, 2026.**
+The word *independent* below concerns linearly independent component directions. It should not be confused with [probabilistic independence](../foundations/independence.qmd) of inventory records, which the genealogy of PHOIBLE does not guarantee. Scores and loadings inherit the database coding and therefore remain fitted coordinates rather than measured traits of a language.
+
+We define each object algebraically, extract both from the empirical decomposition, and then inspect how loading patterns, row scores, and external metadata must be kept apart.
+
+## Scores locate row objects
+
+Let $\mathbf Z$ be the centered training matrix and let $\mathbf V_K$ contain the first $K$ right singular vectors. The score matrix is
+
+$$
+\mathbf T_K
+=
+\mathbf Z\mathbf V_K.
+$$
+
+For inventory record $i$ and component $k$,
+
+$$
+t_{ik}
+=
+\mathbf z_i^{\mathsf T}\mathbf v_k
+=
+\sum_{j=1}^{p}z_{ij}v_{jk}.
+$$
+
+Thus a score is a weighted sum of one centered inventory row. It is not a property of the Glottocode independently of the sampled inventory and retained segment representation.
+
+For a three-segment hand calculation, take
+\(\mathbf z_i=(0.75,-0.25,0.25)\) and the unit loading direction
+\(\mathbf v_1=(0.5,-0.5,\sqrt{0.5})\). Then
+
+$$
+\begin{aligned}
+t_{i1}
+&=
+0.75(0.5)+(-0.25)(-0.5)+0.25\sqrt{0.5}\\
+&\approx0.677.
+\end{aligned}
+$$
+
+Every term pairs one cell from the inventory row with the loading for the same
+segment column.
+
+From the SVD,
+
+$$
+\mathbf Z
+=
+\mathbf U\mathbf D\mathbf V^{\mathsf T},
+$$
+
+orthogonality gives
+
+$$
+\mathbf T
+=
+\mathbf Z\mathbf V
+=
+\mathbf U\mathbf D.
+$$
+
+## Loadings describe column directions
+
+The entry $v_{jk}$ is the weight of segment column $j$ in component direction $k$.
+In these notes, **loading** refers to the unit vector \(\mathbf v_k\). Three
+conventions commonly share that name:
+
+1. the unit direction \(\mathbf V\);
+2. correlations between original variables and component scores, which also depend
+   on each column's scale; and
+3. scaled directions such as
+   \(\mathbf V\mathbf D/\sqrt{n-1}\).
+
+These objects answer different questions, so the convention must be stated before
+magnitudes are compared.
+
+The score and loading matrices reconstruct the centered data:
+
+$$
+\widehat{\mathbf Z}^{(K)}
+=
+\mathbf T_K\mathbf V_K^{\mathsf T}
+=
+\mathbf U_K\mathbf D_K\mathbf V_K^{\mathsf T}.
+$$
+
+A simultaneous sign reversal leaves this product unchanged:
+
+$$
+(-\mathbf t_k)(-\mathbf v_k)^{\mathsf T}
+=
+\mathbf t_k\mathbf v_k^{\mathsf T}.
+$$
+
+Thus relative signs within a component are meaningful, but the global orientation is arbitrary.
+
+## Extracting empirical scores and loadings
+
+```{r}
+library(ggplot2)
+
+phoible <- readRDS("data/phoible/phoible-pilot.rds")
+inventories <- phoible$inventories[
+  order(phoible$inventories$glottocode,
+        as.integer(phoible$inventories$inventory_id)),
+]
+groups <- split(seq_len(nrow(inventories)), inventories$glottocode)
+RNGkind(sample.kind = "Rejection")
+set.seed(20260827L)
+chosen <- vapply(groups, function(x) x[[sample.int(length(x), 1L)]], integer(1))
+selected <- inventories[unname(chosen), ]
+
+area <- selected$macroarea
+area[is.na(area) | area == ""] <- "Unclassified"
+selected$split <- NA_character_
+set.seed(20261018L)
+for (name in sort(unique(area))) {
+  index <- sample(which(area == name))
+  n_holdout <- floor(0.15 * length(index))
+  selected$split[index[seq_len(n_holdout)]] <- "validation"
+  selected$split[index[n_holdout + seq_len(n_holdout)]] <- "test"
+  selected$split[index[is.na(selected$split[index])]] <- "training"
+}
+training_rows <- which(selected$split == "training")
+
+memberships <- merge(
+  phoible$memberships,
+  selected[c("inventory_id", "glottocode")],
+  by = c("inventory_id", "glottocode")
+)
+frequency <- table(
+  memberships$segment_id[memberships$glottocode %in%
+    selected$glottocode[training_rows]]
+)
+column_ids <- sort(names(frequency)[frequency >= 20L])
+X <- matrix(
+  0,
+  nrow = nrow(selected),
+  ncol = length(column_ids),
+  dimnames = list(selected$glottocode, column_ids)
+)
+retained <- memberships[memberships$segment_id %in% column_ids, ]
+X[cbind(
+  match(retained$glottocode, rownames(X)),
+  match(retained$segment_id, colnames(X))
+)] <- 1
+
+training_mean <- colMeans(X[training_rows, , drop = FALSE])
+Z <- sweep(X[training_rows, , drop = FALSE], 2, training_mean, "-")
+decomposition <- svd(Z)
+scores <- Z %*% decomposition$v
+scores_from_svd <- sweep(decomposition$u, 2, decomposition$d, "*")
+stopifnot(max(abs(scores - scores_from_svd)) < 1e-10)
+
+segment_meta <- phoible$segments[match(column_ids, phoible$segments$segment_id), ]
+top_loadings <- do.call(rbind, lapply(seq_len(2), function(component) {
+  index <- order(abs(decomposition$v[, component]), decreasing = TRUE)[seq_len(12)]
+  data.frame(
+    component = paste0("PC", component),
+    segment = segment_meta$segment[index],
+    loading = decomposition$v[index, component]
+  )
+}))
+
+head(data.frame(
+  glottocode = selected$glottocode[training_rows],
+  inventory = selected$language_name[training_rows],
+  PC1 = scores[, 1],
+  PC2 = scores[, 2]
+))
+```
+
+The identifiers are joined only after the scores are computed. This keeps the row mapping explicit even if later filtering changes row order.
+
+## Inspecting loading patterns
+
+```{r}
+#| fig-width: 7
+#| fig-height: 6
+
+top_loadings$label <- paste(top_loadings$component, top_loadings$segment, sep = ": ")
+top_loadings$label <- factor(
+  top_loadings$label,
+  levels = rev(top_loadings$label[order(top_loadings$component, top_loadings$loading)])
+)
+
+ggplot(top_loadings, aes(x = loading, y = label)) +
+  geom_vline(xintercept = 0, color = "grey75", linewidth = 0.5) +
+  geom_point(color = "grey20", size = 2) +
+  facet_wrap(~component, scales = "free_y") +
+  labs(x = "Loading", y = "Segment") +
+  theme_classic() +
+  theme(strip.background = element_blank())
+```
+
+The plot shows the twelve largest absolute weights for each of the first two directions. Segments on the same side contribute with the same sign, while segments on opposite sides define a contrast. Because the component may reverse sign, the important object is the relative pattern around zero.
+
+An isolated high loading does not name a component. Interpretation should ask whether a set of large weights forms a coherent pattern, whether the pattern is stable under resampling or nearby ranks, and whether independent evidence supports the proposed linguistic analysis. The present plot answers only the first question descriptively.
+
+The [SVD sign discussion](singular-value-decomposition.qmd#sign-and-directional-limits)
+explains why a simultaneous score-loading reversal changes nothing. A second
+stability problem arises when neighboring singular values are close: small changes
+to the rows may rotate the individual directions substantially even when their
+joint subspace remains stable. A split-sample or inventory bootstrap comparison
+should thus align signs or subspaces before comparing loading vectors.
+
+## Rows, columns, and metadata
+
+Family and macroarea labels are properties of inventory rows. Segment symbols and segment classes are properties of columns. Joining either kind of metadata requires its stable identifier:
+
+```{r}
+score_table <- data.frame(
+  selected[training_rows, c(
+    "glottocode", "inventory_id", "language_name", "macroarea", "family_name"
+  )],
+  PC1 = scores[, 1],
+  PC2 = scores[, 2]
+)
+
+loading_table <- data.frame(
+  segment_id = column_ids,
+  segment = segment_meta$segment,
+  segment_class = segment_meta$segment_class,
+  PC1 = decomposition$v[, 1],
+  PC2 = decomposition$v[, 2]
+)
+```
+
+Mixing these tables by row position would be a unit error: their rows index different objects.
+
+## Checking rows and columns
+
+1. What does $t_{ik}$ index?
+2. What does $v_{jk}$ index?
+3. Why are $\mathbf Z\mathbf V$ and $\mathbf U\mathbf D$ equal?
+4. Which loading convention do these notes use?
+5. Why should a component be interpreted from a pattern rather than one segment?
+6. If two singular values are close, what should a resampling check compare?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. \(t_{ik}\) locates inventory row \(i\) on component \(k\).
+2. \(v_{jk}\) weights segment column \(j\) on component \(k\).
+3. Right multiplication by \(\mathbf V\) cancels
+   \(\mathbf V^{\mathsf T}\mathbf V\) in the SVD.
+4. These notes use the unit directions in \(\mathbf V\).
+5. One large weight may be unstable or accidental; a linguistic account concerns a
+   coherent contrast supported elsewhere.
+6. Compare the aligned joint subspace, not only unaligned individual vector entries.
+
+</details>
+
+## Recap
+
+1. Scores index inventory rows; loadings index segment columns.
+2. “Loading” has multiple software conventions that must not be mixed.
+3. Sign and near-tie indeterminacy limit interpretation of a single fitted direction.
+
+The [next page](reconstruction.qmd#reconstructing-partially-observed-inventories)
+combines scores and loadings to predict cells deliberately hidden from held-out
+inventory records.

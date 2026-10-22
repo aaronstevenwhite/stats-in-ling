@@ -1,10 +1,105 @@
 ---
 title: "Link functions"
-toc: false
-course-release-id: generalized-linear-models
-course-release-placeholder: true
+execute:
+  warning: false
+  message: false
 ---
 
-Generalized linear models extend regression to binary, ordinal, count, and bounded linguistic responses.
+A [**link function**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) maps a constrained conditional mean to the real-valued linear predictor. We continue with SuperTelicity, where the response is an *in* choice and the first-use source and design are introduced on the [preceding page](why-generalized-linear-models.qmd).
 
-**Available Monday, November 2, 2026.**
+This page addresses the **link-choice problem**. A valid link must be one-to-one on the mean space, but the support of that space does not select a unique link. For a Bernoulli mean, the logit, probit, and complementary log-log links are all valid. They instead encode different assumptions about how a real-valued predictor approaches zero and one.
+
+```{r}
+#| label: load-and-fit-link
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+st$duration_centered <- st$log_duration_minutes -
+  mean(st$log_duration_minutes, na.rm = TRUE)
+st <- st[!is.na(st$duration_centered), ]
+fit <- glm(prep_in ~ duration_centered + verb_type,
+           family = binomial(link = "logit"), data = st)
+```
+
+For a Bernoulli mean $0<\pi_i<1$, the logit link and its inverse are
+
+$$
+g(\pi_i)=\log\frac{\pi_i}{1-\pi_i}=\eta_i,
+\qquad
+g^{-1}(\eta_i)=\frac{1}{1+e^{-\eta_i}}=\pi_i.
+$$
+
+The inverse follows by exponentiating: $e^{\eta}=\pi/(1-\pi)$, so $e^\eta(1-\pi)=\pi$ and hence $\pi=e^\eta/(1+e^\eta)$. The logit is especially convenient because a coefficient is a log odds ratio. The probit instead uses $\Phi^{-1}(\pi)$, whereas the complementary log-log link $\log[-\log(1-\pi)]$ is asymmetric.
+
+```{r}
+#| label: compare-valid-bernoulli-links
+#| echo: true
+p <- sort(unique(aggregate(prep_in ~ verb_type, st, mean)$prep_in))
+data.frame(probability = p, logit = qlogis(p), probit = qnorm(p),
+           complementary_log_log = log(-log(1 - p)))
+```
+
+The link acts on the conditional mean, not on the observed zeros and ones. The fitted SuperTelicity model supplies actual values on both scales.
+
+```{r}
+#| label: link-map
+#| echo: true
+observed <- aggregate(prep_in ~ verb_type, st, mean)
+observed$empirical_logit <- qlogis(observed$prep_in)
+observed$round_trip_probability <- plogis(observed$empirical_logit)
+observed
+```
+
+`qlogis()` maps the empirical group probabilities to real numbers, and `plogis()` returns them to the probability scale. These functions implement the equations above without transforming any response row.
+
+## The inverse link keeps predictions valid
+
+```{r}
+#| label: plot-link-fit
+#| echo: true
+library(ggplot2)
+grid <- expand.grid(
+  duration_centered = seq(min(st$duration_centered), max(st$duration_centered),
+                          length.out = 201L),
+  verb_type = levels(st$verb_type)
+)
+grid$log_duration_minutes <- grid$duration_centered + mean(st$log_duration_minutes)
+grid$eta <- predict(fit, newdata = grid, type = "link")
+grid$probability <- plogis(grid$eta)
+st$duration_bin <- cut(st$log_duration_minutes,
+  unique(quantile(st$log_duration_minutes, probs = seq(0, 1, length.out = 13L))),
+  include.lowest = TRUE)
+binned <- aggregate(cbind(prep_in, log_duration_minutes) ~ duration_bin + verb_type,
+                    st, mean)
+ggplot() +
+  geom_point(data = binned,
+             aes(log_duration_minutes, prep_in, shape = verb_type), size = 1.7) +
+  geom_line(data = grid,
+            aes(log_duration_minutes, probability, linetype = verb_type),
+            color = "#1F5A85", linewidth = .8) +
+  labs(x = "Selected duration (log minutes)",
+       y = "Probability of an in-completion", shape = NULL, linetype = NULL) +
+  theme_classic()
+```
+
+The model is additive in $\eta_i$ but curved in $\pi_i$. A constant coefficient is a constant change in log odds, not in probability. The link changes neither the Bernoulli support nor the observed response. It connects the linear predictor to the family mean.
+
+For instance, the same one-unit logit coefficient has different response-scale consequences at different baselines.
+
+```{r}
+#| label: baseline-dependent-probability-change
+#| echo: true
+baseline <- observed$prep_in
+data.frame(baseline,
+  after_one_log_odds_unit = plogis(qlogis(baseline) + 1),
+  probability_change = plogis(qlogis(baseline) + 1) - baseline)
+```
+
+For count means the analogous construction uses $\log\lambda_i=\eta_i$ and $\lambda_i=e^{\eta_i}>0$. Thus support constrains a link choice, but it does not determine that choice. A link is not a device for making a histogram look normal.
+
+## Recap and check
+
+1. Does a Bernoulli response force the logit link? No. It forces predicted means into $(0,1)$; scientific and computational considerations distinguish valid links.
+2. If a logit coefficient is one, is the probability change one? No. The coefficient is a one-unit log odds change, and the corresponding probability change depends on the baseline.
+
+The [GLM template](generalized-linear-models.qmd) next keeps the response distribution, linear predictor, and link separate.

@@ -1,10 +1,254 @@
 ---
 title: "Poisson mixed-effects models"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+We now combine [Poisson regression](poisson-regression.qmd), an [exposure offset](exposure-offsets.qmd), and a [random intercept](random-intercepts.qmd) in an analysis of aligned linguistic graphs.
 
-**Available Monday, November 16, 2026.**
+The count's [conditional probability](../foundations/conditional-probability.qmd) distribution and [variance](../random-variables-and-distributions/variance-and-covariance.qmd) are defined after the aligned-pair deviation is supplied. The [random-effect framework](fixed-and-random-effects.qmd) treats that deviation as a draw from a population. The resulting likelihood keeps the observed graph counts fixed while comparing coefficient and variance-component values.
+
+The UCCA analysis needs three pieces at once: a count response, an exposure, and a
+shared deviation for the two language sides of an aligned passage. Their joint
+model also forces a distinction between a rate conditional on one pair and a rate
+averaged over possible pairs.
+
+Sulem, Abend, and Rappoport's [French-English UCCA study](https://aclanthology.org/W15-3502/) compares independently annotated passages from *Twenty Thousand Leagues Under the Sea*. The annotation follows [Universal Conceptual Cognitive Annotation](https://aclanthology.org/P13-1023/) (UCCA). A UCCA Scene contains a Process or State main relation; it is not simply a finite clause or verb token.
+
+The current v2 release differs from the older version summarized in the paper. The analysis below is thus a new paired analysis of the graph-aware v2 table, not a reproduction of the paper's reported passage averages.
+
+## Stating the observation and target
+
+One row is one complete passage graph in English or French. `pair_id` joins the aligned translations. As defined in the [UCCA exposure dossier](../statistical-inference/paired-observations.qmd#ucca-exposure-dossier), `word_count` counts non-punctuation Layer-0 word nodes, while `terminal_count` additionally counts punctuation terminals. `scene_count` counts distinct nodes with an outgoing Process or State edge. A remote reference to an existing node does not create another Scene. <!-- dqr-allow: reference-metadata -->
+
+The prepared extract does not redistribute passage text or graph XML. It does preserve graph-aware counts, so the first aligned pair can be read without inventing a sentence:
+
+```{r}
+#| label: inspect-one-ucca-pair
+ucca_preview <- read.csv("data/ucca-french-english/passage-counts.csv")
+ucca_preview[ucca_preview$pair_id == ucca_preview$pair_id[[1L]], c(
+  "pair_id", "language", "release_passage_id", "word_count",
+  "scene_count", "scene_count_primary_main_relation", "remote_edge_count",
+  "participant_primary_edge_count", "participant_remote_edge_count"
+)]
+```
+
+To count Scenes in a graph, inspect every foundational node and mark it once if it has an outgoing Process (`P`) or State (`S`) edge. A node with both a primary mention and a remote reference is still one node and thus one Scene. The count rule is node-based, not a count of verbs, clauses, or `P`/`S` edge tokens.
+
+The target is the French-to-English Scene-rate ratio within this release, conditional on aligned passage-pair heterogeneity. The primary rate uses non-punctuation annotated words as exposure. A terminal-based refit below checks the consequence of also counting punctuation in the exposure.
+
+## Assembling the conditional model
+
+The [fixed-effect coefficient](fixed-and-random-effects.qmd#beginning-with-the-scientific-target)
+below describes the systematic French-versus-English contrast. The random
+intercept introduces a normal distribution for pair-specific deviations. For
+fixed observed graph counts, the [likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
+is their joint model mass viewed as a function of those coefficients and variance
+parameters; `glmer()` maximizes an approximation to the likelihood after
+integrating over the unobserved pair deviations.
+
+For passage pair $p$ and language side $l$,
+
+$$
+Y_{pl}\mid b_p
+\sim\operatorname{Poisson}(\lambda_{pl}),
+$$
+
+with probability mass
+
+$$
+\mathbb{P}(Y_{pl}=y\mid b_p)
+=\frac{\exp(-\lambda_{pl})\lambda_{pl}^{y}}{y!}.
+$$
+
+The log expected count combines word exposure, a language contrast, and the pair intercept:
+
+$$
+\log\lambda_{pl}
+=\log W_{pl}
++\beta_0
++\beta_1\operatorname{French}_{pl}
++b_p,
+$$
+
+where
+
+$$
+b_p\sim\mathcal N(0,\tau_p^2).
+$$
+
+The notation $Y_{pl}\mid b_p$ uses [conditional probability](../foundations/conditional-probability.qmd): it treats the pair deviation as given when describing a row. The parameter $\tau_p^2$ is the [variance](../random-variables-and-distributions/variance-and-covariance.qmd#variance-as-expected-squared-distance) of the modeled pair-deviation distribution.
+
+Exponentiating gives
+
+$$
+\lambda_{pl}
+=W_{pl}
+\exp\left(
+\beta_0+\beta_1\operatorname{French}_{pl}+b_p
+\right).
+$$
+
+Dividing by exposure shows the modeled Scene rate:
+
+$$
+\frac{\lambda_{pl}}{W_{pl}}
+=\exp\left(
+\beta_0+\beta_1\operatorname{French}_{pl}+b_p
+\right).
+$$
+
+The offset fixes the coefficient of $\log W_{pl}$ at one. Doubling word exposure doubles the expected count while holding the rate constant.
+
+## Fitting the paired UCCA model
+
+```{r}
+#| label: fit-ucca-poisson
+library(lme4)
+library(ggplot2)
+
+ucca <- read.csv("data/ucca-french-english/passage-counts.csv")
+ucca$pair_id <- factor(ucca$pair_id)
+ucca$language <- factor(
+  ucca$language,
+  levels = c("en", "fr")
+)
+
+fit <- glmer(
+  scene_count ~ language +
+    offset(log(word_count)) +
+    (1 | pair_id),
+  data = ucca,
+  family = poisson(link = "log"),
+  nAGQ = 1L,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+terminal_fit <- glmer(
+  scene_count ~ language +
+    offset(log(terminal_count)) +
+    (1 | pair_id),
+  data = ucca,
+  family = poisson(link = "log"),
+  nAGQ = 1L,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+data_summary <- c(
+  graph_rows = nrow(ucca),
+  aligned_pairs = nlevels(ucca$pair_id),
+  english_scenes = sum(ucca$scene_count[ucca$language == "en"]),
+  french_scenes = sum(ucca$scene_count[ucca$language == "fr"])
+)
+data_summary
+
+language_coefficient <- fixef(fit)[["languagefr"]]
+french_english_rate_ratio <- exp(language_coefficient)
+c(
+  french_log_rate_coefficient = language_coefficient,
+  french_english_rate_ratio_per_word = french_english_rate_ratio,
+  sensitivity_rate_ratio_per_terminal = exp(
+    fixef(terminal_fit)[["languagefr"]]
+  )
+)
+```
+
+The mathematical pieces map to the fitting call as follows:
+
+| Model term | R formula term | Role |
+|---|---|---|
+| $Y_{pl}$ | `scene_count` | observed Scene count |
+| $\beta_0+\beta_1\operatorname{French}_{pl}$ | `language` | population log-rate contrast |
+| $\log W_{pl}$ | `offset(log(word_count))` | fixed one-for-one exposure adjustment |
+| $b_p$ | `(1 \| pair_id)` | aligned-pair deviation |
+| Poisson with log link | `family = poisson(link = "log")` | conditional count distribution and mean map |
+
+`nAGQ=1` requests the Laplace approximation used by `glmer`; it is a computational approximation to integrating over pair effects, not a scientific assumption about language. The [Laplace page](laplace-approximation.qmd) explains its mode-and-curvature construction. `bobyqa` is the declared derivative-free optimizer used for the outer likelihood problem.
+
+Holding the passage-pair effect fixed, the fitted French Scene rate is `r sprintf("%.3f", french_english_rate_ratio)` times the fitted English rate per annotated word. The comparison is multiplicative because the model uses a log link.
+
+With all Layer-0 terminals as exposure, the corresponding ratio is
+`r sprintf("%.3f", exp(fixef(terminal_fit)[["languagefr"]]))`. The two fits use
+the same Scene counts and pair structure. Their difference comes only from whether
+punctuation contributes to the opportunity denominator.
+
+## Showing observed counts and fitted rates
+
+The points below are observed passage counts. The fitted curves set the pair deviation to zero and vary word exposure, so the observations and model remain on the same count scale.
+
+```{r}
+#| label: plot-ucca-poisson
+prediction_grid <- expand.grid(
+  word_count = seq(
+    min(ucca$word_count),
+    max(ucca$word_count),
+    length.out = 180L
+  ),
+  language = factor(
+    c("en", "fr"),
+    levels = levels(ucca$language)
+  )
+)
+prediction_grid$population_fitted_scenes <- predict(
+  fit,
+  newdata = prediction_grid,
+  type = "response",
+  re.form = NA
+)
+
+ggplot(
+  ucca,
+  aes(x = word_count, y = scene_count, shape = language)
+) +
+  geom_point(size = 1.4, color = "grey35") +
+  geom_line(
+    data = prediction_grid,
+    aes(
+      y = population_fitted_scenes,
+      linetype = language
+    ),
+    color = "#1F5A85",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Annotated words in passage",
+    y = "UCCA Scenes",
+    shape = "Language",
+    linetype = "Language"
+  ) +
+  theme_classic()
+```
+
+## Preserving the conditioning statement
+
+Conditional on $b_p$, the Poisson model has
+
+$$
+\operatorname{Var}[Y_{pl}\mid b_p]
+=\mathbb{E}[Y_{pl}\mid b_p]
+=\lambda_{pl}.
+$$
+
+This statement concerns a passage pair with a given deviation. A prediction for a new pair must average over the fitted pair distribution. The [next page](overdispersion-and-random-effects.qmd) shows why that averaging produces marginal variance greater than the marginal mean even though the conditional response remains Poisson.
+
+Every pair comes from consecutive material in one novel, one translation, and one
+annotation history. The passages therefore share author, translator, genre, and
+annotation context. The fitted rate ratio summarizes Scene counts in these aligned
+graphs; the design supplies no independent sample of authors, translators, genres,
+or language pairs from which to estimate a general French--English contrast.
+
+## Recap and check your understanding
+
+1. Why does a remote edge not create another Scene?
+2. What comparison is made by the language coefficient after the offset is included?
+3. Does `nAGQ=1` mean that the data contain one quadrature point?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. A remote edge refers to an already existing node. Scene counting marks distinct nodes with an outgoing Process or State edge. <!-- dqr-allow: conceptual-answer -->
+2. It compares French and English Scene rates per annotated word while holding the aligned-pair deviation fixed. <!-- dqr-allow: conceptual-answer -->
+3. No. It selects a Laplace approximation for integrating model random effects; it is a fitting setting. <!-- dqr-allow: conceptual-answer -->
+
+</details>
+
+The [overdispersion-and-random-effects page](overdispersion-and-random-effects.qmd) next separates conditional Poisson variation from the marginal dispersion induced by group heterogeneity.

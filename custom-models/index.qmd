@@ -1,10 +1,106 @@
 ---
 title: "Custom model design"
-toc: false
-course-release-id: custom-model-design
-course-release-placeholder: true
 ---
 
-Joint probability models connect annotation protocols to linguistic measurement claims. We then test whether simulated data permit recovery of the model parameters.
+Three annotators give different answers to the same question about a predicate in context. Which part of that disagreement belongs to the predicate, which part belongs to the annotators, and which part is the variation we should expect even after both have been accounted for? A useful probability model has to represent the process that produced the answers before it can separate these sources.
 
-**Available Wednesday, December 2, 2026.**
+We will call the full account of that process the **measurement model**. It begins with the linguistic unit and the prompt shown to the annotator, specifies the response scale, and introduces probability distributions for item and annotator variation. The resulting [likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood) holds the recorded responses fixed and asks how their joint probability changes with the unknown model quantities.
+
+Three earlier computational ideas will recur. An [expected value](../random-variables-and-distributions/expected-values.qmd) averages a quantity under a specified distribution. [Monte Carlo integration](../statistical-inference/monte-carlo-integration.qmd) approximates that average with simulated draws. And a [Markov chain](../statistical-inference/markov-chains.qmd) gives us dependent draws whose long-run distribution can be the posterior. We will say which operation we are using each time, since the fact that two calculations both involve simulation does not make them interchangeable.
+
+This module uses two annotation resources, one of them non-English. In the [Universal Decompositional Semantics (UDS) natural-parts task](generative-stories.qmd), annotators answer whether the situation described by a highlighted predicate has natural subparts; [Gantt, Glass, and White (2022)](https://aclanthology.org/2022.tacl-1.2/) describe the event-structure protocol. The table used here comes from the official [`decomp` 0.3.2 release](https://pypi.org/project/decomp/0.3.2/): the data are CC BY-SA 4.0, while the toolkit code is MIT-licensed. The [ITU/IMST Turkish PropBank](https://doi.org/10.1007/s10579-017-9390-y) records worker selections among predicate-specific role descriptions, followed by aggregation and adjudication; the [project release](https://turkishpropbank.github.io/) supplies the source data and guidelines.
+
+The Turkish PropBank project site applies CC BY-NC-SA 4.0 to resources built in the project, while the repository's short license header names the Turkish frame files specifically. The table used here follows the project-wide noncommercial statement, but the narrower repository header should not be read as a separate license grant for every crowd export.
+
+We begin with the UDS response process and translate it into a joint probability factorization. We then add annotator effects, ask whether the model can recover known parameters from simulated responses, and check its posterior predictions. Finally, gated UDS responses and Turkish role judgments let us ask how the same modeling decisions change when the annotation protocol changes.
+
+Here are the two measurement records before the inventory. UDS item `ewt-test-963%%ewt-test-963-semantics-pred-6` anchors token 6, *exhibited*, in the sentence “His artworks were selected and exhibited in British Museum in 2002.” The graph-to-sentence mapping follows the [`decomp` graph-ID convention](https://decomp.readthedocs.io/en/latest/data/syntactic-graphs.html), and the sentence comes from the [UD English EWT 1.2 test file](https://github.com/UniversalDependencies/UD_English-EWT/blob/r1.2/en-ud-test.conllu). Its three released natural-parts responses are 0, 1, and 0. The Turkish row `item_00001` records worker `worker_087` judging predicate lemma `başla`, sense 1, candidate role `A1`—a role label defined within the project's predicate frame—with the adjudicated description `neye başladığı`; the worker agrees with adjudication. Sentence and candidate spans are unavailable in this table, so the row cannot support a fuller source-text example.
+
+```{r}
+#| label: custom-model-index
+#| message: false
+#| warning: false
+
+uds <- read.csv(
+  "data/uds/uds-natural-parts.csv",
+  check.names = FALSE
+)
+turkish <- read.csv(
+  "data/turkish-propbank/role-agreement-judgments.csv",
+  check.names = FALSE
+)
+
+measurement_inventory <- data.frame(
+  resource = c(
+    "UDS natural-parts responses",
+    "UDS predicate-node items",
+    "Turkish PropBank judgments",
+    "Turkish PropBank argument-candidate items"
+  ),
+  count = c(
+    nrow(uds),
+    length(unique(uds$item_id)),
+    nrow(turkish),
+    length(unique(turkish$item_id))
+  )
+)
+
+stopifnot(
+  nrow(uds) == 2955L,
+  length(unique(uds$item_id)) == 1000L,
+  length(unique(uds$annotator_id)) == 12L,
+  nrow(turkish) == 55207L,
+  length(unique(turkish$item_id)) == 18306L,
+  length(unique(turkish$worker_id)) == 144L
+)
+
+measurement_inventory
+
+uds[uds$item_id == "ewt-test-963%%ewt-test-963-semantics-pred-6",
+    c("item_id", "graph_id", "node_id", "annotator_id", "natural_parts")]
+turkish[turkish$item_id == "item_00001" &
+          turkish$worker_id == "worker_087",
+        c("item_id", "worker_id", "predicate_lemma", "sense_id",
+          "adjudicated_label", "role_group", "adjudicated_role_description",
+          "correct")]
+```
+
+The two response variables answer different questions. UDS records whether an annotator answered yes to one natural-parts gate. Turkish PropBank records whether an individual role-description selection agrees with the project's adjudication. Neither response is an independently observed linguistic truth.
+
+## From the protocol to a probability model
+
+[A data-generating process](generative-stories.qmd) first specifies the random steps that could produce the UDS gate responses. [Writing a joint model](writing-a-joint-model.qmd) then translates those steps into a joint probability distribution over the observed item--annotator pairs. [Parameter recovery](parameter-recovery.qmd) asks whether the complete procedure can recover known values under the released incidence design.
+
+The Turkish PropBank analysis next treats [annotations as measurements](annotations-as-measurements.qmd), distinguishing agreement with adjudication from label validity or worker competence. Returning to UDS, [annotator effects](annotator-effects.qmd) represent stable response-location differences among annotators.
+
+The [UDS measurement-model capstone](uds-measurement-model.qmd) combines the likelihood, priors, parameter-recovery study, partial pooling, posterior summaries, and posterior predictive checks. Finally, [gated annotations](gated-annotations.qmd) retains the protocol's symbolic gate-and-branch factorization while using only the observed natural-parts gate numerically. The raw confidence field and conditional follow-up branches remain outside the empirical model because their representation could not be verified against the paper and release.
+
+## What the sequence supports
+
+UDS units are predicate nodes anchored in sentence context; Turkish PropBank units are predicate-specific argument candidates. Treating the former as context-free verb lemmas or the latter as general thematic-role types would change the likelihood indexes and the populations represented by the random effects.
+
+These joint models depend on previously introduced [response distributions](../regression-models/generalized-linear-models.qmd), [grouped variation](../regression-models/random-effects.qmd), [posterior computation](../statistical-inference/markov-chain-monte-carlo.qmd), and [posterior predictive checks](../statistical-inference/posterior-predictive-checks.qmd). These pages add the protocol-specific joint distributions and checks needed to interpret their latent quantities.
+
+The local reminders are these. A Bernoulli likelihood represents a binary recorded
+response; a logit link maps an additive real-valued predictor to a probability. A
+random effect represents a population distribution over group-specific deviations
+and induces dependence among rows sharing a group. A
+[posterior distribution](../statistical-inference/posterior-distributions.qmd)
+combines the likelihood with the prior and conditions the unknown quantities on the
+responses. Markov chain Monte Carlo approximates that posterior with correlated
+draws, while a
+[posterior predictive check](../statistical-inference/posterior-predictive-checks.qmd)
+uses each draw to generate replicated responses and compares their summaries with
+the same summaries of the observed responses.
+
+## Check the measurement claim
+
+1. Why do we index a UDS item by its predicate node and sentence rather than by the lemma *exhibit*? **Answer:** the same lemma in another sentence or graph supplies a different predicate-node item.
+2. What does `correct = 1` mean in the Turkish row? **Answer:** the worker's selected role description agrees with project adjudication. A claim that the adjudication is linguistically correct would require an independent validity argument.
+3. Why must the two resources have different likelihood indexes? **Answer:** their realized units differ: UDS rows cross predicate nodes with annotators, whereas Turkish rows cross argument-candidate items with workers.
+
+## Recap and route through the module
+
+1. An annotation records the output of a named measurement protocol. A claim about the underlying linguistic property requires a separate validity argument.
+2. UDS and Turkish PropBank supply different units, prompts, and recorded responses.
+3. The module proceeds from the [UDS data-generating process](generative-stories.qmd#uds-measurement-dossier), through joint factorization and recovery, to the Turkish measurement model, annotator effects, the full UDS model, and the gated extension.

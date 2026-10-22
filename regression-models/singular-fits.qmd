@@ -1,10 +1,217 @@
 ---
-title: "Singular mixed model fits"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+title: "Singular fits"
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+The [random-effects-correlation page](random-effect-correlations.qmd) represented
+intercept and slope deviations with a covariance matrix. The **rank** of a
+matrix is the number of linearly independent columns, which is also the number
+of linearly independent rows. Equivalently, rank counts how many independent
+output directions the matrix can produce. A
+[**singular fit**](https://lme4.github.io/lme4/reference/isSingular.html) occurs
+when the estimated covariance matrix has lower rank than the formula allows.
 
-**Available Monday, November 16, 2026.**
+The [random-effect framework](fixed-and-random-effects.qmd) assigns latent group deviations a [variance--covariance](../random-variables-and-distributions/variance-and-covariance.qmd) matrix; standard deviations and correlations are alternative summaries of that matrix. Conditional [independence](../foundations/independence.qmd) and the [residual](residuals.qmd) describe the remaining trial-level model. A rank collapse reports what this repeated MALD design can support under the model, rather than showing that a participant or item source of linguistic variation is absent.
+
+We first connect rank to covariance dimensions, then fit a predeclared MALD stress test, inspect the collapsed direction, and separate singularity from optimizer convergence.
+
+## Rank and covariance dimensions
+
+Suppose a grouping term requests $q$ random-effect dimensions with covariance matrix $\boldsymbol\Sigma$. A nonsingular fit requires
+
+$$
+\operatorname{rank}(\boldsymbol\Sigma)=q.
+$$
+
+Begin with two covariance contours. In the first panel, fitted deviations can
+vary appreciably in two perpendicular directions. In the second, the vertical
+variation has nearly vanished, so the contour has almost collapsed to a line.
+
+~~~{r}
+#| label: fig-singular-covariance-direction
+#| fig-cap: "A near-zero covariance direction collapses a two-dimensional contour toward a line."
+#| fig-alt: "Two covariance contours on shared coordinate axes. The first is an ordinary oval with visible horizontal and vertical spread. The second is nearly a horizontal line because its vertical variance is near zero."
+#| echo: false
+#| fig-width: 7
+#| fig-height: 3.4
+
+library(ggplot2)
+
+covariance_contour <- function(vertical_variance, panel) {
+  angle <- seq(0, 2 * pi, length.out = 241L) # dqr-allow: symbolic-derivation
+  data.frame(
+    direction_1 = cos(angle),
+    direction_2 = sqrt(vertical_variance) * sin(angle),
+    panel = panel
+  )
+}
+
+covariance_picture <- rbind(
+  covariance_contour(0.5, "Two supported directions"), # dqr-allow: symbolic-derivation
+  covariance_contour(0.01, "One nearly collapsed direction") # dqr-allow: symbolic-derivation
+)
+
+ggplot(covariance_picture, aes(direction_1, direction_2)) +
+  geom_hline(yintercept = 0, color = "grey85", linewidth = 0.35) +
+  geom_vline(xintercept = 0, color = "grey85", linewidth = 0.35) +
+  geom_path(color = "#2C6E9B", linewidth = 0.9) +
+  facet_wrap(~panel) +
+  coord_equal(xlim = c(-1.1, 1.1), ylim = c(-0.8, 0.8)) +
+  labs(x = "Covariance direction 1", y = "Covariance direction 2") +
+  theme_classic(base_size = 11)
+~~~
+
+We now name the geometry. An **eigenvector** of a covariance matrix is a
+direction whose orientation stays the same when the matrix acts on it. Its
+**eigenvalue** records the variance along that direction, so the contour extends
+a distance proportional to the square root of that eigenvalue. The
+[two-dimensional PCA
+picture](../factorization/principal-component-analysis.qmd#eigenvectors-as-preserved-directions)
+shows the corresponding matrix transformation directly.
+
+The **eigendecomposition** collects the eigenvectors as the columns of
+\(\mathbf Q\) and their eigenvalues along the diagonal of
+\(\boldsymbol\Lambda\):
+
+$$
+\boldsymbol\Sigma
+=\mathbf Q\boldsymbol\Lambda\mathbf Q^{\mathsf T}.
+$$
+
+Because a covariance matrix cannot have negative variance directions, its rank
+is the number of positive eigenvalues in $\boldsymbol\Lambda$. If one
+eigenvalue is zero, one linear combination of the requested deviations has no
+fitted variation and
+
+$$
+\operatorname{rank}(\boldsymbol\Sigma)<q.
+$$
+
+In a two-dimensional intercept-slope model, singularity can arise when a
+variance reaches zero or when the correlation reaches an endpoint. In a larger
+structure, a collapsed dimension may involve a combination of several terms
+and may not be obvious from any one printed variance. PCA later uses the same
+geometry to find high-variance data directions. Here we use it diagnostically.
+
+## Fitting a predeclared MALD stress test
+
+The stress-test model asks participants to vary in an intercept, frequency slope, duration slope, trial-order slope, and frequency-by-duration interaction slope. It also gives words a trial-order slope. The fixed interaction remains in both models because the diagnostic concerns the group covariance structure.
+
+Before fitting, the design audit asks whether each requested slope's predictor varies within its group. Frequency, duration, trial order, and their frequency-by-duration product vary within participants. Trial order varies within words because the same word occurs at different points for different participants. This support is necessary, but it does not guarantee that the data estimate all variances and correlations away from a boundary.
+
+```{r}
+#| label: mald-singular
+library(lme4)
+library(ggplot2)
+
+mald <- read.csv("data/mald/mald-connected-trials.csv")
+mald <- subset(mald, correct == 1L)
+
+standardize <- function(x) {
+  as.numeric(scale(x))
+}
+
+mald$z_frequency <- standardize(mald$log_frequency_subtlex)
+mald$z_duration <- standardize(mald$log_duration)
+mald$z_trial <- standardize(mald$trial_order)
+
+fit_control <- lmerControl(
+  optimizer = "bobyqa",
+  optCtrl = list(maxfun = 200000L)
+)
+
+overfit <- lmer(
+  log_rt ~ z_frequency * z_duration + z_trial +
+    (1 + z_frequency * z_duration + z_trial | participant_id) +
+    (1 + z_trial | item),
+  data = mald,
+  control = fit_control
+)
+
+revised <- lmer(
+  log_rt ~ z_frequency * z_duration + z_trial +
+    (1 + z_frequency + z_duration + z_trial | participant_id) +
+    (1 + z_trial | item),
+  data = mald,
+  control = fit_control
+)
+
+singularity_check <- c(
+  interaction_slope_model = isSingular(overfit, tol = 1e-4),
+  revised_model = isSingular(revised, tol = 1e-4)
+)
+singularity_check
+```
+
+`isSingular(..., tol = 1e-4)` declares a fitted covariance direction effectively
+zero relative to the fitted scale at that numerical tolerance. This diagnostic
+describes the fitted model rather than proving a population claim. A different
+tolerance can change a borderline flag, so the rotated standard deviations
+below remain part of the evidence.
+
+The model requesting participant interaction-slope variation is singular. Removing only that unsupported random slope gives the prespecified nonsingular revision. This comparison does not remove the fixed frequency-by-duration interaction or the item trial-order slope.
+
+## Inspecting the fitted dimensions
+
+`rePCA()` rotates each fitted covariance matrix into orthogonal directions. The returned standard deviations are the square roots of the rotated, residual-scaled eigenvalues.
+
+```{r}
+#| label: mald-singular-dimensions
+overfit_sd <- rePCA(overfit)$participant_id$sdev
+revised_sd <- rePCA(revised)$participant_id$sdev
+
+dimension_table <- rbind(
+  data.frame(
+    model = "Interaction slope requested",
+    dimension = seq_along(overfit_sd),
+    orthogonal_sd = overfit_sd
+  ),
+  data.frame(
+    model = "Interaction slope removed",
+    dimension = seq_along(revised_sd),
+    orthogonal_sd = revised_sd
+  )
+)
+dimension_table
+```
+
+The final participant direction in the larger model collapses to the boundary. Because the rotated directions are linear combinations, this fact is stronger than merely inspecting whether one named standard deviation looks small.
+
+```{r}
+#| label: singularity-plot
+ggplot(
+  dimension_table,
+  aes(x = factor(dimension), y = orthogonal_sd)
+) +
+  geom_col(width = 0.72, fill = "grey55") +
+  facet_wrap(~model) +
+  labs(
+    x = "Participant covariance dimension",
+    y = "Orthogonal SD (residual-scaled)"
+  ) +
+  theme_classic()
+```
+
+## Separating singularity from convergence
+
+An optimizer can reach a boundary optimum successfully, producing a singular fit without a convergence failure. Conversely, a nonsingular covariance estimate can accompany an optimizer warning. `isSingular()` and the optimizer diagnostics answer different questions and both should be checked.
+
+`bobyqa` is used because the stress test has many bounded covariance parameters; `maxfun = 200000` gives that optimizer more evaluations than its default. <!-- dqr-allow: algorithm-setting --> Neither choice adds information to the design. A boundary estimate concerns the fitted optimum, a convergence warning concerns whether the optimizer reached an adequate optimum, and nonidentifiability concerns whether distinct parameter values imply indistinguishable behavior. These problems may coincide, but they are not synonyms.
+
+A singular fit should send us back to the design: which predictor contrasts vary
+within which groups, how many group levels support the covariance, and which
+population variation the scientific claim requires. Plausible responses include
+removing an unsupported correlation, removing an unsupported slope, collecting
+more within-group contrasts, or using a model with **regularization**, a penalty
+or prior that discourages weakly supported parameter values; the
+[ridge-regression page](ridge-regression.qmd) develops the penalty version.
+These moves encode different population assumptions.
+
+The decision sequence is: (i) inventory within-group contrasts before fitting, (ii) inspect convergence and rank separately, (iii) identify the collapsed covariance direction, (iv) apply the prespecified revision tied to the scientific target, and (v) refit and report the changed population assumption. The MALD revision removes only the collapsed participant interaction slope. It is not a general stepwise-selection recipe, and it should not be used to search for a preferred fixed-effect conclusion.
+
+## Recap and check
+
+1. Does a singular fit necessarily mean optimizer failure? No. The optimizer may successfully locate a boundary optimum.
+2. Does increasing `maxfun` repair an unsupported random slope? No. It changes the computational budget, not the information in the design.
+
+The [next page](generalized-linear-mixed-models.qmd) carries the same group-variation logic to a binary linguistic response.

@@ -1,10 +1,231 @@
 ---
 title: "Group heterogeneity and marginal dispersion"
-toc: false
-course-release-id: mixed-effects-models
-course-release-placeholder: true
+execute: {warning: false, message: false}
 ---
 
-Mixed effects models use random intercepts and random slopes to represent repeated speakers, items, verbs, and other groups.
+The [Poisson mixed-model page](poisson-mixed-models.qmd) supplied one source of structured count variation: persistent differences across aligned passage pairs. A Poisson regression without that structure can appear overdispersed because it combines low-rate and high-rate pairs under one mean. The derivation uses the [expectation of a function](../random-variables-and-distributions/expectation-of-functions.qmd) and the distinction between conditional and marginal [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd).
 
-**Available Monday, November 16, 2026.**
+The [random-effect framework](fixed-and-random-effects.qmd) assigns each pair a latent deviation. Conditional [independence](../foundations/independence.qmd) applies after it is given, and [residuals](residuals.qmd) are then observed-minus-fitted count discrepancies. Marginal expectation averages over the deviation distribution, which is the operation that creates the extra variance term below.
+
+We first state the conditional Poisson claim, then average over the pair distribution, substitute fitted variation, and check which dispersion remains after conditioning.
+
+This extra variation arises when we average over passage pairs with different latent rates. Each pair remains conditionally Poisson; the additional marginal term records how the conditional mean changes across the pair population. The law of total variance makes that operation explicit.
+
+## Beginning with the conditional Poisson claim
+
+For language side $l$ of passage pair $p$, write
+
+$$
+Y_{pl}\mid b_p
+\sim\operatorname{Poisson}(\lambda_{pl}(b_p)),
+$$
+
+with
+
+$$
+\lambda_{pl}(b_p)
+=\lambda_{pl}^{(0)}\exp(b_p),
+$$
+
+where
+
+$$
+\lambda_{pl}^{(0)}
+=W_{pl}\exp\left(
+\beta_0+\beta_1\operatorname{French}_{pl}
+\right)
+$$
+
+is the expected count when the pair deviation is zero, and
+
+$$
+b_p\sim\mathcal N(0,\tau_p^2).
+$$
+
+Conditional on a particular pair effect,
+
+$$
+\operatorname{Var}[Y_{pl}\mid b_p]
+=\mathbb{E}[Y_{pl}\mid b_p]
+=\lambda_{pl}(b_p).
+$$
+
+Thus the model remains conditionally Poisson.
+
+## Averaging over the passage-pair population
+
+For a new aligned pair, the marginal mean is
+
+$$
+m_{pl}
+=\operatorname{E}_{b}\left[\lambda_{pl}(b)\right].
+$$
+
+Because $B\sim\mathcal N(0,\tau_p^2)$, its moment-generating function is $M_B(t)=\exp(t^2\tau_p^2/2)$. Evaluating that function at one and two gives all of the lognormal moments needed below:
+
+$$
+\begin{aligned}
+M_B(t)&=\exp(t^2\tau_p^2/2),\\
+\mathbb{E}[e^B]&=M_B(1)=e^{\tau_p^2/2},\\
+\mathbb{E}[e^{2B}]&=M_B(2)=e^{2\tau_p^2},\\
+\operatorname{Var}[e^B]&=e^{2\tau_p^2}-e^{\tau_p^2}.
+\end{aligned}
+$$
+
+so
+
+$$
+m_{pl}
+=\lambda_{pl}^{(0)}
+\exp\left(\frac{\tau_p^2}{2}\right).
+$$
+
+The law of total variance gives
+
+$$
+\begin{aligned}
+\operatorname{Var}[Y_{pl}]
+&=\operatorname{E}_{b}
+  [\operatorname{Var}[Y_{pl}\mid b]]
+  +\operatorname{Var}_{b}
+  [\mathbb{E}[Y_{pl}\mid b]]\\
+&=\operatorname{E}_{b}[\lambda_{pl}(b)]
+  +\operatorname{Var}_{b}[\lambda_{pl}(b)]\\
+&=m_{pl}+\operatorname{Var}_{b}[\lambda_{pl}(b)].
+\end{aligned}
+$$
+
+The lognormal moment identity yields
+
+$$
+\operatorname{Var}_{b}[\lambda_{pl}(b)]
+=m_{pl}^2\left[\exp(\tau_p^2)-1\right].
+$$
+
+Thus,
+
+$$
+\operatorname{Var}[Y_{pl}]
+=m_{pl}
++m_{pl}^2\left[\exp(\tau_p^2)-1\right].
+$$
+
+If $\tau_p^2>0$, the second term is positive. Marginal variance then exceeds marginal mean even though every conditional count distribution is Poisson.
+
+Setting $\tau_p=0$ collapses $B$ to zero, removes the second term, and recovers the Poisson equality $\operatorname{Var}[Y_{pl}]=\mathbb{E}[Y_{pl}]=\lambda_{pl}^{(0)}$.
+
+## Substituting the fitted UCCA pair variance
+
+```{r}
+#| label: ucca-marginal-dispersion
+library(lme4)
+library(ggplot2)
+
+ucca <- read.csv("data/ucca-french-english/passage-counts.csv")
+ucca$pair_id <- factor(ucca$pair_id)
+ucca$language <- factor(
+  ucca$language,
+  levels = c("en", "fr")
+)
+
+fit <- glmer(
+  scene_count ~ language +
+    offset(log(word_count)) +
+    (1 | pair_id),
+  data = ucca,
+  family = poisson(link = "log"),
+  nAGQ = 1L,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+variance_table <- as.data.frame(VarCorr(fit))
+pair_variance <- variance_table$vcov[
+  variance_table$grp == "pair_id" & is.na(variance_table$var2)
+]
+
+reference_passage <- data.frame(
+  language = factor("en", levels = levels(ucca$language)),
+  word_count = 100
+)
+conditional_mean <- predict(
+  fit,
+  newdata = reference_passage,
+  re.form = NA,
+  type = "response"
+)
+marginal_mean <- conditional_mean * exp(pair_variance / 2)
+marginal_variance <- marginal_mean +
+  marginal_mean^2 * (exp(pair_variance) - 1)
+
+pearson_residual <- residuals(fit, type = "pearson")
+pearson_degrees_of_freedom <-
+  nrow(ucca) - length(fixef(fit)) - 1L
+conditional_pearson_ratio <-
+  sum(pearson_residual^2) / pearson_degrees_of_freedom
+
+dispersion_summary <- c(
+  pair_intercept_variance = pair_variance,
+  conditional_mean_at_100_english_words = conditional_mean,
+  marginal_mean_at_100_english_words = marginal_mean,
+  marginal_variance_at_100_english_words = marginal_variance,
+  marginal_variance_mean_ratio = marginal_variance / marginal_mean,
+  conditional_pearson_ratio = conditional_pearson_ratio
+)
+dispersion_summary
+```
+
+The denominator subtracts the fixed-effect count and one fitted variance parameter. In a GLMM, however, the effective degrees of freedom consumed by partially pooled random effects are not exactly one per variance parameter or one per group. The reported Pearson ratio is thus a heuristic residual diagnostic, not a pivot with an exact chi-squared reference distribution.
+
+At the observed-data fit, the population-center mean for an English passage with 100 annotated words is `r sprintf("%.2f", conditional_mean)` Scenes. Averaging over new passage-pair heterogeneity raises the mean to `r sprintf("%.2f", marginal_mean)` and gives marginal variance `r sprintf("%.2f", marginal_variance)`. The resulting marginal variance-to-mean ratio is `r sprintf("%.3f", marginal_variance / marginal_mean)`.
+
+These values describe the fitted Poisson-lognormal model at one actual exposure value. They are not a simulated count example.
+
+## Diagnosing conditional fit
+
+The marginal moment identity does not tell us whether the conditional Poisson variance fits the observed within-model residual pattern. A Pearson diagnostic assesses that different question.
+
+```{r}
+#| label: plot-ucca-dispersion
+diagnostic_data <- data.frame(
+  fitted_count = fitted(fit),
+  pearson_residual = pearson_residual,
+  language = ucca$language
+)
+
+ggplot(
+  diagnostic_data,
+  aes(
+    x = fitted_count,
+    y = pearson_residual,
+    shape = language
+  )
+) +
+  geom_hline(yintercept = 0, color = "grey70") +
+  geom_point(size = 1.2, color = "#1F5A85") +
+  labs(
+    x = "Conditional fitted Scene count",
+    y = "Pearson residual",
+    shape = "Language"
+  ) +
+  theme_classic()
+```
+
+The conditional Pearson ratio is `r sprintf("%.3f", conditional_pearson_ratio)`, which is below one. These data are conditionally underdispersed relative to the fitted Poisson working model even though the pair intercept induces extra-Poisson *marginal* variance. The two claims refer to different conditioning levels and can hold simultaneously.
+
+Two sides of the same passage pair share $b_p$. After that effect is averaged out, a high count on one side provides information that the pair has a high baseline, which in turn raises the expectation for the other side. A negative-binomial or observation-level dispersion term can change count variance but does not by itself encode this paired association.
+
+| Quantity | Poisson-lognormal claim | What it describes |
+|---|---|---|
+| Conditional variance | $\operatorname{Var}[Y_{pl}\mid b_p]=\lambda_{pl}(b_p)$ | count variation at a fixed pair deviation |
+| Marginal variance | $m_{pl}+m_{pl}^2[e^{\tau_p^2}-1]$ | variation across new pairs and counts |
+| Cross-row covariance | positive for the two sides sharing $b_p$ | paired dependence after the effect is averaged out |
+
+Random intercepts thus do not repair every dispersion pattern. They are licensed by a known repeated unit and explain one structured source of variation. Remaining conditional underdispersion, omitted predictors, varying associations, or another response family require separate model criticism.
+
+## Recap and check
+
+1. Can conditional Poisson variance coexist with marginal overdispersion? Yes. Averaging over pair heterogeneity adds the second total-variance term.
+2. Does extra marginal variance imply independent rows? No. A shared pair effect also induces cross-row covariance.
+3. Is the printed Pearson denominator exact for this GLMM? No. It is a declared heuristic because random effects use fractional effective information.
+
+The [model-criticism module](../model-criticism-and-prediction/) separates checks of conditional fit, predictive calibration, and dependence.
