@@ -7,9 +7,11 @@ execute:
   message: false
 ---
 
-[Conjugacy](conjugate-priors.qmd#what-conjugacy-buys-and-what-it-does-not) is the algebraic relationship in which a likelihood and prior yield a posterior in a recognizable density family. Their parameter-dependent product is the posterior kernel. Its integral over the parameter space is the normalizing constant, the positive quantity by which we divide the kernel to obtain a density that integrates to one. Many useful likelihood-prior combinations do not provide a familiar expression for that constant. We now fix one empirical posterior that every remaining computation page will target.
+On the [conjugate-prior page](conjugate-priors.qmd#what-conjugacy-buys-and-what-it-does-not), we multiplied a Bernoulli likelihood by a beta prior and recognized another beta density. That recognition gave us the normalizing constant immediately. But what happens when the product of the likelihood and prior does not have a familiar name?
 
-We do this in four steps. First, we reconstruct the path from a reader's eye movement to one passage-level observation. Second, we compare a normal likelihood with heavier-tailed alternatives and explain why we choose a Student-t likelihood with these priors for the present analysis. Third, we derive the posterior density from the likelihood and priors. Finally, we approximate its normalizing constant on a grid. The order matters: the computation is meaningful only after the data and model have been specified.
+The posterior still has a perfectly good mathematical definition as long as the relevant integral is finite. We call the parameter-dependent product of the likelihood and prior the **posterior kernel**, and we obtain the posterior density by dividing that kernel by its integral over the parameter space. The difficulty is that we may not know how to evaluate this **normalizing constant** by hand. For the rest of the computation sequence, we will work with one Provo reading-time model for which this is the case.
+
+We will build the problem from the data upward. First, we reconstruct the path from a reader's eye movement to one passage-level observation. We then compare a normal likelihood with heavier-tailed alternatives and explain the Student-t likelihood and priors used here. Once the model is fixed, we can derive its posterior kernel and approximate the normalizing constant on a grid. The computation comes last because we first need to know which distribution we are trying to approximate.
 
 ## From an eye movement to a modeled observation {#provo-data-ladder}
 
@@ -80,9 +82,9 @@ For instance, the first passage contributes 33 retained positions, including 16 
 
 ## Why aggregate? {#why-aggregate-provo}
 
-The [first treatment of aggregation](../foundations/linguistic-data.qmd#what-aggregation-removes) stressed that a summary both answers a question and removes variation. Here aggregation provides a two-parameter location-scale target that can be normalized on a grid and then reused when we introduce importance sampling, [Markov chains](markov-chains.qmd), Hamiltonian Monte Carlo, and Stan. A Markov chain is a sequence of dependent states whose next-state distribution depends on the current state; its full treatment comes later. Giving each passage one contrast also prevents passages with more retained noun or verb positions from automatically receiving more weight.
+The [first treatment of aggregation](../foundations/linguistic-data.qmd#what-aggregation-removes) stressed that a summary both answers a question and removes variation. Our current question concerns the distribution of noun--verb contrasts across the 55 passages. We thus calculate one contrast per passage and give each passage one contribution to the model. This prevents passages with more retained noun or verb positions from automatically receiving more weight.
 
-But this convenience has a cost. The passage summaries remove reader variation, word-position variation, reader-by-word-class variation, and information about how precisely each passage contrast was measured. Passages with different noun counts, verb counts, and contributing fixation counts are treated as equally precise observations. A trial-level hierarchical model could represent those sources of variation, but it would answer a richer question and would no longer provide the two-dimensional target needed for the computational sequence.
+But this choice narrows what we can learn. The passage summaries remove reader variation, word-position variation, reader-by-word-class variation, and information about how precisely each passage contrast was measured. Passages with different noun counts, verb counts, and contributing fixation counts are treated as equally precise observations. A trial-level hierarchical model could represent those sources of variation and answer a richer question. Here we instead focus on the unweighted distribution of the 55 constructed passage contrasts. We represent that distribution with a center and scale.
 
 The resulting analysis assigns equal model weight to 55 passage summaries, each
 built from fixation-contingent position means. Reader-level distributions and
@@ -319,6 +321,69 @@ $$
 \approx
 \sigma\,\Delta\lambda.
 $$
+
+The picture below shows this stretching directly. Each horizontal segment has
+the same width on the $\lambda$ scale: $\Delta\lambda=0.4$. The corresponding
+vertical change on the $\sigma$ scale grows as we move to the right. Around a
+large value of $\lambda$, the same movement in $\lambda$ therefore covers a
+much wider interval of positive $\sigma$ values.
+
+```{r}
+#| label: plot-jacobian-stretch
+#| fig-cap: "The map sigma = exp(lambda). Equal movements on the log scale produce larger movements on the positive scale as lambda increases."
+#| echo: false
+
+jacobian_lambda <- seq(-2, 2, length.out = 400L)
+jacobian_curve <- data.frame(
+  lambda = jacobian_lambda,
+  sigma = exp(jacobian_lambda)
+)
+
+jacobian_starts <- c(-1.5, -0.25, 1) # dqr-allow: plot-aesthetic
+jacobian_intervals <- data.frame(
+  lambda_left = jacobian_starts,
+  lambda_right = jacobian_starts + 0.4,
+  sigma_left = exp(jacobian_starts),
+  sigma_right = exp(jacobian_starts + 0.4),
+  interval = factor(seq_along(jacobian_starts))
+)
+
+ggplot(jacobian_curve, aes(lambda, sigma)) +
+  geom_line(linewidth = 0.8, color = "grey25") +
+  geom_segment(
+    data = jacobian_intervals,
+    aes(
+      x = lambda_left, xend = lambda_right,
+      y = sigma_left, yend = sigma_left,
+      color = interval
+    ),
+    inherit.aes = FALSE,
+    linewidth = 0.9,
+    linetype = "dashed"
+  ) +
+  geom_segment(
+    data = jacobian_intervals,
+    aes(
+      x = lambda_right, xend = lambda_right,
+      y = sigma_left, yend = sigma_right,
+      color = interval
+    ),
+    inherit.aes = FALSE,
+    linewidth = 1.1
+  ) +
+  geom_point(
+    data = jacobian_intervals,
+    aes(x = lambda_right, y = sigma_right, color = interval),
+    inherit.aes = FALSE,
+    size = 2.2
+  ) +
+  scale_color_brewer(palette = "Dark2", guide = "none") +
+  labs(
+    x = expression(lambda),
+    y = expression(sigma == exp(lambda))
+  ) +
+  theme_classic(base_size = 12)
+```
 
 The probability assigned to the two corresponding intervals must agree:
 
