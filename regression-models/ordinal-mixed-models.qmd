@@ -5,7 +5,7 @@ execute: {warning: false, message: false}
 
 An ordinal mixed model combines the cumulative link introduced for [ordinal regression](ordinal-regression.qmd) with the group deviations introduced for [generalized linear mixed models](generalized-linear-mixed-models.qmd). The [Laplace page](laplace-approximation.qmd) explains how the random effects are integrated during fitting.
 
-The [expected value](../random-variables-and-distributions/expected-values.qmd) of numeric category codes would depend on unsupported distances, so this model instead targets cumulative category probabilities. The [random-effect framework](fixed-and-random-effects.qmd) supplies respondent and verb deviations. Each response remains one ordered task judgment; a link to the [ordinal-response dossier](ordinal-regression.qmd) fixes that scale before group variation is interpreted.
+The [expected value](../random-variables-and-distributions/expected-values.qmd) of numeric category codes would depend on unsupported distances, so this model instead targets cumulative category probabilities. The [random effect framework](fixed-and-random-effects.qmd) supplies respondent and verb deviations. Each response remains one ordered task judgment; a link to the [ordinal response discussion](ordinal-regression.qmd) fixes that scale before group variation is interpreted.
 
 This page first fixes the MegaVeridicality subset, then fits respondent and verb variation, checks category probabilities, and states exactly which group deviations enter each prediction.
 
@@ -76,7 +76,7 @@ do.call(rbind, lapply(c("direct", "conditional"), function(task_value) {
 
 ## Retaining the ordered response
 
-For response $Y_i$ and cutpoint $c$, the cumulative-logit model is
+For response $Y_i$ and cutpoint $c$, the cumulative logit model is
 
 $$
 \operatorname{logit}\mathbb{P}(Y_i\le c)
@@ -178,57 +178,17 @@ model_formula <- outcome ~ polarity * task +
   (1 + polarity + task | verb) +
   (1 | respondent_id)
 
-cache_path <- paste0(
-  "data/megaveridicality/",
-  "megaveridicality-clmm-fold1-cache.rds"
-)
-
-cache_signature <- list(
-  input_md5 = unname(tools::md5sum(c(data_path, fold_path))),
-  analysis_fold = analysis_fold,
-  formula = paste(deparse(model_formula), collapse = " "),
+fit <- clmm(
+  model_formula,
+  data = judgments,
   link = "logit",
+  Hess = FALSE,
   nAGQ = 1L,
-  maxIter = 100L,
-  gradTol = 1e-3,
-  R_version = as.character(getRversion()),
-  ordinal_version = as.character(packageVersion("ordinal"))
+  control = clmm.control(
+    maxIter = 100L,
+    gradTol = 1e-3
+  )
 )
-
-cached <- if (file.exists(cache_path)) {
-  readRDS(cache_path)
-} else {
-  NULL
-}
-
-cache_is_valid <- is.list(cached) &&
-  all(c("fit", "signature") %in% names(cached)) &&
-  identical(cached$signature, cache_signature)
-
-if (cache_is_valid) {
-  fit <- cached$fit
-} else {
-  fit <- clmm(
-    model_formula,
-    data = judgments,
-    link = "logit",
-    Hess = FALSE,
-    nAGQ = 1L,
-    control = clmm.control(
-      maxIter = 100L,
-      gradTol = 1e-3
-    )
-  )
-
-  saveRDS(
-    list(
-      fit = fit,
-      signature = cache_signature
-    ),
-    cache_path,
-    version = 3
-  )
-}
 
 data_summary <- c(
   judgments = nrow(judgments),
@@ -249,7 +209,7 @@ The `clmm` arguments map directly to assumptions and computation:
 | `(1 + polarity + task \| verb)` | correlated verb intercept, polarity slope, and task slope |
 | `(1 \| respondent_id)` | respondent location intercept |
 | `link = "logit"` | logistic cumulative distribution and proportional-odds location shift |
-| `nAGQ = 1` | Laplace approximation to random-effect integration |
+| `nAGQ = 1` | Laplace approximation to random effect integration |
 | `gradTol`, `maxIter` | convergence tolerance and iteration budget, not model assumptions |
 
 Before using a previously fitted object, the code compares the current data,
@@ -364,7 +324,7 @@ ggplot(raw_probabilities, aes(x = response)) +
 
 A prediction for an observed respondent and verb can condition on both estimated deviations. A prediction for a new respondent judging an observed verb may condition on the verb deviation but cannot reuse an observed respondent effect. A prediction for a new respondent and new verb must handle both group distributions.
 
-Setting both deviations to zero gives a location at the center of the link-scale distributions, as in the figure. Averaging category probabilities over either distribution generally produces different response-scale probabilities because the inverse cumulative-logit transformation is nonlinear. A reported probability must thus state which groups are represented in the target.
+Setting both deviations to zero gives a location at the center of the link-scale distributions, as in the figure. Averaging category probabilities over either distribution generally produces different response-scale probabilities because the inverse cumulative logit transformation is nonlinear. A reported probability must thus state which groups are represented in the target.
 
 ## What the fitted location can and cannot represent
 
@@ -372,7 +332,7 @@ A positive location shift moves probability toward higher ordered responses. It 
 
 The verb random slopes allow the polarity and task associations to vary across observed verbs. The respondent random intercept allows overall response location to vary across respondents. It cannot represent every response style: respondents might also differ in threshold spacing or in how often they use *maybe*. A location-intercept model leaves those possibilities outside its structure.
 
-White and Rawlins normalize responses and study derived veridicality, factivity, responsivity, and clause-selection patterns. We instead analyze raw ordered responses as a function of polarity and task so that the cumulative-link and random-effect assumptions are visible on the recorded scale. The resulting coefficients answer that narrower question and do not reproduce the paper's normalization or responsivity analysis.
+White and Rawlins normalize responses and study derived veridicality, factivity, responsivity, and clause-selection patterns. We instead analyze raw ordered responses as a function of polarity and task so that the cumulative-link and random effect assumptions are visible on the recorded scale. The resulting coefficients answer that narrower question and do not reproduce the paper's normalization or responsivity analysis.
 
 ## Recap and check
 
