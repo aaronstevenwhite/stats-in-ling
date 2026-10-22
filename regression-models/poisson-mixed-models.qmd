@@ -5,7 +5,7 @@ execute: {warning: false, message: false}
 
 We now combine [Poisson regression](poisson-regression.qmd), an [exposure offset](exposure-offsets.qmd), and a [random intercept](random-intercepts.qmd) in an analysis of aligned linguistic graphs.
 
-The count's [conditional probability](../foundations/conditional-probability.qmd) distribution and [variance](../random-variables-and-distributions/variance-and-covariance.qmd) are defined after the aligned-pair deviation is supplied. The [random-effect framework](fixed-and-random-effects.qmd) treats that deviation as a draw from a population. The resulting likelihood keeps the observed graph counts fixed while comparing coefficient and variance-component values.
+The count's [conditional probability](../foundations/conditional-probability.qmd) distribution and [variance](../random-variables-and-distributions/variance-and-covariance.qmd) are defined after the aligned-pair deviation is supplied. The [random effect framework](fixed-and-random-effects.qmd) treats that deviation as a draw from a population. The resulting likelihood keeps the observed graph counts fixed while comparing coefficient and variance-component values.
 
 The UCCA analysis needs three pieces at once: a count response, an exposure, and a
 shared deviation for the two language sides of an aligned passage. Their joint
@@ -18,9 +18,9 @@ The current v2 release differs from the older version summarized in the paper. T
 
 ## Stating the observation and target
 
-One row is one complete passage graph in English or French. `pair_id` joins the aligned translations. As defined in the [UCCA exposure dossier](../statistical-inference/paired-observations.qmd#ucca-exposure-dossier), `word_count` counts non-punctuation Layer-0 word nodes, while `terminal_count` additionally counts punctuation terminals. `scene_count` counts distinct nodes with an outgoing Process or State edge. A remote reference to an existing node does not create another Scene. <!-- dqr-allow: reference-metadata -->
+One row is one complete passage graph in English or French. `pair_id` joins the aligned translations. As defined in the [UCCA passage measures](../statistical-inference/paired-observations.qmd#ucca-passage-measures), `word_count` counts nonpunctuation Layer-0 word nodes, while `terminal_count` additionally counts punctuation terminals. `scene_count` counts distinct nodes with an outgoing Process or State edge. A remote reference to an existing node does not create another Scene. <!-- dqr-allow: reference-metadata -->
 
-The prepared extract does not redistribute passage text or graph XML. It does preserve graph-aware counts, so the first aligned pair can be read without inventing a sentence:
+The table contains graph-aware counts but no passage text. We can therefore inspect the first aligned pair without inventing a sentence:
 
 ```{r}
 #| label: inspect-one-ucca-pair
@@ -141,14 +141,15 @@ data_summary <- c(
 )
 data_summary
 
-language_coefficient <- fixef(fit)[["languagefr"]]
+language_coefficient <- lme4::fixef(fit)[["languagefr"]]
 french_english_rate_ratio <- exp(language_coefficient)
+terminal_rate_ratio <- exp(
+  lme4::fixef(terminal_fit)[["languagefr"]]
+)
 c(
   french_log_rate_coefficient = language_coefficient,
   french_english_rate_ratio_per_word = french_english_rate_ratio,
-  sensitivity_rate_ratio_per_terminal = exp(
-    fixef(terminal_fit)[["languagefr"]]
-  )
+  sensitivity_rate_ratio_per_terminal = terminal_rate_ratio
 )
 ```
 
@@ -167,7 +168,7 @@ The mathematical pieces map to the fitting call as follows:
 Holding the passage-pair effect fixed, the fitted French Scene rate is `r sprintf("%.3f", french_english_rate_ratio)` times the fitted English rate per annotated word. The comparison is multiplicative because the model uses a log link.
 
 With all Layer-0 terminals as exposure, the corresponding ratio is
-`r sprintf("%.3f", exp(fixef(terminal_fit)[["languagefr"]]))`. The two fits use
+`r sprintf("%.3f", terminal_rate_ratio)`. The two fits use
 the same Scene counts and pair structure. Their difference comes only from whether
 punctuation contributes to the opportunity denominator.
 
@@ -251,4 +252,4 @@ or language pairs from which to estimate a general French--English contrast.
 
 </details>
 
-The [overdispersion-and-random-effects page](overdispersion-and-random-effects.qmd) next separates conditional Poisson variation from the marginal dispersion induced by group heterogeneity.
+The [overdispersion-and-random effects page](overdispersion-and-random-effects.qmd) next separates conditional Poisson variation from the marginal dispersion induced by group heterogeneity.
