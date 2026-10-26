@@ -7,13 +7,49 @@ execute:
   message: false
 ---
 
-[Stan](https://mc-stan.org/) samples a posterior after the analyst declares data, parameters, and density contributions. The passage-level Student-t program below corresponds exactly to the robust model introduced on the [nonconjugate-posterior page](beyond-conjugacy.qmd#a-robust-location-scale-model).
+We have now assembled the main pieces of a posterior sampler. HMC uses the log
+posterior and its gradient to construct a trajectory. A mass matrix adjusts
+that trajectory to the posterior's global scale and orientation. NUTS chooses
+how far the trajectory grows. Writing all of those pieces by hand for every
+model would be possible, but it would also make it easy to introduce a
+mistake in a derivative, transformation, or transition.
 
-The [posterior-distribution page](posterior-distributions.qmd) defined the target as a prior updated by a likelihood. Stan's model block adds those [likelihood](maximum-likelihood.qmd#probability-and-likelihood) and prior log-density contributions; its sampler then uses [Monte Carlo](monte-carlo-integration.qmd#expectations-as-integrals) transitions to approximate the resulting conditional distribution. The vectorized observation statement below asserts conditional [independence](../foundations/independence.qmd) of passage summaries given the parameters.
+[Stan](https://mc-stan.org/) asks us to describe the statistical model and
+handles those sampling calculations. More specifically, we declare (i) the
+observed values and fixed constants, (ii) the unknown parameters and their
+constraints, and (iii) the log-density contributions supplied by the prior
+and likelihood. Stan differentiates the resulting log density and uses NUTS
+to generate dependent draws from the posterior.
 
-The task is to translate each term in the mathematical model into one part of a complete Stan program. We will then prepare the passage contrasts, fit the model we just wrote, and verify that the program has the intended factorization. Only after those checks will we use its draws for inference.
+Okay. So how do we translate the passage-level Student-$t$ model into those
+declarations?
+
+We will read the program from top to bottom. For each block, we will first ask
+what mathematical object it represents and then ask what Stan does with that
+object. This order matters because code that runs successfully may still
+encode a different model from the one we intended.
 
 ## The complete program
+
+The mathematical model from the
+[robust location--scale discussion](beyond-conjugacy.qmd#a-robust-location-scale-model)
+is
+
+$$
+\begin{aligned}
+Y_j\mid\mu,\sigma
+&\overset{\mathrm{ind}}{\sim}t_4(\mu,\sigma),
+&&j=1,\ldots,55,\\ % dqr-allow: symbolic-derivation
+\mu&\sim\mathcal N(0,s_\mu^2),\\
+\sigma&\sim\operatorname{HalfNormal}(0,s_\sigma^2).
+\end{aligned}
+$$
+
+The first line says that once $\mu$ and $\sigma$ are fixed, the 55 passage
+summaries are [independent](../foundations/independence.qmd) draws from the
+same Student-$t$ distribution. The next two lines state the prior
+distributions. The value $\nu=4$ is treated as a fixed constant in this model,
+so it belongs with the data rather than with the unknown parameters.
 
 ```stan
 data {
@@ -47,9 +83,63 @@ generated quantities {
 }
 ```
 
-The data block contains the 55 observed passage contrasts and the empirically calibrated prior scales. The parameters block declares the unknown location and positive scale. In the model block, each tilde statement adds a log-density contribution to Stan's `target`; it does not simulate a value.
+The `data` block contains quantities known before sampling begins. `N` records
+the number of modeled rows; `y` contains the observed contrast in each row;
+the two prior scales set $s_\mu$ and $s_\sigma$; and `nu` sets the fixed degrees
+of freedom. Writing `vector[N] y` tells Stan both that `y` is a real-valued
+vector and that its length must match `N`.
 
-The half-normal prior is represented by the lower bound on `sigma` together with a zero-centered normal density. Stan samples an unconstrained internal value $\lambda$ and maps it to the positive parameter by $\sigma=\exp(\lambda)$. Recall from the [density-rescaling derivation](../random-variables-and-distributions/beta-distribution.qmd#density-rescaling) that a Jacobian compensates for the way a coordinate transformation changes short interval widths. Here $\mathrm d\sigma/\mathrm d\lambda=\exp(\lambda)=\sigma$, so equal-width intervals in $\lambda$ represent unequal-width intervals in $\sigma$. Stan preserves their probability mass by adding $\log\sigma$ to the log density internally; we must not add that term again in the model block.
+The `parameters` block contains quantities whose posterior distribution we
+want to compute. `mu` can take any real value. The declaration
+`real<lower=0> sigma` restricts `sigma` to positive values because a negative
+scale has no meaning in the Student-$t$ density.
+
+The `model` block adds the log-density terms that define the posterior kernel.
+The statement
+
+```stan
+y ~ student_t(nu, mu, sigma);
+```
+
+is a compact way to add
+
+$$
+\sum_{j=1}^{N}\log t_\nu(y_j\mid\mu,\sigma)
+$$
+
+to Stan's internal log density, which Stan calls `target`. The statement does
+not generate new values of `y`. The two prior statements add the log prior
+density of `mu` and `sigma` in the same way.
+
+The positivity constraint and the prior perform different jobs. The constraint
+sets the possible values of `sigma`. The zero-centered normal density assigns
+relative prior density across those positive values. Because the omitted
+normalizing factor of two is constant in `sigma`, the constrained normal
+density has the half-normal shape required by the posterior kernel.
+
+Stan carries out HMC in an unconstrained space. For a positive parameter, it
+uses an internal real-valued coordinate $\lambda$ and maps it to the reported
+parameter by $\sigma=\exp(\lambda)$. This transformation changes interval
+widths. For instance, the interval from $\lambda=0$ to $\lambda=.1$ maps to <!-- dqr-allow: symbolic-derivation -->
+approximately $\sigma=1$ through $1.105$, a width of about $.105$. The
+equal-width interval from $\lambda=2$ to $\lambda=2.1$ maps to approximately <!-- dqr-allow: symbolic-derivation -->
+$7.389$ through $8.166$, a width of about $.777$. Equal intervals on the
+$\lambda$ scale therefore represent unequal intervals on the $\sigma$ scale.
+
+The [Jacobian discussion](beyond-conjugacy.qmd#jacobians-as-local-stretching)
+named the derivative that records this local stretching. In one dimension,
+the Jacobian is simply the absolute derivative of the transformation. Here
+
+$$
+\left|\frac{\mathrm d\sigma}{\mathrm d\lambda}\right|
+=\exp(\lambda)=\sigma.
+$$
+
+Multiplying the density by this local stretch preserves probability when we
+change coordinates; on the log scale, multiplication becomes addition, so
+the adjustment is $\log\sigma$. Stan adds this adjustment automatically for
+the declared constraint. Adding it again in the `model` block would count the
+same transformation twice.
 
 | Mathematical object | Stan statement | Meaning |
 |---|---|---|
@@ -87,18 +177,18 @@ The reference run uses four data-scaled initial values constructed from the post
 ```{r}
 #| label: construct-provo-stan-initial-values
 #| code-fold: true
-log_posterior_eta <- function(eta) {
-  mu <- eta[[1L]]
-  sigma <- exp(eta[[2L]])
+log_posterior_pair <- function(parameter_pair) {
+  mu <- parameter_pair[[1L]]
+  sigma <- exp(parameter_pair[[2L]])
   sum(dt((y - mu) / sigma, df = stan_data$nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, stan_data$prior_mu_sd, log = TRUE) +
     log(2) + dnorm(sigma, 0, stan_data$prior_sigma_sd, log = TRUE) +
-    eta[[2L]]
+    parameter_pair[[2L]]
 }
 
-gradient_log_posterior_eta <- function(eta) {
-  mu <- eta[[1L]]
-  sigma <- exp(eta[[2L]])
+gradient_log_posterior_pair <- function(parameter_pair) {
+  mu <- parameter_pair[[1L]]
+  sigma <- exp(parameter_pair[[2L]])
   residual <- y - mu
   scaled_squared <- residual^2 / sigma^2
   c(
@@ -113,34 +203,34 @@ gradient_log_posterior_eta <- function(eta) {
 
 mode_fit <- optim(
   c(median(y), log(mad(y))),
-  function(eta) -log_posterior_eta(eta),
-  gr = function(eta) -gradient_log_posterior_eta(eta),
+  function(parameter_pair) -log_posterior_pair(parameter_pair),
+  gr = function(parameter_pair) -gradient_log_posterior_pair(parameter_pair),
   method = "BFGS", hessian = TRUE,
   control = list(reltol = 1e-12, maxit = 1000L)
 )
-mode_eta <- unname(mode_fit$par)
+mode_pair <- unname(mode_fit$par)
 mode_covariance <- solve(mode_fit$hessian)
 grid_sd <- sqrt(diag(mode_covariance))
 posterior_grid <- expand.grid(
-  mu = seq(mode_eta[[1L]] - 7 * grid_sd[[1L]],
-           mode_eta[[1L]] + 7 * grid_sd[[1L]], length.out = 321L),
-  log_sigma = seq(mode_eta[[2L]] - 7 * grid_sd[[2L]],
-                  mode_eta[[2L]] + 7 * grid_sd[[2L]], length.out = 321L)
+  mu = seq(mode_pair[[1L]] - 7 * grid_sd[[1L]],
+           mode_pair[[1L]] + 7 * grid_sd[[1L]], length.out = 321L),
+  log_sigma = seq(mode_pair[[2L]] - 7 * grid_sd[[2L]],
+                  mode_pair[[2L]] + 7 * grid_sd[[2L]], length.out = 321L)
 )
-posterior_grid$log_kernel <- apply(posterior_grid, 1L, log_posterior_eta)
+posterior_grid$log_kernel <- apply(posterior_grid, 1L, log_posterior_pair)
 posterior_grid$weight <- exp(
   posterior_grid$log_kernel - max(posterior_grid$log_kernel)
 )
 posterior_grid$weight <- posterior_grid$weight / sum(posterior_grid$weight)
-grid_mean_eta <- colSums(posterior_grid * posterior_grid$weight)
+grid_mean_pair <- colSums(posterior_grid * posterior_grid$weight)
 grid_centered <- sweep(as.matrix(posterior_grid[, c("mu", "log_sigma")]),
-                       2L, grid_mean_eta, "-")
+                       2L, grid_mean_pair, "-")
 grid_covariance <- crossprod(grid_centered * sqrt(posterior_grid$weight))
 
 initial_values <- function(offsets) {
   lapply(offsets, function(offset) list(
-    mu = mode_eta[[1L]] + offset * sqrt(grid_covariance[1L, 1L]),
-    sigma = exp(mode_eta[[2L]] +
+    mu = mode_pair[[1L]] + offset * sqrt(grid_covariance[1L, 1L]),
+    sigma = exp(mode_pair[[2L]] +
                   offset * sqrt(grid_covariance[2L, 2L]))
   ))
 }

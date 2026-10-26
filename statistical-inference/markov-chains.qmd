@@ -7,26 +7,44 @@ execute:
   message: false
 ---
 
-The passage-level Student-t model cannot be sampled directly in closed form. We now construct a sequence of parameter states in which the next state depends on the current state. This dependence defines a [**Markov chain**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html).
+[Importance sampling](importance-sampling.qmd#reweighting-a-proposal) retained
+independent draws, but it required us to choose one proposal distribution that
+covered the posterior well. We will now try something different. Starting
+from one parameter value, we will generate the next value using the current
+one, then generate a third value using the second, and continue in this way.
+The result is a dependent sequence.
 
-The conditional probability in the Markov property restricts the next-state distribution to the current state, as developed on the [conditional-probability page](../foundations/conditional-probability.qmd). Successive states are generally not [independent](../foundations/independence.qmd), so their [covariances](../random-variables-and-distributions/variance-and-covariance.qmd) affect the variance of a chain average. The later [MCMC page](markov-chain-monte-carlo.qmd) uses a chain whose stationary distribution is the posterior in a Monte Carlo calculation.
+Why introduce dependence when independent draws made the Monte Carlo
+calculation so simple? Dependence lets each step use information about a
+region we have already reached. We do not need to design a single distribution
+that generates good values across the whole posterior in one shot. We need a
+transition rule that moves locally while spending the right long-run
+proportion of time in each posterior region.
 
-We will begin with the Markov property and then watch it operate in an actual passage-level transition sequence. The important distinction is between the rule that moves the chain and the distribution that remains unchanged under that rule. Once those objects are separate, we can ask how a Markov chain helps with Monte Carlo integration.
+A random sequence constructed by repeated transitions is a **stochastic
+process**. We will call it a [**Markov chain**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html)
+when the distribution of the next state depends on the current state and not
+on the earlier states once the current state is known. This is an application
+of [conditional probability](../foundations/conditional-probability.qmd): the
+earlier states supply no additional information after we condition on the
+present state.
+
+We will begin with a two-state chain for which every transition can be written
+in a small table. We will then separate the transition rule from the
+distribution that the rule preserves. Only after that distinction is secure
+will we look at a transition sequence in the passage-level Student-$t$ model.
 
 ## The Markov property
 
-Let the random state at iteration $s$ be $H_s=(M_s,\Lambda_s)$, and let a realized state be $\eta_s=(\mu_s,\lambda_s)$. For every measurable set $A$, the Markov property is
+Begin with a student moving between two rooms, `low` and `high`. If the
+student is currently in `low`, suppose they stay there with probability $.8$
+and move to `high` with probability $.2$. If they are currently in `high`,
+suppose they move to `low` with probability $.3$ and stay in `high` with
+probability $.7$. The current room supplies everything we need to assign the
+probabilities for the next room. Knowing where the student was two steps ago
+does not change them.
 
-$$
-\mathbb{P}(H_{s+1}\in A\mid
-H_s=\eta_s,\ldots,H_1=\eta_1)
-=
-\mathbb{P}(H_{s+1}\in A\mid H_s=\eta_s).
-$$
-
-Once the current passage-level Student-t model state is known, earlier states do not alter the next transition distribution. This does not make adjacent states independent: the proposal is centered on the current state, and rejection repeats it.
-
-For a finite example, suppose the state is either `low` or `high` and the transition matrix is
+We can collect the four transition probabilities in a **transition matrix**:
 
 $$
 P=
@@ -36,14 +54,71 @@ P=
 \end{pmatrix}.
 $$
 
-If the current state is `low`, the next state is `high` with probability $.2$, regardless of how the chain arrived at `low`. Solving $\pi=\pi P$ gives the stationary distribution $(.6,.4)$. The transition matrix and stationary distribution are thus different objects. <!-- dqr-allow: symbolic-derivation -->
+Rows name the current state and columns name the next state. The first row
+therefore says, “given `low` now, the next state is `low` with probability
+$.8$ and `high` with probability $.2$.” Each row sums to one because the next
+state must be one of the two rooms. The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+develops the row-and-column view used here.
+
+Now let the random parameter pair at iteration $s$ be
+$(M_s,L_s)$, with realized values $(\mu_s,\lambda_s)$. For every set $A$ of
+possible next pairs, the Markov property is
+
+$$
+\mathbb{P}((M_{s+1},L_{s+1})\in A\mid
+(M_s,L_s)=(\mu_s,\lambda_s),\ldots,
+(M_1,L_1)=(\mu_1,\lambda_1))
+=
+\mathbb{P}((M_{s+1},L_{s+1})\in A\mid
+(M_s,L_s)=(\mu_s,\lambda_s)).
+$$
+
+Once the current passage-level Student-t model state is known, earlier states do not alter the next transition distribution. This does not make adjacent states independent: the proposal is centered on the current state, and rejection repeats it.
+
+If the current state is `low`, the next state is `high` with probability $.2$
+regardless of how the chain arrived at `low`. Adjacent states are still
+dependent: knowing the current room changes the probabilities for the next
+room.
+
+## A distribution preserved by the transitions
+
+Suppose that before one transition, the student has probability $.6$ of being
+in `low` and $.4$ of being in `high`. After the transition, the probability of
+being in `low` is
+
+$$
+(.6)(.8)+(.4)(.3)=.60.
+$$
+
+The two products correspond to the two ways of arriving in `low`: start in
+`low` and stay, or start in `high` and move. The probability of being in
+`high` is similarly
+
+$$
+(.6)(.2)+(.4)(.7)=.40.
+$$
+
+The distribution $(.6,.4)$ is unchanged by the transition. We call such a
+distribution a **stationary distribution**. In matrix notation, the same
+calculation is $\pi=\pi P$, where $\pi=(.6,.4)$. This equation says that if
+the current state has distribution $\pi$, applying one transition produces a
+next state having that same distribution. It does not say that the realized
+state remains fixed.
 
 ## An actual passage-level Student-t model transition sequence
 
-The following code reconstructs the posterior grid, uses its covariance to scale a random-walk proposal, and records the first 25 transitions from one chain. To keep the page self-contained, the preview transition proposes symmetrically around the current state and accepts with probability $\min\{1,\widetilde f(\eta')/\widetilde f(\eta_s)\}$. This correction preserves the target; the [Metropolis--Hastings page](metropolis-hastings.qmd#proposal-and-acceptance) derives why.
+The following code reconstructs the posterior grid, uses its covariance to
+scale a random-walk proposal, and records the first 25 transitions from one
+chain. To keep the page self-contained, the preview transition proposes
+symmetrically around the current pair and accepts with probability
+$\min\{1,\widetilde f(\mu',\lambda')/
+\widetilde f(\mu_s,\lambda_s)\}$. This correction preserves the target; the
+[Metropolis--Hastings page](metropolis-hastings.qmd#proposal-and-acceptance)
+derives why.
 
 ```{r}
 #| label: first-provo-markov-transitions
+#| code-fold: true
 library(ggplot2)
 
 provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
@@ -51,14 +126,14 @@ y <- provo$noun_minus_verb_log_ffd
 nu <- 4
 prior_scale <- 2 * sd(y)
 log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
-log_target <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2])
+log_target <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
 mode_fit <- optim(c(median(y), log(mad(y))),
-                  function(eta) -log_target(eta), method = "BFGS",
+                  function(parameter_pair) -log_target(parameter_pair), method = "BFGS",
                   hessian = TRUE,
                   control = list(reltol = 1e-12, maxit = 1000L))
 local_sd <- sqrt(diag(solve(mode_fit$hessian)))
@@ -118,17 +193,20 @@ ggplot(transitions, aes(iteration, mu)) +
 Write the transition kernel as
 
 $$
-K(\eta,A)
+K((\mu,\lambda),A)
 =
-\mathbb{P}(\eta_{s+1}\in A\mid\eta_s=\eta).
+\mathbb{P}((M_{s+1},L_{s+1})\in A\mid
+(M_s,L_s)=(\mu,\lambda)).
 $$
 
 A density $\pi$ is stationary when
 
 $$
-\int K(\eta,A)\pi(\eta)\,\mathrm d\eta
+\int\!\!\int K((\mu,\lambda),A)\pi(\mu,\lambda)
+\,\mathrm d\lambda\,\mathrm d\mu
 =
-\int_A\pi(\eta')\,\mathrm d\eta'.
+\int\!\!\int_A\pi(\mu',\lambda')
+\,\mathrm d\lambda'\,\mathrm d\mu'.
 $$
 
 That is, if the current state has distribution $\pi$, one transition preserves that distribution. To use the transition for posterior sampling, we must design it so that the posterior is stationary.
@@ -147,7 +225,7 @@ The [MCMC page](markov-chain-monte-carlo.qmd#chain-averages) connects averages o
 
 ## Check your understanding
 
-1. Which earlier states enter the transition after $\eta_s$ is known?
+1. Which earlier states enter the transition after $(\mu_s,\lambda_s)$ is known?
 2. Why are adjacent states nevertheless dependent?
 3. Why must rejected states remain in the chain?
 4. Which distribution is stationary for a correctly constructed chain for the passage-level Student-t model?
@@ -155,7 +233,7 @@ The [MCMC page](markov-chain-monte-carlo.qmd#chain-averages) connects averages o
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. None. Conditional on the current state $\eta_s$, the transition distribution does not depend on earlier states. <!-- dqr-allow: empirical-answer -->
+1. None. Conditional on the current pair $(\mu_s,\lambda_s)$, the transition distribution does not depend on earlier states. <!-- dqr-allow: empirical-answer -->
 2. The proposal is centered on the current state, and rejection repeats that state, so successive states remain statistically dependent. <!-- dqr-allow: empirical-answer -->
 3. Repetition records the time the chain spends in that posterior region; deleting rejections would change the chain's stationary distribution. <!-- dqr-allow: empirical-answer -->
 4. The passage-level Student-t posterior is stationary for a correctly constructed chain targeting it. <!-- dqr-allow: empirical-answer -->

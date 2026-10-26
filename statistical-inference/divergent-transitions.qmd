@@ -7,11 +7,27 @@ execute:
   message: false
 ---
 
-A [**divergent transition**](https://mc-stan.org/docs/reference-manual/mcmc.html) occurs when numerical integration error exceeds Stan's threshold. It indicates that a trajectory may not have followed the target geometry reliably in one region. We demonstrate the warning with a deliberately coarse computation on the same passage-level Student-t model used throughout this sequence.
+The [HMC page](hamiltonian-monte-carlo.qmd#leapfrog-integration) replaced a
+continuous trajectory with a finite sequence of leapfrog steps. The final
+acceptance probability corrects the small energy error produced by that
+approximation. But what happens if a step crosses a region in which the
+posterior changes much more sharply than the numerical calculation can
+follow?
 
-The target geometry comes from the log [posterior](posterior-distributions.qmd), whose data contribution is the [likelihood](maximum-likelihood.qmd#probability-and-likelihood). [Correlation](../random-variables-and-distributions/correlation.qmd) can orient a narrow region, while [effective sample size](effective-sample-size.qmd#from-autocorrelation-to-ess) assesses dependence among retained draws; neither diagnostic substitutes for checking divergences in parameter space.
+Imagine approximating a curved road with straight line segments. Short
+segments may track a gentle bend accurately. The same segment length can cut
+across a sharp turn and leave the road. In HMC, the posterior's local
+curvature takes the place of the road, the step size controls the segment
+length, and change in Hamiltonian energy tells us how badly the calculated
+path departed from the ideal one.
 
-To see what the warning means, we will connect it to Hamiltonian energy error and compare adapted chains with deliberately coarse, unadapted transitions. We can then work out what to inspect when a divergence appears, instead of treating a change to one tuning parameter as an automatic repair.
+A [**divergent transition**](https://mc-stan.org/docs/reference-manual/mcmc.html)
+is Stan's warning that this departure became too large during a trajectory.
+It matters because the failure may be concentrated in a narrow posterior
+region that the sampler consequently explores poorly. We will derive the
+energy error, induce the warning by using deliberately poor numerical
+settings, and then develop a response that begins by locating the affected
+region.
 
 ## Energy error and geometry
 
@@ -31,6 +47,13 @@ $$
 $$
 
 The HMC correction accepts with probability $\min\{1,\exp(-\Delta H)\}$. Small numerical errors are corrected by this accept--reject step. A divergence flags an energy error large enough that the discrete trajectory may have failed to represent the local geometry reliably.
+
+For instance, if $\Delta H=.02$, the endpoint has acceptance probability
+$\exp(-.02)\approx.98$. The numerical path changed the energy slightly, and
+the randomized correction can account for that change. If the leapfrog path
+enters a region of rapidly changing curvature, the error may grow abruptly.
+The divergence warning records this qualitatively different numerical event;
+it should not be read as one more ordinary rejection.
 
 An **interior point** lies away from the boundary of the parameter space, so a
 sufficiently small move is possible in every coordinate direction. A target is

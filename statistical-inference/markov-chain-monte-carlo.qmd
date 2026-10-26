@@ -7,11 +7,27 @@ execute:
   message: false
 ---
 
-[Monte Carlo integration](monte-carlo-integration.qmd#expectations-as-integrals) used independent draws from the passage-level Student-t posterior. Direct posterior draws are often unavailable. [**Markov chain Monte Carlo (MCMC)**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html) uses dependent states from a chain whose stationary distribution is the posterior target.
+We now have two pieces that do not yet fit together. [Monte Carlo
+integration](monte-carlo-integration.qmd#from-a-weighted-sum-to-a-draw-average)
+tells us how to calculate a posterior expectation from draws. The
+[Markov-chain page](markov-chains.qmd#a-distribution-preserved-by-the-transitions)
+tells us how a repeated transition can preserve a chosen distribution. If we
+design the transition so that its stationary distribution is the posterior,
+then the states visited by a sufficiently long chain can supply the values in
+our Monte Carlo average.
 
-The [posterior-distribution page](posterior-distributions.qmd) defined the target as a conditional distribution after observing data, and the [Markov-chain page](markov-chains.qmd#the-markov-property) defined the transition dependence. Because chain states are not independent, covariance terms enter the variance of their average; the [variance--covariance decomposition](../random-variables-and-distributions/variance-and-covariance.qmd) supplies that accounting.
+This combination is called [**Markov chain Monte Carlo
+(MCMC)**](https://bookdown.org/rdpeng/advstatcomp/markov-chain-monte-carlo.html).
+The words name its two parts. *Markov chain* describes how we generate the
+dependent sequence. *Monte Carlo* describes how we average functions of that
+sequence to approximate posterior integrals.
 
-The basic idea is still Monte Carlo integration: average a function over draws from the target. But now the draws are dependent. We will see what conditions let a chain average converge to a posterior expectation, run four chains for the passage model, and keep the initialization, transition rule, and stationary distribution separate when we talk about convergence.
+A potential worry is that dependence might invalidate the average. It does
+change the average's numerical precision: neighboring states tend to carry
+overlapping information. But dependence does not by itself change the value
+toward which the average converges. We will state the conditions that make
+this claim work, compare a dependent chain average with the grid benchmark,
+and then identify the additional checks a finite run requires.
 
 ## Chain averages
 
@@ -20,22 +36,43 @@ For the passage-level Student-t model and a function $g$, the target is
 $$
 I
 =
-\mathbb{E}[g(\eta)\mid\mathbf y]
+\mathbb{E}[g(\mu,\lambda)\mid\mathbf y]
 =
-\int g(\eta)f(\eta\mid\mathbf y)\,\mathrm d\eta.
+\int\!\!\int g(\mu,\lambda)f(\mu,\lambda\mid\mathbf y)
+\,\mathrm d\lambda\,\mathrm d\mu,
 $$
 
-Under conditions that make the chain ergodic,
+where $\lambda=\log\sigma$.
+
+Under conditions that make the chain **ergodic**,
 
 $$
 \widehat I_S
 =
-\frac{1}{S}\sum_{s=1}^Sg(\eta^{(s)})
+\frac{1}{S}\sum_{s=1}^Sg(\mu^{(s)},\lambda^{(s)})
 $$
 
-converges to $I$. Here *ergodic* means, roughly, that the chain can reach the target regions relevant to $g$ and eventually loses the influence of its starting state.
+converges to $I$. Here *ergodic* names a collection of conditions that allow
+long-run averages along one chain to reproduce averages under its stationary
+distribution. For the present discussion, two parts matter. The chain must be
+able to reach every posterior region relevant to $g$, and its behavior must
+eventually cease to depend on its starting state. More technical versions of
+these conditions determine which convergence theorem applies.
 
-Four objects should remain separate: (i) the posterior target $\pi$, (ii) a transition kernel $K$ designed to preserve $\pi$, (iii) the distribution of $H_s$ at a finite iteration, and (iv) the empirical distribution of the realized states $\eta^{(1)},\ldots,\eta^{(S)}$. Stationarity means that starting from $\pi$ leaves the iteration distribution at $\pi$. Convergence means that an allowed nonstationary start approaches $\pi$ under additional conditions. Neither statement says that a particular finite run has explored every relevant region.
+The claim concerns an average along one dependent sequence. It does not claim
+that the states become independent, and it does not identify a finite
+iteration after which the chain is exactly stationary. We will therefore need
+both a long-run argument and finite-run diagnostics.
+
+Four objects should remain separate: (i) the posterior target $\pi$, (ii) a
+transition kernel $K$ designed to preserve $\pi$, (iii) the distribution of
+the random pair $(M_s,L_s)$ at a finite iteration, and (iv) the empirical
+distribution of the realized pairs
+$(\mu^{(1)},\lambda^{(1)}),\ldots,(\mu^{(S)},\lambda^{(S)})$. Stationarity
+means that starting from $\pi$ leaves the iteration distribution at $\pi$.
+Convergence means that an allowed nonstationary start approaches $\pi$ under
+additional conditions. Neither statement says that a particular finite run
+has explored every relevant region.
 
 ## Four dependent chains for the passage-level Student-t model
 
@@ -45,6 +82,7 @@ The transition is fully specified here: propose from a symmetric normal random w
 
 ```{r}
 #| label: run-provo-mcmc
+#| code-fold: true
 library(ggplot2)
 
 provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
@@ -52,14 +90,14 @@ y <- provo$noun_minus_verb_log_ffd
 nu <- 4
 prior_scale <- 2 * sd(y)
 log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
-log_target <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2])
+log_target <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
 mode_fit <- optim(c(median(y), log(mad(y))),
-                  function(eta) -log_target(eta), method = "BFGS",
+                  function(parameter_pair) -log_target(parameter_pair), method = "BFGS",
                   hessian = TRUE,
                   control = list(reltol = 1e-12, maxit = 1000L))
 local_sd <- sqrt(diag(solve(mode_fit$hessian)))

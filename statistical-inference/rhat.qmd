@@ -7,11 +7,22 @@ execute:
   message: false
 ---
 
-The trace and rank plots compare chains for the passage-level Student-t model visually. The **$\widehat R$ statistic** compares between-chain variation with within-chain variation: values near one are consistent with chain agreement, while larger values indicate persistent disagreement.
+The [trace and rank plots](checking-markov-chains.qmd) ask whether chains look
+similar. We now want a numerical comparison that reacts when chains settle in
+different locations or have different spreads. The **$\widehat R$ statistic**
+builds that comparison from two uses of the
+[variance](../random-variables-and-distributions/variance-and-covariance.qmd)
+operation students already know.
 
-The common target is the [posterior distribution](posterior-distributions.qmd). Both terms in $\widehat R$ are built from the earlier notion of [variance](../random-variables-and-distributions/variance-and-covariance.qmd), applied within chains and across chain means; agreement near one is necessary diagnostic evidence, rather than proof that a finite run has explored the target fully.
+The basic idea is to compare variation *within* chains with variation *among*
+chain means. If all chains explore the same distribution, their means should
+differ only by the amount expected from finite simulation, and the two
+variance estimates should be similar. If each chain moves around locally but
+the chain means remain far apart, the across-chain estimate becomes larger.
 
-We will derive the basic variance ratio and calculate it for the passage-level chains. That derivation gives us the intuition for the diagnostic. We can then ask why modern software splits chains and rank-normalizes draws before reporting $\widehat R$.
+We will derive that comparison for the textbook version of $\widehat R$, work
+through a small numerical case, and then explain the additional splitting,
+ranking, and folding operations used by current software.
 
 ## The basic variance ratio
 
@@ -27,11 +38,40 @@ $$
 B=N\operatorname{Var}[\overline\mu_1,\ldots,\overline\mu_M].
 $$
 
-For a tiny calculation, imagine two four-draw chains. Compute each chain mean and sample variance; their average is $W$. Then calculate the sample variance of the two means and multiply it by four to obtain $B$. If the means are far apart relative to their internal spreads, $B$ is large and $\widehat R$ rises above one.
+For a tiny calculation, imagine the following two four-draw chains:
+
+$$
+(-1,0,1,0)
+\qquad\text{and}\qquad
+(3,4,5,4).
+$$
+
+Their means are $0$ and $4$. Each chain has sample variance $2/3$, so
+$W=2/3$. The sample variance of the two means is $8$; multiplying by the chain <!-- dqr-allow: symbolic-derivation -->
+length gives $B=(4)(8)=32$. The chains have the same internal spread, but they
+are centered in very different places, so the between-chain term is much
+larger than the within-chain term.
 
 Combining them gives
 
 $$
+
+For the toy chains,
+
+$$
+\widehat V
+=
+\frac34\left(\frac23\right)+\frac14(32)
+=8.5,
+\qquad
+\widehat R
+=
+\sqrt{\frac{8.5}{2/3}}
+\approx3.57.
+$$
+
+That large value captures the separation we could already see. When the
+chains agree, $B$ and $W$ combine so that the ratio approaches one.
 \widehat V=\frac{N-1}{N}W+\frac1NB,
 \qquad
 \widehat R=\sqrt{\frac{\widehat V}{W}}.

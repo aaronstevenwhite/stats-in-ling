@@ -7,13 +7,29 @@ execute:
   message: false
 ---
 
-Stan's [**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html) runs after each retained parameter draw. It can transform a joint draw, simulate replicated responses, and evaluate pointwise log likelihoods without changing the posterior target.
+Once the sampler retains a joint draw $(\mu^{(s)},\sigma^{(s)})$, we often want
+to do more than store those two numbers. We may want to express $\mu$ as a
+duration ratio, generate a new passage contrast under the fitted model, or
+record how much density the draw assigns to each observed passage. Stan's
+[**generated quantities block**](https://mc-stan.org/docs/reference-manual/blocks.html)
+performs these operations after each retained draw.
 
-The [posterior-distribution page](posterior-distributions.qmd) defines the conditional target represented by each retained draw, and the [likelihood page](maximum-likelihood.qmd#probability-and-likelihood) defines the fixed-data function evaluated by each `log_lik` entry. Generated quantities reuse those draws; they do not refit the model or update the posterior.
+The timing is important. Code in this block cannot change which parameter
+values the sampler visits because it runs after the draw has been produced.
+It takes the paired values $(\mu^{(s)},\sigma^{(s)})$ as inputs and computes
+additional outputs conditional on that pair.
 
-The phrase “after each retained draw” matters. Every output is evaluated conditionally on the same joint $(\mu^{(s)},\sigma^{(s)})$. This preserves posterior dependence among transformed quantities, replicated values, and log scores. Computing each output from unrelated marginal draws would destroy that joint structure. The [Stan program](stan.qmd#the-complete-program) declares the target from which these draws came.
+For instance, suppose one retained draw has $\mu^{(s)}=.02$ and
+$\sigma^{(s)}=.04$. The deterministic transformation
+$\exp(\mu^{(s)})\approx1.020$ gives one duration-ratio draw. A call to
+`student_t_rng(4, .02, .04)` adds new randomness and produces one replicated
+passage contrast. A call to `student_t_lpdf(y[j] | 4, .02, .04)` adds no new
+randomness; it evaluates the density of the observed $y_j$ under the same
+parameter draw.
 
-We will use the block for three different operations: transforming a parameter draw, simulating a replicated response, and evaluating one observation's log likelihood. Putting them beside one another will let us see which outputs add randomness and which simply calculate a new quantity from the existing joint draw.
+We will place these three operations beside one another and then inspect their
+actual outputs. This will make clear which statements transform, simulate,
+and evaluate.
 
 ## Three passage-level Student-t model outputs
 
