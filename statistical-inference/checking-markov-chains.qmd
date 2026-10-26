@@ -7,13 +7,32 @@ execute:
   message: false
 ---
 
-Suppose we fit the passage-level Student-t model with four independently initialized [No-U-Turn Sampler (NUTS)](no-u-turn-sampler.qmd) chains. How can we tell whether the chains explored the same parts of the posterior? A [**trace plot**](https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html) places iteration on the horizontal axis and a sampled quantity on the vertical axis. A **rank plot** divides the pooled ranks into bins and compares how often each chain occupies them.
+The Stan fit gives us 1,000 retained values from each of four chains. Before we
+summarize all 4,000 values as though they came from one posterior, we should
+ask whether the four chains behaved like repeated attempts to explore the same
+distribution.
 
-All four chains are intended to sample the same [posterior distribution](posterior-distributions.qmd). The plots compare realized chain paths and rank frequencies; they do not estimate posterior variance by treating initialization as an empirical study factor. [Variance](../random-variables-and-distributions/variance-and-covariance.qmd) retains its expected squared-deviation meaning whether it describes the target or a diagnostic summary.
+The first check preserves the order in which the values were generated. A
+[**trace plot**](https://mc-stan.org/bayesplot/articles/plotting-mcmc-draws.html)
+places iteration on the horizontal axis and the sampled parameter on the
+vertical axis. If one chain remains above the others, drifts throughout the
+run, or repeats one value for a long stretch, the ordered path makes that
+behavior visible.
 
-Multiple chains begin from dispersed states so that persistent dependence on initialization can become visible. If every chain starts from the same point, agreement may merely reproduce that common start. Warmup allows each chain to move away from its initialization while Stan adapts the step size and [mass matrix](mass-matrix-geometry.qmd), which sets the scale and orientation used for HMC's simulated momentum. The displayed traces begin only after that adaptation ends.
+The second check temporarily discards the numerical distances between values
+and keeps only their order from smallest to largest. A **rank plot** pools the
+draws, assigns ranks, and asks which chains supplied the low, middle, and high
+ranks. For instance, if nearly every low rank comes from chain one and every
+high rank comes from chain four, chain identity still predicts the sampled
+value. Chains exploring the same marginal distribution should contribute
+throughout the pooled ranks.
 
-We will read the traces as time-ordered paths and then compare the pooled rank histograms. These pictures can reveal some failures directly. They also raise questions that require the numerical diagnostics on the following pages.
+We begin chains from dispersed initial values to make lingering dependence on
+their starting points easier to detect. During warmup, each chain moves away
+from its initialization while Stan adapts the step size and
+[mass matrix](mass-matrix-geometry.qmd). The plots below use only the retained
+iterations after that adaptation has ended. We will first read the traces as
+paths and then construct the rank bins one operation at a time.
 
 ## Traces from the fitted model {#production-traces}
 
@@ -99,7 +118,12 @@ ggplot(rank_rows,
   theme(legend.position = "top")
 ```
 
-Persistent chain separation would suggest that initialization still predicts the sampled value. Drift would suggest that the finite saved sequence changes with iteration. Long nearly constant stretches would show inefficient movement. These are computational warnings, not model checks.
+Persistent chain separation would suggest that initialization still predicts
+the sampled value. Drift would suggest that the finite saved sequence changes
+with iteration. Long nearly constant stretches would show inefficient
+movement. Each warning concerns how the sampler explored the declared
+posterior. Assessing the linguistic model requires a separate predictive
+comparison with the observations.
 
 Warmup is not an arbitrary deletion of inconvenient draws. Stan uses it to adapt the step size and mass matrix, then samples with a fixed transition. Removing part of a problematic saved trace until it looks stable is not a repair.
 

@@ -7,30 +7,33 @@ execute:
   message: false
 ---
 
-The [HMC
-trajectory](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy)
-first transformed the passage-level Student-$t$ posterior so that its two
-directions had comparable scales. We call this transformation **whitening**
-because it aims to produce coordinates having unit variance and zero
-correlation. A [**mass
-matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html) supplies HMC
-with the corresponding scale and orientation for its momentum without
-changing the [posterior target](posterior-distributions.qmd).
+The [HMC page](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy)
+temporarily assumed that every parameter could use the same typical velocity.
+That assumption creates a problem when posterior parameters vary on different
+scales. A step size that is small enough for a narrow direction may cross a
+wide direction painfully slowly. A step size suited to the wide direction may
+jump inaccurately across the narrow one.
 
-The [covariance-matrix
-primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
-defines matrix--vector multiplication, positive definiteness, and the matrix
-inverse, then shows that a covariance matrix records marginal variances on its
-diagonal and pairwise covariances off diagonal.
-[Correlation](../random-variables-and-distributions/correlation.qmd)
-rescales those pairwise associations. A mass matrix can adapt to this joint
-scale and orientation without changing the posterior probabilities being
-sampled.
+Okay. So why bring matrices into this problem?
 
-We begin with one mass in one dimension, extend it to two separate axis
-scales, and then ask why a tilted posterior requires a dense matrix. The
-passage-level posterior lets us see the resulting whitening transformation
-before we connect it to NUTS adaptation.
+We need to track a separate scale for each direction of motion. And when the
+posterior is tilted, those directions may be combinations of the original
+parameters rather than the original coordinate axes. A matrix gives us one
+object that can record both the scales and the way the directions combine.
+HMC calls this object a [**mass matrix**](https://mc-stan.org/docs/reference-manual/mcmc.html).
+
+The [covariance-matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+introduced the same use of a matrix for a joint distribution: diagonal entries
+record separate variances, while off-diagonal entries record how coordinates
+move together. It also defined a matrix inverse as the matrix $M^{-1}$ for
+which $MM^{-1}=I$. This is the matrix generalization of the scalar reciprocal,
+since $a(1/a)=1$.
+
+We will begin with the scalar reciprocal in one dimension. We will then place
+two scalar masses on the diagonal of a matrix and ask why off-diagonal entries
+are needed for a tilted posterior. Finally, a before-and-after visualization
+will show the passage-level posterior in its original and rescaled
+coordinates.
 
 ## From one mass to a dense matrix {#general-kinetic-energy}
 
@@ -61,6 +64,12 @@ $$
 A larger mass therefore produces a smaller range of typical velocities. The
 momentum itself varies on the scale $\sqrt m$, but dividing it by $m$ leaves
 velocity on the scale $1/\sqrt m$.
+
+For instance, if $m=4$, then momentum has standard deviation $2$, but velocity
+is $\rho/4$ and has standard deviation $1/2$. If $m=1/4$, momentum has standard <!-- dqr-allow: symbolic-derivation -->
+deviation $1/2$, while velocity has standard deviation $2$. The reciprocal is
+doing the computational work: a larger mass slows typical movement, and a
+smaller mass speeds it up.
 
 Now suppose the position has two coordinates. We can give them separate
 masses with the diagonal matrix
@@ -93,6 +102,13 @@ axis speeds can widen or narrow that ellipse, but it cannot remove the tilt.
 We need a matrix with off-diagonal entries so that a velocity in one
 coordinate may also depend on momentum in the other. Such a matrix is called
 **dense**.
+
+To see the limitation of a diagonal matrix, imagine that the supported values
+satisfy approximately $q_2=q_1$. Moving along the horizontal axis while
+holding $q_2$ fixed quickly leaves that diagonal band, as does moving only
+along the vertical axis. The efficient direction is the vector $(1,1)$:
+increase both coordinates together. Off-diagonal entries allow the matrix to
+represent this rotated direction.
 
 For a symmetric positive-definite mass matrix $M$, the scalar formulas become
 
@@ -148,6 +164,7 @@ the second operation would be unnecessary.
 
 ```{r}
 #| label: provo-mass-matrix-geometry
+#| code-fold: true
 library(ggplot2)
 
 provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
@@ -155,14 +172,14 @@ y <- provo$noun_minus_verb_log_ffd
 nu <- 4
 prior_scale <- 2 * sd(y)
 log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
-log_target <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2])
+log_target <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
 mode_fit <- optim(c(median(y), log(mad(y))),
-                  function(eta) -log_target(eta), method = "BFGS",
+                  function(parameter_pair) -log_target(parameter_pair), method = "BFGS",
                   hessian = TRUE,
                   control = list(reltol = 1e-12, maxit = 1000L))
 local_sd <- sqrt(diag(solve(mode_fit$hessian)))

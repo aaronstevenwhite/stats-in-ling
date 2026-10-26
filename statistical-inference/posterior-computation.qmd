@@ -1,0 +1,268 @@
+---
+title: "Why posterior computation is necessary"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
+---
+
+On the [preceding page](beyond-conjugacy.qmd#a-robust-location-scale-model),
+we constructed a posterior distribution for the parameters of a passage-level
+Student-$t$ model. We could evaluate the prior times the likelihood at any
+particular pair $(\mu,\sigma)$, and a fine grid let us see which pairs received
+more posterior density. But evaluating a posterior at a point is not usually
+the final aim. We want to calculate quantities such as
+
+$$
+\mathbb{P}(\mu>0\mid\mathbf y),
+\qquad
+\mathbb{E}[\exp(\mu)\mid\mathbf y],
+$$
+
+or an interval containing a specified amount of posterior probability. Each
+quantity requires us to combine information across the entire posterior
+distribution.
+
+Okay. So how do we actually do that combining?
+
+For the two-parameter model, we already know one answer. We place a grid over
+$(\mu,\log\sigma)$, evaluate the posterior kernel at every grid point,
+normalize the resulting values so that they sum to one, and compute a weighted
+sum. The problem is that this procedure becomes unusable surprisingly
+quickly. If we put 300 grid points along each of two dimensions, we evaluate
+$300^2=90{,}000$ parameter combinations. Ten dimensions would require
+$300^{10}$ combinations. Adding parameters thus makes the grid grow far more
+quickly than our ability to evaluate it.
+
+We will call this the **posterior computation problem**: we can write down a
+posterior kernel, but we cannot obtain the posterior summaries we want by
+enumerating all relevant parameter values. The word *kernel* here means a
+function proportional to the posterior density. As we saw in the discussion
+of the [missing normalizing constant](beyond-conjugacy.qmd#the-missing-normalizer),
+the kernel contains the prior and likelihood terms that vary with the
+parameters while leaving out one common constant.
+
+The basic idea in this part of the course is to replace an impossible sum over
+all parameter values with a manageable average over carefully generated
+parameter values. Getting from that idea to a reliable posterior analysis
+will require us to answer three questions:
+
+1. Which average would equal the posterior quantity if we could generate the
+   right values?
+2. How can we generate values whose long-run distribution is the posterior?
+3. How can we tell whether a finite computer run gives an accurate enough
+   approximation?
+
+The first question leads to Monte Carlo integration. The second leads to
+Markov chains, Metropolis--Hastings sampling, Hamiltonian Monte Carlo, and the
+No-U-Turn Sampler. The third leads to trace plots, $\widehat R$, effective
+sample size, and the HMC-specific diagnostic called a divergent transition.
+We will work through these questions in that order.
+
+## From a weighted grid to an expectation
+
+Suppose, for the moment, that a posterior grid contains only four possible
+values of $\mu$:
+
+| value of $\mu$ | posterior probability | $\mathbf 1\{\mu>0\}$ |
+|---:|---:|---:|
+| $-0.03$ | $0.10$ | $0$ |
+| $-0.01$ | $0.20$ | $0$ |
+| $0.01$ | $0.40$ | $1$ |
+| $0.03$ | $0.30$ | $1$ |
+
+The indicator $\mathbf 1\{\mu>0\}$ equals one when its condition is true and
+zero when its condition is false. We can calculate the posterior probability
+that $\mu$ is positive by taking a weighted sum of that indicator:
+
+$$
+\begin{aligned}
+\mathbb{P}(\mu>0\mid\mathbf y)
+&=
+(0)(0.10)+(0)(0.20)+(1)(0.40)+(1)(0.30)\\
+&=0.70.
+\end{aligned}
+$$
+
+Nothing mysterious has happened. We asked a yes-or-no question at each grid
+point and then added the posterior probability assigned to the points where
+the answer was yes.
+
+Now suppose we want the posterior mean of $\mu$. We use the same posterior
+probabilities but replace the indicator with the value of $\mu$ itself:
+
+$$
+\begin{aligned}
+\mathbb{E}[\mu\mid\mathbf y]
+&=
+(-0.03)(0.10)+(-0.01)(0.20)\\
+&\quad +(0.01)(0.40)+(0.03)(0.30)\\ % dqr-allow: symbolic-derivation
+&=0.008.
+\end{aligned}
+$$
+
+These two calculations have the same form. We choose a function $g$ that
+represents the posterior question and average $g(\mu)$ using the posterior
+probabilities as weights. For the directional probability,
+$g(\mu)=\mathbf 1\{\mu>0\}$. For the posterior mean, $g(\mu)=\mu$. And for the
+geometric-scale duration ratio, $g(\mu)=\exp(\mu)$.
+
+The [expected-value chapter](../random-variables-and-distributions/expected-values.qmd)
+introduced exactly this operation for a random variable. Here we apply it to
+a parameter after conditioning on the observed data:
+
+$$
+\mathbb{E}[g(\mu)\mid\mathbf y]
+=
+\sum_m g(\mu_m)\,
+\mathbb{P}(\mu=\mu_m\mid\mathbf y).
+$$
+
+For a continuous parameter, individual points have probability zero, so a
+weighted sum over points becomes an integral over short intervals:
+
+$$
+\mathbb{E}[g(\mu)\mid\mathbf y]
+=
+\int g(\mu)f(\mu\mid\mathbf y)\,\mathrm d\mu.
+$$
+
+The integral is thus the continuous version of the four-row calculation. The
+factor $f(\mu\mid\mathbf y)\,\mathrm d\mu$ supplies the approximate posterior
+probability in a very short interval around $\mu$, and $g(\mu)$ supplies the
+quantity being averaged there. We will return to this connection on the
+[Monte Carlo integration page](monte-carlo-integration.qmd#from-a-weighted-sum-to-a-draw-average).
+
+## Replacing weights with repeated values
+
+There is another way to reproduce the four-row calculation. Imagine drawing
+100 values from the toy posterior. We would expect about 10 copies of $-0.03$,
+20 copies of $-0.01$, 40 copies of $0.01$, and 30 copies of $0.03$. If those
+counts occurred exactly, the ordinary mean of the 100 drawn values would be
+
+$$
+\frac{
+10(-0.03)+20(-0.01)+40(0.01)+30(0.03)
+}{100}
+=0.008.
+$$
+
+The posterior weights have not disappeared. They have been represented by
+how often each value occurs in the draws. Values with more posterior
+probability appear more often, so an unweighted average over the draws
+reproduces the weighted average over the grid.
+
+This observation is the central computational move. If
+$\mu^{(1)},\ldots,\mu^{(S)}$ are draws from the posterior, then
+
+$$
+\frac1S\sum_{s=1}^S g(\mu^{(s)})
+$$
+
+approximates $\mathbb{E}[g(\mu)\mid\mathbf y]$. The approximation will vary
+slightly when we repeat the simulation because a finite collection of random
+draws will not contain the posterior values in exactly their expected
+proportions. We will call that variation **Monte Carlo error** and derive a
+standard error for it on the next page.
+
+A potential worry is that this sounds circular. We wanted the posterior
+summary because the posterior was hard to normalize, and now we are assuming
+that we can draw from the posterior. That worry is exactly right. Direct
+posterior draws are available for some simple distributions, but they are not
+available for most models we actually want to fit. The pages in this section
+develop progressively more general ways around that obstacle.
+
+## The sequence of computational ideas
+
+It will help to keep one question in view as the algorithms become more
+elaborate: *How does this method make frequently occurring parameter values
+line up with posterior probability?*
+
+| Method | Values we can generate | How posterior probability enters |
+|---|---|---|
+| [Monte Carlo integration](monte-carlo-integration.qmd) | independent draws from the posterior | high-probability values occur more often |
+| [Importance sampling](importance-sampling.qmd) | independent draws from an easier distribution | a density ratio corrects how often values occurred |
+| [Markov chain Monte Carlo](markov-chain-monte-carlo.qmd) | dependent states from a transition rule | the rule is constructed so that the posterior is its stationary distribution |
+| [Metropolis--Hastings](metropolis-hastings.qmd) | proposed moves from the current state | an acceptance probability corrects the proposed flow between regions |
+| [Hamiltonian Monte Carlo](hamiltonian-monte-carlo.qmd) | gradient-guided trajectories | a final acceptance step corrects numerical trajectory error |
+| [The No-U-Turn Sampler](no-u-turn-sampler.qmd) | adaptively extended HMC trajectories | the path stops before it doubles back and one valid state is retained |
+
+The algorithms do not define different posteriors. They are different ways
+of approximating the same posterior target. If two correct methods are run
+long enough and accurately enough, they should agree on posterior summaries
+up to their remaining numerical error.
+
+This gives us a useful separation. The prior and likelihood determine which
+parameter values receive posterior support. The computational algorithm
+determines how we explore and summarize that support. Increasing the number
+of simulation iterations may reduce numerical error, but it leaves the data,
+likelihood, and prior unchanged.
+
+## What the diagnostics are trying to establish
+
+Once we use a Markov chain, our generated values will be dependent: the next
+state is constructed from the current state. Dependence does not prevent us
+from estimating posterior expectations, but it creates two practical
+questions.
+
+First, did the chains reach and explore the same posterior distribution? We
+will inspect their paths with [trace and rank plots](checking-markov-chains.qmd)
+and quantify cross-chain agreement with
+[$\widehat R$](rhat.qmd). Second, how much numerical information did the
+dependent draws provide? We will describe within-chain dependence using
+[autocorrelation](autocorrelation.qmd) and translate that dependence into an
+[effective sample size](effective-sample-size.qmd).
+
+HMC adds a third question because its trajectories are calculated
+numerically. Did the numerical integrator follow the posterior geometry
+accurately? [Divergent transitions](divergent-transitions.qmd) warn us about
+large integration errors, and [parameter-pair plots](parameter-pair-plots.qmd)
+help locate the part of the joint posterior where those errors occurred.
+
+None of these diagnostics asks whether the statistical model gives a useful
+account of the linguistic data. Once we have evidence that the computation
+worked, we still need to generate the observations predicted by the fitted
+model and compare them with the observations we actually saw. The
+[generated-quantities](generated-quantities.qmd) and
+[posterior-predictive-check](posterior-predictive-checks.qmd) pages carry out
+that return to the data.
+
+## Recap and forward link
+
+1. The posterior computation problem arises because the summaries we want
+   combine information across a posterior that we cannot enumerate on a grid.
+2. A posterior summary can be written as the expectation of a function $g$;
+   different choices of $g$ answer different posterior questions.
+3. Draw frequency can stand in for posterior weight, which turns a weighted
+   sum or integral into an ordinary average over draws.
+4. Sampling diagnostics evaluate the numerical approximation. Posterior
+   predictive checks evaluate selected consequences of the statistical model.
+
+The [Monte Carlo integration page](monte-carlo-integration.qmd#from-a-weighted-sum-to-a-draw-average)
+now derives the draw average and its numerical standard error.
+
+## Check your understanding
+
+1. Which function $g(\mu)$ turns a posterior expectation into
+   $\mathbb{P}(\mu>0\mid\mathbf y)$?
+2. Why does an ordinary average over posterior draws reproduce a
+   posterior-weighted average?
+3. Which part of an analysis changes when we increase the number of retained
+   simulation draws?
+4. Why do we need model checks after all sampling diagnostics look good?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. Use $g(\mu)=\mathbf 1\{\mu>0\}$, which is one for positive values and zero
+   otherwise. <!-- dqr-allow: empirical-answer -->
+2. Values occur among the draws in proportion to their posterior probability,
+   so their frequency supplies the weight. <!-- dqr-allow: empirical-answer -->
+3. The numerical approximation changes. The data, prior, likelihood, and
+   posterior target remain fixed. <!-- dqr-allow: empirical-answer -->
+4. A sampler can approximate the declared posterior accurately even when the
+   declared model fails to reproduce a scientifically relevant feature of the
+   observations. <!-- dqr-allow: empirical-answer -->
+
+</details>

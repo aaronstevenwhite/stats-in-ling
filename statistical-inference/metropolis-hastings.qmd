@@ -7,19 +7,52 @@ execute:
   message: false
 ---
 
-The [MCMC page](markov-chain-monte-carlo.qmd) used a random-walk transition without yet deriving its correction. The **Metropolis--Hastings (MH) algorithm** accepts or rejects proposals so that the passage-level Student-t posterior remains stationary.
+The [MCMC page](markov-chain-monte-carlo.qmd#chain-averages) left us with a
+construction problem. We need a transition rule that can move through the
+parameter space while preserving the posterior distribution. Simply proposing
+a nearby value does not solve that problem. A proposal might move into one
+region more readily than it moves back, and it might spend too much time in
+regions having little posterior support.
 
-Here *posterior* means the conditional parameter distribution defined on the [posterior-distribution page](posterior-distributions.qmd). The acceptance ratio can use its unnormalized prior-times-likelihood kernel because the posterior normalizing constant cancels between numerator and denominator.
+The **Metropolis--Hastings (MH) algorithm** solves the construction problem in
+two stages. First, a proposal distribution suggests a possible next state.
+Second, an acceptance rule corrects the proposed movement so that probability
+flows between posterior regions in the required proportions. If the proposal
+is rejected, the chain stays at its current state for another iteration.
 
-The remaining question is why the acceptance rule preserves the posterior even when the proposal favors some moves over their reversals. We will derive the correction from detailed balance, apply the resulting random-walk sampler to the passage model, and then inspect how the chain accepts and moves. Those movement summaries describe a transition rule; convergence requires additional evidence from the realized chains.
+Before writing the general ratio, consider a move from state $a$ to state $b$.
+Suppose $b$ has half as much posterior density as $a$, and suppose the proposal
+is equally likely to suggest $a\rightarrow b$ and $b\rightarrow a$. Always
+accepting the move toward $b$ would create too much flow into the lower-density
+state. MH accepts that direction with probability $1/2$, while accepting the
+reverse direction with probability one. The accepted flows then match:
+
+$$
+\underbrace{\pi(a)}_{\text{density at }a}
+\underbrace{q(b\mid a)}_{\text{proposal}}
+\underbrace{\tfrac12}_{\text{acceptance}}
+=
+\underbrace{\pi(b)}_{\pi(a)/2}
+\underbrace{q(a\mid b)}_{q(b\mid a)}
+\underbrace{1}_{\text{acceptance}}.
+$$
+
+This matching of probability flow is called **detailed balance**. We will now
+derive the acceptance rule that produces it for general target and proposal
+densities. We will then return to the passage-level Student-$t$ model and read
+the implementation one step at a time.
 
 ## Proposal and acceptance
 
-At current state $\eta^{(s)}$, draw a proposal
+At current pair $(\mu^{(s)},\lambda^{(s)})$, draw a proposed pair
 
 $$
-\eta'\sim q(\eta'\mid\eta^{(s)}).
+(\mu',\lambda')
+\sim
+q(\mu',\lambda'\mid\mu^{(s)},\lambda^{(s)}),
 $$
+
+where $\lambda=\log\sigma$.
 
 For posterior density kernel $\widetilde f$, form
 
@@ -27,22 +60,25 @@ $$
 r
 =
 \frac{
-\widetilde f(\eta'\mid\mathbf y)
-q(\eta^{(s)}\mid\eta')
+\widetilde f(\mu',\lambda'\mid\mathbf y)
+q(\mu^{(s)},\lambda^{(s)}\mid\mu',\lambda')
 }{
-\widetilde f(\eta^{(s)}\mid\mathbf y)
-q(\eta'\mid\eta^{(s)})
+\widetilde f(\mu^{(s)},\lambda^{(s)}\mid\mathbf y)
+q(\mu',\lambda'\mid\mu^{(s)},\lambda^{(s)})
 }.
 $$
 
-Accept when $U<\min(1,r)$ for $U\sim\operatorname{Uniform}(0,1)$; otherwise retain $\eta^{(s)}$. For the symmetric normal random walk, the two $q$ terms cancel. The unknown posterior normalizer also cancels, so the log acceptance ratio is
+Accept when $U<\min(1,r)$ for $U\sim\operatorname{Uniform}(0,1)$; otherwise
+retain $(\mu^{(s)},\lambda^{(s)})$. For the symmetric normal random walk, the
+two $q$ terms cancel. The unknown posterior normalizer also cancels, so the log
+acceptance ratio is
 
 $$
 \log r
 =
-\log\widetilde f(\eta'\mid\mathbf y)
+\log\widetilde f(\mu',\lambda'\mid\mathbf y)
 -
-\log\widetilde f(\eta^{(s)}\mid\mathbf y).
+\log\widetilde f(\mu^{(s)},\lambda^{(s)}\mid\mathbf y).
 $$
 
 Rejected current states must remain in the chain. Removing them would change the proportion of time spent in each posterior region.
@@ -63,7 +99,12 @@ $$
 \min\{\pi(a)q(b\mid a),\pi(b)q(a\mid b)\},
 $$
 
-which is symmetric in $a$ and $b$. The reverse flow is identical. This **detailed-balance** relation is sufficient for $\pi$ to be stationary.
+which is symmetric in $a$ and $b$. The reverse flow is identical. This
+detailed-balance relation is sufficient for $\pi$ to be stationary. To see
+the connection, collect every possible route into state $b$. Detailed balance
+pairs the flow into $b$ from each state $a$ with the corresponding reverse
+flow out of $b$. Summing over $a$ therefore leaves the total probability
+assigned to $b$ unchanged after one transition.
 
 For a numerical step, suppose `log_target(proposal) - current_log_target = -0.7`. Then the acceptance probability is $\exp(-0.7)\approx .497$. The code compares `log(runif(1))` with `min(0, -0.7)`; this log-scale comparison avoids computing a possibly unstable density ratio.
 
@@ -73,6 +114,7 @@ The complete code below uses the stated random seed so that the accept--reject s
 
 ```{r}
 #| label: fit-provo-metropolis-hastings
+#| code-fold: true
 library(ggplot2)
 
 provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
@@ -80,14 +122,14 @@ y <- provo$noun_minus_verb_log_ffd
 nu <- 4
 prior_scale <- 2 * sd(y)
 log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
-log_target <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2])
+log_target <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
 mode_fit <- optim(c(median(y), log(mad(y))),
-                  function(eta) -log_target(eta), method = "BFGS",
+                  function(parameter_pair) -log_target(parameter_pair), method = "BFGS",
                   hessian = TRUE,
                   control = list(reltol = 1e-12, maxit = 1000L))
 local_sd <- sqrt(diag(solve(mode_fit$hessian)))
@@ -164,7 +206,11 @@ The post-warmup acceptance rates lie between `r sprintf("%.3f", min(mh_summary$a
 
 The proposal factor $2.38^2/d$ is a widely used random-walk efficiency heuristic for approximately regular $d$-dimensional targets; here $d=2$. It changes how quickly the chain explores, not the posterior being targeted, and it should be checked rather than treated as a theorem for every target.
 
-Acceptance is a randomized computational decision, not a significance test. It says nothing by itself about whether noun and verb reading times differ or whether the passage-level Student-t model represents participant-level variation.
+The acceptance event belongs entirely to the numerical transition.
+Interpreting it as a significance test would be a category error: its
+probability depends on the current state, the proposed state, and the proposal
+rule. By itself, it tells us nothing about a noun--verb reading-time difference
+or participant variation.
 
 ## Recap and forward link
 
@@ -185,7 +231,9 @@ The [HMC page](hamiltonian-monte-carlo.qmd#potential-kinetic-and-total-energy) r
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. The normal random-walk proposal is symmetric, so $q(\eta'\mid\eta)=q(\eta\mid\eta')$. <!-- dqr-allow: empirical-answer -->
+1. The normal random-walk proposal is symmetric, so
+   $q(\mu',\lambda'\mid\mu,\lambda)=
+   q(\mu,\lambda\mid\mu',\lambda')$. <!-- dqr-allow: empirical-answer -->
 2. The same multiplicative normalizer appears in the target density at the proposed and current states, so it cancels in their ratio. <!-- dqr-allow: empirical-answer -->
 3. The current state is saved again after a rejection. <!-- dqr-allow: empirical-answer -->
 4. Very small proposals are often accepted but move only short distances, producing high autocorrelation and slow exploration. <!-- dqr-allow: empirical-answer -->

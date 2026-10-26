@@ -7,13 +7,45 @@ execute:
   message: false
 ---
 
-A static HMC transition requires a fixed number of leapfrog steps. The [**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) chooses trajectory length during each transition. Hoffman and Gelman ([2014](https://jmlr.org/papers/v15/hoffman14a.html)) introduced the original algorithm; Stan uses a multinomial variant described in its [reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html).
+The [HMC page](hamiltonian-monte-carlo.qmd#leapfrog-integration) required us to
+choose two numbers: a step size $\epsilon$ and a number of leapfrog steps $L$.
+Their product controls the approximate length of the trajectory. A short
+trajectory leaves us close to the starting point and brings back the
+random-walk problem. A very long trajectory may pass through useful new
+regions, turn around, and travel back toward its starting point while spending
+additional computation.
 
-NUTS changes how an HMC proposal is constructed while preserving the same [posterior target](posterior-distributions.qmd). Adaptive path selection concerns computation; it does not alter the parameter or predictive claims encoded by that target.
+The step size can be learned during warmup by comparing numerical energy error
+with a target acceptance rate. The appropriate number of steps is harder to
+fix because one trajectory may need to travel farther than another. The
+[**No-U-Turn Sampler (NUTS)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html)
+lets each trajectory grow until its motion begins to reverse. Hoffman and
+Gelman ([2014](https://jmlr.org/papers/v15/hoffman14a.html)) introduced the
+original algorithm; Stan uses a multinomial variant described in its
+[reference manual](https://mc-stan.org/docs/reference-manual/mcmc.html).
 
-So how does NUTS decide when an HMC trajectory has gone far enough? We will follow the doubling and turning logic that constructs one transition, then inspect the tree lengths in the passage-level fit. After we see how NUTS chooses the path length, we still need to ask whether the resulting transitions moved efficiently through every relevant part of the posterior.
+The name describes the stopping intuition, but the actual algorithm must do
+more than look at the last two points. It grows a balanced tree of trajectory
+states in forward and backward directions, checks completed subtrees for
+turning, excludes numerically invalid states, and selects one eligible state
+for the next Markov-chain iteration. We will build up those pieces from a
+one-dimensional path before inspecting the amount of trajectory work in the
+passage-level fit.
 
 ## Growing and stopping a trajectory
+
+Begin in one dimension at $q=0$ with positive momentum. The trajectory might
+visit $q=1$, then $q=2$, then $q=2.4$. If its momentum later becomes negative,
+the trajectory is moving back toward the span it already covered. Continuing
+far enough could return it near $q=0$. NUTS is designed to stop before that
+return erases the benefit of the outward movement.
+
+For a multidimensional path, “moving back” cannot be read from one coordinate.
+We instead compare the displacement between the two endpoints with the
+momentum at each endpoint. The dot product is positive when the momentum has a
+component pointing along the endpoint displacement and negative when it has a
+component pointing back across that span. The [dot-product discussion](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+explains why the sign measures directional alignment.
 
 NUTS extends an HMC path forward or backward and organizes candidate states in a balanced binary tree. Increasing tree depth by one doubles the intended path length, though a turning condition or divergence may stop it early. The tree constructs one transition; its internal states are not additional posterior draws.
 
@@ -31,7 +63,13 @@ $$
 \Delta q^\mathsf TM^{-1}\rho^+.
 $$
 
-When one becomes negative, momentum at that endpoint points back across the path. Stan also checks completed subtrees. It selects one eligible state with weights related to $\exp\{-H(q,\rho)\}$, rather than automatically taking the final endpoint.
+When one becomes negative, momentum at that endpoint points back across the
+path. The factor $M^{-1}$ converts momentum to velocity using the
+[mass-matrix relationship](mass-matrix-geometry.qmd#general-kinetic-energy),
+so the check is carried out in the adapted geometry rather than in arbitrary
+raw coordinate scales. Stan also checks completed subtrees. It selects one
+eligible state with weights related to $\exp\{-H(q,\rho)\}$, rather than
+automatically taking the final endpoint.
 
 A one-dimensional schematic makes the doubling rule concrete:
 

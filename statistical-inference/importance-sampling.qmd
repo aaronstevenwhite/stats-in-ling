@@ -7,40 +7,69 @@ execute:
   message: false
 ---
 
-[Monte Carlo integration](monte-carlo-integration.qmd#expectations-as-integrals) used draws from the normalized posterior grid. **Importance sampling** instead draws from a proposal distribution and corrects its mismatch with the unnormalized passage-level Student-t posterior through weights.
+[Monte Carlo integration](monte-carlo-integration.qmd#from-a-weighted-sum-to-a-draw-average)
+gave us a simple recipe: draw from the posterior and average. But that recipe
+assumed the operation we do not yet know how to perform. If we could already
+generate independent draws from an arbitrary posterior, most of the remaining
+computational problem would be solved.
 
-The target is the posterior introduced on the [posterior-distribution page](posterior-distributions.qmd), with its data contribution supplied by the [likelihood](maximum-likelihood.qmd#probability-and-likelihood). The weighted expectation below is valid when proposal draws are independent from $g$ and the proposal has support wherever the target integrand is nonzero; the [independence page](../foundations/independence.qmd) gives the joint-probability meaning of the first condition.
+Suppose instead that we can draw from an easier distribution. We will call
+this distribution the **proposal distribution** and denote its density by
+$q$. The proposal might visit some parameter values more often than the
+posterior would and other values less often. **Importance sampling** corrects
+that mismatch by attaching a weight to every proposal draw.
 
-The basic idea is to correct for the fact that some proposal draws occur too often under $g$ and others too rarely. We will derive that correction, identify the support condition that makes it possible, and then apply it to the Provo posterior. The application matters because a mathematically valid identity can still yield a poor finite approximation when a few draws receive nearly all the weight.
+The basic idea is easiest to see with two regions. Suppose the proposal sends
+half of its draws to region $A$, while the posterior assigns only one quarter
+of its probability there. Draws in $A$ occur twice as often as they should, so
+each receives a relative weight of $(1/4)/(1/2)=1/2$. Suppose the proposal
+sends the other half to region $B$, while the posterior assigns three quarters
+of its probability there. Draws in $B$ occur too rarely, so each receives a
+relative weight of $(3/4)/(1/2)=3/2$. Weighting corrects the frequencies
+created by the proposal.
+
+We will now derive the same correction for a continuous parameter. We require
+the proposal pairs $(\mu^{(1)},\lambda^{(1)}),\ldots,
+(\mu^{(S)},\lambda^{(S)})$ to be independent draws from $q$, where
+$\lambda=\log\sigma$. We also require $q(\mu,\lambda)>0$ everywhere that the posterior contribution we
+want to average is nonzero. After deriving those requirements, we will inspect
+what happens when the weights become concentrated on a few draws.
 
 ## Reweighting a proposal
 
-For target density $f$, proposal density $g$, and integrand $h$,
+For target density $f$, proposal density $q$, and function $g$,
 
 $$
 \begin{aligned}
-\mathbb{E}_f[h(\eta)]
+\mathbb{E}_f[g(\mu,\lambda)]
 &=
-\int h(\eta)\frac{f(\eta)}{g(\eta)}g(\eta)\,\mathrm d\eta\\
+\int\!\!\int g(\mu,\lambda)
+\frac{f(\mu,\lambda)}{q(\mu,\lambda)}q(\mu,\lambda)
+\,\mathrm d\lambda\,\mathrm d\mu\\
 &=
-\mathbb{E}_g[h(\eta)w(\eta)],
+\mathbb{E}_q[g(\mu,\lambda)w(\mu,\lambda)],
 \end{aligned}
 $$
 
-Here $w(\eta)=f(\eta)/g(\eta)$ is the
+Here $w(\mu,\lambda)=f(\mu,\lambda)/q(\mu,\lambda)$ is the
 [**importance weight**](https://www.cambridge.org/core/books/inverse-problems-and-data-assimilation/monte-carlo-sampling-and-importance-sampling/AEE4AC4E63548DC6A732013B571841D8). The first
-equality multiplies the integrand by $g(\eta)/g(\eta)$. It requires
-$g(\eta)>0$ wherever $h(\eta)f(\eta)$ contributes to the target integral.
+equality multiplies the integrand by
+$q(\mu,\lambda)/q(\mu,\lambda)$. It requires
+$q(\mu,\lambda)>0$ wherever
+$g(\mu,\lambda)f(\mu,\lambda)$ contributes to the target integral.
 This is the support condition: a proposal cannot reweight draws from a region
 it never visits.
 
-If the target is known only as $\widetilde f(\eta)=Zf(\eta)$, normalized weights
+If the target is known only as
+$\widetilde f(\mu,\lambda)=Zf(\mu,\lambda)$, normalized weights
 
 $$
 \widetilde w^{(s)}
 =
-\frac{\widetilde f(\eta^{(s)})/g(\eta^{(s)})}
-{\sum_{r=1}^S\widetilde f(\eta^{(r)})/g(\eta^{(r)})}
+\frac{\widetilde f(\mu^{(s)},\lambda^{(s)})/
+q(\mu^{(s)},\lambda^{(s)})}
+{\sum_{r=1}^S\widetilde f(\mu^{(r)},\lambda^{(r)})/
+q(\mu^{(r)},\lambda^{(r)})}
 $$
 
 remove the shared unknown constant. The self-normalized estimator is
@@ -48,18 +77,40 @@ remove the shared unknown constant. The self-normalized estimator is
 $$
 \widehat I_S
 =
-\sum_{s=1}^S\widetilde w^{(s)}h(\eta^{(s)}).
+\sum_{s=1}^S\widetilde w^{(s)}g(\mu^{(s)},\lambda^{(s)}).
 $$
 
 It is generally biased at finite $S$, but consistent under the required support and integrability conditions.
 
-The ordinary estimator $S^{-1}\sum_s h(\eta^{(s)})f(\eta^{(s)})/g(\eta^{(s)})$ is unbiased when the **normalized** target density $f$ is available and the expectation exists. Self-normalization replaces the unavailable target normalizer by the random sum of raw weights. That ratio creates finite-sample bias, though it converges to the correct expectation under the stated conditions.
+The first line of the derivation is worth reading from right to left. The
+factor $q(\mu,\lambda)\,\mathrm d\lambda\,\mathrm d\mu$ tells us how proposal draws are distributed.
+The ratio $f(\mu,\lambda)/q(\mu,\lambda)$ removes the proposal's relative frequency and
+replaces it with the target's relative frequency. We have changed the
+distribution used for averaging without changing the integral itself.
+
+The ordinary estimator
+$S^{-1}\sum_s g(\mu^{(s)},\lambda^{(s)})
+f(\mu^{(s)},\lambda^{(s)})/q(\mu^{(s)},\lambda^{(s)})$ is unbiased when the
+**normalized** target density $f$ is available and the expectation exists.
+Self-normalization replaces the unavailable target normalizer by the random
+sum of raw weights. That ratio creates finite-sample bias, though it converges
+to the correct expectation under the stated conditions.
 
 ## Assessing importance weights
 
-The code reconstructs the same posterior grid used on the preceding page. It then draws 30,000 values from a bivariate $t_5$ proposal centered at the grid mean with scale $1.5\widehat\Sigma$. The proposal is calibrated to this computation target, not interpreted as a linguistic distribution.
+The code reconstructs the same posterior grid used on the preceding page. It
+then draws 30,000 values from a bivariate $t_5$ proposal centered at the grid
+mean with scale $1.5\widehat\Sigma$. These settings are chosen to cover this
+posterior; they make no claim about a distribution of linguistic observations.
 
-These settings are defensive computational choices. Centering and scaling use the reference grid to cover the main posterior geometry; multiplying by $1.5$ broadens that coverage; and five degrees of freedom give the proposal heavier tails than a normal distribution. None is implied by the Provo corpus. A deliberately narrow normal proposal would produce larger and more concentrated weights, even though it technically has full support.
+How do we choose this proposal? The grid gives us a center and a covariance
+matrix that describe the posterior's main location, scale, and orientation.
+Multiplying the covariance by $1.5$ spreads proposal draws farther around that
+region. Using five degrees of freedom gives the proposal heavier tails than a
+normal distribution, so it reaches distant values more often. These settings
+serve the approximation. The Provo observations do not determine them. A
+deliberately narrow normal proposal would have full support but would still
+produce a few very large weights and a poor finite approximation.
 
 ```{r}
 #| label: provo-importance-sampling
@@ -74,14 +125,14 @@ log_sum_exp <- function(x) {
   maximum <- max(x)
   maximum + log(sum(exp(x - maximum)))
 }
-log_posterior_eta <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2])
+log_posterior_pair <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
 mode_fit <- optim(c(median(y), log(mad(y))),
-                  function(eta) -log_posterior_eta(eta),
+                  function(parameter_pair) -log_posterior_pair(parameter_pair),
                   method = "BFGS", hessian = TRUE,
                   control = list(reltol = 1e-12, maxit = 1000L))
 local_sd <- sqrt(diag(solve(mode_fit$hessian)))
@@ -91,7 +142,7 @@ grid <- expand.grid(
   log_sigma = seq(mode_fit$par[2] - 7 * local_sd[2],
                   mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
 )
-grid$log_kernel <- apply(grid, 1, log_posterior_eta)
+grid$log_kernel <- apply(grid, 1, log_posterior_pair)
 grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
 grid_mean <- colSums(grid[, c("mu", "log_sigma")] * grid$weight)
 centered <- sweep(as.matrix(grid[, c("mu", "log_sigma")]),
@@ -120,16 +171,16 @@ set.seed(2026101803)
 S <- 30000L
 proposal_df <- 5
 proposal_scale <- 1.5 * grid_covariance
-eta <- rmvt(S, grid_mean, proposal_scale, proposal_df)
-log_weight <- apply(eta, 1, log_posterior_eta) -
-  dmvt_log(eta, grid_mean, proposal_scale, proposal_df)
+proposal_pairs <- rmvt(S, grid_mean, proposal_scale, proposal_df)
+log_weight <- apply(proposal_pairs, 1, log_posterior_pair) -
+  dmvt_log(proposal_pairs, grid_mean, proposal_scale, proposal_df)
 weight <- exp(log_weight - log_sum_exp(log_weight))
 
 importance_ess <- 1 / sum(weight^2)
 summary <- data.frame(
-  mean_mu = sum(weight * eta[, 1]),
-  probability_mu_positive = sum(weight * (eta[, 1] > 0)),
-  mean_exp_mu = sum(weight * exp(eta[, 1])),
+  mean_mu = sum(weight * proposal_pairs[, 1]),
+  probability_mu_positive = sum(weight * (proposal_pairs[, 1] > 0)),
+  mean_exp_mu = sum(weight * exp(proposal_pairs[, 1])),
   raw_weight_ess = importance_ess,
   largest_weight = max(weight),
   top_100_weight_share = sum(sort(weight, decreasing = TRUE)[1:100])
@@ -152,7 +203,7 @@ is `r format(round(importance_ess), big.mark = ",")` from 30,000 proposal draws.
 #| label: plot-provo-importance-weights
 #| fig-cap: "Proposal draws for the passage-level Student-t model. The accent marks the one percent with the largest normalized weights."
 proposal_draws <- data.frame(
-  mu = eta[, 1], sigma = exp(eta[, 2]), weight = weight
+  mu = proposal_pairs[, 1], sigma = exp(proposal_pairs[, 2]), weight = weight
 )
 weight_cutoff <- quantile(weight, .99)
 
@@ -169,7 +220,11 @@ ggplot(proposal_draws, aes(mu, sigma)) +
 
 The proposal must cover every target region of positive probability. Shared support is not sufficient for efficiency: if $q$ places little mass in an important target region, a few weights dominate. The largest weight and the mass in the largest 100 weights diagnose that realized concentration but cannot prove that an unseen tail was covered.
 
-The proposal distribution is a computational device. Its unweighted draw frequency is neither a prior nor a statement about passage contrasts. Only the weighted empirical distribution approximates the passage-level Student-t model.
+The proposal distribution is a computational device. Before weighting, its
+draw frequencies describe the proposal we chose. After weighting, those
+frequencies approximate the passage-level Student-t posterior. The proposal
+therefore carries no additional prior or empirical claim about passage
+contrasts.
 
 ## Recap and forward link
 
@@ -183,7 +238,7 @@ The [Markov-chain page](markov-chains.qmd#transition-and-stationary-distribution
 ## Check your understanding
 
 1. Why does self-normalization remove the target normalizer?
-2. What fails when $g(\eta)=0$ in a target region?
+2. What fails when $q(\mu,\lambda)=0$ in a target region?
 3. Why can full support still yield poor efficiency?
 4. What does $\operatorname{ESS}_w$ count in this calculation?
 

@@ -7,22 +7,64 @@ execute:
   message: false
 ---
 
-The passage-level Student-$t$ model has no convenient closed-form posterior. Monte Carlo integration replaces an expectation under that posterior with an average over draws while keeping posterior uncertainty distinct from numerical error. The [expectation chapter](../random-variables-and-distributions/expected-values.qmd) supplied the underlying operation; the [nonconjugate-model page](beyond-conjugacy.qmd#the-missing-normalizer) supplied the target density.
+On the [section overview](posterior-computation.qmd#from-a-weighted-grid-to-an-expectation),
+we calculated a posterior mean in two ways. We first multiplied each possible
+value by its posterior probability and added the products. We then imagined a
+collection of draws in which each value appeared in proportion to that
+probability and took their ordinary mean. The calculations agreed because draw
+frequency took the place of posterior weight.
 
-The Monte Carlo average is an [estimator](properties-of-estimators.qmd#estimators-are-random-variables) whose repeated simulation runs would yield different numerical estimates. Its [standard error](standard-errors.qmd) describes that numerical sampling variation. Independent draws make the covariance terms in the average's [variance](../random-variables-and-distributions/variance-and-covariance.qmd) vanish, using the factorization defined on the [independence page](../foundations/independence.qmd). The target posterior still comes from a prior multiplied by the data [likelihood](maximum-likelihood.qmd#probability-and-likelihood), so numerical error does not replace posterior uncertainty.
+**[Monte Carlo integration](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html)**
+generalizes that second calculation. *Monte
+Carlo* means that we use random draws; *integration* names the operation we
+want those draws to approximate. The method will let us estimate posterior
+means, probabilities, variances, and many other summaries with the same basic
+recipe.
 
-We will start by writing the posterior summaries we want as expectations. Once they are integrals, the Monte Carlo move is straightforward: draw from the target and average the corresponding function values. We can then distinguish variation in that numerical approximation from truncation and grid error, as well as from the posterior uncertainty we set out to summarize.
+The remaining question is how accurate a finite draw average is. If we ask
+the computer for another collection of random draws, we will generally get a
+slightly different answer. We will treat the draw average as an
+[estimator](properties-of-estimators.qmd#estimators-are-random-variables) and
+use its [standard error](standard-errors.qmd) to describe this repeated-run
+variation. This standard error concerns the computation. It should remain
+separate from the spread of the posterior distribution we are approximating.
 
-## Expectations as integrals
+We will first derive the draw average from a weighted sum. We will then apply
+the calculation to the passage-level Student-$t$ model and use a running
+estimate to see its numerical variation. The final step separates three
+sources of approximation introduced by the grid demonstration.
 
-For a target density $f(\eta\mid\mathbf y)$ and an integrable function $g$,
+## From a weighted sum to a draw average
+
+Suppose we can draw independently from the posterior. For a concrete case,
+let $g(\mu,\lambda)=\mathbf 1\{\mu>0\}$, where
+$\lambda=\log\sigma$. Each draw then produces a zero or a one:
+
+$$
+g(\mu^{(s)},\lambda^{(s)})
+=
+\begin{cases}
+1 & \text{if }\mu^{(s)}>0,\\
+0 & \text{if }\mu^{(s)}\leq 0.
+\end{cases}
+$$
+
+The average of these zeros and ones is simply the proportion of posterior
+draws for which $\mu$ is positive. Thus, if 7,432 of 10,000 draws have
+$\mu^{(s)}>0$, our Monte Carlo estimate is $7{,}432/10{,}000=.7432$. <!-- dqr-allow: symbolic-derivation -->
+
+Now write the same idea for a general function $g$. Let
+$f(\mu,\lambda\mid\mathbf y)$ denote the joint posterior density in the two
+coordinates $\mu$ and $\lambda=\log\sigma$. The posterior expectation is
 
 $$
 I
 =
-\mathbb{E}[g(\eta)\mid\mathbf y]
+\mathbb{E}[g(\mu,\lambda)\mid\mathbf y]
 =
-\int g(\eta)f(\eta\mid\mathbf y)\,\mathrm d\eta.
+\int_{-\infty}^{\infty}\int_{-\infty}^{\infty}
+g(\mu,\lambda)f(\mu,\lambda\mid\mathbf y)
+\,\mathrm d\lambda\,\mathrm d\mu.
 $$
 
 Independent target draws give the estimator
@@ -30,24 +72,35 @@ Independent target draws give the estimator
 $$
 \widehat I_S
 =
-\frac{1}{S}\sum_{s=1}^Sg(\eta^{(s)}).
+\frac{1}{S}\sum_{s=1}^Sg(\mu^{(s)},\lambda^{(s)}).
 $$
 
-Because the $g(\eta^{(s)})$ values are independent with variance $\operatorname{Var}[g(\eta)\mid\mathbf y]$,
+Why should the average approach the integral? Imagine dividing the posterior
+into many small regions. A region containing five percent of the posterior
+probability will produce about five percent of a large collection of draws.
+Its contribution to the draw average therefore approaches its contribution to
+the posterior-weighted integral. This is the same frequency-for-weight
+substitution we used in the four-row example.
+
+Because the $g(\mu^{(s)},\lambda^{(s)})$ values are independent with variance
+$\operatorname{Var}[g(\mu,\lambda)\mid\mathbf y]$,
 
 $$
 \operatorname{Var}[\widehat I_S\mid\mathbf y]
 =
 \frac{1}{S^2}
 \sum_{s=1}^S
-\operatorname{Var}[g(\eta^{(s)})\mid\mathbf y]
+\operatorname{Var}[g(\mu^{(s)},\lambda^{(s)})\mid\mathbf y]
 =
-\frac{\operatorname{Var}[g(\eta)\mid\mathbf y]}{S}.
+\frac{\operatorname{Var}[g(\mu,\lambda)\mid\mathbf y]}{S}.
 $$
 
 Taking the square root yields the MCSE formula used below.
 
-Setting $g(\eta)=\mu$ estimates the posterior mean of the passage location. Setting $g(\eta)=\mathbf 1\{\mu>0\}$ estimates its directional probability, while $g(\eta)=\exp(\mu)$ gives a central geometric-scale noun-to-verb ratio.
+Setting $g(\mu,\lambda)=\mu$ estimates the posterior mean of the passage
+location. Setting $g(\mu,\lambda)=\mathbf 1\{\mu>0\}$ estimates its
+directional probability, while $g(\mu,\lambda)=\exp(\mu)$ gives a central
+geometric-scale noun-to-verb ratio.
 
 ## Drawing from the posterior grid
 
@@ -68,17 +121,17 @@ log_sum_exp <- function(x) {
   maximum + log(sum(exp(x - maximum)))
 }
 
-log_posterior_eta <- function(eta) {
-  mu <- eta[1]
-  sigma <- exp(eta[2])
+log_posterior_pair <- function(parameter_pair) {
+  mu <- parameter_pair[1]
+  sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
 
 mode_fit <- optim(
   c(median(y), log(mad(y))),
-  function(eta) -log_posterior_eta(eta),
+  function(parameter_pair) -log_posterior_pair(parameter_pair),
   method = "BFGS", hessian = TRUE,
   control = list(reltol = 1e-12, maxit = 1000L)
 )
@@ -88,7 +141,7 @@ mu_grid <- seq(mode_fit$par[1] - 7 * local_sd[1],
 log_sigma_grid <- seq(mode_fit$par[2] - 7 * local_sd[2],
                       mode_fit$par[2] + 7 * local_sd[2], length.out = 321L)
 grid <- expand.grid(mu = mu_grid, log_sigma = log_sigma_grid)
-grid$log_kernel <- apply(grid, 1, log_posterior_eta)
+grid$log_kernel <- apply(grid, 1, log_posterior_pair)
 grid$weight <- exp(grid$log_kernel - log_sum_exp(grid$log_kernel))
 
 set.seed(2026101802)
@@ -120,7 +173,7 @@ The grid benchmark and Monte Carlo estimates agree to the scale of their Monte C
 $$
 \widehat{\operatorname{MCSE}}(\widehat I_S)
 =
-\sqrt{\frac{\widehat{\operatorname{Var}}(g(\eta))}{S}}.
+\sqrt{\frac{\widehat{\operatorname{Var}}(g(\mu,\lambda))}{S}}.
 $$
 
 For an indicator this becomes
@@ -133,7 +186,10 @@ $$
 
 Multiplying $S$ by four tends to halve MCSE. This square-root rate concerns the approximation, not the posterior spread.
 
-The choice $S=20{,}000$ is a precision choice rather than a model assumption. The reported MCSEs show what that choice buys. If the desired numerical tolerance were half as large, roughly four times as many independent draws would be required.
+The value $S=20{,}000$ controls numerical precision. It does not enter the
+likelihood or prior. The reported MCSEs show what this many draws buys; reducing
+the desired numerical tolerance by half would require roughly four times as
+many independent draws.
 
 ```{r}
 #| label: plot-provo-monte-carlo-running
@@ -154,11 +210,19 @@ ggplot(running_display, aes(draws, estimate)) +
   theme_classic(base_size = 12)
 ```
 
-The law of large numbers justifies convergence of the average when the expectation exists. A central limit theorem motivates MCSE when $g(\eta)$ has finite variance. Neither result says that the passage-level Student-t model's passage aggregation, likelihood, or empirically calibrated priors are adequate.
+The law of large numbers justifies convergence of the average when the
+expectation exists. A central limit theorem motivates MCSE when
+$g(\mu,\lambda)$ has finite variance. Neither result says that the
+passage-level Student-t model's passage aggregation, likelihood, or
+empirically calibrated priors are adequate.
 
 ## Two uncertainties
 
-Posterior spread describes model-based uncertainty about the passage-level Student-t model. Monte Carlo error describes finite numerical approximation. Increasing $S$ reduces the latter but adds no passages, positions, or readers. More draws are not more linguistic evidence.
+Posterior spread describes model-based uncertainty about the passage-level
+Student-t model. Monte Carlo error describes finite numerical approximation.
+Increasing $S$ reduces the latter while leaving the collection of passages,
+positions, and readers exactly as it was. The additional draws refine a
+calculation based on the existing evidence.
 
 ## Recap and forward link
 
@@ -178,9 +242,10 @@ The [importance-sampling page](importance-sampling.qmd#reweighting-a-proposal) n
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. Use the indicator $g(\eta)=\mathbf 1\{\mu>0\}$. <!-- dqr-allow: empirical-answer -->
-2. The sample average replaces the posterior integral of $g(\eta)$ with an empirical average over draws from that posterior. <!-- dqr-allow: empirical-answer -->
+1. Use the indicator $g(\mu,\lambda)=\mathbf 1\{\mu>0\}$. <!-- dqr-allow: empirical-answer -->
+2. The sample average replaces the posterior integral of $g(\mu,\lambda)$ with an empirical average over draws from that posterior. <!-- dqr-allow: empirical-answer -->
 3. Quadrupling $S$ tends to halve MCSE because MCSE decreases at the $1/\sqrt S$ rate. <!-- dqr-allow: empirical-answer -->
 4. Posterior uncertainty about the linguistic target changes with additional linguistic observations; more simulation draws change only computational uncertainty. <!-- dqr-allow: empirical-answer -->
 
 </details>
+$\mu^{(s)}>0$, our Monte Carlo estimate is $7{,}432/10{,}000=.7432$. <!-- dqr-allow: symbolic-derivation -->

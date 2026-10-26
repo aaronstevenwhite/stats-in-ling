@@ -7,15 +7,57 @@ execute:
   message: false
 ---
 
-Random-walk MH proposes without consulting the target's local geometry. [**Hamiltonian Monte Carlo (HMC)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html) instead uses the gradient of the passage-level Student-t model log posterior to build a coordinated proposal in $(\mu,\log\sigma)$. The problem is random-walk behavior: many accepted short moves can still take a long time to cross a correlated target. A gradient supplies local information about which directions increase posterior density.
+The random-walk version of [Metropolis--Hastings](metropolis-hastings.qmd)
+proposes a nearby point without first asking how the posterior changes in that
+direction. Making the proposal very small raises its chance of acceptance, but
+the chain then crosses the posterior through many short, overlapping moves.
+Making the proposal large reaches farther, but it also sends many proposals
+into regions having very little posterior density. This is the **random-walk
+problem**.
 
-The target remains the conditional parameter distribution defined on the [posterior-distribution page](posterior-distributions.qmd); HMC changes the Monte Carlo transition, not that distribution. The [Monte Carlo page](monte-carlo-integration.qmd#expectations-as-integrals) explains why averages of target draws approximate posterior expectations.
+Can we use what we know about the posterior surface to choose a direction?
+Yes. The [derivative discussion](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change)
+defined a derivative as a local rate of change. For a function of several
+parameters, the **gradient** collects one partial derivative for each
+parameter. At a point $(\mu,\log\sigma)$, it tells us how the log posterior
+would change under a small move in each coordinate. The
+[posterior-geometry page](beyond-conjugacy.qmd#hessian-as-local-curvature)
+introduced this vector and distinguished it from the Hessian, which records
+how the local slopes themselves change.
 
-What's going on mechanically? We will translate the log posterior into potential energy, add an auxiliary momentum with kinetic energy, and use leapfrog steps to move through the resulting system. Following one trajectory through the fitted passage model will then show both why the method can avoid random-walk behavior and why a fixed trajectory length leaves another problem to solve.
+[**Hamiltonian Monte Carlo (HMC)**](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html)
+uses the gradient to build a coordinated path through parameter space. It
+augments the parameters with a temporary momentum, follows an approximate
+trajectory, and then applies a Metropolis acceptance step to correct the small
+error introduced by numerical calculation. The posterior remains the target
+defined on the [posterior-distribution page](posterior-distributions.qmd).
+
+What's going on mechanically? We will first translate the familiar idea of
+moving along a slope into the position-and-momentum notation used by HMC. We
+will then work through one leapfrog step before following a complete trajectory
+through the passage-level Student-$t$ posterior.
 
 ## Potential, kinetic, and total energy
 
-Let $q$ denote unconstrained parameters and let $\rho$ be an auxiliary momentum. The potential energy is
+Imagine a ball in a smooth valley. Its **position** says where it is. Its
+**momentum** combines a direction with an amount of motion. The height of the
+valley determines **[potential energy](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html)**,
+while momentum determines **kinetic
+energy**. As the ball moves uphill, kinetic energy is converted into potential
+energy; as it moves downhill, potential energy is converted back into kinetic
+energy.
+
+HMC uses this picture as a computational construction. Low potential energy
+will correspond to high posterior density, so the valley's low regions are
+the parameter values the posterior supports most strongly. Momentum is an
+auxiliary random variable used to move through the valley. It is freshly
+generated during the transition and has no linguistic interpretation.
+
+Let $q=(\mu,\lambda)$ denote the two unconstrained coordinates, where
+$\lambda=\log\sigma$, and let $\rho$ be an auxiliary momentum. We use $q$
+here because the mechanics notation treats the parameters as a position; the
+coordinates themselves remain the familiar $\mu$ and $\log\sigma$. The
+potential energy is
 
 $$
 U(q)=-\log\widetilde f(q\mid\mathbf y).
@@ -39,9 +81,60 @@ $$
 \frac{\mathrm d\rho}{\mathrm dt}=-\nabla U(q).
 $$
 
-The first changes position using momentum; the second changes momentum using the local posterior gradient.
+The first changes position using momentum; the second changes momentum using
+the local posterior gradient. To read the second equation, recall that
+$U(q)=-\log\widetilde f(q\mid\mathbf y)$. If moving to the right increases
+$U$, then $\mathrm dU/\mathrm dq$ is positive and
+$-\mathrm dU/\mathrm dq$ pushes the momentum left. The change in momentum
+therefore points downhill in potential energy, which means uphill in log
+posterior density.
 
-In one dimension, imagine a ball moving across a valley whose height is $U(q)$. The slope $\nabla U(q)$ changes momentum, while momentum changes position. For the passage model, the $\mu$ component of the log-target gradient is
+In one dimension, imagine a ball moving across a valley whose height is
+$U(q)$. The slope changes momentum, while momentum changes position. In more
+than one dimension, $\nabla U(q)$ is the vector of slopes, one for each
+coordinate.
+
+### Where the passage-model gradient comes from
+
+Stan will calculate the gradient automatically, but we should still know what
+it is differentiating. Ignoring terms that do not depend on $\mu$ or $\sigma$,
+the log density contributed by passage $j$ is
+
+$$
+\ell_j(\mu,\sigma)
+=
+-\log\sigma
+-\frac{\nu+1}{2}
+\log\left(
+1+\frac{(y_j-\mu)^2}{\nu\sigma^2}
+\right).
+$$
+
+This is simply the logarithm of the Student-$t$ density introduced on the
+[model page](beyond-conjugacy.qmd#a-robust-location-scale-model), with the
+constant terms removed. Taking logs converts the product of 55 likelihood
+terms into a sum of 55 contributions.
+
+Consider the derivative with respect to $\mu$. The term $-\log\sigma$ does not
+change when $\mu$ changes, so its derivative is zero. The second term contains
+$\mu$ through the squared residual $(y_j-\mu)^2$. Applying the chain rule gives
+
+$$
+\frac{\partial\ell_j}{\partial\mu}
+=
+\frac{(\nu+1)(y_j-\mu)}
+{\nu\sigma^2+(y_j-\mu)^2}.
+$$
+
+The sign has a useful interpretation. If $y_j>\mu$, this passage contributes a
+positive slope and pulls the location upward. If $y_j<\mu$, it contributes a
+negative slope and pulls downward. The size of that pull decreases for an
+extreme residual because the squared residual also appears in the denominator.
+This is one way the Student-$t$ likelihood limits the influence of an extreme
+passage.
+
+Adding the 55 passage contributions and the derivative of the normal log
+prior, $-\mu/s_\mu^2$, gives the $\mu$ component of the log-target gradient:
 
 $$
 \frac{\partial\log\widetilde f}{\partial\mu}
@@ -51,9 +144,42 @@ $$
 -\frac{\mu}{s_\mu^2}.
 $$
 
-The summation is the Student-t likelihood contribution and the final term is the normal-prior contribution. In the code, this is the first element returned by `gradient_log_target()`.
+The summation is the Student-t likelihood contribution and the final term is
+the normal-prior contribution. In the code, this is the first element returned
+by `gradient_log_target()`.
+
+The second coordinate used by HMC is $\lambda=\log\sigma$. Let
+$r_j^2=(y_j-\mu)^2/\sigma^2$ denote the squared residual after scaling by
+$\sigma$. Differentiating the full log target with respect to $\lambda$ gives
+
+$$
+\frac{\partial\log\widetilde f}{\partial\lambda}
+=
+\sum_{j=1}^{55}
+\left[
+-1+
+\frac{(\nu+1)r_j^2}{\nu+r_j^2}
+\right]
+-\frac{\sigma^2}{s_\sigma^2}
++1.
+$$
+
+Within each likelihood contribution, $-1$ comes from $-\log\sigma$ and the
+fraction comes from the residual term. The next term is the half-normal prior
+contribution. The final $+1$ is the log-coordinate Jacobian derived in the
+[local-stretching discussion](beyond-conjugacy.qmd#jacobians-as-local-stretching).
+Thus both coordinates in the code correspond to a displayed derivative rather
+than an unexplained software operation.
 
 ## Leapfrog integration
+
+The differential equations describe continuous motion, but a computer must
+replace that continuous path with finitely many calculations. We choose a
+small **step size** $\epsilon$ and repeatedly update momentum and position.
+This replacement of continuous motion by discrete numerical steps is called
+**numerical integration**. The use of *integration* here concerns solving the
+equations of motion; it is distinct from the posterior integration discussed
+on the [Monte Carlo page](monte-carlo-integration.qmd#from-a-weighted-sum-to-a-draw-average).
 
 For step size $\epsilon$, one leapfrog step is
 
@@ -73,7 +199,16 @@ $$
 \rho_{t+\frac12}-\frac{\epsilon}{2}\nabla U(q_{t+1}).
 $$
 
-The half steps make the integrator reversible and volume preserving. Numerical integration changes the Hamiltonian slightly, so HMC accepts the endpoint with
+Why split the momentum update into two halves? A full position step changes
+the slope at which the next momentum update is calculated. Taking half of the
+momentum update before that move and half after it treats the two ends
+symmetrically. This symmetry makes it possible to reverse the calculation by
+negating momentum and applying the same steps backward. The resulting
+**[leapfrog integrator](https://bruno.nicenboim.me/bayescogsci/ch-introstan.html)**
+is reversible and preserves volume in the augmented
+position--momentum space, two properties required by the HMC transition.
+
+Numerical integration changes the Hamiltonian slightly, so HMC accepts the endpoint with
 
 $$
 \alpha
@@ -91,6 +226,7 @@ The reference trajectory first whitens the grid posterior, then applies 12 leapf
 
 ```{r}
 #| label: provo-hmc-trajectory
+#| code-fold: true
 library(ggplot2)
 
 provo <- read.csv("data/provo/passage-summaries.csv", stringsAsFactors = FALSE)
@@ -98,14 +234,14 @@ y <- provo$noun_minus_verb_log_ffd
 nu <- 4
 prior_scale <- 2 * sd(y)
 log_sum_exp <- function(x) { m <- max(x); m + log(sum(exp(x - m))) }
-log_target <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2])
+log_target <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2])
   sum(dt((y - mu) / sigma, df = nu, log = TRUE) - log(sigma)) +
     dnorm(mu, 0, prior_scale, log = TRUE) +
-    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + eta[2]
+    log(2) + dnorm(sigma, 0, prior_scale, log = TRUE) + parameter_pair[2]
 }
-gradient_log_target <- function(eta) {
-  mu <- eta[1]; sigma <- exp(eta[2]); residual <- y - mu
+gradient_log_target <- function(parameter_pair) {
+  mu <- parameter_pair[1]; sigma <- exp(parameter_pair[2]); residual <- y - mu
   scaled_squared <- residual^2 / sigma^2
   c(
     sum((nu + 1) * residual / (nu * sigma^2 + residual^2)) -
@@ -115,8 +251,8 @@ gradient_log_target <- function(eta) {
   )
 }
 mode_fit <- optim(c(median(y), log(mad(y))),
-                  function(eta) -log_target(eta),
-                  gr = function(eta) -gradient_log_target(eta),
+                  function(parameter_pair) -log_target(parameter_pair),
+                  gr = function(parameter_pair) -gradient_log_target(parameter_pair),
                   method = "BFGS", hessian = TRUE,
                   control = list(reltol = 1e-12, maxit = 1000L))
 local_sd <- sqrt(diag(solve(mode_fit$hessian)))
@@ -141,10 +277,10 @@ gradient_z <- function(z) {
   drop(t(transform) %*% gradient_log_target(grid_mean + drop(transform %*% z)))
 }
 record_state <- function(step, q, momentum) {
-  eta <- grid_mean + drop(transform %*% q)
+  parameter_pair <- grid_mean + drop(transform %*% q)
   potential <- -log_target_z(q)
   kinetic <- sum(momentum^2) / 2
-  data.frame(step, mu = eta[1], sigma = exp(eta[2]),
+  data.frame(step, mu = parameter_pair[1], sigma = exp(parameter_pair[2]),
              potential, kinetic, hamiltonian = potential + kinetic)
 }
 
