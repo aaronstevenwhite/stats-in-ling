@@ -5,11 +5,11 @@ execute:
   message: false
 ---
 
-Logistic regression combines a Bernoulli response with the logit link. The SuperTelicity verb-type contrast has the specification stated below.
+We now have all the pieces needed to model an *in* versus *for* choice. The response takes the values zero and one, so we use a Bernoulli distribution. The conditional mean is a probability, so we use the logit link to move that mean to an unrestricted scale. A regression equation then relates that scale to verb type. This combination is **logistic regression**.
 
-The Bernoulli likelihood is the joint probability of the fixed responses viewed as a function of the coefficients, and its product form uses the model's [independence](../foundations/independence.qmd) assumption. A coefficient [standard error](../statistical-inference/standard-errors.qmd) is the standard deviation of its estimator's sampling distribution, not response spread.
+The Bernoulli likelihood is the joint probability of the fixed responses viewed as a function of the coefficients, and its product form uses the model's [independence](../foundations/independence.qmd) assumption. A coefficient [standard error](../statistical-inference/standard-errors.qmd) is the standard deviation of its estimator's sampling distribution. Response spread is a different quantity, described by the Bernoulli variance.
 
-We first construct the Bernoulli likelihood, then fit and interpret the log-odds coefficient, and finally return predictions to the probability scale.
+The basic idea is easiest to see with the two verb types. For a manner verb, the result indicator equals zero and the linear predictor is $\beta_0$. For a result verb, the indicator equals one and the predictor is $\beta_0+\beta_1$. Thus $\beta_1$ is the result-minus-manner difference on the log odds scale. We will construct the likelihood, estimate this difference, and then translate the fitted values back to probability.
 
 $$
 Y_i\sim\operatorname{Bernoulli}(\pi_i),
@@ -39,7 +39,9 @@ coef_table <- data.frame(term = names(coef(fit)), estimate = unname(coef(fit)),
 coef_table
 ```
 
-The intercept is the manner-verb log odds. The result coefficient is the result-minus-manner log odds difference, so
+Read the `glm()` call from left to right. `prep_in ~ verb_type` names the response and predictor. `binomial()` supplies the Bernoulli likelihood for zero--one rows, and `link = "logit"` states how the conditional probability connects to the linear predictor. `data = st` tells R where those columns live. The call therefore encodes the same three GLM components that appear in the equations.
+
+The intercept is the log odds for manner verbs. The result coefficient is the difference in log odds between result and manner verbs, so
 
 $$
 e^{\beta_1}
@@ -68,7 +70,7 @@ manual <- with(group_counts,
 rbind(manual = manual, glm = coef(fit))
 ```
 
-The fitted coefficient is `r round(coef(fit)[[2L]], 3)` and its exponential is `r round(exp(coef(fit)[[2L]]), 3)`. The latter is an odds ratio, not a probability ratio.
+The fitted coefficient is `r round(coef(fit)[[2L]], 3)` and its exponential is `r round(exp(coef(fit)[[2L]]), 3)`. The exponential gives the odds ratio. A probability ratio would instead divide the two fitted probabilities.
 
 ```{r}
 #| label: logistic-raw-and-fit
@@ -84,7 +86,7 @@ ggplot(plot_data, aes(verb_type, value, shape = kind)) +
   theme_classic()
 ```
 
-The two fitted probabilities equal the two observed proportions because this model has one parameter for each group mean. In richer models, interpret coefficients with response-scale predictions because the same log-odds change produces different probability changes at different baselines.
+The two fitted probabilities equal the two observed proportions because this model has one parameter for each group mean. In richer models, interpret coefficients with response scale predictions because the same log odds change produces different probability changes at different baselines.
 
 ```{r}
 #| label: same-logit-coefficient-different-baselines
@@ -95,11 +97,11 @@ data.frame(baseline, after = plogis(qlogis(baseline) + b),
            change = plogis(qlogis(baseline) + b) - baseline)
 ```
 
-This population model leaves participant and sentence deviations outside the likelihood so that the Bernoulli score equations remain visible. The SuperTelicity analysis uses a Bayesian logistic mixed model; repeated participants and sentences make the row-independent standard errors here unsuitable for confirmatory inference.
+This population model leaves participant and sentence deviations outside the likelihood so that the Bernoulli score equations remain visible. The SuperTelicity analysis uses a Bayesian logistic mixed model; repeated participants and sentences make the row independent standard errors here unsuitable for confirmatory inference.
 
 ## Recap and check
 
 1. Does $\exp(\beta_1)$ give a probability ratio? No. It gives an odds ratio.
-2. Does a row-independent fit make repeated participants independent? No. The likelihood omits shared participant terms even though the same people contribute multiple rows, so its independence assumption remains a model limitation.
+2. Does this fit make repeated participants independent? No. The likelihood omits shared participant terms even though the same people contribute multiple rows, so its independence assumption remains a model limitation.
 
-The [worked analysis](logistic-regression-example.qmd) next carries these mechanics through uncertainty and model checking.
+We now carry these mechanics through uncertainty and model checking in the [SuperTelicity contrast](logistic-regression-example.qmd).

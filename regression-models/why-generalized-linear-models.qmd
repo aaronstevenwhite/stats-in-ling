@@ -5,11 +5,17 @@ execute:
   message: false
 ---
 
-Ordinary linear regression lets a conditional mean range over the real line and treats residual variance as constant. A binary linguistic response violates both commitments. We can see the problem in the **SuperTelicity cloze data** associated with White, Cao, Grimm, and Glass's unpublished manuscript *The Preservation of Telicity under Sense Locality* (n.d.). Each row records one participant's choice of *in* or *for* after an event description. Participants contribute multiple rows, so the responses share participant-specific information.
+Okay. Suppose that we ask whether the duration of an event changes a participant's choice between *in* and *for*. Before choosing a regression model, we should ask what sort of thing the response is. Here it is a choice with two possible values. We record *in* as $1$ and *for* as $0$.
 
-For a Bernoulli response, the [conditional probability](../foundations/conditional-probability.qmd) of an *in* choice equals its conditional [expectation](../random-variables-and-distributions/expected-values.qmd), and its [variance](../random-variables-and-distributions/variance-and-covariance.qmd) changes with that probability. Repeated participants block an [independence](../foundations/independence.qmd) claim for raw rows. The [sampling distribution](../statistical-inference/properties-of-estimators.qmd) of fitted coefficients and the [residual](residuals.qmd) discrepancy therefore depend on the model that replaces the Gaussian line.
+Now consider what a fitted value should mean. For participants and items with a particular set of predictor values, the fitted value should be the probability of an *in* response. A probability must lie between zero and one. Ordinary linear regression does not impose that restriction: its fitted line may continue below zero or above one. This gives us the first reason to generalize the model.
 
-The prompt supplies an event description followed by a temporal-phrase choice. `prep_in=1` means that the participant selected *in*; `prep_in=0` means that the participant selected *for*. `numeral` and `time_unit` record the magnitude selected with that phrase, and `log_duration_minutes` converts it to natural-log minutes. The prepared table cannot display the source sentence because text was deliberately removed, so the notes show an actual nontext row rather than fabricating a stimulus.
+We can see the problem in the [**SuperTelicity**](https://github.com/SuperMereo/supertelicity) cloze data. Each row records one participant's choice after an event description. Participants contribute multiple rows, so the choices from one person may resemble one another even after we supply the predictors.
+
+Recall that a [conditional probability](../foundations/conditional-probability.qmd) restricts attention to cases with specified predictor values. If $Y=1$ marks an *in* choice, the conditional probability $\mathbb{P}(Y=1\mid\mathbf x)$ is the proportion we would expect among cases with predictors $\mathbf x$. For a zero--one response, that probability also equals the conditional [expectation](../random-variables-and-distributions/expected-values.qmd), or long-run average, of $Y$. Its [variance](../random-variables-and-distributions/variance-and-covariance.qmd), which measures spread around that average, changes with the probability. <!-- dqr-allow: symbolic-derivation -->
+
+A second issue concerns the rows. [Independence](../foundations/independence.qmd) would require learning one response to provide no information about another after we condition on the predictors. Because the same participants and sentences recur, that claim requires additional model structure. We will first isolate the zero--one response problem and return to repeated units when we introduce mixed models.
+
+The prompt supplies an event description followed by a temporal phrase choice. `prep_in=1` means that the participant selected *in*; `prep_in=0` means that the participant selected *for*. `numeral` and `time_unit` record the magnitude selected with that phrase, and `log_duration_minutes` converts it to natural log minutes. The prepared table does not contain the source sentence, so we show an actual nontext row rather than fabricate a stimulus.
 
 ```{r}
 #| label: load-supertelicity
@@ -107,14 +113,14 @@ ggplot() +
   theme_classic()
 ```
 
-Points are observed bin proportions; grey lines are linear-probability fits; blue lines are logistic fits. The fitted linear means range from `r round(min(grid$linear), 3)` to `r round(max(grid$linear), 3)`, leaving the probability scale. The logistic curves remain inside it.
+Points are observed bin proportions; grey lines are linear probability fits; blue lines are logistic fits. The fitted linear means range from `r round(min(grid$linear), 3)` to `r round(max(grid$linear), 3)`, leaving the probability scale. The logistic curves remain inside it.
 
 This is also a variance problem: Bernoulli variance is determined by the mean, rather than by one constant residual variance. A generalized linear model repairs both pieces by choosing a response family with the right support and a link that constrains the mean. These population fits expose that architecture; they do not reproduce the manuscript's Bayesian mixed model or account for repeated participants and sentences.
 
 ## Recap and check your understanding
 
 1. Why does binary support motivate a Bernoulli response but not uniquely select the logit link?
-2. What population does the duration-complete subset omit?
+2. What population does the duration complete subset omit?
 3. Why does a different variance at different fitted probabilities not count as an extra nuisance in a Bernoulli model?
 
 <details class="understanding-answers">
@@ -122,8 +128,8 @@ This is also a variance problem: Bernoulli variance is determined by the mean, r
 
 1. Bernoulli supplies the zero--one sampling distribution. Several one-to-one links, including logit and probit, can map an unconstrained predictor to a probability. <!-- dqr-allow: conceptual-answer -->
 2. It omits cloze responses for which no temporal magnitude was retained, so its target is conditional on duration availability. <!-- dqr-allow: conceptual-answer -->
-3. The Bernoulli model fixes the conditional variance at $\pi_i(1-\pi_i)$ once the mean is specified. Mean-dependent variance is part of the family, not a separate constant residual parameter. <!-- dqr-allow: conceptual-answer -->
+3. The Bernoulli model fixes the conditional variance at $\pi_i(1-\pi_i)$ once the mean is specified. The family therefore builds mean-dependent variance into the response distribution; no constant residual variance parameter remains to estimate. <!-- dqr-allow: conceptual-answer -->
 
 </details>
 
-The [next page](link-functions.qmd) asks why the logit is useful without pretending that response support uniquely determines it.
+We now turn to [link functions](link-functions.qmd), which let us build an unrestricted regression equation while keeping its predicted probabilities between zero and one.

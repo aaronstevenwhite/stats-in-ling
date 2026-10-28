@@ -3,15 +3,15 @@ title: "Ordinal mixed models"
 execute: {warning: false, message: false}
 ---
 
-An ordinal mixed model combines the cumulative link introduced for [ordinal regression](ordinal-regression.qmd) with the group deviations introduced for [generalized linear mixed models](generalized-linear-mixed-models.qmd). The [Laplace page](laplace-approximation.qmd) explains how the random effects are integrated during fitting.
+An ordinal response has categories with a known order but no measured distance between adjacent categories. In MegaVeridicality, *no* is below *maybe*, and *maybe* is below *yes*, but we have no basis for assuming that the two steps are equally large. Recall that [ordinal regression](ordinal-regression.qmd) handles this measurement with a cumulative response family. An [**ordinal mixed model**](https://paulbuerkner.com/brms/articles/brms_families.html) combines that response family with [group deviations](generalized-linear-mixed-models.qmd) for recurring respondents and verbs.
 
-The [expected value](../random-variables-and-distributions/expected-values.qmd) of numeric category codes would depend on unsupported distances, so this model instead targets cumulative category probabilities. The [random effect framework](fixed-and-random-effects.qmd) supplies respondent and verb deviations. Each response remains one ordered task judgment; a link to the [ordinal response discussion](ordinal-regression.qmd) fixes that scale before group variation is interpreted.
+The [expected value](../random-variables-and-distributions/expected-values.qmd) of numeric category codes would depend on unsupported distances, so this model instead targets cumulative category probabilities. The [group variation framework](fixed-and-random-effects.qmd) supplies respondent and verb deviations. Each response remains one ordered task judgment.
 
-This page first fixes the MegaVeridicality subset, then fits respondent and verb variation, checks category probabilities, and states exactly which group deviations enter each prediction.
+We first make the task and analysis subset concrete. We then build the cumulative model from the three response categories, fit respondent and verb variation, and state exactly which group deviations enter each prediction.
 
 We use **MegaVeridicality v1**, the *no*, *maybe*, and *yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012)) and distributed through the [official MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). Each row records one response to a low-content sentence containing a clause-embedding verb. The direct task asks whether the embedded event happened after an assertion; the conditional task places that assertion in a conditional antecedent.
 
-The two tasks recruited separate samples. Numeric participant labels recur across tasks, so the prepared table prefixes them with the task before constructing `respondent_id`. Treating the repeated numbers as the same people would invent a dependence relation not present in the study.
+The two tasks recruited separate samples. Numeric participant labels recur across tasks, so the task label is included when constructing `respondent_id`. Treating repeated numbers as the same people would invent a dependence relation that was not part of the study.
 
 ## A fixed analysis subset
 
@@ -51,19 +51,19 @@ judgments <- judgments[judgments$fold == analysis_fold, ]
 row.names(judgments) <- NULL
 ```
 
-The full active/native table contains `r nrow(full_judgments)` responses from
+The full active and native speaker table contains `r nrow(full_judgments)` responses from
 `r length(unique(full_judgments$verb))` active-frame verbs. We begin with the
 `r nrow(judgments)` responses for the
 `r length(unique(judgments$verb))` verbs assigned to fold
 `r analysis_fold`, using a deterministic partition of verb labels created
 before their responses were read. This subset lets us work through the response
-model and its polarity-by-task contrasts on one declared training fold. The
-[next page](aspectual-similarity-example.qmd) repeats the procedure across the
-complete held-out-verb comparison.
+model and its polarity by task contrasts on one declared training fold. The
+[prediction for unseen verbs](aspectual-similarity-example.qmd) repeats the procedure across the
+complete held out verb comparison.
 
-The partition selected whole verbs without consulting their responses and retained all task-specific respondents represented in those rows. It did not give English clause-embedding verbs known inclusion probabilities. The estimates consequently describe the verbs and respondents in the selected fold, rather than the full release or the English lexicon. The response remains the raw ordered judgment, whereas White and Rawlins analyze participant-threshold normalization, derived veridicality and factivity measures, and responsivity.
+The partition selected whole verbs without consulting their responses and retained all respondents represented in those rows. The verbs did not enter through probability sampling from the English lexicon, so the estimates describe the verbs and respondents in this fold. The response remains the raw ordered judgment, whereas White and Rawlins analyze normalized participant thresholds and derived measures of veridicality, factivity, and responsivity.
 
-The prepared release does not contain full sentence strings, so the notes cannot responsibly invent source items. It does contain the task, polarity, verb, frame, respondent, and response for each judgment. One direct and one conditional row are:
+Sentence strings are unavailable in this table, so we work with the recorded task, polarity, verb, frame, respondent, and response rather than inventing source items. One direct and one conditional row are:
 
 ```{r}
 #| label: megaveridicality-direct-conditional-rows
@@ -76,18 +76,40 @@ do.call(rbind, lapply(c("direct", "conditional"), function(task_value) {
 
 ## Retaining the ordered response
 
+We can see the cumulative calculation in the observed positive and direct responses from the selected verb fold:
+
+```{r}
+#| label: megaveridicality-observed-cumulative-probabilities
+ordinal_example <- judgments[
+  judgments$polarity == "positive" & judgments$task == "direct",
+]
+ordinal_example_probability <- prop.table(table(
+  factor(
+    ordinal_example$response,
+    levels = c("no", "maybe", "yes")
+  )
+))
+data.frame(
+  response = names(ordinal_example_probability),
+  probability = as.numeric(ordinal_example_probability),
+  cumulative_probability = cumsum(as.numeric(ordinal_example_probability))
+)
+```
+
+The first cumulative value is the observed probability of *no*. The second adds the probabilities of *no* and *maybe*. Subtracting the first cumulative value from the second recovers the observed probability of *maybe*, while one minus the second recovers the observed probability of *yes*. This subtraction is the basic operation behind the three category formulas below.
+
 For response $Y_i$ and cutpoint $c$, the cumulative logit model is
 
 $$
 \operatorname{logit}\mathbb{P}(Y_i\le c)
-=\kappa_c-\eta_i,
+=\kappa_c-m_i,
 \qquad c\in\{1,2\}.
 $$
 
-The location predictor is
+The quantity $m_i$ is the fitted location for response $i$ on the log odds scale:
 
 $$
-\eta_i
+ m_i
 =\mathbf x_i^{\mathsf T}\boldsymbol\beta
 +\mathbf z_{v[i]}^{\mathsf T}\mathbf b_{v[i]}
 +u_{r[i]}.
@@ -104,25 +126,27 @@ $$
 With logistic cumulative distribution $F$, the three category probabilities are
 
 $$
-\mathbb{P}(Y_i=\text{no})=F(\kappa_1-\eta_i),
+\mathbb{P}(Y_i=\text{no})=F(\kappa_1-m_i),
 $$
 
 $$
 \mathbb{P}(Y_i=\text{maybe})
-=F(\kappa_2-\eta_i)-F(\kappa_1-\eta_i),
+=F(\kappa_2-m_i)-F(\kappa_1-m_i),
 $$
 
 and
 
 $$
-\mathbb{P}(Y_i=\text{yes})=1-F(\kappa_2-\eta_i).
+\mathbb{P}(Y_i=\text{yes})=1-F(\kappa_2-m_i).
 $$
 
 The ordered thresholds preserve category order without assigning equal numerical spacing to the labels.
 
-Each selected verb occurs in all four polarity-by-task cells, so both contrasts vary within verbs and can support verb-specific slopes. Respondents belong to only one task sample, so a respondent task slope is not identified. We include respondent intercepts and verb slopes, leaving respondent polarity slopes and threshold variation for models with stronger within-respondent support or a different response-style specification.
+Each selected verb occurs in all four polarity by task cells, so both contrasts vary within verbs and can support slopes by verb. Respondents belong to only one task sample, so a respondent task slope is not identified. We include respondent intercepts and verb slopes, leaving respondent polarity slopes and threshold variation for models with stronger support within respondents or a different account of response style.
 
 ## Fitting the verb-and-respondent model
+
+The fitting call below contains two numerical settings that should not appear without explanation. A **gradient** records the first derivatives of the objective; near an optimum, those derivatives should be close to zero, so `gradTol` declares how close is close enough for the convergence check. A **Hessian** is a matrix of second derivatives that records local curvature in several parameter directions. The earlier discussion of [curvature](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature) shows why its inverse is used to approximate uncertainty. We set `Hess = FALSE` because the computation below uses fitted probabilities rather than standard errors computed from the Hessian. The random effect integrals are evaluated with the [Laplace approximation](laplace-approximation.qmd), requested by `nAGQ = 1`.
 
 ```{r}
 #| label: fit-megaveridicality-clmm
@@ -212,13 +236,7 @@ The `clmm` arguments map directly to assumptions and computation:
 | `nAGQ = 1` | Laplace approximation to random effect integration |
 | `gradTol`, `maxIter` | convergence tolerance and iteration budget, not model assumptions |
 
-Before using a previously fitted object, the code compares the current data,
-formula, link, numerical settings, R version, and package version with those
-used to create it. Any mismatch triggers a refit so that the reported estimates
-match the declared analysis. The selected rows determine the scope of those
-estimates.
-
-The threshold and fixed-effect estimates are computed directly from the raw ordered responses:
+The threshold and population coefficient estimates are computed directly from the raw ordered responses:
 
 ```{r}
 #| label: megaveridicality-clmm-parameters
@@ -237,7 +255,7 @@ These values describe the fitted location shifts and group deviations for the an
 
 ## Comparing observed and fitted category probabilities
 
-The fitted points below set verb and respondent deviations to zero. The bars are raw response proportions from the same analysis subset and polarity-by-task cells. Thus the figure compares raw and fitted quantities from the same `r nlevels(judgments$verb)` verbs.
+The fitted points below set verb and respondent deviations to zero. The bars are raw response proportions from the same analysis subset and polarity by task cells. Thus the figure compares raw and fitted quantities from the same `r nlevels(judgments$verb)` verbs.
 
 ```{r}
 #| label: plot-megaveridicality-clmm
@@ -276,7 +294,7 @@ location <- drop(
 cumulative_probability <- plogis(outer(
   location,
   fit$alpha,
-  function(eta, threshold) threshold - eta
+  function(m, threshold) threshold - m
 ))
 category_probability <- cbind(
   cumulative_probability[, 1L],
@@ -324,7 +342,7 @@ ggplot(raw_probabilities, aes(x = response)) +
 
 A prediction for an observed respondent and verb can condition on both estimated deviations. A prediction for a new respondent judging an observed verb may condition on the verb deviation but cannot reuse an observed respondent effect. A prediction for a new respondent and new verb must handle both group distributions.
 
-Setting both deviations to zero gives a location at the center of the link-scale distributions, as in the figure. Averaging category probabilities over either distribution generally produces different response-scale probabilities because the inverse cumulative logit transformation is nonlinear. A reported probability must thus state which groups are represented in the target.
+Setting both deviations to zero gives a location at the center of the distributions on the log odds scale, as in the figure. Averaging category probabilities over either distribution generally produces different probabilities on the response scale because the inverse cumulative logit transformation is nonlinear. A reported probability must thus state which groups are represented in the target.
 
 ## What the fitted location can and cannot represent
 
@@ -336,11 +354,11 @@ White and Rawlins normalize responses and study derived veridicality, factivity,
 
 ## Recap and check
 
-1. What does proportional odds assume? A predictor shifts one location $\eta_i$ across both cumulative cutpoints; it does not receive a separate coefficient at each threshold.
+1. What does proportional odds assume? A predictor shifts one location $m_i$ across both cumulative cutpoints; it does not receive a separate coefficient at each threshold.
 2. Can an observed-verb conditional mode be used for a new verb? No. A new verb has no estimated deviation; its prediction must use zero deviations or average over the verb distribution.
-3. Which observations do the estimates on this page describe? They describe the
+3. Which observations do these estimates describe? They describe the
    respondents, verbs, and items represented in training fold 1. The
-   [next page](aspectual-similarity-example.qmd) carries out the complete
-   held-out-verb comparison.
+   discussion of [unseen verbs](aspectual-similarity-example.qmd) carries out the complete
+   held out verb comparison.
 
-The [next worked page](aspectual-similarity-example.qmd) asks whether the fixed interaction predicts judgments for verbs absent from fitting.
+We next ask whether the fixed interaction predicts judgments for [verbs absent from fitting](aspectual-similarity-example.qmd).

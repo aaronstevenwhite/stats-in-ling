@@ -3,21 +3,23 @@ title: "MegaVeridicality: prediction for unseen verbs"
 execute: {warning: false, message: false}
 ---
 
-The [preceding ordinal-mixed-model page](ordinal-mixed-models.qmd) used MegaVeridicality to describe respondent and verb heterogeneity. This worked analysis asks a different question: does the polarity-by-task interaction improve response probabilities for clause-embedding verbs absent from fitting? It applies [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd) under [grouped cross-validation](../model-criticism-and-prediction/grouped-cross-validation.qmd), where the held-out group is the verb.
+The [ordinal mixed model](ordinal-mixed-models.qmd) used MegaVeridicality to describe respondent and verb variation among observed responses. We now ask a different question: does the polarity by task interaction improve response probabilities for clause embedding verbs that were absent from fitting?
 
-The category likelihood uses [conditional probabilities](../foundations/conditional-probability.qmd) whose row product invokes [independence](../foundations/independence.qmd) after the retained effects are supplied. The [random effect framework](fixed-and-random-effects.qmd) explains why a new held-out verb cannot use a fitted verb deviation; prediction integrates or fixes that unseen deviation according to the declared target.
+The basic idea is to imitate the prediction problem we care about. If the target is a new verb, we must remove every response for that verb before fitting. Removing scattered rows while leaving other responses for the same verb in training would let the model see the lexical item it is supposed to predict. [Grouped cross validation](../model-criticism-and-prediction/grouped-cross-validation.qmd) keeps each verb intact when assigning training and assessment data.
 
-We answer that question in three steps: first we state the ordered-response likelihood, then we freeze verb-level folds, and finally we compare additive and interaction predictions on the held-out verbs.
+The category likelihood uses [conditional probabilities](../foundations/conditional-probability.qmd) whose row product invokes [independence](../foundations/independence.qmd) after the retained effects are supplied. The [group deviation model](fixed-and-random-effects.qmd) explains why a new verb cannot use a fitted verb deviation; no responses were available from which to estimate one.
 
-The data remain the raw ordered judgments from White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012)) and the [official MegaVeridicality project release](https://megaattitude.io/projects/mega-veridicality/). One row is one *no*, *maybe*, or *yes* response. The validation folds are frozen by verb before any model is fit.
+We answer that question in three steps: first we state the ordered response likelihood, then we assign whole verbs to folds, and finally we compare additive and interaction predictions on the unseen verbs.
+
+The data are the raw ordered judgments from White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012)) and the [MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). One row is one *no*, *maybe*, or *yes* response. Verb labels determine the validation folds before any model is fit.
 
 ## From ordered responses to a likelihood
 
-For ordered category $k$ and fixed-effect location $\eta_i$, define
+For ordered category $k$ and population location $m_i$, define
 
 $$
 \mathbb{P}(Y_i=k\mid\mathbf x_i)
-=F(\kappa_k-\eta_i)-F(\kappa_{k-1}-\eta_i),
+=F(\kappa_k-m_i)-F(\kappa_{k-1}-m_i),
 $$
 
 where $F$ is the logistic cumulative distribution, $\kappa_0=-\infty$, and $\kappa_3=\infty$. The likelihood is
@@ -27,7 +29,7 @@ L(\boldsymbol\beta,\boldsymbol\kappa)
 =\prod_i\mathbb{P}(Y_i=y_i\mid\mathbf x_i),
 $$
 
-and its mean log score on held-out judgments is
+and its mean log score on assessment judgments is
 
 $$
 \frac{1}{n_{\mathrm{test}}}
@@ -35,11 +37,11 @@ $$
 \log\mathbb{P}(Y_i=y_i\mid\mathbf x_i).
 $$
 
-Larger values indicate that a model assigns more probability to the observed held-out responses.
+Larger values indicate that a model assigns more probability to the observed assessment responses.
 
-The logarithm turns products of assigned probabilities into sums and strongly penalizes confident errors. Assigning probability $.8$ to the observed category contributes $\log(.8)\approx-.223$; assigning $.1$ contributes $\log(.1)\approx-2.303$. The score evaluates a predictive distribution, not whether the model's modal category happens to be correct.
+The logarithm turns products of assigned probabilities into sums and strongly penalizes confident errors. If one model assigns probability $p_1$ to the observed category and another assigns the smaller probability $p_2$, then $\log p_1>\log p_2$. The score evaluates the entire predictive distribution rather than only whether the most probable category happened to be correct. We compute the contribution of an observed MegaVeridicality response below.
 
-## Preparing the frozen verb folds
+## Preparing the preassigned verb folds
 
 ```{r}
 #| label: megaveridicality-fold-setup
@@ -82,11 +84,13 @@ names(fold_summary)[names(fold_summary) == "verb"] <- "held_out_verbs"
 fold_summary
 ```
 
-Every judgment for a verb belongs to the same fold. When fold $k$ is assessed, the training data contain no row from any fold-$k$ verb. This is a lexical-unit holdout, not a random row split.
+Every judgment for a verb belongs to the same fold. When fold $k$ is assessed, the training data contain no row from any fold $k$ verb. This is a lexical unit holdout rather than a random row split.
 
 ## Showing the population model on the response scale
 
-The full-data display below is descriptive. It compares raw cell proportions with a population cumulative logit model containing the interaction.
+The display using all observations below is descriptive. It compares raw cell proportions with a population cumulative logit model containing the interaction.
+
+The function `clm()` fits a cumulative link model without group deviations. Its `type = "prob"` prediction returns one fitted probability for each response category. We set `Hess = FALSE` because the display uses fitted probabilities rather than Hessian based standard errors; recall that a [Hessian](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature) is the matrix of second derivatives that records local curvature. `gradTol` is the largest gradient size accepted by the convergence check, and `maxIter` sets the iteration budget.
 
 ```{r}
 #| label: megaveridicality-population-fit
@@ -166,9 +170,40 @@ ggplot(raw_probabilities, aes(x = response)) +
   theme_classic()
 ```
 
-The mixed model on the preceding page adds respondent and verb deviations to this location structure. Those deviations are essential for describing observed heterogeneity. Every assessment verb is new, so its fitted verb deviation is unavailable. We compare population cumulative-link models because the target is transfer of the common interaction to a new lexical item; a mixed-model assessment would additionally require integrating over a new verb distribution and deciding how to handle respondents. This restriction answers a narrower question rather than claiming the group structure has disappeared.
+One observed response makes the row contribution concrete:
 
-## Comparing additive and interaction models by held-out verb
+```{r}
+#| label: megaveridicality-observed-log-score-contribution
+observed_row <- judgments[1L, , drop = FALSE]
+observed_cell <- which(
+  prediction_cells$polarity == observed_row$polarity &
+    prediction_cells$task == observed_row$task
+)
+observed_category <- match(
+  as.character(observed_row$outcome),
+  colnames(probability_matrix)
+)
+assigned_probability <- probability_matrix[
+  observed_cell,
+  observed_category
+]
+data.frame(
+  verb = observed_row$verb,
+  polarity = observed_row$polarity,
+  task = observed_row$task,
+  observed_response = observed_row$outcome,
+  assigned_probability = assigned_probability,
+  log_score_contribution = log(assigned_probability)
+)
+```
+
+The last column is the logarithm of the probability assigned to this observed category. Cross validation repeats this operation with probabilities obtained from a model that was fit without the assessment verb.
+
+The [ordinal mixed model](ordinal-mixed-models.qmd) adds respondent and verb deviations to this location structure. Those deviations are essential for describing observed variation. Every assessment verb is new, so its fitted verb deviation is unavailable. We compare population cumulative link models because the target is transfer of the common interaction to a new lexical item. Assessing the full mixed model would additionally require integrating over a new verb distribution and deciding how to handle respondents, which is a different prediction target.
+
+## Comparing additive and interaction models by unseen verb
+
+The helper `mean_log_score()` first obtains the three category probabilities for every assessment row. It then selects the probability assigned to the category that was actually observed, takes its logarithm, and averages across rows. The lower bound `1e-12` prevents a numerical logarithm of zero; it is far below probabilities that would count as substantively plausible predictions here.
 
 ```{r}
 #| label: megaveridicality-heldout
@@ -244,7 +279,7 @@ cross_validation$gain <- with(
 cross_validation
 ```
 
-The row-weighted interaction gain is computed from the held-out folds:
+The row weighted interaction gain is computed from the assessment folds:
 
 ```{r}
 #| label: megaveridicality-heldout-summary
@@ -279,9 +314,9 @@ ggplot(
   theme_classic()
 ```
 
-The fold sizes, range of fold gains, and intercept-only baseline expose three parts of the comparison that a single average hides. The reported mean is row-weighted, so a fold with more judgments contributes more. A verb-weighted target would instead give each held-out verb equal influence and could differ when verbs have unequal numbers of rows.
+The fold sizes, range of fold gains, and intercept only baseline expose three parts of the comparison that a single average hides. The reported mean is row weighted, so a fold with more judgments contributes more. A verb weighted target would instead give each assessment verb equal influence and could differ when verbs have unequal numbers of rows.
 
-The interaction improves the mean log score in every frozen fold, but the row-weighted gain is small. Thus the interaction has consistent predictive support while the additive model remains a live comparison. Fold-to-fold variation is descriptive uncertainty across verb partitions; five folds are too few for a precise standard-error claim. The result does not classify verbs, estimate respondent variation, or reproduce the paper's normalized responsivity analysis. It asks one narrow question about transferring a population interaction to unseen verbs.
+The interaction improves the mean log score in every preassigned fold, but the gain after weighting by rows is small. Thus the interaction has consistent predictive support while the additive model remains a live comparison. Variation across folds describes uncertainty across verb partitions; five folds are too few for a precise standard error claim. The result does not classify verbs, estimate respondent variation, or reproduce the paper's normalized responsivity analysis. It asks one narrow question about transferring a population interaction to unseen verbs.
 
 ## Recap and check
 
@@ -289,4 +324,4 @@ The interaction improves the mean log score in every frozen fold, but the row-we
 2. Why can row weighting and verb weighting differ? Verbs need not contribute equal numbers of judgments, so row weighting gives larger verbs more influence.
 3. Does the population `clm` show respondent independence is true? No. It deliberately evaluates a narrow new-verb fixed-structure target and leaves respondent heterogeneity outside this comparison.
 
-The next topic, [Laplace approximation](laplace-approximation.qmd), returns to the computation needed when random effect distributions are retained.
+We next return to the computation needed when random effect distributions are retained: the [Laplace approximation](laplace-approximation.qmd).

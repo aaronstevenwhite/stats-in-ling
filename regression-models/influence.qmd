@@ -9,11 +9,13 @@ execute:
 
 Leverage measures unusual predictor position. [**Influence**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) asks how much the fitted result changes when an observation, or a scientifically meaningful group of observations, is removed.
 
-One Provo row is an [aggregated, fixation-contingent word position](regression-models.qmd#provo-word-position-data), and its predictor is modeled cloze surprisal, the negative base-two logarithm of a fitted cloze probability. Row influence therefore concerns a position rather than a reader. Passage deletion keeps together the positions that share one passage context.
+One Provo row is a [word position](regression-models.qmd#provo-word-position-data) whose response averages log durations across readers with a retained fixation, and its predictor is modeled cloze surprisal, the negative base 2 logarithm of a fitted cloze probability. Row influence therefore concerns a position rather than a reader. Passage deletion keeps together the positions that share one passage context.
 
-The [residual](residuals.qmd) supplies observed-minus-fitted response information, while response [variance](../random-variables-and-distributions/variance-and-covariance.qmd) sets its scale. In the Bayesian calculation, a [posterior distribution](../statistical-inference/posterior-distributions.qmd) is the parameter distribution after conditioning on the observed responses; deletion changes that conditioning set.
+The [residual](residuals.qmd) supplies the difference between observed and fitted responses, while response [variance](../random-variables-and-distributions/variance-and-covariance.qmd) sets its scale. In the Bayesian calculation, a [posterior distribution](../statistical-inference/posterior-distributions.qmd) is the parameter distribution after conditioning on the observed responses; deletion changes that conditioning set.
 
-Cook's distance combines predictor position with residual size for one row. Because the Provo positions remain grouped within passages, a whole-passage deletion asks a second and scientifically better aligned sensitivity question.
+Cook's distance combines predictor position with residual size for one row. Because the Provo positions remain grouped within passages, deleting a whole passage asks a second and scientifically better aligned sensitivity question.
+
+Leverage and residual size answer different questions. A position at an unusual surprisal value may have high leverage, but if its response falls exactly on the fitted line, deleting it need not move the line much. A position near the predictor center may have a large residual, but many nearby predictor values can limit its ability to rotate the line. Influence becomes large when disagreement with the fit occurs where the design gives the row substantial capacity to change that fit.
 
 ## Cook's distance and grouped deletion
 
@@ -36,7 +38,9 @@ D_i
 }{ps^2},
 $$
 
-where $\widehat y_{j(i)}$ is the fitted value after deleting row $i$. The closed form above avoids $n$ separate refits by combining the row's residual with its leverage. The [leverage page](leverage-and-influence.qmd) supplies the design component; the residual supplies disagreement with the fitted mean.
+where $\widehat y_{j(i)}$ is the fitted value after deleting row $i$. The closed form above avoids $n$ separate refits by combining the row's residual with its [leverage](leverage-and-influence.qmd), which supplies the design component. The residual supplies disagreement with the fitted mean.
+
+The notation $j(i)$ means “prediction for row $j$ from the model refitted without row $i$.” Thus the numerator compares two complete vectors of predictions, one from the full data and one after a deletion. Dividing by $ps^2$ expresses that change relative to the number of fitted coefficients and the estimated residual variance.
 
 Large residuals and high leverage can jointly produce a large $D_i$. But the Provo regression retains passages as a grouping unit, so deleting one position is not the only relevant perturbation. We also refit after deleting each whole passage.
 
@@ -95,7 +99,7 @@ provo[which.max(provo$cooks_distance), c(
 )]
 ```
 
-The largest whole-passage deletion changes the slope by `r sprintf("%.6f", passage_deletion$slope_change[which.max(passage_deletion$absolute_change)])` log milliseconds per bit. This change is computed by removing passage `r most_influential_passage`, not by inventing a perturbation.
+The largest change after deleting a whole passage is `r sprintf("%.6f", passage_deletion$slope_change[which.max(passage_deletion$absolute_change)])` log milliseconds per bit. To obtain it, we remove every retained position from passage `r most_influential_passage` and refit the same regression.
 
 ```{r}
 #| label: plot-provo-influence
@@ -124,15 +128,15 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
-The two lines remain close. That stability is specific to the fitted Provo regression slope under these passage deletions. It does not show that the missing reader-level grouping is unimportant.
+The two lines remain close. That stability is specific to the fitted Provo regression slope under these passage deletions. It gives us no information about the grouping among readers that was removed during aggregation.
 
-Deleting the most influential passage is a sensitivity analysis: it asks whether one grouped source carries the slope. It is not a data-cleaning instruction. A deletion would require separate evidence that the measurement or inclusion rule was wrong. The relevant generalization target is new passages, so whole-passage perturbations complement the row-level Cook calculation.
+Deleting the most influential passage is a sensitivity analysis: it asks whether one grouped source carries the slope. Removing that passage from the reported analysis would require separate evidence that its measurement or inclusion was wrong. The relevant generalization target is new passages, so deleting whole passages complements the Cook calculation for individual rows.
 
 ## Recap and check your understanding
 
 1. Why does Cook's distance combine residual size and leverage?
 2. Which deletion unit matches the remaining Provo regression grouping structure?
-3. What would a large passage-level slope change imply?
+3. What would a large slope change after deleting a passage imply?
 4. Why is influence a diagnostic rather than a deletion command?
 
 <details class="understanding-answers">
@@ -140,9 +144,9 @@ Deleting the most influential passage is a sensitivity analysis: it asks whether
 
 1. Residual size measures disagreement with the fitted line, while leverage measures capacity to move it; Cook's distance is large when those features act together. <!-- dqr-allow: empirical-answer -->
 2. Deleting a whole passage matches the remaining grouping structure marked by `Text_ID`. <!-- dqr-allow: empirical-answer -->
-3. A large passage-level slope change would show that the fitted surprisal slope is sensitive to evidence concentrated in that passage. <!-- dqr-allow: empirical-answer -->
+3. A large slope change after deleting a passage would show that the fitted surprisal slope is sensitive to evidence concentrated in that passage. <!-- dqr-allow: empirical-answer -->
 4. Influence identifies consequential observations or groups for investigation; deletion requires a separate measurement or design justification. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [next page](bayesian-linear-regression.qmd) places a posterior distribution over the same line.
+We next use [Bayesian linear regression](bayesian-linear-regression.qmd) to place a posterior distribution over the same line.

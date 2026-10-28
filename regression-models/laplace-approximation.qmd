@@ -3,13 +3,13 @@ title: "The Laplace approximation"
 execute: {warning: false, message: false}
 ---
 
-A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains random effects that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. The [marginal-distribution page](../random-variables-and-distributions/marginal-distributions.qmd) reminds us that marginalization sums or integrates a joint distribution over an unobserved quantity. A likelihood for the observed responses must thus average over every possible random effect value.
+A [generalized linear mixed model](generalized-linear-mixed-models.qmd) contains group deviations that are not observed directly. The response likelihood is conditional on their values, and the model assigns those values a population distribution. Recall that [marginalization](../random-variables-and-distributions/marginal-distributions.qmd) sums or integrates a joint distribution over a quantity we do not observe. A likelihood for the observed responses must thus average over every possible group deviation.
 
-The [random effect framework](fixed-and-random-effects.qmd) defines the group deviations being integrated. Their [standard deviations and covariances](../random-variables-and-distributions/variance-and-covariance.qmd) set the local geometry. The likelihood is the density of the realized responses viewed as a function of fixed coefficients and group-distribution parameters, as defined on the [maximum likelihood page](../statistical-inference/maximum-likelihood.qmd).
+The [group deviation model](fixed-and-random-effects.qmd) defines what is being integrated. Its [standard deviations and covariances](../random-variables-and-distributions/variance-and-covariance.qmd) determine how plausible different deviation values are. Recall that the [likelihood](../statistical-inference/maximum-likelihood.qmd) views the density of the realized responses as a function of the population coefficients and group distribution parameters.
 
-This page first identifies that integral, then constructs its local quadratic approximation and compares the approximation with direct integration for a restricted SuperTelicity model.
+The basic idea is to replace a difficult peak with a normal shaped peak whose area we already know how to calculate. We first identify the integral, then construct the local quadratic approximation that produces this normal shape, and finally compare the approximation with direct integration for a restricted SuperTelicity model.
 
-This integral usually has no elementary form for a logistic mixed model. The [**Laplace approximation**](https://doi.org/10.1080/01621459.1986.10478240) replaces the log integrand with a quadratic near its highest point. We expose that computation with one participant intercept from the SuperTelicity release introduced on the GLMM page.
+This integral usually has no elementary form for a logistic mixed model. The [**Laplace approximation**](https://doi.org/10.1080/01621459.1986.10478240) replaces the log integrand with a quadratic near its highest point. We work through that computation with one participant intercept from [SuperTelicity](generalized-linear-mixed-models.qmd).
 
 ## Why the integral appears
 
@@ -19,7 +19,7 @@ $$
 p(\mathbf y_p\mid b_p,\boldsymbol\beta).
 $$
 
-The group model supplies the density $f_B(b_p\mid\tau)$. The observed-data contribution is
+The group model supplies the density $f_B(b_p\mid\tau)$. The contribution from the observed responses is
 
 $$
 p(\mathbf y_p\mid\boldsymbol\beta,\tau)
@@ -46,6 +46,8 @@ the integrand is highest, and the peak's width. A high but very narrow peak can
 thus have less area than a lower, wider peak. We will derive the quantity that
 measures that width rather than assume its form.
 
+For intuition, a rectangular peak with height $h$ and width $w$ has area $hw$. Knowing $h$ without $w$ is therefore insufficient. The same fact holds for smooth likelihood peaks: we need both the value at the mode and a measure of how rapidly the function falls away from it.
+
 ## Expanding the log integrand
 
 Recall that a [first derivative measures local
@@ -61,6 +63,16 @@ polynomial that has the same value and derivatives there. Keeping terms through
 the second derivative gives a local quadratic. We use that quadratic because
 exponentiating a downward-opening quadratic produces the shape of a normal
 density, whose area we know how to calculate.
+
+To connect that claim to a familiar formula, recall that
+
+$$
+\int_{-\infty}^{\infty}
+\exp\left\{-\frac{H}{2}(b-\widehat b)^2\right\}\,db
+=\sqrt{\frac{2\pi}{H}}.
+$$
+
+The constant $H$ controls width. If $H$ is large, the exponent becomes very negative after a small move from $\widehat b$, so the peak is narrow. If $H$ is small, the peak is wide.
 
 Define
 
@@ -124,6 +136,16 @@ The height records support at the conditional mode. The curvature records how qu
 ## Constructing the SuperTelicity integrand
 
 The fuller GLMM has participant, verb, and sentence intercepts. To make one integration step directly inspectable, we restrict the worked model to a participant intercept. The comparison therefore studies Laplace error for that one-dimensional integral rather than the complete crossed model.
+
+The code will need the mode and the curvature there. `optimize()` searches a bounded interval for the value of $b$ that minimizes a function, so we give it the negative log integrand to find the maximum of the original log integrand. The curvature calculation also follows directly from the model. For a Bernoulli observation with fitted probability $p_i(b)$, the negative second derivative of its log likelihood with respect to $b$ is $p_i(b)[1-p_i(b)]$. The normal group density contributes $1/\tau^2$. Adding over trials gives
+
+$$
+H
+=\sum_i p_i(\widehat b)[1-p_i(\widehat b)]
++\frac{1}{\tau^2}.
+$$
+
+Thus the code is evaluating the curvature formula derived above rather than asking software for an unexplained quantity.
 
 ```{r}
 #| label: supertelicity-laplace
@@ -197,9 +219,9 @@ curvature <- sum(mode_probability * (1 - mode_probability)) +
   1 / participant_sd^2
 ```
 
-The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below come from the release.
+The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below are computed from those responses.
 
-`optimize()` performs a bounded one-dimensional search for the conditional mode. We extend the interval six fitted random effect standard deviations in each direction, which covers the practically relevant normal density while keeping numerical integration finite. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
+We extend the search interval six fitted random effect standard deviations in each direction, which covers the practically relevant normal density. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
 
 ## Comparing the exact integral with its local approximation
 
@@ -243,7 +265,7 @@ laplace_summary <- data.frame(
 laplace_summary
 ```
 
-The small difference is an empirical computation diagnostic for these observed trials. It is not an invented likelihood example and does not guarantee equal accuracy for every participant or for the higher-dimensional crossed model.
+The difference is an empirical computation diagnostic for these observed trials. Accuracy may differ for other participants and for the higher dimensional crossed model.
 
 ```{r}
 #| label: plot-laplace
@@ -307,4 +329,4 @@ In `glmer`, `nAGQ = 1` selects this one-point Laplace calculation. The one-inter
 2. What does subtracting `log_height` change? Only numerical scale; the value is added back on the log scale after integration.
 3. Does `nAGQ = 1` change the Bernoulli response model? No. It chooses an approximation for the same random effect integral.
 
-The [model-criticism module](../model-criticism-and-prediction/) develops the predictive and diagnostic checks needed when a computationally successful approximation still supports an inadequate model.
+The tools for [model criticism and prediction](../model-criticism-and-prediction/) ask whether a computationally successful fit still gives an inadequate account of the data.

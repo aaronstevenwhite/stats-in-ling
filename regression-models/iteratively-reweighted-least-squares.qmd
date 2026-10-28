@@ -5,9 +5,48 @@ execute:
   message: false
 ---
 
-Logistic regression has no ordinary least-squares solution because the inverse logit makes the likelihood nonlinear in the coefficients. **Iteratively reweighted least squares (IRLS)** solves a sequence of local weighted least-squares problems. We can follow that sequence for the SuperTelicity verb-type model.
+In ordinary linear regression, one matrix calculation gives the least squares coefficients. Logistic regression is harder because changing a coefficient changes a probability through the curved inverse logit. There is no single least squares calculation that lands immediately at the maximum.
 
-We first derive the working response and weights, then trace the numerical updates to the same maximum likelihood estimate returned by `glm()`.
+The basic idea is to approximate that curve by a line near a current coefficient value. We solve the resulting weighted least squares problem, move to the solution, redraw the local line, and solve again. **Iteratively reweighted least squares (IRLS)** is the name for this repeated procedure. “Iteratively” means that we repeat the update; “reweighted” means that the local weights change after each update.
+
+Before we derive the update, recall the matrix notation used in [multiple regression](multiple-regression.qmd). Each row of $\mathbf X$ contains one observation's predictor values, and each column corresponds to one coefficient. Multiplying $\mathbf X\boldsymbol\beta$ takes the row-by-column products and adds them, producing one linear predictor per observation. The transpose $\mathbf X^\mathsf T$ turns columns into rows so that information can be summed across observations.
+
+The two design rows below come from one observed manner verb response and one observed result verb response. `model.matrix()` places a one in the intercept column for both rows and a one in the result column only for the result verb.
+
+```{r}
+#| label: observed-irls-design-rows
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+observed_design_rows <- st[c(
+  which(st$verb_type == "manner")[[1L]],
+  which(st$verb_type == "result")[[1L]]
+), c("participant_id", "sentence_id", "verb", "verb_type", "prep_in")]
+cbind(observed_design_rows, model.matrix(~ verb_type, observed_design_rows))
+```
+
+For two rows, one manner verb and one result verb, the design calculation is
+
+$$
+\underbrace{
+\begin{bmatrix}
+1&0\\
+1&1
+\end{bmatrix}}_{\mathbf X}
+\underbrace{
+\begin{bmatrix}
+\beta_0\\
+\beta_1
+\end{bmatrix}}_{\boldsymbol\beta}
+=
+\underbrace{
+\begin{bmatrix}
+\beta_0\\
+\beta_0+\beta_1
+\end{bmatrix}}_{\boldsymbol\eta}.
+$$
+
+IRLS repeatedly asks which coefficient vector makes a locally linear version of these predictors fit best.
 
 Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the responses are held fixed while the coefficient vector varies. For Bernoulli logistic regression, the log likelihood is
 
@@ -57,6 +96,8 @@ operation: approximate the score by a line near the current value, move to the
 line's zero, and recalculate. For several coefficients, the Hessian supplies
 the multivariate curvature. Substituting the logistic score and Hessian gives
 
+The superscript $-1$ below denotes a matrix inverse: multiplying a matrix by its inverse gives the identity matrix, the matrix analogue of multiplying a scalar $a$ by $1/a$. The update uses that inverse to convert the vector of local slopes into a movement on the coefficient scale.
+
 $$
 \boldsymbol\beta^{(t+1)}
 =
@@ -66,13 +107,11 @@ $$
 \mathbf X^\top(\mathbf y-\boldsymbol\mu^{(t)}).
 $$
 
-The weighted-least-squares form below is this same update after collecting terms.
+The weighted least squares form below is this same update after collecting terms.
 
 ```{r}
 #| label: irls-data
 #| echo: true
-st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
-st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
 y <- st$prep_in
 X <- model.matrix(~ verb_type, st)
 glm_fit <- glm(prep_in ~ verb_type, family = binomial(), data = st)
@@ -187,4 +226,4 @@ Gaussian.
 
 </details>
 
-The [next page](deviance.qmd) uses the fitted likelihood to compare nested mean restrictions.
+The fitted likelihood also gives us [deviance](deviance.qmd), a way to compare nested restrictions on the mean.

@@ -5,13 +5,15 @@ execute:
   message: false
 ---
 
-An ordinal response has ordered categories but no defensible numerical spacing. We use **MegaVeridicality v1**, the *no*–*maybe*–*yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012); [project documentation](https://megaattitude.io/projects/mega-veridicality/)). Each row is one judgment for a verb, polarity, task, item, and task-specific respondent. The direct and conditional tasks recruited separate samples; the task prefix on `respondent_id` prevents 29 reused numeric labels from becoming false repeated measurements.
+Suppose that a participant answers *no*, *maybe*, or *yes*. We know the order of these responses: *no* is lower than *maybe*, and *maybe* is lower than *yes*. But the labels do not tell us that the distance from *no* to *maybe* equals the distance from *maybe* to *yes*. Replacing them with $1,2,3$ and fitting ordinary linear regression would silently impose that equal-spacing assumption.
 
-The [CDF](../random-variables-and-distributions/cumulative-distribution-functions.qmd) supplies probabilities at or below each ordered threshold, and the latent response [variance](../random-variables-and-distributions/variance-and-covariance.qmd) is fixed by the chosen logistic scale. The likelihood is the product of observed category probabilities viewed as a function of coefficients and thresholds, following [maximum likelihood](../statistical-inference/maximum-likelihood.qmd).
+An **ordinal response** supplies an order without supplying numerical distances. We use **MegaVeridicality v1**, the *no*–*maybe*–*yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012); [project documentation](https://megaattitude.io/projects/mega-veridicality/)). Each row is one judgment for a verb, polarity, task, item, and task-specific respondent. The direct and conditional tasks recruited separate samples; the task prefix on `respondent_id` prevents 29 reused numeric labels from becoming false repeated measurements.
+
+The basic idea is to model cumulative probabilities: the probability of *no*, and the probability of *no or maybe*. Recall that a [cumulative distribution function](../random-variables-and-distributions/cumulative-distribution-functions.qmd) gives the probability at or below a value. Two cumulative probabilities therefore determine all three category probabilities. We will connect them to predictors with two ordered boundaries, which we call **cutpoints**.
 
 We first derive cumulative category probabilities, then interpret one shared predictor shift across both thresholds and check the proportional-odds restriction.
 
-The response asks whether the inference targeted by the item is supported, using the ordered labels *no*, *maybe*, and *yes*. The direct task presents the target without conditional embedding; the conditional task places the item in a conditional antecedent. Sentence text is absent from the prepared table, so the page does not reconstruct it. The table does retain verb, complement frame, polarity, task, ordinal response, and a separate 1--7 acceptability judgment.
+The response asks whether the inference targeted by the item is supported, using the ordered labels *no*, *maybe*, and *yes*. The direct task presents the target without conditional embedding; the conditional task places the item in a conditional antecedent. Sentence text is absent from the prepared table, so we do not reconstruct it. The table does retain verb, complement frame, polarity, task, ordinal response, and a separate 1--7 acceptability judgment.
 
 ```{r}
 #| label: load-megaveridicality
@@ -27,7 +29,7 @@ fit <- clm(outcome ~ polarity * task, data = mv, link = "logit", Hess = TRUE)
 coef(summary(fit))
 ```
 
-The next rows show one actual direct record and one actual conditional record. They are measurement records, not verb-level summaries.
+The next rows show one actual direct record and one actual conditional record. Each row retains a participant's measurement; we have not averaged responses to the verb level.
 
 ```{r}
 #| label: inspect-megaveridicality-records
@@ -45,25 +47,25 @@ rbind(
 
 ## Cumulative logits
 
-For ordered cutpoints $\kappa_1<\kappa_2$ and linear predictor $\eta_i$,
+For ordered cutpoints $\kappa_1<\kappa_2$, let $m_i$ be the [linear predictor](link-functions.qmd) for response $i$: the sum obtained by multiplying each predictor value by its coefficient and adding the products. Then
 
 $$
-\operatorname{logit}\mathbb{P}(Y_i\leq c)=\kappa_c-\eta_i,
+\operatorname{logit}\mathbb{P}(Y_i\leq c)=\kappa_c-m_i,
 \qquad c\in\{1,2\}.
 $$
 
 With the logistic CDF $F$, the category probabilities are
 
 $$
-\mathbb{P}(Y_i=\text{no})=F(\kappa_1-\eta_i),
+\mathbb{P}(Y_i=\text{no})=F(\kappa_1-m_i),
 $$
 
 $$
-\mathbb{P}(Y_i=\text{maybe})=F(\kappa_2-\eta_i)-F(\kappa_1-\eta_i),
+\mathbb{P}(Y_i=\text{maybe})=F(\kappa_2-m_i)-F(\kappa_1-m_i),
 $$
 
 $$
-\mathbb{P}(Y_i=\text{yes})=1-F(\kappa_2-\eta_i).
+\mathbb{P}(Y_i=\text{yes})=1-F(\kappa_2-m_i).
 $$
 
 The model preserves order without assigning equal distances to the labels.
@@ -78,7 +80,7 @@ $$
 \mathbb{P}(Y_i=3)=1-C_{i2}. % dqr-allow: symbolic-derivation
 $$
 
-The logistic CDF is a modeling choice, not a consequence of order alone. It gives an interpretable odds scale and connects to [logistic regression](logistic-regression.qmd); a probit link would impose a different latent-error shape. The thresholds locate category boundaries on the model coordinate. They do not prove that respondents possess a literal continuous veridicality variable.
+Order alone leaves the cumulative link unspecified. Choosing the logistic CDF gives an interpretable odds scale and connects to [logistic regression](logistic-regression.qmd); a probit link would impose a different latent error shape. The thresholds locate category boundaries on the model coordinate, without requiring respondents to possess a literal continuous veridicality variable.
 
 ## Interpreting one coefficient at both boundaries
 
@@ -133,7 +135,7 @@ rbind(`maybe-or-yes versus no` = coef(above_no),
       `yes versus no-or-maybe` = coef(yes))
 ```
 
-The negative-polarity and polarity-by-task coefficients differ across boundaries, so one shared location shift is a useful baseline but an imperfect description. This population fit leaves respondent and verb dependence outside the likelihood; the later ordinal mixed-model page adds them. White and Rawlins's responsivity analysis also normalizes participant thresholds and derives verb-level measures, whereas the present likelihood uses raw ordered responses and contains no latent verb-category variable.
+The coefficients for negative polarity and its interaction with task differ across boundaries, so one shared location shift is a useful baseline but an imperfect description. This population fit leaves respondent and verb dependence outside the likelihood; [ordinal mixed models](ordinal-mixed-models.qmd) add those shared deviations. White and Rawlins's responsivity analysis also normalizes participant thresholds and derives measures for each verb, whereas the present likelihood uses raw ordered responses and contains no latent verb category variable.
 
 ## Recap and check your understanding
 
@@ -150,4 +152,4 @@ The negative-polarity and polarity-by-task coefficients differ across boundaries
 
 </details>
 
-The [next page](poisson-regression.qmd) changes both support and mean--variance assumptions to model counts.
+[Poisson regression](poisson-regression.qmd) changes both the support and the mean--variance assumption when we model counts.

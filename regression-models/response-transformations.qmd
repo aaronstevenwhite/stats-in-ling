@@ -7,11 +7,13 @@ execute:
   message: false
 ---
 
-The Provo regression response is a mean of log first fixation durations, and its predictor is [modeled cloze surprisal](regression-models.qmd#provo-word-position-data), the negative base-two logarithm of a fitted cloze probability. A **response transformation** changes the scale on which the model treats effects as additive. For a positive duration $T$, the course transformation is stated below.
+The Provo regression response is a mean of log first fixation durations, and its predictor is [modeled cloze surprisal](regression-models.qmd#provo-word-position-data), the negative base 2 logarithm of a fitted cloze probability. A **response transformation** changes the scale on which the model treats effects as additive. For a positive duration $T$, the course transformation is stated below.
 
-An [expected value](../random-variables-and-distributions/expected-values.qmd) and a [variance](../random-variables-and-distributions/variance-and-covariance.qmd) change when the response is transformed; neither can generally be recovered by simply exponentiating its counterpart on the log scale. We use **residual** provisionally for an observed-minus-fitted transformed response and develop that object on the [residual page](residuals.qmd).
+An [expected value](../random-variables-and-distributions/expected-values.qmd) and a [variance](../random-variables-and-distributions/variance-and-covariance.qmd) change when the response is transformed; neither can generally be recovered by simply exponentiating its counterpart on the log scale. We use **residual** provisionally for the observed transformed response minus its fitted value. The later discussion of [residuals](residuals.qmd) derives its regression properties.
 
-Logging each positive fixation before aggregation targets a mean log duration, whose exponent is a geometric mean in milliseconds. The fit and back-transformation below keep that estimand distinct from an arithmetic mean duration.
+Logging each positive fixation before aggregation targets a mean log duration. Exponentiating it gives a **geometric mean**: for $n$ positive values, the $n$th root of their product. The fit and back transformation below keep that estimand distinct from an arithmetic mean duration, which adds the values and divides by $n$.
+
+Why might we want a logarithm here? On the millisecond scale, equal differences receive equal size. On the log millisecond scale, equal ratios receive equal size because $\log(at)-\log(t)=\log a$. Thus the transformation determines which comparisons the regression treats as having the same size.
 
 $$
 Y=\log T
@@ -21,7 +23,7 @@ turns a multiplicative change in milliseconds into an additive change on the log
 
 ## What the prepared response means
 
-For position $i$, the course table stores a reader-aggregated mean log duration, $\overline{\log T}_i$. Exponentiating it gives
+For position $i$, the course table stores a mean log duration aggregated across readers, $\overline{\log T}_i$. Exponentiating it gives
 
 $$
 G_i
@@ -66,13 +68,22 @@ stopifnot(
 summary(provo$ffd_geometric_mean_ms)
 ```
 
+The first retained Provo position provides a data based back transformation:
+
+```{r}
+#| label: inspect-one-provo-back-transformation
+provo[1L, c("position_id", "mean_log_ffd", "ffd_geometric_mean_ms")]
+```
+
+The final column is obtained by exponentiating that position's observed mean log duration. The course table does not contain the raw reader durations needed to reconstruct the corresponding arithmetic mean.
+
 Under the working model for the stored position summaries
 
 $$
 Y_i\mid x_i\sim\mathcal N(\mu_i,\sigma^2),
 $$
 
-two summaries of the back-transformed position response differ:
+two summaries of the position response after returning to milliseconds differ:
 
 $$
 \operatorname{Median}(T_i\mid x_i)=\exp(\mu_i)
@@ -84,19 +95,19 @@ $$
 \mathbb{E}[T_i\mid x_i]=\exp(\mu_i+\sigma^2/2).
 $$
 
-The second identity follows from the lognormal moment-generating calculation. Back-transforming a fitted log mean without the variance term thus targets a conditional median, or equivalently a geometric mean of the stored position response under this model, rather than its arithmetic mean.
-
-From [expectations of functions](../random-variables-and-distributions/expectation-of-functions.qmd), if $Y\sim\mathcal N(\mu,\sigma^2)$, then its moment-generating function is $M_Y(t)=\exp(\mu t+\sigma^2t^2/2)$. Setting $t=1$ gives
+From [expectations of functions](../random-variables-and-distributions/expectation-of-functions.qmd), the **moment generating function** of a random variable is $M_Y(t)=\mathbb{E}[e^{tY}]$. If $Y\sim\mathcal N(\mu,\sigma^2)$, that function is $M_Y(t)=\exp(\mu t+\sigma^2t^2/2)$. Setting $t=1$ gives
 
 $$
 \mathbb{E}[e^Y]=M_Y(1)=\exp(\mu+\sigma^2/2).
 $$
 
+This calculation gives the second identity above. Back-transforming a fitted log mean without the variance term thus targets a conditional median, or equivalently a geometric mean of the stored position response under this model, rather than its arithmetic mean.
+
 The identity thus depends on the normal working model for log responses; exponentiation alone does not supply the correction.
 
 ```{r}
 #| label: plot-provo-response-transform
-#| fig-cap: "Observed position-level geometric mean durations and two back-transformed summaries from the fitted log-scale model."
+#| fig-cap: "Observed geometric mean durations for each position and two summaries returned to milliseconds from the fitted model on the log scale."
 grid <- data.frame(
   cloze_surprisal_bits = seq(
     min(provo$cloze_surprisal_bits),
@@ -133,16 +144,16 @@ ggplot(provo, aes(cloze_surprisal_bits, ffd_geometric_mean_ms)) +
   theme_classic(base_size = 12)
 ```
 
-At the observed predictor center, the fitted geometric mean is `r sprintf("%.1f", exp(coef(fit)[["(Intercept)"]]))` ms, while the working lognormal arithmetic mean of position-level geometric means is `r sprintf("%.1f", exp(coef(fit)[["(Intercept)"]] + residual_sd^2 / 2))` ms. The small difference is computed from the actual Provo regression residual scale.
+At the observed predictor center, the fitted geometric mean is `r sprintf("%.1f", exp(coef(fit)[["(Intercept)"]]))` ms, while the working lognormal arithmetic mean of the geometric means for positions is `r sprintf("%.1f", exp(coef(fit)[["(Intercept)"]] + residual_sd^2 / 2))` ms. The small difference is computed from the actual Provo regression residual scale.
 
-A potential worry is that this page diagnoses raw reader-time skew. It cannot. The prepared response has already averaged log duration by position, so the page demonstrates transformation and back-transformation of the stored summaries only.
+A potential worry is that this analysis diagnoses raw reader-time skew. It cannot. The prepared response has already averaged log duration by position, so the calculation demonstrates transformation and back-transformation of the stored summaries only.
 
 ## Recap and check your understanding
 
 1. Why is `exp(mean_log_ffd)` a geometric mean?
 2. Which raw-scale summary includes the $\sigma^2/2$ term?
 3. Does a linear effect on log duration imply a constant millisecond difference?
-4. Why can this table not reveal the raw reader-level distribution?
+4. Why can this table not reveal the raw distribution across readers?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -154,4 +165,4 @@ A potential worry is that this page diagnoses raw reader-time skew. It cannot. T
 
 </details>
 
-The [next page](frequentist-linear-regression.qmd) derives the least-squares fit.
+We next derive the [least squares fit](frequentist-linear-regression.qmd).

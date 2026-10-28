@@ -3,15 +3,32 @@ title: "Population coefficients and group variation"
 execute: {warning: false, message: false}
 ---
 
-The [preceding page](structured-data.qmd) identified participant and spoken word as crossed repeated units in the MALD trial table. We now separate the population associations represented by coefficients from variation across those sampled units. The [MALD data card](multiple-regression.qmd) defines response time, acoustic duration, lexical frequency, trial order, and the correct-response restriction. The [response-transformation page](response-transformations.qmd) explains why the model uses log response time. Those choices fix the measurement target before we choose a group structure.
+We have already seen the [crossed units](structured-data.qmd) in the MALD trial table: participants respond to many spoken words, and words receive responses from many participants. We now need a model that can answer two questions at once. First, what is the average association between lexical frequency and response time across the population we want to study? Second, how much do particular listeners and words depart from that average relation?
 
-The model uses [variance, covariance, and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) to describe group deviations and their relations. Conditional [independence](../foundations/independence.qmd) applies only after the shared deviations are supplied. A [residual](residuals.qmd) is the remaining observed-minus-fitted response. Participant and item effects therefore require raw repeated MALD trials; they cannot be recovered from one mean per word.
+Recall the measurements. [MALD](multiple-regression.qmd) records onset-to-response time, acoustic duration, SUBTLEX frequency, and trial order, and the [response transformation](response-transformations.qmd) explains why we take the logarithm of response time. Fixing those meanings before we build the model prevents a coefficient from drifting away from the measurement it is meant to summarize.
 
-We proceed from target to representation: first we name the population association, then add participant and word deviations, fit the model, and distinguish a variable's storage type from its modeling role.
+The model uses [variance, covariance, and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) to describe group deviations and their relations. Conditional [independence](../foundations/independence.qmd) applies only after the shared deviations are supplied. A [residual](residuals.qmd) is the observed response minus its fitted value. Participant and item effects therefore require raw repeated MALD trials; they cannot be recovered from one mean per word.
+
+The basic idea is to begin with one shared regression line and then allow sampled listeners and words to depart from it. We first work through that idea with one predictor, then write the compact notation used by the full model.
 
 ## Beginning with the scientific target
 
-We relate log response time to standardized log SUBTLEX frequency, standardized log acoustic duration, and standardized trial order. These predictors enter the population relation:
+Begin with log frequency alone. If the population intercept is $\beta_0$ and the population frequency coefficient is $\beta_f$, the shared relation is
+
+$$
+\mathbb{E}[Y_i\mid x_i]=\beta_0+\beta_f x_i.
+$$
+
+Here $Y_i$ is log response time on trial $i$, and $x_i$ is standardized log frequency for the spoken word on that trial. A negative $\beta_f$ means that expected log response time decreases as frequency increases; a positive value means that it increases. This coefficient describes the shared relation before we ask whether a particular listener is generally faster or slower.
+
+The full analysis also contains standardized log acoustic duration and standardized trial order. Recall that [standardizing a variable](../factorization/centering-and-scaling.qmd) subtracts its sample mean and divides by its sample standard deviation. We can collect the intercept and these three predictor values in a row vector $\mathbf x_i$, and collect their coefficients in a column vector $\boldsymbol\beta$. Their matrix product is shorthand for the familiar sum
+
+$$
+\mathbf x_i^{\mathsf T}\boldsymbol\beta
+=\beta_0+\beta_f x_i^{(f)}+\beta_d x_i^{(d)}+\beta_t x_i^{(t)}.
+$$
+
+This is the same [design matrix notation](design-matrices.qmd) used for multiple regression: multiplication pairs each predictor value with its coefficient and adds the products. With group deviations included, the population relation becomes
 
 $$
 \mathbb{E}[Y_i\mid\mathbf x_i,\mathbf b]
@@ -19,15 +36,21 @@ $$
 +\mathbf z_i^{\mathsf T}\mathbf b.
 $$
 
-Here $\boldsymbol\beta$ contains the population intercept and the three population associations. In particular, $\beta_{\text{frequency}}$ is the expected change in log response time for a one-standard-deviation increase in log frequency, holding duration and trial order fixed.
+Here $\boldsymbol\beta$ contains the population intercept and the three population associations. The second product, $\mathbf z_i^{\mathsf T}\mathbf b$, selects and adds the participant and word deviations that belong to trial $i$. In particular, $\beta_{\text{frequency}}$ is the expected change in log response time for a one standard deviation increase in log frequency, holding duration and trial order fixed.
 
-Here one standard deviation is computed from the retained correct-trial table used to fit the model. If $s_f$ is that sample standard deviation, then $z_{fi}=(x_{fi}-\bar x_f)/s_f$. Thus a one-unit change in `z_frequency` means an $s_f$-unit change in original log frequency, not one raw frequency unit. In a held-out prediction study, the centering and scale constants should be estimated on training data and carried into assessment data.
+Here one standard deviation is computed from the retained correct trial table used to fit the model. If $s_f$ is that sample standard deviation, then $z_{fi}=(x_{fi}-\bar x_f)/s_f$. Thus a one unit change in `z_frequency` means an $s_f$ unit change in original log frequency rather than one raw frequency unit. In a prediction study, the centering and scale constants should be estimated on training data and carried into assessment data.
 
 The word *fixed* does not mean known, measured without uncertainty, or constant across every conceivable population. It means that the coefficient is not itself indexed by a grouping level in this model.
 
 ## Representing sampled variation
 
-Participant $p$ receives an intercept deviation and a frequency-slope deviation:
+For a particular participant $p$, an intercept deviation $b_{0p}$ represents a persistent shift from the population center. A slope deviation $b_{1p}$ represents the difference between that participant's frequency association and the population association. The participant's line is
+
+$$
+(\beta_0+b_{0p})+(\beta_f+b_{1p})x_i^{(f)}.
+$$
+
+The actual values are estimated from all listeners together. For participant $p$, collect the two deviations in a vector:
 
 $$
 \mathbf b_p=
@@ -35,6 +58,8 @@ $$
 \sim
 \mathcal N(\mathbf 0,\boldsymbol\Sigma_p).
 $$
+
+The symbol $\boldsymbol\Sigma_p$ is a **covariance matrix**. Its diagonal entries record the variance of participant intercepts and slopes, while its off-diagonal entries record whether faster or slower baselines tend to accompany larger or smaller frequency associations. This extends the scalar [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) ideas by arranging those quantities in a table.
 
 Word $w$ receives an intercept deviation,
 
@@ -62,6 +87,8 @@ The grouping terms follow the participant-by-word incidence structure. A partici
 The frequency column and participant identifier both enter the construction of the linear predictor, but they have different roles. Frequency is a measured predictor with a population coefficient. Participant identity indexes deviations drawn from a population distribution.
 
 ## Fitting the MALD model
+
+The function `lmer()` fits a Gaussian linear mixed model. Its formula reads from left to right: `log_rt` is the response; the terms before the first grouping expression receive population coefficients; `(1 + z_frequency | participant_id)` gives each participant an intercept and frequency slope deviation; and `(1 | item)` gives each word an intercept deviation. The helper function `standardize()` below uses `scale()` to subtract a column's mean and divide by its standard deviation. Finally, `bobyqa` names the numerical search algorithm, and `maxfun` raises the number of objective evaluations it may use.
 
 ```{r}
 #| label: mald-fixed-random
@@ -95,7 +122,21 @@ data.frame(
   estimate = unname(lme4::fixef(fit)),
   row.names = NULL
 )
+
+participant_deviations <- ranef(fit)$participant_id
+example_participant <- rownames(participant_deviations)[[1L]]
+data.frame(
+  participant_id = example_participant,
+  population_intercept = fixef(fit)[["(Intercept)"]],
+  fitted_intercept_deviation =
+    participant_deviations[example_participant, "(Intercept)"],
+  population_frequency_slope = fixef(fit)[["z_frequency"]],
+  fitted_frequency_slope_deviation =
+    participant_deviations[example_participant, "z_frequency"]
+)
 ```
+
+The second table instantiates the earlier equation with one observed MALD participant. Adding each fitted deviation to its population coefficient gives that participant's fitted intercept and frequency slope.
 
 The formula maps term by term onto the mathematical model:
 
@@ -106,9 +147,9 @@ The formula maps term by term onto the mathematical model:
 | `(1 \| item)` | word intercept $c_w$ |
 | implicit Gaussian residual | $\varepsilon_{pwi}$ |
 
-`bobyqa` is a derivative-free optimizer used here for the variance parameters, and `maxfun = 200000` raises the evaluation budget for the correlated slope model. These settings address computation; they do not change the probability model or repair an unsupported grouping term.
+The optimizer settings address computation. Changing them does not change the probability model or create support for a grouping term that the design cannot estimate.
 
-The fitted frequency coefficient is `r sprintf("%.3f", lme4::fixef(fit)[["z_frequency"]])` log-response-time units per standard deviation. This is a population association conditional on duration and trial order. It is not a participant-specific slope or a causal effect of lexical frequency.
+The fitted frequency coefficient is `r sprintf("%.3f", lme4::fixef(fit)[["z_frequency"]])` log response time units per standard deviation. This is a population association conditional on duration and trial order. It neither describes one particular participant's slope nor establishes a causal effect of lexical frequency.
 
 ## Showing raw data and the fitted population relation
 
@@ -163,7 +204,7 @@ ggplot(raw_bins, aes(x = z_frequency, y = log_rt)) +
   theme_classic()
 ```
 
-The points are raw bin means; the line sets participant and item deviations to zero. Thus it describes the fitted population relation on the same response scale, not the trajectory of an observed participant or word.
+The points are raw bin means. The line sets participant and item deviations to zero, so it describes the fitted population relation on the same response scale. An observed participant or word generally receives an additional fitted deviation.
 
 ## Storage type does not determine modeling role
 
@@ -176,4 +217,4 @@ The course formula omits controls analyzed by Tucker et al. It isolates the cova
 1. Why is there a participant frequency slope but no item frequency slope? Frequency varies within participants but is constant within each word.
 2. Does “fixed effect” mean known without uncertainty? No. It is an estimated population coefficient that is not indexed by a grouping level in this model.
 
-The [next page](random-effects.qmd) shows how the group distributions produce partial pooling.
+We next work through how these shared group distributions produce [partial pooling](random-effects.qmd).

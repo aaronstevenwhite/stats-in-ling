@@ -1,9 +1,11 @@
 ---
-title: "Random-intercept models"
+title: "Random intercept models"
 execute: {warning: false, message: false}
 ---
 
-The [partial-pooling page](random-effects.qmd) gave participants and words deviations from a shared population center. A [**random-intercept model**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html) places those deviations inside a regression equation. The [structured-data page](structured-data.qmd) shows why MALD rows share participants and spoken words. A normal intercept distribution is a population model for remaining group deviations: it assumes a symmetric, unimodal distribution around zero after included predictors, not that the observed group estimates themselves must look exactly normal.
+The discussion of [partial pooling](random-effects.qmd) gave participants and words deviations from a shared population center. We now put one of those deviations inside a regression equation. A **random intercept** adds one group's deviation to the population intercept. It moves that group's entire fitted relation up or down while leaving the predictor coefficients unchanged.
+
+Why do we need it? The [MALD incidence structure](structured-data.qmd) shows that several rows come from the same listener and several rows contain the same spoken word. A persistent listener difference enters every row from that listener, so the model should represent the shared source. We model the remaining intercept deviations with a normal population distribution, which assumes a symmetric, single-peaked distribution around zero after included predictors.
 
 Conditional [independence](../foundations/independence.qmd) applies after the shared intercepts are supplied. Integrating them induces [covariance](../random-variables-and-distributions/variance-and-covariance.qmd) among repeated responses, and the [residual](residuals.qmd) records what remains at the trial level. A fitted participant or item intercept summarizes repeated responses under MALD's task and restrictions.
 
@@ -51,6 +53,8 @@ $$
 
 Conditional on $b_p$, the residuals may be independent. Marginally, before the deviation is known, the two responses are associated because they contain the same participant baseline.
 
+The fitted variance components below let us calculate the size of this shared contribution in MALD. We derive and name the corresponding correlation next.
+
 Every cancellation uses an assumption: different trial residuals are uncorrelated, residuals are uncorrelated with $b_p$, and the same $b_p$ enters both rows. If residual autocorrelation remains within a participant, the covariance contains more than $\tau_p^2$.
 
 ## Adding the crossed word intercept
@@ -91,7 +95,25 @@ fit <- lmer(
 
 variance_components <- as.data.frame(VarCorr(fit))
 variance_components[c("grp", "var1", "vcov", "sdcor")]
+
+participant_variance <- variance_components$vcov[
+  variance_components$grp == "participant_id" &
+    is.na(variance_components$var2)
+]
+item_variance <- variance_components$vcov[
+  variance_components$grp == "item" &
+    is.na(variance_components$var2)
+]
+residual_variance <- sigma(fit)^2
+data.frame(
+  participant_variance = participant_variance,
+  total_variance = participant_variance + item_variance + residual_variance,
+  same_participant_correlation = participant_variance /
+    (participant_variance + item_variance + residual_variance)
+)
 ```
+
+The final column is computed from the fitted MALD variance components. It is the model-implied correlation for two responses from the same participant and different words.
 
 In `lmer` notation, `(1 | participant_id)` inserts $b_p$ and `(1 | item)` inserts $c_w$. Three trial pairs clarify the implied dependence:
 
@@ -135,11 +157,11 @@ ggplot(pooling, aes(x = raw_mean, y = conditional_mean)) +
   theme_classic()
 ```
 
-The participant intercept represents persistent response-speed differences. It cannot represent participant-specific lexical-frequency associations; that requires a random slope.
+The participant intercept represents persistent response speed differences. Differences in the lexical frequency association require a random slope as well.
 
 ## Recap and check
 
 1. Does a participant intercept represent every within-listener dependence? No. Serial dependence or listener-specific slopes require additional structure.
 2. Are rows independent after marginalizing over $b_p$? No. Rows sharing the intercept have covariance $\tau_p^2$.
 
-The [next page](intraclass-correlation.qmd) converts the fitted covariance components into model-implied correlations.
+We next convert these fitted covariance components into [intraclass correlations](intraclass-correlation.qmd).

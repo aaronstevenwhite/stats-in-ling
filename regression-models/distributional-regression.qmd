@@ -9,9 +9,11 @@ execute:
 
 **Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use the location-scale specification stated below.
 
-The likelihood is the joint density of the realized item summaries viewed as a function of the location and scale coefficients, as on the [maximum likelihood page](../statistical-inference/maximum-likelihood.qmd). Conditional [variance and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) describe response spread, a [residual](residuals.qmd) is observed minus fitted location, and the likelihood product requires the stated [independence](../foundations/independence.qmd) approximation. Retained-trial counts and within-item variances improve the precision story, though the response remains conditional on correct trials and uses onset-to-response timing.
+Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the likelihood is the joint density of the realized item summaries viewed as a function of the location and scale coefficients. Conditional [variance and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) describe response spread, a [residual](residuals.qmd) is observed minus fitted location, and the likelihood product requires the stated [independence](../foundations/independence.qmd) approximation. Retained trial counts and the variances observed for each item improve the precision story, though the response remains conditional on correct trials and uses onset to response timing.
 
 One predictor equation cannot say that MALD item means and their remaining spread change differently with frequency. Separate location and scale equations supply those two conditional targets and require their coefficients to be interpreted separately.
+
+The basic idea is to fit two related regressions. The **location equation** predicts the conditional mean. The **scale equation** predicts the conditional standard deviation around that mean. If two frequency values receive different fitted means and different fitted standard deviations, then the response distribution has changed in both center and concentration. A mean equation alone can express only the first change. We will estimate both changes from the observed MALD summaries below.
 
 $$
 Y_{ij}\sim\mathcal N(\mu_i,\sigma_i^2),
@@ -35,6 +37,8 @@ $$
 
 The log link keeps every fitted standard deviation positive.
 
+To see why, remember that $\exp(z)>0$ for every real number $z$. We first let the linear scale equation produce any real value, then exponentiate it to obtain $\sigma_i$. A one-unit increase in frequency changes $\log\sigma_i$ by $\gamma_f$, so it multiplies $\sigma_i$ by $\exp(\gamma_f)$.
+
 The normal choice assumes that retained correct log response times are conditionally symmetric with a mean and scale captured by these equations. Trial independence makes the grouped likelihood a product. Those assumptions are conveniences that make the item summaries sufficient; they may fail when the omitted participant structure induces dependence or heavier tails.
 
 ## A likelihood for grouped item summaries
@@ -47,7 +51,9 @@ $$
 (n_i-1)s_i^2+n_i(\overline y_i-\mu_i)^2
 $$
 
-allows the Gaussian likelihood to be evaluated exactly from these sufficient summaries, conditional on the independence approximation.
+allows the Gaussian likelihood to be evaluated exactly from these three stored numbers, conditional on the independence approximation.
+
+Here **sufficient summaries** means that, under the stated normal model, these three numbers contain all of the trial information that the likelihood uses for $\mu_i$ and $\sigma_i^2$. This is a property of the normal likelihood. It does not imply that the summaries retain participant identities or any other structure needed for a different model.
 
 To derive the identity, add and subtract the item mean:
 
@@ -55,7 +61,7 @@ $$
 y_{ij}-\mu_i=(y_{ij}-\overline y_i)+(\overline y_i-\mu_i).
 $$
 
-After squaring and summing, the cross-product vanishes because $\sum_j(y_{ij}-\overline y_i)=0$. The first squared term is $(n_i-1)s_i^2$ and the second is $n_i(\overline y_i-\mu_i)^2$. Thus the grouped likelihood is algebraically equal to the row likelihood only under the declared Gaussian common-within-item mean and scale.
+After squaring and summing, the cross product vanishes because $\sum_j(y_{ij}-\overline y_i)=0$. The first squared term is $(n_i-1)s_i^2$ and the second is $n_i(\overline y_i-\mu_i)^2$. Thus the grouped likelihood is algebraically equal to the row likelihood only under the declared Gaussian mean and scale shared by the trials for an item.
 
 ## How we will search for the likelihood maximum
 
@@ -74,6 +80,16 @@ that curvature approximation to propose another coefficient vector. The search
 stops when its relative progress falls below `reltol` or when it reaches the
 `maxit` ceiling. Neither stopping rule assesses whether the distributional
 assumptions fit the data.
+
+The curvature idea begins in one dimension. For a squared distance $q(b)=(b-c)^2$, the second derivative is positive near its minimum at $c$, which tells us that the curve bends upward. With several coefficients, the criterion forms a surface rather than a curve. The Hessian records how that surface bends along and between coefficient directions. BFGS uses changes in successive gradients to estimate this curvature instead of calculating the entire Hessian at every step.
+
+We will compare the constant scale and frequency dependent scale specifications with the [**Akaike information criterion (AIC)**](https://www.statlearning.com/s/ISLRSeventhPrinting.pdf),
+
+$$
+\operatorname{AIC}=2k-2\ell(\widehat{\boldsymbol\theta}),
+$$
+
+where $k$ is the number of fitted parameters and $\ell(\widehat{\boldsymbol\theta})$ is the maximized log likelihood. The first term penalizes additional parameters; the second rewards likelihood fit. AIC values have meaning only relative to models fitted to the same response data with comparable likelihoods, and smaller values receive preference under this approximation.
 
 ```{r}
 #| label: fit-mald-distributional-regression
@@ -175,7 +191,7 @@ coefficient_table
 model_comparison
 ```
 
-`X_mu` maps the four mean coefficients to $\mu_i`; `Z_frequency` maps an intercept and centered-frequency coefficient to $\log\sigma_i`. The optimizer parameter vector thus contains the mean coefficients first and the scale coefficients second. Weighted least squares supplies stable mean starting values, pooled residual sums of squares supply the scale start, and the added zero initializes no frequency change in scale.
+`X_mu` maps the four mean coefficients to $\mu_i$; `Z_frequency` maps an intercept and centered frequency to $\log\sigma_i$. The optimizer parameter vector thus contains the mean coefficients first and the scale coefficients second. Weighted least squares supplies stable mean starting values, pooled residual sums of squares supply the scale start, and the added zero initializes no frequency change in scale.
 
 A zero convergence code reports that this search stabilized numerically. We
 also request a Hessian at the reported solution. An **eigenvector** of the
@@ -184,6 +200,8 @@ curvature transformation; its **eigenvalue** records the amount and sign of
 curvature in that direction. Positive eigenvalues in every direction are what
 we expect at a strict local minimum of the negative log likelihood. The smallest
 eigenvalue therefore supplies the most demanding local curvature check:
+
+An eigenvector is easiest to think of as a direction through the coefficient surface. The associated eigenvalue records how strongly the surface bends along that direction. A very small positive value marks a nearly flat direction; a negative value would mark downward curvature, which is incompatible with a strict local minimum. The [Hessian visualization](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature) shows these directions on a two-parameter contour plot.
 
 ```{r}
 #| label: check-mald-distributional-curvature
@@ -202,7 +220,7 @@ Allowing frequency-dependent scale changes AIC from `r sprintf("%.2f", model_com
 
 ```{r}
 #| label: plot-mald-distributional-regression
-#| fig-cap: "MALD item means and within-item standard deviations with fitted mean and scale relations at observed mean duration and phone count."
+#| fig-cap: "MALD item means and standard deviations within each item, with fitted mean and scale relations at observed mean duration and phone count."
 grid <- data.frame(
   log_frequency_subtlex = seq(
     quantile(mald$log_frequency_subtlex, .01),
@@ -238,7 +256,7 @@ ggplot(mald, aes(log_frequency_subtlex, mean_log_rt)) +
 
 ```{r}
 #| label: plot-mald-distributional-scale
-#| fig-cap: "Observed within-item log-RT standard deviations and the fitted frequency-dependent scale."
+#| fig-cap: "Observed standard deviations of log response time within each item and the fitted scale as a function of frequency."
 ggplot(mald, aes(log_frequency_subtlex, sd_log_rt)) +
   geom_point(color = "grey70", alpha = scale_opacity, size = 0.5) +
   geom_line(data = grid, aes(y = fitted_sd), color = "#2C6E9B", linewidth = 0.85) +
@@ -246,7 +264,7 @@ ggplot(mald, aes(log_frequency_subtlex, sd_log_rt)) +
   theme_classic(base_size = 12)
 ```
 
-The likelihood treats retained correct trials as conditionally independent. Because the summaries omit participant identifiers, the fitted scale may combine trial noise with participant heterogeneity and cannot recover participant effects. The model demonstrates separate mean and scale equations; it is not a replacement for the crossed analysis used in the MALD paper.
+The likelihood treats retained correct trials as conditionally independent. Because the summaries omit participant identifiers, the fitted scale may combine trial noise with participant heterogeneity and cannot recover participant effects. The separate mean and scale equations answer our grouped item question, while reproducing the crossed analysis in the MALD paper would require the participant by item trials.
 
 ## Recap and check your understanding
 
@@ -265,4 +283,4 @@ The likelihood treats retained correct trials as conditionally independent. Beca
 
 </details>
 
-The next module turns from fitting equations to [prediction targets and model criticism](../model-criticism-and-prediction/prediction-targets.qmd).
+We next turn from fitting equations to [prediction targets](../model-criticism-and-prediction/prediction-targets.qmd) and model criticism.

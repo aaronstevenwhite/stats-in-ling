@@ -1,19 +1,19 @@
 ---
-title: "Group-specific estimates"
+title: "Estimates for individual groups"
 execute: {warning: false, message: false}
 ---
 
-The [partial-pooling page](random-effects.qmd) explained why group deviations are estimated jointly with a population distribution. A fitted multilevel model gives each observed group a partially pooled estimate of its deviation from the population relation. In a frequentist `lme4` fit, `ranef()` reports these values as [**conditional modes**](https://lme4.github.io/lme4/reference/ranef.html).
+Recall that [partial pooling](random-effects.qmd) estimates group deviations jointly under a population distribution. Once the model has been fit, we often want to ask what it learned about a particular observed listener or word. The answer is a partially pooled deviation from the population relation.
 
 The shared model uses [variance, covariance, and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) to determine how strongly group estimates pool. These conditional model quantities combine a group's responses with the population distribution; they are therefore neither directly measured abilities nor context-free lexical difficulty scores.
 
-The conditional mode is a deviation from a population coefficient, so interpreting it requires both the optimization target and the addition that reconstructs the complete group-specific coefficient. Its conditional uncertainty belongs to the same fitted hierarchy.
+The conditional mode is a deviation from a population coefficient, so interpreting it requires both the optimization target and the addition that reconstructs the complete coefficient for that group. Its conditional uncertainty belongs to the same fitted hierarchy.
 
-They are useful summaries of the fitted group structure. They are not raw group means, independently estimated coefficients, or error-free rankings.
+In a frequentist `lme4` fit, `ranef()` reports a **conditional mode** for each deviation. *Mode* means the value at which the relevant fitted density is highest. *Conditional* means that we compute this value while holding the fitted population coefficients and variance components at their estimated values. These summaries differ from raw group means because the shared population distribution contributes information to them.
 
 ## Defining the conditional mode
 
-For participant $p$, collect the intercept and frequency-slope deviations in $\mathbf b_p$. Conditional on fitted population coefficients and variance components, the estimate is
+For participant $p$, collect the intercept and frequency slope deviations in $\mathbf b_p$. Conditional on fitted population coefficients and variance components, the estimate is
 
 $$
 \widehat{\mathbf b}_p
@@ -24,7 +24,7 @@ $$
 \right}.
 $$
 
-The first term rewards values that fit the participant's trials. The second rewards values plausible under the estimated participant distribution. Their combination produces partial pooling.
+The notation $\operatorname*{arg\,max}_{\mathbf b_p}$ means “the value of $\mathbf b_p$ that makes the expression as large as possible.” The first term rewards values that fit the participant's trials. The second rewards values plausible under the estimated participant distribution. Their combination produces partial pooling.
 
 For a simple intercept-only normal model, the same balance appears in
 
@@ -46,6 +46,8 @@ $$
 The first term pulls $b_p$ toward the participant's mean deviation; the second pulls it toward the population center. Their curvatures determine both the mode and, under this normal model, its conditional variance $(n_p/\sigma^2+1/\tau_p^2)^{-1}$.
 
 ## Extracting estimates and conditional uncertainty
+
+The argument `condVar = TRUE` asks `ranef()` for two things: the conditional modes and a conditional variance for each mode. The returned variance array has one row and column for each participant deviation and one slice for each participant. We take the square root of its intercept entry to obtain `conditional_se`, a local conditional standard error for the participant intercept mode.
 
 ```{r}
 #| label: mald-ranef
@@ -86,8 +88,26 @@ intercepts <- data.frame(
 intercepts <- intercepts[order(intercepts$estimate), ]
 intercepts$order <- seq_len(nrow(intercepts))
 
+participant_trial_count <- data.frame(
+  participant = names(table(mald$participant_id)),
+  trials = as.numeric(table(mald$participant_id))
+)
+intercepts <- merge(
+  intercepts,
+  participant_trial_count,
+  by = "participant",
+  sort = FALSE
+)
+
 head(intercepts)
+
+intercepts[c(
+  which.max(intercepts$conditional_se),
+  which.min(intercepts$conditional_se)
+), c("participant", "trials", "estimate", "conditional_se")]
 ```
+
+The final two rows are observed MALD participants with the largest and smallest conditional standard errors. Trial count is one source of the difference, but predictor coverage and the crossed word structure also contribute. Thus uncertainty cannot be read from the point estimate alone.
 
 The main extraction functions answer distinct questions:
 
@@ -98,7 +118,7 @@ The main extraction functions answer distinct questions:
 | `VarCorr(fit)` | fitted population covariance of group deviations |
 | `fixef(fit)` | population coefficients |
 
-The participant-level standard deviation in `VarCorr(fit)` describes variation across the modeled participant population. A row's `conditional_se` instead describes local uncertainty for one participant's conditional mode, conditional on the fitted population parameters. The two quantities answer different questions.
+The participant standard deviation in `VarCorr(fit)` describes variation across the modeled participant population. A row's `conditional_se` instead describes local uncertainty for one participant's conditional mode, conditional on the fitted population parameters. The two quantities answer different questions.
 
 ```{r}
 #| label: plot-mald-ranef
@@ -126,15 +146,15 @@ ggplot(intercepts, aes(x = estimate, y = order)) +
 
 The intervals overlap heavily through much of the ordering. A participant placed above another by point estimate need not have a stably higher baseline. Rank uncertainty is part of the result.
 
-## Distinguishing deviations from group-specific coefficients
+## Distinguishing deviations from coefficients for a group
 
-For participant $p$, the group-specific intercept is
+For participant $p$, the complete intercept is
 
 $$
 \widehat\beta_0+\widehat b_{0p},
 $$
 
-and the group-specific frequency slope is
+and the complete frequency slope is
 
 $$
 \widehat\beta_f+\widehat b_{1p}.
@@ -162,4 +182,4 @@ Testing every conditional mode against zero would replace a population model wit
 1. Does the largest conditional mode identify the fastest listener without uncertainty? No. Modes are shrunken estimates with overlapping conditional uncertainty, so their rank is uncertain.
 2. Is `VarCorr()` the uncertainty for one participant? No. It estimates population variation across groups.
 
-The [next page](random-slopes.qmd) examines the participant-specific frequency associations.
+We next allow the lexical frequency association itself to vary by participant with [random slopes](random-slopes.qmd).

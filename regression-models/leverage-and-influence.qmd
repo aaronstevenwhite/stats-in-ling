@@ -13,7 +13,11 @@ Recall that a [residual](residuals.qmd) is observed minus fitted response. In th
 
 We first derive leverage from the hat matrix, then inspect the observed Provo positions and distinguish geometric capacity from realized influence.
 
+Predictor values near the observed center have many neighboring observations helping to constrain the line. Values near the edges of the observed range may have greater capacity to rotate it because fewer observations constrain that part of the line. Leverage puts a number on this geometric capacity before we look at the response attached to the row.
+
 ## The hat matrix
+
+Recall that a [design matrix](design-matrices.qmd#from-equations-to-a-matrix) collects the coefficient multipliers for every observation. Once the least squares coefficients have been substituted back into the fitted values, the entire operation can be written as one matrix multiplying the observed response vector:
 
 OLS fitted values can be written as
 
@@ -46,16 +50,23 @@ $$
 
 The formula makes the source of leverage explicit: predictor values far from the observed center have more capacity to determine the fitted line.
 
-The [design-matrix page](design-matrices.qmd) gives the OLS solution, and its
-[projection figure](design-matrices.qmd#projection-as-fitted-plus-residual)
+Why use the diagonal? In the product $\widehat{\mathbf y}=\mathbf H\mathbf y$, fitted value $\widehat y_i$ is a weighted sum of all observed responses. The diagonal entry $h_{ii}$ is the weight connecting response $y_i$ to its own fitted value. A larger self-weight means that changing this row's response can move the fitted value at the same row more strongly.
+
+The derivation using [design matrices](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates) gives the OLS solution, and the corresponding
+[projection](design-matrices.qmd#projection-as-fitted-plus-residual)
 shows the fitted and residual vectors in two dimensions. Substituting the OLS
 solution into $\widehat{\mathbf y}=\mathbf X\widehat{\boldsymbol\beta}$
-produces $\mathbf H$. Because $\mathbf H^2=\mathbf H$ and
-$\mathbf H^\top=\mathbf H$, it is the orthogonal projection onto the column
-space of $\mathbf X$. Its trace equals its rank, so the leverages sum to the
-number of estimable coefficients.
+produces $\mathbf H$. Multiplying by $\mathbf H$ a second time changes nothing,
+because an already fitted vector stays in the space of fitted vectors:
+$\mathbf H^2=\mathbf H$. We call a matrix with this property **idempotent**.
+The matrix is also symmetric, $\mathbf H^\top=\mathbf H$, so the projection is
+perpendicular to the residual direction.
 
-For a toy predictor $x=(-1,0,3)$ with an intercept, the formula gives different leverage values before any responses are supplied. The extreme value 3 has the greatest capacity to anchor the fitted line; whether it actually changes the line also depends on its response residual.
+The **trace** of a square matrix is the sum of its diagonal entries. The
+**rank** is the number of independent directions represented by its columns.
+For this projection, the trace equals the rank, which is the number of
+estimable coefficients. Because the diagonal entries are the leverages, their
+sum must equal that coefficient count.
 
 ```{r}
 #| label: compute-provo-leverage
@@ -91,6 +102,18 @@ data.frame(
 )
 ```
 
+The Provo positions with the largest observed leverage values are:
+
+```{r}
+#| label: inspect-highest-provo-leverage
+provo[
+  order(provo$leverage, decreasing = TRUE)[1:6],
+  c("position_id", "Text_ID", "cloze_surprisal_bits", "leverage")
+]
+```
+
+These are observed word positions near sparsely represented parts of the surprisal range. Whether they materially change the fitted line also depends on their observed residuals.
+
 The leverage values sum to `r ncol(X)`, the number of fitted coefficients. The conventional twice-average threshold marks `r sum(provo$high_leverage)` observed positions for inspection; it is not a deletion rule.
 
 The cutoff $2p/n$ is a screening heuristic based on twice the average leverage $p/n$. Alternatives such as $3p/n$ change the flagged set. No cutoff establishes that an observation is erroneous or influential.
@@ -116,7 +139,7 @@ ggplot(provo, aes(cloze_surprisal_bits, leverage)) +
   theme_classic(base_size = 12)
 ```
 
-High leverage is a design property. A high-leverage point can lie exactly on the fitted line and have little case-deletion effect. The [next page](influence.qmd) combines leverage with residual size.
+High leverage is a design property. A high-leverage point can lie exactly on the fitted line and have little case-deletion effect. We next combine leverage with residual size under [influence](influence.qmd).
 
 ## Recap and check your understanding
 
@@ -131,8 +154,8 @@ High leverage is a design property. A high-leverage point can lie exactly on the
 1. Leverage depends only on the predictor row and the design matrix, not on the observed response value. <!-- dqr-allow: empirical-answer -->
 2. The hat matrix is an idempotent projection with trace equal to its rank, which is the number of estimable coefficients. <!-- dqr-allow: empirical-answer -->
 3. A value far from the observed predictor mean relative to the total predictor spread has high leverage. <!-- dqr-allow: empirical-answer -->
-4. The twice-average leverage threshold is a screening convention, not evidence of error; a high-leverage observation can be valid and have little influence when its residual is small. <!-- dqr-allow: empirical-answer -->
+4. The twice-average leverage threshold merely identifies rows for inspection. A high-leverage observation can be valid and have little influence when its residual is small. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [influence page](influence.qmd) next combines leverage with residual size and compares row-level with grouped deletion.
+The discussion of [influence](influence.qmd) next combines leverage with residual size and compares deleting one row with deleting a whole group.

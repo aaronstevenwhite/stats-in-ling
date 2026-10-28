@@ -7,13 +7,15 @@ execute:
   message: false
 ---
 
-**Residualizing a predictor** subtracts the part linearly predicted by declared controls. The resulting residual is sample- and model-dependent; it is not a purified linguistic measurement.
+**Residualizing a predictor** subtracts the part linearly predicted by declared controls. The resulting residual depends on the sample and fitted model, so the operation cannot purify a linguistic measurement.
 
-This algebraic predictor residual uses the same observed-minus-fitted operation as a [response residual](residuals.qmd), but its target is a predictor column. The amount left depends on that predictor's [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) with the declared controls. It remains a transformation of correlated lexical stimulus properties rather than a randomized manipulation.
+This algebraic predictor residual uses the same operation as a [response residual](residuals.qmd): subtract the fitted value from the observed value. Here the target is a predictor column. The amount left depends on that predictor's [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) with the declared controls. It remains a transformation of correlated lexical stimulus properties rather than a randomized manipulation.
 
-The MALD phone-count coefficient supplies a concrete test: residualizing both the response and phone count against the same controls must reproduce that partial slope. The Frisch--Waugh--Lovell equality establishes the result, while held-out prediction determines where the transformation may be estimated.
+The MALD phone count coefficient supplies a concrete test: residualizing both the response and phone count against the same controls must reproduce that partial slope. The Frisch--Waugh--Lovell equality establishes the result, while prediction on held out data determines where the transformation may be estimated.
 
-## The MALD phone-count coefficient
+If two word items had exactly the same syllable count, duration, and frequency, their difference in phone count would contribute directly to the partial phone comparison. The observed MALD items rarely match on every control. Residualization replaces exact matching with a linear adjustment: it predicts phone count from the controls and records how many phones above or below that prediction each item lies.
+
+## The MALD phone count coefficient
 
 First regress phone count on syllable count, log duration, and log frequency:
 
@@ -32,7 +34,9 @@ Y_i
 +\gamma_sS_i+\gamma_dD_i+\gamma_fF_i+\varepsilon_i.
 $$
 
-The Frisch--Waugh--Lovell result implies that $\widehat\gamma_p$ equals the phone-count coefficient in the original multiple regression containing $P_i$ and the same controls.
+The Frisch--Waugh--Lovell result implies that $\widehat\gamma_p$ equals the phone count coefficient in the original multiple regression containing $P_i$ and the same controls.
+
+More generally, a positive phone residual means that an item contains more phones than the auxiliary linear regression predicts from its syllables, duration, and frequency. Fractional residuals are possible even though observed phone counts are integers, because the fitted predictor value is an average. The residual has meaning only relative to that fitted control model.
 
 ## Deriving the Frisch--Waugh--Lovell equality {#deriving-the-frischwaughlovell-equality}
 
@@ -52,6 +56,8 @@ $$
 \widetilde{\mathbf y}=\mathbf M_C\mathbf y.
 $$
 
+The matrix $\mathbf P_C$ produces the values of phone count and response predicted from the controls. Subtracting those predictions from the original vectors produces the two residual vectors. Calling $\mathbf M_C$ a **residual maker** simply names this subtraction as one linear operation; it adds no new statistical assumption.
+
 The full normal equations for $\mathbf y=\mathbf C\boldsymbol\alpha+\mathbf p\gamma_p+\boldsymbol\varepsilon$ include
 
 $$
@@ -60,7 +66,7 @@ $$
 =\mathbf 0.
 $$
 
-Solving this equation for the fitted control contribution and substituting it into the phone-count equation leaves
+Solving this equation for the fitted control contribution and substituting it into the phone count equation leaves
 
 $$
 \widetilde{\mathbf p}^{\top}
@@ -76,7 +82,7 @@ $$
 {\widetilde{\mathbf p}^{\top}\widetilde{\mathbf p}}.
 $$
 
-This is the slope from regressing response residuals on phone-count residuals. The [design-matrix page](design-matrices.qmd) supplies the projection geometry, and the [VIF page](variance-inflation-factors.qmd) uses the same residualized predictor variation.
+This is the slope from regressing response residuals on phone count residuals. The [design matrix](design-matrices.qmd#projection-as-fitted-plus-residual) supplies the projection geometry, and the [variance inflation factor](variance-inflation-factors.qmd) uses the same residualized predictor variation.
 
 A tempting interpretation is that $\widetilde{\mathbf p}$ is a “pure” phonological quantity. This **purification fallacy** is false: the residual changes whenever the control set, functional form, or sample changes. FWL establishes an algebraic equality between declared linear models. It does not discover a causally isolated variable.
 
@@ -90,6 +96,16 @@ phone_residualizer <- lm(
   data = mald
 )
 mald$residual_n_phones <- residuals(phone_residualizer)
+example_index <- which.max(abs(mald$residual_n_phones))
+phone_residual_example <- data.frame(
+  item = mald$item[[example_index]],
+  observed_n_phones = mald$n_phones[[example_index]],
+  fitted_n_phones = fitted(phone_residualizer)[[example_index]],
+  phone_residual = mald$residual_n_phones[[example_index]],
+  n_syllables = mald$n_syllables[[example_index]],
+  duration_ms = mald$duration_ms[[example_index]],
+  log_frequency = mald$log_frequency_subtlex[[example_index]]
+)
 
 original_fit <- lm(
   mean_log_rt ~ n_phones + n_syllables +
@@ -129,11 +145,15 @@ data.frame(
     coef(partial_fit)[["residual_n_phones"]]
   )
 )
+
+phone_residual_example
 ```
+
+The displayed row is the observed MALD word item with the largest absolute phone residual under this auxiliary regression. Its residual is the observed phone count minus the fitted phone count; the remaining columns show the recorded controls that produced that fitted value. This one row makes the subtraction concrete without treating it as a general property of words outside this sample.
 
 ```{r}
 #| label: plot-mald-residualization
-#| fig-cap: "MALD response residuals against phone-count residuals. The line represents the same partial phone coefficient as the original multiple regression."
+#| fig-cap: "MALD response residuals against phone count residuals. The line represents the same partial phone coefficient as the original multiple regression."
 point_opacity <- 0.07
 ggplot(mald, aes(residual_n_phones, residual_mean_log_rt)) +
   geom_point(color = "grey65", alpha = point_opacity, size = 0.55) +
@@ -144,7 +164,7 @@ ggplot(mald, aes(residual_n_phones, residual_mean_log_rt)) +
     color = "#2C6E9B",
     linewidth = 0.8
   ) +
-  labs(x = "Phone-count residual", y = "Mean log-RT residual") +
+  labs(x = "Phone count residual", y = "Mean log RT residual") +
   theme_classic(base_size = 12)
 ```
 
@@ -217,4 +237,4 @@ The maximum foldwise prediction difference is `r format(max(fold_checks$maximum_
 
 </details>
 
-The [next page](heteroscedasticity.qmd) examines changing residual spread across MALD frequency.
+We next examine [changing residual spread](heteroscedasticity.qmd) across MALD frequency.

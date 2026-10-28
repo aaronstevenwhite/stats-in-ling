@@ -1,13 +1,13 @@
 ---
-title: "Random-effect correlations"
+title: "Correlations among group deviations"
 execute: {warning: false, message: false}
 ---
 
-The [random-slope page](random-slopes.qmd) gave each MALD participant a baseline deviation and a lexical-frequency-slope deviation. The two deviations may themselves be related across the participant population. The [centering page](centering-predictors.qmd) reminds us that an intercept is the fitted value at a chosen predictor zero, so an intercept-slope correlation inherits that choice.
+The [random slope model](random-slopes.qmd) gave each MALD participant a baseline deviation and a lexical frequency slope deviation. We can now ask whether those two deviations tend to move together across participants. Recall that the [intercept](centering-predictors.qmd) depends on the predictor's zero point. The intercept slope correlation must therefore inherit that choice.
 
-Recall that [correlation](../random-variables-and-distributions/correlation.qmd) standardizes covariance by two standard deviations; [variance, covariance, and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) refer here to participant-level latent deviations. Conditional [independence](../foundations/independence.qmd) concerns trial responses after those deviations are supplied. The resulting correlation describes response patterns across repeated MALD trials, not a correlation among lexical properties.
+Recall that [correlation](../random-variables-and-distributions/correlation.qmd) standardizes covariance by two standard deviations; [variance, covariance, and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) refer here to latent deviations across participants. Conditional [independence](../foundations/independence.qmd) concerns trial responses after those deviations are supplied. The resulting correlation describes how participant baseline and slope deviations vary together across repeated MALD trials.
 
-We first write the joint deviation distribution, then fit its covariance on centered predictors and show why changing the intercept reference changes the correlation parameter.
+The basic idea is to ask whether participants above the population baseline also tend to have frequency slopes above the population slope. We write the corresponding population distribution, fit it to the MALD responses, and then show why changing the intercept reference changes its correlation. The fitted participant deviations are plotted below.
 
 ## Writing one joint distribution
 
@@ -29,7 +29,7 @@ b_{1p}
 \right).
 $$
 
-The parameter $\rho$ is the correlation between participant intercept and frequency-slope deviations. A positive value means that participants above the population baseline tend to have frequency slopes above the population slope. The sign of *above* depends on the response and predictor coding.
+The parameter $\rho$ is the correlation between participant intercept and frequency slope deviations. A positive value means that participants above the population baseline tend to have frequency slopes above the population slope. The sign of *above* depends on the response and predictor coding.
 
 If $\rho=0$, the model treats the deviations as uncorrelated. It does not set either variance to zero; participants may still vary substantially in both dimensions.
 
@@ -79,9 +79,30 @@ c(
   intercept_frequency_correlation = participant_correlation,
   frequency_slope_sd = frequency_slope_sd
 )
+
+participant_sigma <- as.matrix(VarCorr(fit)$participant_id)
+correlation_after_recentering <- function(c) {
+  transformed_covariance <- participant_sigma[1L, 2L] +
+    c * participant_sigma[2L, 2L]
+  transformed_intercept_variance <- participant_sigma[1L, 1L] +
+    2 * c * participant_sigma[1L, 2L] +
+    c^2 * participant_sigma[2L, 2L]
+  transformed_covariance / sqrt(
+    transformed_intercept_variance * participant_sigma[2L, 2L]
+  )
+}
+data.frame(
+  centering_shift_in_standardized_frequency = c(0, 1),
+  implied_intercept_slope_correlation = c(
+    correlation_after_recentering(0),
+    correlation_after_recentering(1)
+  )
+)
 ```
 
 The fitted correlation is `r sprintf("%.3f", participant_correlation)`. Its meaning is tied to the intercept at mean log frequency, mean log duration, and mean trial order. The fitted slope standard deviation is only `r sprintf("%.4f", frequency_slope_sd)` log-response-time units, so a strong substantive story about the correlation would outrun the estimated slope variation.
+
+The second table transforms the fitted MALD covariance matrix without changing any fitted response. Shifting the frequency zero by one observed scale unit changes the correlation because it changes which point on each participant line is called the intercept.
 
 ## Why centering changes the correlation
 
@@ -91,7 +112,7 @@ $$
 x_i^{c}=x_i-c.
 $$
 
-Because $x_i=x_i^c+c$, the group-specific part becomes
+Because $x_i=x_i^c+c$, the part belonging to participant $p$ becomes
 
 $$
 b_{0p}+b_{1p}x_i
@@ -114,9 +135,11 @@ $$
 
 Centering changes the point on each fitted line called the intercept. It can thus change the intercept-slope correlation without changing any fitted line or response.
 
-For two centering constants $c_1$ and $c_2$, the same fitted group lines are represented by intercept deviations $b_{0p}+c_1b_{1p}$ and $b_{0p}+c_2b_{1p}$. Their correlations with $b_{1p}$ generally differ because the covariance changes by $c\operatorname{Var}[b_{1p}]$. Thus $\rho$ is a parameter of a coded covariance structure, not a correlation between two independently observed listener traits.
+For an observed participant with deviations $b_{0p}$ and $b_{1p}$, recentering by $c$ changes the intercept deviation from $b_{0p}$ to $b_{0p}+cb_{1p}$. The line has not moved. We have changed which point on it receives the name *intercept*.
 
-In `lmer`, `(1 + z_frequency | participant_id)` estimates the intercept-slope covariance. `(1 + z_frequency || participant_id)` sets that covariance to zero while retaining both variance components. The second form is a substantive independence restriction; it is not merely a faster spelling of the first.
+For two centering constants $c_1$ and $c_2$, the same fitted group lines are represented by intercept deviations $b_{0p}+c_1b_{1p}$ and $b_{0p}+c_2b_{1p}$. Their correlations with $b_{1p}$ generally differ because the covariance changes by $c\operatorname{Var}[b_{1p}]$. Thus $\rho$ belongs to the coded covariance structure. The underlying quantities are fitted deviations rather than independently measured listener traits.
+
+In `lmer`, `(1 + z_frequency | participant_id)` estimates the covariance between intercept and slope deviations. `(1 + z_frequency || participant_id)` sets that covariance to zero while retaining both variance components. The second form imposes an independence restriction rather than merely changing how the formula is written.
 
 ```{r}
 #| label: random-correlation-plot
@@ -140,7 +163,7 @@ ggplot(
   theme_classic()
 ```
 
-The points are conditional modes, not independently observed participant traits, and their empirical scatter is not a replacement for $\widehat\rho$ from the covariance model. The display makes the fitted group dimensions visible while the model accounts for shrinkage and conditional uncertainty.
+The points are conditional modes with shrinkage and unequal conditional uncertainty. Their empirical scatter helps us see the fitted group dimensions, while `VarCorr()` supplies $\widehat\rho$ from the covariance model.
 
 A correlation near an endpoint can reflect a stable population relation or weak information in an over-rich covariance structure. It should be interpreted with the two standard deviations, the number of participant levels, and the singularity diagnostic.
 
@@ -149,4 +172,4 @@ A correlation near an endpoint can reflect a stable population relation or weak 
 1. Is the empirical correlation of `ranef()` points equal to $\widehat\rho$? No. Conditional modes are shrunken and have unequal uncertainty; `VarCorr()` reports the covariance-model estimate.
 2. Does `||` remove the random slope? No. It retains intercept and slope variation while constraining their covariance to zero.
 
-The [next page](singular-fits.qmd) develops the rank diagnostic directly.
+We next use matrix rank to diagnose [singular fits](singular-fits.qmd).

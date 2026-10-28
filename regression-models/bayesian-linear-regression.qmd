@@ -9,11 +9,13 @@ execute:
 
 The Provo Gaussian linear model can be combined with a prior to produce a posterior distribution over regression lines. Recall from [posterior distributions](../statistical-inference/posterior-distributions.qmd) that updating multiplies a likelihood by a prior and then normalizes the product. The response model remains the Gaussian specification stated below.
 
-The [Provo measurement discussion](regression-models.qmd#provo-word-position-data) defines each response as a word position mean of log first fixation durations among readers with a retained positive fixation. It defines modeled cloze surprisal as the negative base-two logarithm of a fitted cloze probability. Skipped reader--word trials do not enter that mean, and the available table retains passage grouping rather than reader identities.
+The [Provo measurements](regression-models.qmd#provo-word-position-data) define each response as a word position mean of log first fixation durations among readers with a retained positive fixation. They define modeled cloze surprisal as the negative base 2 logarithm of a fitted cloze probability. Skipped reader by word trials do not enter that mean, and the available table retains passage grouping rather than reader identities.
 
-The likelihood is the joint density of the fixed observed responses viewed as a function of unknown parameters, as defined on the [maximum likelihood page](../statistical-inference/maximum-likelihood.qmd). Its factorization uses [independence](../foundations/independence.qmd); its covariance matrix records [variances and covariances](../random-variables-and-distributions/variance-and-covariance.qmd). The [Monte Carlo page](../statistical-inference/monte-carlo-integration.qmd) later explains how averages over posterior draws approximate integrals. A [residual](residuals.qmd) remains observed minus fitted response, now evaluated across posterior draws when uncertainty is propagated.
+Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the likelihood is the joint density of the fixed observed responses viewed as a function of unknown parameters. Its factorization uses [independence](../foundations/independence.qmd); its covariance matrix records [variances and covariances](../random-variables-and-distributions/variance-and-covariance.qmd). The later discussion of [Monte Carlo integration](../statistical-inference/monte-carlo-integration.qmd) explains why averages over posterior draws approximate integrals. A [residual](residuals.qmd) remains observed minus fitted response, now evaluated across posterior draws when uncertainty is propagated.
 
-The derivation has three parts: we first specify a conjugate prior, then update its parameters from the likelihood, and finally compute posterior summaries and fitted means.
+The derivation has three parts: we first choose a prior that permits a **closed form update**, meaning that a finite sequence of algebraic operations gives the posterior parameters; we then perform that update and compute posterior summaries and fitted means.
+
+The basic idea is the same as in the earlier [Beta--Binomial update](../statistical-inference/conjugate-priors.qmd): we begin with a probability distribution over possible parameter values, use the observed responses to reweight those values, and normalize. Regression adds several coefficients and an unknown residual variance, so the bookkeeping uses vectors and matrices. We will begin with a one-coefficient calculation each time the matrix notation would otherwise hide the operation.
 
 $$
 \mathbf Y\mid\boldsymbol\beta,\sigma^2
@@ -23,7 +25,11 @@ $$
 
 What changes is that uncertainty about $\boldsymbol\beta$ and $\sigma^2$ is represented before and after observing the responses.
 
-## A conjugate prior specification
+## Choosing a prior family
+
+A prior family is **conjugate** when multiplying its density by the likelihood produces a posterior in the same family. Conjugacy does not remove the need to justify a prior. It makes the update algebra visible because the posterior can be described by a new set of parameters rather than by a new functional form.
+
+Why condition the coefficient prior on $\sigma^2$? Imagine two otherwise identical regression problems. In one, responses cluster tightly around their lines; in the other, they vary widely. Scaling the prior coefficient covariance by $\sigma^2$ lets the same dimensionless prior specification expand or contract with the residual scale. This coupling is what yields the closed-form update below.
 
 We use the normal--inverse-gamma specification
 
@@ -48,7 +54,9 @@ p(\sigma^2)
 \exp\left(-\frac{d_0}{\sigma^2}\right),
 $$
 
-whose mean is $d_0/(a_0-1)$ when $a_0>1$. Conditional conjugacy is useful here because it makes every updating step visible. It is not a claim that a normal--inverse-gamma prior is required for regression.
+whose mean is $d_0/(a_0-1)$ when $a_0>1$. Conditional conjugacy is useful here because it makes every updating step visible. Other prior families remain available and will generally require a different computational strategy.
+
+The name **inverse gamma** refers to a probability distribution supported on positive values, which makes it eligible for a variance. The displayed kernel tells us exactly which version we use: $a_0$ controls the power on $\sigma^2$, and $d_0$ appears divided by $\sigma^2$ inside the exponential. Writing the kernel prevents software packages with different parameter conventions from silently changing the prior.
 
 ## From likelihood and prior to posterior
 
@@ -75,10 +83,10 @@ A\left(\beta-\frac{h}{A}\right)^2
 $$
 
 The coefficient \(A\) is the **precision**, the inverse of the variance, and
-\(h\) is an **information value** that combines the prior center with the data.
-Their ratio \(h/A\) is the updated center. The matrix derivation below performs
-this same operation for several coefficients at once: precision becomes a
-matrix and the information value becomes a vector.
+\(h\) is the precision-weighted total that combines the prior center with the
+data. Their ratio \(h/A\) is the updated center. The matrix derivation below
+performs this same operation for several coefficients at once: precision
+becomes a matrix and the precision-weighted total becomes a vector.
 
 The likelihood kernel is
 
@@ -126,9 +134,9 @@ $$
 
 Thus \(\mathbf V_n^{-1}\) is the posterior **precision matrix**, and
 \(\mathbf V_0^{-1}\mathbf b_0+\mathbf X^{\mathsf T}\mathbf y\) is the
-posterior **information vector**. Multiplying that vector by the covariance
-\(\mathbf V_n\) recovers the posterior center \(\mathbf b_n\), just as \(h/A\)
-did in the scalar calculation.
+corresponding precision-weighted total. Multiplying that vector by the
+covariance \(\mathbf V_n\) recovers the posterior center \(\mathbf b_n\), just
+as \(h/A\) did in the scalar calculation.
 
 Completing the square yields
 
@@ -178,86 +186,23 @@ $$
 
 ## Computing the posterior
 
-Before drawing all coefficients, consider two independent standard-normal
-coordinates \(z_1\) and \(z_2\). Define two coefficient deviations by
+Before drawing all coefficients, begin with a vector \(\mathbf z\) whose
+coordinates are independent standard normal random variables. A matrix
+\(\mathbf L\) can mix those coordinates into a new deviation vector
+\(\boldsymbol\delta=\mathbf L\mathbf z\). The covariance of the result is
 
 $$
-\delta_1=z_1,
-\qquad
-\delta_2=0.8z_1+0.6z_2. % dqr-allow: symbolic-derivation
-$$
-
-The second deviation shares \(z_1\) with the first. Both deviations have
-variance one, while their covariance is \(0.8\). The same calculation can be
-written
-
-$$
-\begin{bmatrix}\delta_1\\\delta_2\end{bmatrix}
+\operatorname{Var}[\boldsymbol\delta]
 =
-\underbrace{
-\begin{bmatrix}
-1&0\\ % dqr-allow: symbolic-derivation
-0.8&0.6 % dqr-allow: symbolic-derivation
-\end{bmatrix}}_{\mathbf L}
-\begin{bmatrix}z_1\\z_2\end{bmatrix}. % dqr-allow: symbolic-derivation
-$$
-
-The lower-triangular matrix \(\mathbf L\) is a mixing recipe: it turns
-independent coordinates into deviations having covariance
-
-$$
-\mathbf L\mathbf L^{\mathsf T}
+\mathbf L\operatorname{Var}[\mathbf z]\mathbf L^{\mathsf T}
 =
-\begin{bmatrix}1&0.8\\0.8&1\end{bmatrix}. % dqr-allow: symbolic-derivation
+\mathbf L\mathbf L^{\mathsf T}.
 $$
 
-The [matrix
-primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
-shows how the two row-by-column calculations in this product arise from scalar
-multiplication and addition. The figure applies the same mixing recipe to every
-point on a circular contour.
-
-~~~{r}
-#| label: fig-cholesky-circle-to-ellipse
-#| fig-cap: "A lower-triangular mixing matrix transforms an independent-coordinate circle into a tilted correlated ellipse."
-#| fig-alt: "Two coordinate panels. The first contains a circular contour for two independent standard-normal coordinates. The second contains a narrow ellipse tilted upward, showing positive covariance between the transformed coefficient deviations."
-#| echo: false
-#| fig-width: 7
-#| fig-height: 3.4
-
-library(ggplot2)
-
-angle <- seq(0, 2 * pi, length.out = 241L) # dqr-allow: symbolic-derivation
-independent_contour <- cbind(cos(angle), sin(angle))
-L_example <- matrix(
-  c(1, 0, 0.8, 0.6), # dqr-allow: symbolic-derivation
-  nrow = 2,
-  byrow = TRUE
-)
-correlated_contour <- t(L_example %*% t(independent_contour))
-
-cholesky_plot <- rbind(
-  data.frame(
-    coordinate_1 = independent_contour[, 1],
-    coordinate_2 = independent_contour[, 2],
-    stage = "Independent coordinates"
-  ),
-  data.frame(
-    coordinate_1 = correlated_contour[, 1],
-    coordinate_2 = correlated_contour[, 2],
-    stage = "Correlated deviations"
-  )
-)
-
-ggplot(cholesky_plot, aes(coordinate_1, coordinate_2)) +
-  geom_hline(yintercept = 0, color = "grey85", linewidth = 0.35) +
-  geom_vline(xintercept = 0, color = "grey85", linewidth = 0.35) +
-  geom_path(color = "#2C6E9B", linewidth = 0.9) +
-  facet_wrap(~stage) +
-  coord_equal(xlim = c(-1.15, 1.15), ylim = c(-1.15, 1.15)) +
-  labs(x = "Coordinate 1", y = "Coordinate 2") +
-  theme_classic(base_size = 11)
-~~~
+The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
+builds this row by column calculation from scalar multiplication and addition.
+We will use the covariance estimated from the observed Provo responses and
+plot the resulting posterior coefficient draws below.
 
 We call a lower-triangular mixing matrix with this property a **Cholesky
 factor**. In general, \(\mathbf L\) satisfies
@@ -337,8 +282,29 @@ data.frame(
 )
 ```
 
+```{r}
+#| label: plot-provo-posterior-coefficient-covariance
+#| fig-cap: "Joint posterior draws for the Provo intercept and surprisal slope. The shape comes from the covariance updated with the observed Provo responses."
+#| fig-alt: "Scatterplot of posterior intercept and slope draws forming a narrow tilted cloud."
+
+posterior_coefficients <- data.frame(
+  intercept = beta_draws[, "(Intercept)"],
+  surprisal_slope = beta_draws[, "cloze_surprisal_c"]
+)
+
+ggplot(posterior_coefficients, aes(intercept, surprisal_slope)) +
+  geom_point(color = "#2C6E9B", alpha = 0.08, size = 0.6) + # dqr-allow: plot-aesthetic
+  labs(
+    x = "Posterior intercept draw",
+    y = "Posterior surprisal-slope draw"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The tilted cloud shows how uncertainty in the two coefficients varies together after updating with the Provo responses. The Cholesky factor in the code creates exactly this covariance when it transforms independent standard normal draws.
+
 The code mirrors the algebra: `Vn` inverts prior precision plus data precision;
-`bn` multiplies that covariance by the prior-and-data information vector; `an`
+`bn` multiplies that covariance by the precision weighted total from the prior and data; `an`
 adds $n/2$; and `dn` is the constant left after completing the square. Because
 $1/\sigma^2\sim\operatorname{Gamma}(a_n,d_n)$ under this parameterization,
 `1 / rgamma(..., rate = dn)` generates inverse-gamma draws.
@@ -355,7 +321,7 @@ change the posterior distribution.
 
 The posterior mean slope is `r sprintf("%.6f", mean(beta_draws[, "cloze_surprisal_c"]))`, with a central interval from `r sprintf("%.6f", slope_interval[[1]])` to `r sprintf("%.6f", slope_interval[[2]])`.
 
-The coefficient-prior location and scale use the observed Provo response and predictor scales. The inverse-gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. These data-dependent priors are useful for connecting conjugate algebra to regression, but they are not independently specified confirmatory priors.
+The coefficient prior location and scale use the observed Provo response and predictor scales. The inverse gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. These priors depend on the data and are useful for connecting conjugate algebra to regression, but they were not specified independently for a confirmatory analysis.
 
 The following prior predictive calculation makes that limitation visible. It draws parameters from the data-calibrated prior and a response at centered surprisal before conditioning on the likelihood.
 
@@ -459,8 +425,8 @@ The posterior represents uncertainty under the same aggregated position likeliho
 1. The Gaussian linear response model, including the straight conditional mean and common independent residual variance, is shared with OLS. <!-- dqr-allow: empirical-answer -->
 2. The coefficient and variance priors are calibrated from the observed predictor, response, and OLS residual scales rather than specified independently before seeing the data. <!-- dqr-allow: empirical-answer -->
 3. Evaluating the fitted mean within every joint draw propagates posterior covariance among coefficients into uncertainty about the prediction. <!-- dqr-allow: empirical-answer -->
-4. The data still contain reader-aggregated position summaries, so participant-level responses and dependence remain unavailable. <!-- dqr-allow: empirical-answer -->
+4. The data still contain position summaries aggregated across readers, so individual responses and dependence among participants remain unavailable. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [next page](multiple-regression.qmd) switches to MALD and adds several item predictors.
+We next switch to MALD and add several item predictors under [multiple regression](multiple-regression.qmd).

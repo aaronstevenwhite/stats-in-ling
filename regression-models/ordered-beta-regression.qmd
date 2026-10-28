@@ -1,25 +1,28 @@
 ---
-title: "Ordered-beta regression"
+title: "Ordered beta regression"
 execute:
   warning: false
   message: false
 ---
 
-[**Ordered-beta regression**](https://doi.org/10.1017/pan.2022.20) represents three observable regions: $Y_i=0$, $0<Y_i<1$, and $Y_i=1$. We fit the same population formula to both MegaNegRaising sliders so we can compare how voice and subject relate to each recorded response.
+We need a distribution that assigns positive probability to exact zero, positive density to values between zero and one, and positive probability to exact one. [**Ordered beta regression**](https://doi.org/10.1017/pan.2022.20) joins those three pieces in one model.
 
-Each row receives a predictor location \(\eta_i\), a numerical position
-determined by that row's predictors and coefficients. Two ordered
+The basic idea is to imagine one location for each predictor combination. Two boundaries divide that location scale into a lower endpoint region, an interior region, and an upper endpoint region. Within the interior region, a beta distribution describes the observed slider value. We fit the same population formula to both MegaNegRaising sliders so we can compare how voice and subject relate to each recorded response.
+
+Following our [link notation](link-functions.qmd), we call the predictor location
+for row $i$ $\eta_i$. This symbol gives the sum of that row's predictor values
+and coefficients a short name; it does not name another observed variable. Two ordered
 **cutpoints**, \(\kappa_0<\kappa_1\), divide the location scale into regions
 associated with zero, the open interval, and one. For an interior response, the
 positive **precision** \(\phi\) controls how concentrated the beta density is
 around its mean: larger precision means less interior spread at a fixed mean.
 
-The logistic [CDF](../random-variables-and-distributions/cumulative-distribution-functions.qmd) supplies endpoint-region probabilities, while the beta [variance](../random-variables-and-distributions/variance-and-covariance.qmd) describes spread conditional on an interior response. Fitting uses [maximum likelihood](../statistical-inference/maximum-likelihood.qmd): the observed slider values remain fixed while coefficients, cutpoints, and precision vary.
+The logistic [CDF](../random-variables-and-distributions/cumulative-distribution-functions.qmd) supplies probabilities for the endpoint regions, while the beta [variance](../random-variables-and-distributions/variance-and-covariance.qmd) describes spread conditional on an interior response. Fitting uses [maximum likelihood](../statistical-inference/maximum-likelihood.qmd): the observed slider values remain fixed while coefficients, cutpoints, and precision vary.
 
 We begin with an observed endpoint response, generalize its contribution to all
 three regions, and then fit both slider responses.
 
-This model combines the threshold logic from [ordinal regression](ordinal-regression.qmd) with the interior [beta distribution](../random-variables-and-distributions/beta-distribution.qmd). It adds a strong **shared-location assumption**: one predictor value $\eta_i$ simultaneously moves zero use, one use, and the center of interior responses. Separate endpoint logits plus a beta regression would relax that restriction.
+This model combines the threshold logic from [ordinal regression](ordinal-regression.qmd) with the interior [beta distribution](../random-variables-and-distributions/beta-distribution.qmd). It adds a strong **shared location assumption**: one predictor value $\eta_i$ simultaneously moves zero use, one use, and the center of interior responses. Separate endpoint logits plus a beta regression would relax that restriction.
 
 ```{r}
 #| label: load-meganegraising-ordered-beta
@@ -134,13 +137,13 @@ Recall that a [derivative is a local rate of
 change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
 A **gradient** collects that rate for every parameter of the negative log
 likelihood. A **Hessian** collects the second derivatives and describes its local
-curvature; the [Hessian discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+curvature; the discussion of the [Hessian](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
 develops that interpretation. We use **BFGS**, which builds an approximation to
 the inverse Hessian from successive gradients and uses it to choose each next
 parameter vector. The search ends when relative progress falls below `reltol`
 or after `maxit` iterations.
 
-The code-to-model map is:
+The objects in the code correspond to the model as follows:
 
 | Code | Model quantity |
 |---|---|
@@ -243,17 +246,19 @@ worked_contributions
 
 The exact zero contributes only $p_{0i}$. The interior response uses the same $\eta_i$ twice: once through $p_{mi}$, which determines whether the response enters the interior, and again through $\mu_i$, which locates its beta density within that region.
 
-A positive shift in $\eta_i$ moves all four quantities because of the shared-location assumption:
+A comparison between two predictor cells actually represented in the data shows how the shared location assumption moves all four quantities together:
 
 ```{r}
 #| label: ordered-beta-location-shift
-eta_values <- c(fitted = eta, shifted_up_one = eta + 1)
-do.call(rbind, lapply(names(eta_values), function(label) {
-  current_eta <- eta_values[[label]]
+observed_conditions <- unique(mnr[c("voice", "subject")])[1:2, ]
+observed_condition_design <- model.matrix(~ voice * subject, observed_conditions)
+observed_condition_eta <- drop(observed_condition_design %*% beta)
+do.call(rbind, lapply(seq_len(nrow(observed_conditions)), function(i) {
+  current_eta <- observed_condition_eta[[i]]
   current_zero <- plogis(lower - current_eta)
   current_one <- plogis(current_eta - upper)
   data.frame(
-    location = label,
+    observed_conditions[i, ],
     eta = current_eta,
     p_zero = current_zero,
     p_middle = 1 - current_zero - current_one, # dqr-allow: algorithm-setting
@@ -355,7 +360,7 @@ ggplot(display, aes(bin, group = subject)) +
 
 The fitted passive coefficient is `r round(beta[[which(colnames(X) == "voicepassive")]], 3)`, a shift on the ordered location scale. We interpret that shift through the full predictive distribution above because the coefficient alone does not say how probability moves among zero, the interior, and one.
 
-These are fixed population fits. They omit participant and verb dependence and do not reproduce An and White's acceptability-weighted latent model. Ease remains a companion response, never a trial-level filter. The ordering also assumes that predictors move endpoint use and interior location through one latent dimension; condition-specific discrepancies in the plot are the relevant check.
+These are fixed population fits. They omit participant and verb dependence and do not reproduce An and White's latent model weighted by acceptability. Ease remains a companion response and never filters individual trials. The ordering also assumes that predictors move endpoint use and interior location through one latent dimension; discrepancies by condition in the plot provide the relevant check.
 
 ## Recap and check your understanding
 
@@ -374,4 +379,4 @@ These are fixed population fits. They omit participant and verb dependence and d
 
 </details>
 
-This closes the generalized-response branch. The [prediction module](../model-criticism-and-prediction/index.qmd) next asks how such fitted restrictions perform on observations that did not determine them.
+Having specified these generalized response models, we can ask how their restrictions perform on observations that did not determine them. This is the problem of [prediction and model criticism](../model-criticism-and-prediction/index.qmd).
