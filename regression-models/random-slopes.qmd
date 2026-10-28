@@ -99,20 +99,18 @@ support_summary <- c(
 )
 support_summary
 
-objective_gradient <- as.numeric(unlist(
-  fit@optinfo$derivs$gradient,
-  recursive = TRUE,
-  use.names = FALSE
-))
-maximum_absolute_objective_gradient <- if (length(objective_gradient) > 0L) {
-  max(abs(objective_gradient))
-} else {
-  NA_real_
-}
+profiled_reml_objective <- getME(fit, "devfun")
+objective_gradient <- numDeriv::grad(
+  profiled_reml_objective,
+  getME(fit, "theta"),
+  method = "Richardson"
+)
 stopifnot(
+  length(objective_gradient) == length(getME(fit, "theta")),
   all(is.finite(objective_gradient)),
   is.null(fit@optinfo$conv$lme4$messages)
 )
+maximum_absolute_objective_gradient <- max(abs(objective_gradient))
 
 data.frame(
   restricted_log_likelihood = as.numeric(logLik(fit)),
@@ -121,7 +119,7 @@ data.frame(
 )
 ```
 
-Every participant spans a nonzero range of standardized frequency, whereas the maximum range within an item is `r sprintf("%.1f", max(within_item_range$z_frequency))`. The nonzero participant ranges establish that a within-listener frequency contrast exists. They do not tell us how precisely the variance of those listener associations can be estimated, whether that variance differs appreciably from zero, or whether the random slope is needed for the scientific question. By contrast, the zero within-word range rules out a frequency slope by word because no within-word frequency contrast exists. The second output reports the restricted log likelihood at the fitted MALD covariance parameters and, when the installed `lme4` version provides it, the largest numerical gradient component. A small gradient says only that the returned values are near a stationary point of the REML objective; a missing value means that the optimizer did not retain this diagnostic.
+Every participant spans a nonzero range of standardized frequency, whereas the maximum range within an item is `r sprintf("%.1f", max(within_item_range$z_frequency))`. The nonzero participant ranges establish that a within-listener frequency contrast exists. They do not tell us how precisely the variance of those listener associations can be estimated, whether that variance differs appreciably from zero, or whether the random slope is needed for the scientific question. By contrast, the zero within-word range rules out a frequency slope by word because no within-word frequency contrast exists. The second output reports the restricted log likelihood at the fitted MALD covariance parameters and the largest numerical gradient component of the profiled REML objective. A small gradient says only that the returned values are near a stationary point of that objective.
 
 Two actual participants make the support requirement concrete:
 
