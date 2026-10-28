@@ -7,7 +7,28 @@ execute:
 
 Suppose that we observe many zeros in a table of corpus measurements. At least three explanations are possible. The event may genuinely be impossible for some rows; an ordinary count process may sometimes produce zero; or the measurement rule may turn small values into zero. A model with a separate zero state is appropriate only for the first explanation.
 
-We examine this ambiguity with the data from Storme's ([2024](https://doi.org/10.1007/s11525-024-09429-8)) French liaison study. One row is a final morpheme, final consonant, and liaison status combination. Following Storme's analysis, the numerical response is the integer part of 100 times summed `freqfilms2`. We call it a **truncated frequency proxy** because it is derived from normalized frequency rather than counted liaison tokens with a known corpus exposure.
+We examine this ambiguity with data from Storme's
+([2024](https://doi.org/10.1007/s11525-024-09429-8)) study of French
+liaison. In a liaison context, a consonant associated with the right edge of a
+word or morpheme may be pronounced before a following vowel-initial word even
+though that consonant is absent in other pronunciations. An **allomorphic
+analysis** treats the liaison-bearing and nonliaison forms as stored variants of
+a morpheme. Because irregular stored variants tend to be concentrated among
+frequent lexical items, this analysis predicts a frequency difference between
+the two classes. Storme asks whether final morphemes classified as participating
+in liaison show that predicted pattern. The classification in the table belongs
+to the morpheme; it does not record whether an individual speaker produced
+liaison on a particular corpus occasion.
+
+One prepared row is one combination of final morpheme, final consonant, and
+liaison classification. Following the released analysis, the numerical response
+is the integer part of 100 times the sum of the source field `freqfilms2` within
+that combination. The local source materials establish this calculation and
+treat `freqfilms2` as a normalized frequency measure, but the prepared table
+does not retain the underlying corpus tokens or enough metadata to reconstruct
+how that source field was defined. We will thus call the resulting integer an
+**integerized normalized-frequency proxy** rather than a tally of observed
+liaison tokens.
 
 A spike at zero can come from the measurement rule, an ordinary one-process
 distribution, or a genuinely separate state. Auditing how the recorded proxy
@@ -21,20 +42,28 @@ storme <- read.csv("data/storme-liaison/storme-liaison-counts.csv")
 stopifnot(nrow(storme) == 11195L)
 storme$liaison <- factor(storme$liaison, levels = c("no", "yes"))
 storme$final_consonant <- factor(storme$final_consonant)
-storme$truncated_frequency_proxy <- storme$reconstructed_count
+storme$integerized_frequency_proxy <- storme$reconstructed_count
 ```
 
-Here is the first observed cell:
+Here is an observed cell with positive frequency:
 
 ```{r}
 #| label: inspect-one-storme-cell
-storme[1L, c(
+storme_example <- storme[
+  which(storme$frequency_per_million_sum > 0)[[1L]],
+]
+storme_example[c(
   "final_morpheme", "final_consonant", "liaison",
   "frequency_per_million_sum", "reconstructed_count"
 )]
 ```
 
-If $f_{h}$ denotes `freqfilms2` for row $h$ in a particular morpheme--consonant--liaison cell, the calculation is
+In this row, `final_morpheme` contains the orthographic morpheme under study,
+`final_consonant` contains its consonant category, and `liaison` contains the
+source classification. `frequency_per_million_sum` is the sum of `freqfilms2`
+over all source rows with that same combination. `reconstructed_count` then
+stores the integer obtained by multiplying that sum by 100. If $f_h$ denotes
+`freqfilms2` for source row $h$ in one such combination, the calculation is
 
 $$
 y
@@ -57,7 +86,7 @@ supply a count exposure and sampling process.
 data.frame(
   rows = nrow(storme),
   exact_zero_frequency = sum(storme$frequency_per_million_sum == 0),
-  zero_truncated_proxy = sum(storme$truncated_frequency_proxy == 0),
+  zero_integerized_proxy = sum(storme$integerized_frequency_proxy == 0),
   minimum_positive_frequency = min(
     storme$frequency_per_million_sum[storme$frequency_per_million_sum > 0]
   ),
@@ -67,7 +96,7 @@ data.frame(
 )
 ```
 
-A measurement-aligned two-part analysis would model whether summed frequency is
+A measurement aligned two-part analysis would model whether summed frequency is
 zero and then model `frequency_per_million_sum` among positive cells. That target
 concerns presence and the magnitude of a normalized frequency. It differs from a
 negative binomial token count target and would require a declared continuous
@@ -106,11 +135,11 @@ Both processes can thus generate an observed zero. A linguistic analysis needs a
 ```{r}
 #| label: compare-zero-probabilities
 #| echo: true
-poisson_fit <- glm(truncated_frequency_proxy ~ liaison + final_consonant,
+poisson_fit <- glm(integerized_frequency_proxy ~ liaison + final_consonant,
                    poisson(), storme)
-nb_fit <- MASS::glm.nb(truncated_frequency_proxy ~ liaison + final_consonant,
+nb_fit <- MASS::glm.nb(integerized_frequency_proxy ~ liaison + final_consonant,
                        data = storme, control = glm.control(maxit = 100L))
-storme$observed_zero <- storme$truncated_frequency_proxy == 0L
+storme$observed_zero <- storme$integerized_frequency_proxy == 0L
 storme$poisson_zero <- dpois(0L, fitted(poisson_fit))
 storme$nb_zero <- dnbinom(0L, size = nb_fit$theta, mu = fitted(nb_fit))
 zeros <- aggregate(cbind(observed_zero, poisson_zero, nb_zero) ~ liaison,
@@ -144,14 +173,14 @@ measure.
 
 ## Recap and check your understanding
 
-1. Why is the truncated frequency proxy not a direct token tally?
+1. Why is the integerized normalized-frequency proxy not a direct token tally?
 2. Which two components of a zero-inflated model can produce zero?
 3. Why does extra-Poisson zero mass not prove a structural zero process?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
-1. It is a truncated transformation of summed frequency-per-million values. <!-- dqr-allow: conceptual-answer -->
+1. It is obtained by summing a normalized-frequency field, multiplying by 100, and discarding the decimal part. The table contains no raw token records or known corpus exposure from which to treat that integer as a direct tally. <!-- dqr-allow: conceptual-answer -->
 2. The structural component and the ordinary count component can both produce zero. <!-- dqr-allow: conceptual-answer -->
 3. Unmodeled heterogeneity or a negative binomial count process can also increase zero probability. The mixture needs an independently motivated state. <!-- dqr-allow: conceptual-answer -->
 

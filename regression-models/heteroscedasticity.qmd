@@ -27,6 +27,38 @@ $$
 
 The subscript in $\sigma_i^2$ allows the variance to differ with the predictor row $\mathbf x_i$. Removing the subscript imposes one shared value. This distinction concerns the distribution of responses around their conditional means; it does not refer to the sampling variance of a coefficient estimator.
 
+How can we estimate coefficient uncertainty while allowing the $\sigma_i^2$
+values to differ? Let $\mathbf X$ be the design matrix, let $e_i$ be the OLS
+residual for row $i$, and let $h_{ii}$ be that row's leverage. Define
+
+$$
+\mathbf B=(\mathbf X^\top\mathbf X)^{-1}.
+$$
+
+The HC3 covariance estimator is
+
+$$
+\widehat{\operatorname{Var}}_{\mathrm{HC3}}
+(\widehat{\boldsymbol\beta})
+=
+\mathbf B
+\mathbf X^\top
+\operatorname{diag}
+\left\{
+\frac{e_i^2}{(1-h_{ii})^2}
+\right\}
+\mathbf X
+\mathbf B.
+$$
+
+The matrices on the outside are the two pieces of the usual OLS coefficient
+covariance. The middle matrix allows each row to contribute its own squared
+residual. Dividing by $(1-h_{ii})^2$ enlarges the contribution of a high
+leverage row because fitting tends to compress that row's ordinary residual.
+With independent rows, a correctly specified conditional mean, finite moments,
+and a design in which no single row dominates as the sample grows, this
+estimator is consistent even when the conditional variances differ.
+
 ## Residual spread across MALD frequency
 
 The MALD regression provides two related spread measurements: absolute residuals from the model for item means and the stored standard deviation of correct log response times for each item.
@@ -78,14 +110,27 @@ spread_bins <- do.call(rbind, lapply(
 row.names(spread_bins) <- NULL
 
 conventional_se <- coef(summary(fit))[, "Std. Error"]
-hc3_test <- coeftest(fit, vcov. = vcovHC(fit, type = "HC3"))
+X <- model.matrix(fit)
+e <- residuals(fit)
+h <- hatvalues(fit)
+bread <- solve(crossprod(X))
+hc3_middle <- crossprod(
+  X,
+  X * as.numeric(e^2 / (1 - h)^2)
+)
+hc3_by_hand <- bread %*% hc3_middle %*% bread
+hc3_from_package <- vcovHC(fit, type = "HC3")
+hc3_test <- coeftest(fit, vcov. = hc3_from_package)
 hc3_se <- hc3_test[, "Std. Error"]
+
+stopifnot(max(abs(hc3_by_hand - hc3_from_package)) < 1e-10)
 
 data.frame(
   term = names(coef(fit)),
   conventional_se = conventional_se,
   hc3_se = hc3_se,
-  ratio = hc3_se / conventional_se
+  ratio = hc3_se / conventional_se,
+  direct_hc3_se = sqrt(diag(hc3_by_hand))
 )
 ```
 
@@ -133,7 +178,7 @@ HC3 changes the covariance estimate while preserving the OLS coefficients and fi
 
 We can now separate two responses to the same diagnostic pattern. A heteroscedasticity-consistent covariance estimate asks how coefficient uncertainty changes when squared residual contributions differ across rows. A distributional model goes further by writing an equation for the changing response scale itself. The first leaves the fitted conditional mean untouched; the second adds parameters whose interpretation concerns spread.
 
-HC0 replaces the homoscedastic middle of the sandwich covariance by squared row residuals. HC3 further divides residual $e_i$ by $1-h_{ii}$ before squaring, which increases the contribution of high-leverage observations whose ordinary residuals tend to be compressed by fitting. This is a covariance repair. It does not make the variance constant, supply a probability model for $\sigma_i$, or recover participant dependence.
+HC0 replaces the homoscedastic middle of the sandwich covariance by squared row residuals. HC3 further divides residual $e_i$ by $1-h_{ii}$ before squaring. The resulting covariance calculation allows unequal row variances while preserving the OLS mean fit. A probability model for $\sigma_i$ and a representation of participant dependence require additional structure.
 
 The spread for each item is computed across retained correct trials. Because the item table lacks participant identifiers, neither plot separates participant heterogeneity from residual trial variation.
 

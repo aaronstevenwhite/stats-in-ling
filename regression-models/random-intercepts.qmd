@@ -3,7 +3,7 @@ title: "Random intercept models"
 execute: {warning: false, message: false}
 ---
 
-The discussion of [partial pooling](random-effects.qmd) gave participants and words deviations from a shared population center. We now put one of those deviations inside a regression equation. A **random intercept** adds one group's deviation to the population intercept. It moves that group's entire fitted relation up or down while leaving the predictor coefficients unchanged.
+[Partial pooling](random-effects.qmd) gave each participant and word a fitted deviation from a shared population center. We now put one of those deviations inside a regression equation. A **random intercept** adds one group's deviation to the population intercept. It moves that group's entire fitted relation up or down while leaving the predictor coefficients unchanged.
 
 Why do we need it? The [MALD incidence structure](structured-data.qmd) shows that several rows come from the same listener and several rows contain the same spoken word. A persistent listener difference enters every row from that listener, so the model should represent the shared source. We model the remaining intercept deviations with a normal population distribution, which assumes a symmetric, single-peaked distribution around zero after included predictors.
 
@@ -77,6 +77,11 @@ Two rows that share only a participant have covariance $\tau_p^2$. Two rows that
 
 ## Fitting the crossed model
 
+The participant, word, and residual variances are estimated by the
+[Gaussian mixed model likelihood](fixed-and-random-effects.qmd#gaussian-mixed-model-likelihood).
+We use REML because the population coefficient structure is fixed here and our
+immediate target is the covariance decomposition.
+
 ```{r}
 #| label: mald-random-intercepts
 library(lme4)
@@ -90,6 +95,7 @@ fit <- lmer(
     (1 | participant_id) +
     (1 | item),
   data = mald,
+  REML = TRUE,
   control = lmerControl(optimizer = "bobyqa")
 )
 
@@ -114,6 +120,76 @@ data.frame(
 ```
 
 The final column is computed from the fitted MALD variance components. It is the model-implied correlation for two responses from the same participant and different words.
+
+We can also reconstruct the covariance for observed trial pairs. The first pair
+below shares a participant, the second shares a word, and the third shares
+neither. The responses themselves do not enter this covariance calculation;
+their identifiers select the fitted components that the pair shares.
+
+```{r}
+#| label: check-mald-random-intercept-covariance
+
+same_participant_rows <- mald[
+  mald$participant_id == mald$participant_id[[1L]],
+]
+same_participant_rows <- same_participant_rows[
+  !duplicated(same_participant_rows$item),
+]
+same_participant_rows <- same_participant_rows[seq_len(2L), ]
+
+repeated_word_counts <- table(mald$item)
+first_word <- names(repeated_word_counts[repeated_word_counts >= 2L])[[1L]]
+same_word_rows <- mald[mald$item == first_word, ]
+same_word_rows <- same_word_rows[
+  !duplicated(same_word_rows$participant_id),
+]
+same_word_rows <- same_word_rows[seq_len(2L), ]
+
+different_row <- mald[
+  mald$participant_id != same_participant_rows$participant_id[[1L]] &
+    mald$item != same_participant_rows$item[[1L]],
+][1L, ]
+
+observed_pair_covariances <- data.frame(
+  pair = c(
+    "same participant, different words",
+    "different participants, same word",
+    "different participants, different words"
+  ),
+  first_participant = c(
+    same_participant_rows$participant_id[[1L]],
+    same_word_rows$participant_id[[1L]],
+    same_participant_rows$participant_id[[1L]]
+  ),
+  second_participant = c(
+    same_participant_rows$participant_id[[2L]],
+    same_word_rows$participant_id[[2L]],
+    different_row$participant_id[[1L]]
+  ),
+  first_word = c(
+    same_participant_rows$item[[1L]],
+    same_word_rows$item[[1L]],
+    same_participant_rows$item[[1L]]
+  ),
+  second_word = c(
+    same_participant_rows$item[[2L]],
+    same_word_rows$item[[2L]],
+    different_row$item[[1L]]
+  ),
+  fitted_covariance = c(
+    participant_variance,
+    item_variance,
+    0
+  )
+)
+observed_pair_covariances
+```
+
+The table instantiates the covariance equations with identifiers from retained
+MALD trials. It also makes the conditioning statement concrete: once the
+participant and word deviations are supplied, the remaining trial residuals are
+independent, while averaging over those deviations produces the displayed
+covariances.
 
 In `lmer` notation, `(1 | participant_id)` inserts $b_p$ and `(1 | item)` inserts $c_w$. Three trial pairs clarify the implied dependence:
 

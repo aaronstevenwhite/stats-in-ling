@@ -38,28 +38,128 @@ The intercept is left unpenalized. Recall from [centering and scaling](centering
 
 To see the scaling problem, record the same duration in two different units. Changing the unit rescales the coefficient so that the fitted contribution remains unchanged. A penalty applied directly to the raw coefficients would nevertheless treat those two representations differently. Standardizing each predictor using a scale estimated from the training data makes the penalty depend on fitted contribution rather than on an arbitrary measurement unit.
 
-After centering the response and standardizing the predictor columns, differentiate the penalized objective:
+Write the standardized response and predictor matrix as
 
 $$
--\frac{1}{n}\mathbf X^\top(\mathbf y-\mathbf X\boldsymbol\beta)
-+\lambda\boldsymbol\beta=\mathbf 0.
+\widetilde y_i=\frac{y_i-\bar y}{s_y}
+\qquad\text{and}\qquad
+\widetilde X_{ij}=\frac{X_{ij}-\bar X_j}{s_{X_j}},
+$$
+
+where each mean and scale is calculated from the training data. Standardizing the response as well as the predictors gives the penalty a stable interpretation across validation folds. We differentiate the penalized objective on that standardized scale:
+
+$$
+-\frac{1}{n}\widetilde{\mathbf X}^\top
+(\widetilde{\mathbf y}-\widetilde{\mathbf X}\widetilde{\boldsymbol\beta})
++\lambda\widetilde{\boldsymbol\beta}=\mathbf 0.
 $$
 
 Thus
 
 $$
-(\mathbf X^\top\mathbf X+n\lambda\mathbf I)\widehat{\boldsymbol\beta}^{\,\text{ridge}}
-=\mathbf X^\top\mathbf y,
+(\widetilde{\mathbf X}^\top\widetilde{\mathbf X}+n\lambda\mathbf I)
+\widehat{\widetilde{\boldsymbol\beta}}^{\,\text{ridge}}
+=\widetilde{\mathbf X}^\top\widetilde{\mathbf y},
 $$
 
 and
 
 $$
-\widehat{\boldsymbol\beta}^{\,\text{ridge}}
-=(\mathbf X^\top\mathbf X+n\lambda\mathbf I)^{-1}\mathbf X^\top\mathbf y.
+\widehat{\widetilde{\boldsymbol\beta}}^{\,\text{ridge}}
+=(\widetilde{\mathbf X}^\top\widetilde{\mathbf X}+n\lambda\mathbf I)^{-1}
+\widetilde{\mathbf X}^\top\widetilde{\mathbf y}.
 $$
 
-Adding $n\lambda\mathbf I$ introduces bias toward zero while potentially reducing prediction variance, the [bias--variance tradeoff](../model-criticism-and-prediction/bias-variance-tradeoff.qmd). Whether prediction improves remains an empirical question.
+The standardized coefficient for predictor $j$ returns to the original response and predictor units through
+
+$$
+\widehat\beta_j
+=
+\frac{s_y}{s_{X_j}}
+\widehat{\widetilde\beta}_j.
+$$
+
+Because the standardized predictors have mean zero, the unpenalized intercept is then
+
+$$
+\widehat\beta_0
+=
+\bar y-\sum_j\bar X_j\widehat\beta_j.
+$$
+
+We can now derive the bias and sampling variance rather than merely saying that
+the penalty changes them. For this calculation, suppress the tildes, work on
+the centered and standardized scale, and define
+
+$$
+\mathbf A_\lambda
+=
+\mathbf X^\mathsf T\mathbf X+n\lambda\mathbf I.
+$$
+
+Suppose the predictor matrix is fixed and
+
+$$
+\mathbf y
+=
+\mathbf X\boldsymbol\beta+\boldsymbol\varepsilon,
+\qquad
+\mathbb{E}[\boldsymbol\varepsilon]=\mathbf 0,
+\qquad
+\operatorname{Var}[\boldsymbol\varepsilon]=\sigma^2\mathbf I.
+$$
+
+The expected ridge estimate is
+
+$$
+\begin{aligned}
+\mathbb{E}[
+\widehat{\boldsymbol\beta}^{\,\text{ridge}}
+\mid\mathbf X,\lambda]
+&=
+\mathbf A_\lambda^{-1}
+\mathbf X^\mathsf T\mathbf X\boldsymbol\beta\\
+&=
+\mathbf A_\lambda^{-1}
+(\mathbf A_\lambda-n\lambda\mathbf I)
+\boldsymbol\beta\\
+&=
+\boldsymbol\beta
+-n\lambda\mathbf A_\lambda^{-1}\boldsymbol\beta.
+\end{aligned}
+$$
+
+Thus the bias with $\mathbf X$ and $\lambda$ held fixed is
+
+$$
+\operatorname{Bias}
+(\widehat{\boldsymbol\beta}^{\,\text{ridge}}
+\mid\mathbf X,\lambda)
+=
+-n\lambda\mathbf A_\lambda^{-1}\boldsymbol\beta.
+$$
+
+For the sampling covariance, constants do not vary across repeated response
+samples, so
+
+$$
+\begin{aligned}
+\operatorname{Var}
+\left[\widehat{\boldsymbol\beta}^{\,\text{ridge}}
+\mid\mathbf X,\lambda\right]
+&=
+\operatorname{Var}
+\left[\mathbf A_\lambda^{-1}\mathbf X^\mathsf T\mathbf y
+\mid\mathbf X,\lambda\right]\\
+&=
+\sigma^2
+\mathbf A_\lambda^{-1}
+\mathbf X^\mathsf T\mathbf X
+\mathbf A_\lambda^{-1}.
+\end{aligned}
+$$
+
+This is the [bias--variance tradeoff](../model-criticism-and-prediction/bias-variance-tradeoff.qmd) in algebraic form. Adding $n\lambda\mathbf I$ pulls the expected estimate toward zero and may reduce its sampling variance. Whether that trade improves prediction remains an empirical question.
 
 ## Penalties and priors {#penalties-and-priors}
 
@@ -67,6 +167,10 @@ There is a second way to arrive at exactly the same coefficient estimate. Begin
 with the Gaussian response model from [Bayesian regression](bayesian-linear-regression.qmd),
 but for the moment treat $\sigma^2$ and $\lambda$ as fixed. Give each standardized
 slope a conditionally independent zero centered normal prior:
+
+For the next calculation, we suppress the tildes and let $\mathbf X$,
+$\mathbf y$, and $\boldsymbol\beta$ denote the standardized predictor matrix,
+response, and slopes.
 
 $$
 \beta_j\mid\sigma^2,\lambda
@@ -126,6 +230,24 @@ when the same definition of $\lambda$ is used. This equality concerns one point 
 the whole posterior distribution, and it may also assign distributions to
 $\sigma^2$ and $\lambda$ rather than fixing them.
 
+Completing the square also gives the conditional posterior covariance:
+
+$$
+\operatorname{Var}
+\left[\boldsymbol\beta\mid\mathbf y,\mathbf X,\sigma^2,\lambda\right]
+=
+\sigma^2\mathbf A_\lambda^{-1}.
+$$
+
+This matrix differs from the sampling covariance derived above. The sampling
+covariance describes how the ridge estimator varies across repeated response
+samples when a particular $\boldsymbol\beta$ is fixed. The posterior covariance
+describes uncertainty about $\boldsymbol\beta$ after combining the observed
+response with the normal prior. The extra
+$\mathbf X^\mathsf T\mathbf X$ between the two inverse matrices in the sampling
+covariance is thus not optional bookkeeping; the two matrices answer different
+questions.
+
 The correspondence extends beyond ridge. Replacing the normal prior with a
 zero centered **Laplace prior**, whose density decreases in proportion to
 $\exp(-c|\beta_j|)$ for a positive constant $c$, replaces the squared penalty
@@ -143,11 +265,11 @@ scale](random-effects.qmd#shrinkage-and-borrowing-strength).
 
 ## Validation on new MALD items
 
-We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning items to folds is also a row split. `glmnet` estimates standardization separately within each fit to training data.
+We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning items to folds is also a row split. Within each fold, we calculate predictor means and standard deviations from the training items, transform both training and validation items with those values, and tell `glmnet` that standardization has already been completed.
 
 We separate model selection from evaluation. First, we hold out one fifth of the items as an outer test set and leave them untouched while selecting $\lambda$. Within the remaining items, we cycle through ten validation folds and choose a penalty from those validation errors. We then fit once to all remaining items and evaluate both ridge and OLS on the outer test set.
 
-We therefore evaluate prediction for a new word item. Each outer test item contributes equally to the squared error, and the mean, standard deviation, and coefficients are estimated from the remaining items. We use ten inner folds so that most development observations remain available for each fit, and we evaluate 80 penalty values spaced evenly on the log scale. These choices organize the calculation; neither number is determined by the model.
+We therefore evaluate prediction for a new word item. Each outer test item contributes equally to the squared error, and the mean, standard deviation, and coefficients are estimated from the remaining items. We use ten inner folds so that most development observations remain available for each fit, and we evaluate 80 penalty values spaced evenly on the log scale. The folds differ in size by at most one item. We give each fold one vote when calculating both the mean validation error and its standard error, so the two summaries use the same observational unit. These choices organize the calculation; neither number is determined by the model.
 
 For one held-out item, squared error is the squared difference between its observed and predicted response. **Mean squared error (MSE)** averages those values over items. **Root mean squared error (RMSE)** takes the square root of MSE, returning the score to the response's log time units. Smaller values indicate more accurate predictions under this loss.
 
@@ -185,25 +307,57 @@ for (fold in seq_len(n_folds)) {
   inner_validation_rows <- development_rows[fold_id == fold]
   fold_sizes[[fold]] <- length(inner_validation_rows)
 
+  inner_training_X <- X[inner_training_rows, , drop = FALSE]
+  inner_x_means <- colMeans(inner_training_X)
+  inner_x_scales <- sqrt(colMeans(sweep(
+    inner_training_X,
+    2L,
+    inner_x_means,
+    `-`
+  )^2))
+  inner_training_X <- sweep(
+    sweep(inner_training_X, 2L, inner_x_means, `-`),
+    2L,
+    inner_x_scales,
+    `/`
+  )
+  inner_validation_X <- sweep(
+    sweep(
+      X[inner_validation_rows, , drop = FALSE],
+      2L,
+      inner_x_means,
+      `-`
+    ),
+    2L,
+    inner_x_scales,
+    `/`
+  )
+  inner_y_mean <- mean(y[inner_training_rows])
+  inner_y_scale <- sqrt(mean(
+    (y[inner_training_rows] - inner_y_mean)^2
+  ))
+  inner_training_y <-
+    (y[inner_training_rows] - inner_y_mean) / inner_y_scale
+
   ridge_fit <- glmnet(
-    x = X[inner_training_rows, , drop = FALSE],
-    y = y[inner_training_rows],
+    x = inner_training_X,
+    y = inner_training_y,
     alpha = ridge_mixing,
     lambda = penalty_grid,
-    standardize = TRUE,
-    intercept = TRUE
+    standardize = FALSE,
+    intercept = FALSE
   )
-  current_predictions <- predict(
-    ridge_fit,
-    newx = X[inner_validation_rows, , drop = FALSE],
-    s = penalty_grid
-  )
+  current_predictions <- inner_y_mean + inner_y_scale * predict(
+      ridge_fit,
+      newx = inner_validation_X,
+      s = penalty_grid
+    )
   fold_mse[fold, ] <- colMeans(
     (y[inner_validation_rows] - current_predictions)^2
   )
 }
 
-mean_mse <- colSums(fold_mse * fold_sizes) / sum(fold_sizes)
+mean_mse <- colMeans(fold_mse)
 se_mse <- apply(fold_mse, 2, sd) / sqrt(n_folds)
 minimum_index <- which.min(mean_mse)
 one_se_candidates <- which(
@@ -213,25 +367,123 @@ one_se_index <- max(one_se_candidates)
 lambda_min <- penalty_grid[minimum_index]
 lambda_one_se <- penalty_grid[one_se_index]
 
+development_X <- X[development_rows, , drop = FALSE]
+development_y <- y[development_rows]
+n_development <- length(development_y)
+x_means <- colMeans(development_X)
+x_scales <- sqrt(colMeans(sweep(
+  development_X,
+  2L,
+  x_means,
+  `-`
+)^2))
+X_standardized <- sweep(
+  sweep(development_X, 2L, x_means, `-`),
+  2L,
+  x_scales,
+  `/`
+)
+y_mean <- mean(development_y)
+y_centered <- development_y - y_mean
+y_scale <- sqrt(mean(y_centered^2))
+y_standardized <- y_centered / y_scale
+
 selected_ridge_fit <- glmnet(
-  x = X[development_rows, , drop = FALSE],
-  y = y[development_rows],
+  x = X_standardized,
+  y = y_standardized,
   alpha = ridge_mixing,
   lambda = lambda_one_se,
-  standardize = TRUE,
-  intercept = TRUE
+  standardize = FALSE,
+  intercept = FALSE,
+  thresh = 1e-14,
+  maxit = 1000000L
 )
-ridge_test_prediction <- as.numeric(predict(
-  selected_ridge_fit,
-  newx = X[test_rows, , drop = FALSE],
-  s = lambda_one_se
+
+ridge_standardized_by_hand <- drop(solve(
+  crossprod(X_standardized) +
+    n_development * lambda_one_se * diag(ncol(X_standardized)),
+  crossprod(X_standardized, y_standardized)
 ))
+ridge_slopes_by_hand <- y_scale * ridge_standardized_by_hand / x_scales
+ridge_intercept_by_hand <-
+  y_mean - sum(x_means * ridge_slopes_by_hand)
+ridge_coefficients_by_hand <- c(
+  `(Intercept)` = ridge_intercept_by_hand,
+  setNames(ridge_slopes_by_hand, colnames(development_X))
+)
+ridge_standardized_glmnet <- drop(as.matrix(coef(
+  selected_ridge_fit,
+  s = lambda_one_se
+)))[-1L]
+ridge_slopes_glmnet <- y_scale * ridge_standardized_glmnet / x_scales
+ridge_intercept_glmnet <-
+  y_mean - sum(x_means * ridge_slopes_glmnet)
+ridge_coefficients_glmnet <- c(
+  `(Intercept)` = ridge_intercept_glmnet,
+  setNames(ridge_slopes_glmnet, colnames(development_X))
+)
+
+ridge_coefficient_check <- data.frame(
+  term = names(ridge_coefficients_by_hand),
+  direct_calculation = ridge_coefficients_by_hand,
+  glmnet = ridge_coefficients_glmnet,
+  absolute_difference = abs(
+    ridge_coefficients_by_hand - ridge_coefficients_glmnet
+  ),
+  row.names = NULL
+)
+ridge_standardized_check <- data.frame(
+  term = colnames(X_standardized),
+  direct_standardized = ridge_standardized_by_hand,
+  glmnet_standardized = ridge_standardized_glmnet,
+  absolute_difference = abs(
+    ridge_standardized_by_hand - ridge_standardized_glmnet
+  )
+)
+
+ridge_test_prediction <- as.numeric(
+  ridge_intercept_glmnet +
+    X[test_rows, , drop = FALSE] %*% ridge_slopes_glmnet
+)
 
 ols_fit <- lm(
   mean_log_rt ~ log_frequency_subtlex + log_duration +
     n_phones + n_syllables,
   data = mald[development_rows, ]
 )
+
+A_lambda_inverse <- solve(
+  crossprod(X_standardized) +
+    n_development * lambda_one_se * diag(ncol(X_standardized))
+)
+sigma2_standardized_plugin <-
+  summary(ols_fit)$sigma^2 / y_scale^2
+ridge_sampling_covariance_standardized <-
+  sigma2_standardized_plugin *
+  A_lambda_inverse %*% crossprod(X_standardized) %*%
+  A_lambda_inverse
+ridge_posterior_covariance_standardized <-
+  sigma2_standardized_plugin * A_lambda_inverse
+return_to_original_units <- diag(y_scale / x_scales)
+ridge_sampling_covariance_original <-
+  return_to_original_units %*%
+  ridge_sampling_covariance_standardized %*%
+  return_to_original_units
+ridge_posterior_covariance_original <-
+  return_to_original_units %*%
+  ridge_posterior_covariance_standardized %*%
+  return_to_original_units
+ridge_conditional_uncertainty <- data.frame(
+  term = colnames(X_standardized),
+  fixed_lambda_sampling_se = sqrt(diag(
+    ridge_sampling_covariance_original
+  )),
+  fixed_lambda_posterior_sd = sqrt(diag(
+    ridge_posterior_covariance_original
+  )),
+  row.names = NULL
+)
+
 ols_test_prediction <- predict(
   ols_fit,
   newdata = mald[test_rows, ]
@@ -245,7 +497,14 @@ stopifnot(
   all(is.finite(ridge_test_prediction)),
   all(is.finite(ols_test_prediction)),
   length(intersect(development_rows, test_rows)) == 0L,
-  lambda_one_se >= lambda_min
+  diff(range(fold_sizes)) <= 1L,
+  lambda_one_se >= lambda_min,
+  max(abs(
+    ridge_standardized_by_hand - ridge_standardized_glmnet
+  )) < 1e-7,
+  max(abs(
+    ridge_coefficients_by_hand - ridge_coefficients_glmnet
+  )) < 1e-7
 )
 
 data.frame(
@@ -253,7 +512,37 @@ data.frame(
   outer_test_items = length(test_rows),
   outer_test_rmse = c(ridge_rmse, ols_rmse)
 )
+ridge_coefficient_check
+ridge_standardized_check
+ridge_conditional_uncertainty
 ```
+
+The direct calculation uses the same development sample means and standard
+deviations passed to `glmnet`. It then applies
+
+$$
+(\widetilde{\mathbf X}^\top\widetilde{\mathbf X}+n\lambda\mathbf I)^{-1}
+\widetilde{\mathbf X}^\top\widetilde{\mathbf y}
+$$
+
+on that standardized scale, converts the slopes back to their original units,
+and reconstructs the unpenalized intercept. The displayed agreement checks that
+the fitted MALD coefficients solve the derived ridge equation at the selected
+penalty.
+
+The last table evaluates the two covariance formulas at the selected
+$\lambda$ using the OLS residual variance as a plug-in estimate of $\sigma^2$.
+Both calculations hold the selected penalty fixed. They omit the additional
+uncertainty produced by searching over the validation curve, so the displayed
+standard errors and posterior standard deviations should not be read as a full
+uncertainty analysis for the entire selection procedure.
+
+`glmnet` obtains its coefficients by **coordinate descent**: it updates one
+coefficient at a time while holding the others fixed, and cycles through the
+coordinates until the objective changes negligibly. Pure ridge has the closed
+form used in our check. The shared coordinate descent implementation is useful
+because it also handles lasso and elastic net penalties, whose coefficient
+updates can include exact zeros.
 
 The minimum error rule selects $\lambda_{\min}$ with the smallest mean MSE across folds. The one standard error rule selects the largest, hence most strongly regularized, candidate satisfying
 
@@ -270,12 +559,12 @@ It deliberately trades a small estimated loss increase for a simpler, more stabl
 ```{r}
 #| label: show-mald-ridge-path
 full_path <- glmnet(
-  x = X[development_rows, , drop = FALSE],
-  y = y[development_rows],
+  x = X_standardized,
+  y = y_standardized,
   alpha = 0, # dqr-allow: algorithm-setting
   lambda = penalty_grid,
-  standardize = TRUE,
-  intercept = TRUE
+  standardize = FALSE,
+  intercept = FALSE
 )
 path_matrix <- as.matrix(coef(full_path))[-1, , drop = FALSE]
 path_data <- do.call(rbind, lapply(seq_len(nrow(path_matrix)), function(j) {
@@ -326,6 +615,7 @@ For this outer test set, ridge has `r if (ridge_rmse < ols_rmse) "lower" else "h
 2. Why must standardization be learned inside each training fold?
 3. What is the held-out unit?
 4. What does the observed OLS--ridge comparison show?
+5. Why do the fixed-$\lambda$ sampling covariance and posterior covariance differ?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -334,6 +624,7 @@ For this outer test set, ridge has `r if (ridge_rmse < ols_rmse) "lower" else "h
 2. Standardization using all observations uses held-out predictor values to set the penalty scale, so validation no longer evaluates a procedure fitted only to training data and its error estimate may be biased. <!-- dqr-allow: empirical-answer -->
 3. One MALD word item is held out; because every item appears once, the item split is also a row split. <!-- dqr-allow: empirical-answer -->
 4. The outer test RMSE directly compares predictions from ridge and OLS for items that were excluded from fitting and from selecting $\lambda$. <!-- dqr-allow: empirical-answer -->
+5. The sampling covariance describes repeated ridge estimates around their biased expectation for a fixed coefficient vector. The posterior covariance describes uncertainty about the coefficient vector after combining the observed response with the normal prior. <!-- dqr-allow: empirical-answer -->
 
 </details>
 

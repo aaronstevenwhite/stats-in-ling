@@ -9,9 +9,9 @@ A **generalized linear mixed model (GLMM)** combines that response model with [g
 
 The response [event](../foundations/possibilities-and-events.qmd) is an *in* choice, and its [conditional probability](../foundations/conditional-probability.qmd) is the Bernoulli expected value. [Variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) describe group variation, while conditional [independence](../foundations/independence.qmd) applies only after the shared deviations are supplied. Recall that a [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed responses fixed and compares possible coefficient and variance values.
 
-We first assemble those pieces with one participant intercept, then extend the model to crossed participant, verb, and sentence intercepts. The remaining question will be whether a prediction conditions on particular groups or averages over their population distributions.
+We first assemble those pieces with one participant intercept, then add the grouping structure in the recorded materials. Participants respond across sentence materials, while each sentence belongs to one verb. The model therefore combines a participant intercept with a verb--sentence hierarchy. The remaining question will be whether a prediction conditions on particular groups or averages over their fitted distributions.
 
-We use cloze judgments from the [**SuperTelicity**](https://github.com/SuperMereo/supertelicity) study. On each trial, a participant selected *in* or *for*, a numeral, and a time unit for an event description. The preposition is a noisy behavioral measure related to telicity; habitual and other interpretations can also license a temporal modifier, so the choice does not directly reveal a semantic category.
+We use cloze judgments from the [**SuperTelicity**](https://github.com/SuperMereo/supertelicity) study. On each trial, a participant selected *in* or *for*, a numeral, and a time unit for an event description. The preposition is a noisy behavioral measure related to telicity; habitual and other interpretations can also license a temporal modifier, so the choice does not directly reveal a semantic category. The [contentfulness classes](logistic-regression-with-multiple-predictors.qmd) compare lexically filled sentences, sentences with general nouns such as *person* and *thing*, and schematic *X verb Y* frames. Because the schematic frames occur only among episodic clauses, we fit the contentfulness comparison to episodic rows.
 
 The analysis concerns the participants and trials represented in the table used below.
 
@@ -78,18 +78,165 @@ $$
 
 The inverse logit keeps every fitted value inside the probability interval. The random intercepts represent which rows share persistent participant, verb, or sentence tendencies.
 
-The participant intercept accounts for repeated choices by a listener, the verb intercept for lexical recurrence across frames, and the sentence intercept for repeated judgments of the same item. Independence among these three distributions is an explicit simplification: the identifiers index distinct populations, and the table does not support covariance parameters across them. We begin with crossed intercepts so that the marginalization and prediction calculations remain tractable. This structure holds the verb type and contentfulness associations constant across participants and items; a richer random slope model would allow those associations to vary.
+The participant intercept accounts for repeated choices by a listener, the verb intercept for variation shared by all sentences built from that verb, and the sentence intercept for repeated judgments of one sentence. Participant identities cross the sentence materials: a participant contributes responses to many sentences, and sentences receive responses from many participants. Sentences are nested within verbs because every sentence identifier belongs to exactly one verb. We assume the three random intercept distributions are independent. This structure holds the verb type and contentfulness associations constant across participants and materials; a richer random slope model would allow those associations to vary.
 
-## Fitting the crossed-intercept model
+## From the conditional model to the likelihood
 
-The function `glmer()` fits a generalized linear mixed model. The formula names the binary response and three grouping units, while `family = binomial(link = "logit")` supplies the Bernoulli response model and logit link. We use [sum coding](sum-coding.qmd) for the categorical predictors: each contrast column sums to zero, so the intercept refers to the coding center and the verb coefficient represents one half of the signed two-level contrast. The setting `nAGQ = 1` requests the [Laplace approximation](laplace-approximation.qmd). `bobyqa` names the outer numerical search algorithm, and `maxfun` sets its evaluation budget.
+The conditional likelihood above still contains the unobserved participant, verb,
+and sentence deviations. We cannot maximize it as though those deviations were
+additional population coefficients, because the model says that they are draws
+from normal distributions. We instead combine the two parts of the model and
+then average over every possible collection of deviations.
+
+To write that calculation compactly, collect all participant, verb, and sentence
+intercepts into one $d$-dimensional vector $\mathbf b$. Let $\mathbf z_i$ select
+the three entries of $\mathbf b$ that belong to trial $i$. We can then rewrite
+the fitted log odds, which we will call $m_i$, as
+
+$$
+m_i
+=\mathbf x_i^{\mathsf T}\boldsymbol\beta
++\mathbf z_i^{\mathsf T}\mathbf b,
+\qquad
+\pi_i=\operatorname{logit}^{-1}(m_i).
+$$
+
+The vector $\boldsymbol\theta=(\tau_p,\tau_w,\tau_q)$ contains the three group
+standard deviations. Under the independence assumptions above, the covariance
+matrix $\mathbf G(\boldsymbol\theta)$ has participant variances, verb variances,
+and sentence variances on its diagonal and zeros elsewhere. Thus
+
+$$
+\mathbf b
+\sim
+\mathcal N_d
+\left(
+\mathbf 0,
+\mathbf G(\boldsymbol\theta)
+\right).
+$$
+
+For fixed values of $\boldsymbol\beta$, $\boldsymbol\theta$, and $\mathbf b$, the
+joint density of the observed responses and the possible group deviations is
+
+$$
+p(\mathbf y,\mathbf b
+\mid\boldsymbol\beta,\boldsymbol\theta)
+=
+\left\{
+\prod_i
+\pi_i(\mathbf b)^{y_i}
+[1-\pi_i(\mathbf b)]^{1-y_i}
+\right\}
+\phi_d
+\left\{
+\mathbf b;
+\mathbf 0,
+\mathbf G(\boldsymbol\theta)
+\right},
+$$
+
+where $\phi_d$ is a $d$-dimensional normal density. The first factor asks how
+well a particular collection of deviations predicts the observed choices. The
+second asks how plausible that collection is under the proposed group
+distributions. Their product prevents a group with a small number of trials
+from receiving any deviation that happens to fit those trials perfectly.
+
+The **marginal likelihood** averages this joint density over the deviations:
+
+$$
+L(\boldsymbol\beta,\boldsymbol\theta;\mathbf y)
+=
+\int_{\mathbb R^d}
+p(\mathbf y,\mathbf b
+\mid\boldsymbol\beta,\boldsymbol\theta)
+\,d\mathbf b.
+$$
+
+This integral is the quantity we want to compare across candidate values of the
+population coefficients and group standard deviations. It has one integration
+dimension for every entry of $\mathbf b$, and the logistic inverse link usually
+prevents us from evaluating it with ordinary algebra.
+
+The [Laplace approximation](laplace-approximation.qmd) gives us a way forward.
+For a particular candidate $(\boldsymbol\beta,\boldsymbol\theta)$, define the log
+integrand
+
+$$
+h(\mathbf b;
+\boldsymbol\beta,\boldsymbol\theta)
+=
+\log p(\mathbf y,\mathbf b
+\mid\boldsymbol\beta,\boldsymbol\theta)
+$$
+
+and let $\widehat{\mathbf b}$ be the value that maximizes it. This is the
+**conditional mode** for that candidate. We also need to know how rapidly the
+log integrand bends downward around the mode. The matrix
+
+$$
+\mathbf H
+=
+-\left.
+\frac{\partial^2 h(\mathbf b;
+\boldsymbol\beta,\boldsymbol\theta)}
+{\partial\mathbf b\,\partial\mathbf b^{\mathsf T}}
+\right|_{\mathbf b=\widehat{\mathbf b}}
+$$
+
+collects that local curvature. This matrix is a [Hessian](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature): its diagonal entries record curvature along individual random effect directions, while its off-diagonal entries record how two directions bend together. As in the [Gaussian mixed model likelihood](fixed-and-random-effects.qmd#gaussian-mixed-model-likelihood), the determinant $|\mathbf H|$ combines those directions into a measure of the peak's local volume.
+
+The multivariate Laplace approximation is
+
+$$
+\begin{aligned}
+L(\boldsymbol\beta,\boldsymbol\theta;\mathbf y)
+&\approx
+\exp\left\{
+h(\widehat{\mathbf b};
+\boldsymbol\beta,\boldsymbol\theta)
+\right\}
+(2\pi)^{d/2}
+|\mathbf H|^{-1/2},\\[4pt]
+\log L(\boldsymbol\beta,\boldsymbol\theta;\mathbf y)
+&\approx
+h(\widehat{\mathbf b};
+\boldsymbol\beta,\boldsymbol\theta)
++\frac d2\log(2\pi)
+-\frac12\log|\mathbf H|.
+\end{aligned}
+$$
+
+Both the height and the curvature matter. A candidate can produce a high joint
+density at its best deviations but concentrate that density in such a narrow
+region that its integrated likelihood is smaller than that of another
+candidate.
+
+The fitting calculation therefore has an inner and an outer problem. For each
+candidate $(\boldsymbol\beta,\boldsymbol\theta)$, the inner calculation finds
+$\widehat{\mathbf b}$ and $\mathbf H$, and then substitutes them into the
+approximation above. The outer optimizer changes
+$(\boldsymbol\beta,\boldsymbol\theta)$ and repeats the inner calculation until it
+finds coefficient and variance values with the largest approximate marginal
+likelihood. The resulting coefficients and standard deviations are therefore
+approximate maximum likelihood estimates under the Laplace objective. They are
+not exact maximizers of the integral written above. In `glmer()`, `nAGQ = 1`
+requests this Laplace calculation with one approximation point;
+`bobyqa` carries out the outer search. The value one refers to the approximation
+point at the conditional mode. It does not refer to one observation or one
+random effect.
+
+## Fitting the participant and verb--sentence model
+
+The function `glmer()` carries out the calculation we have just assembled. The formula names the binary response and three grouping units, while `family = binomial(link = "logit")` supplies the Bernoulli response model and logit link. We use [sum coding](sum-coding.qmd) for the categorical predictors: each contrast column sums to zero, so the intercept refers to the coding center and the verb coefficient represents one half of the signed two-level contrast. The setting `nAGQ = 1` requests the Laplace approximation, `bobyqa` names the outer numerical search algorithm, and `maxfun` sets its evaluation budget.
 
 ```{r}
 #| label: fit-supertelicity-glmm
 library(lme4)
 library(ggplot2)
 
-supertelicity <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity_all <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity <- subset(supertelicity_all, clause_type == "episodic")
 supertelicity$participant_id <- factor(supertelicity$participant_id)
 supertelicity$verb <- factor(supertelicity$verb)
 supertelicity$sentence_id <- factor(supertelicity$sentence_id)
@@ -119,6 +266,34 @@ fit <- glmer(
   )
 )
 
+scaled_gradient <- function(model) {
+  gradient <- model@optinfo$derivs$gradient
+  hessian <- model@optinfo$derivs$Hessian
+  solve(chol(hessian), gradient)
+}
+
+fit_scaled_gradient <- scaled_gradient(fit)
+fit_fixed_effect_covariance <- as.matrix(vcov(fit))
+fit_diagnostics <- c(
+  optimizer_code = fit@optinfo$conv$opt,
+  convergence_messages = length(fit@optinfo$conv$lme4$messages),
+  maximum_absolute_scaled_gradient = max(abs(fit_scaled_gradient)),
+  smallest_fixed_effect_covariance_eigenvalue = min(eigen(
+    fit_fixed_effect_covariance,
+    symmetric = TRUE,
+    only.values = TRUE
+  )$values)
+)
+
+stopifnot(
+  fit_diagnostics[["optimizer_code"]] == 0,
+  fit_diagnostics[["convergence_messages"]] == 0,
+  fit_diagnostics[["maximum_absolute_scaled_gradient"]] < 2e-3,
+  fit_diagnostics[["smallest_fixed_effect_covariance_eigenvalue"]] > 0
+)
+
+fit_diagnostics
+
 data_summary <- c(
   trials = nrow(supertelicity),
   participant_identifiers = nlevels(supertelicity$participant_id),
@@ -130,6 +305,107 @@ data_summary <- c(
 data_summary
 ```
 
+The optimizer code and message count check whether the outer search reported a
+failure. The scaled gradient asks a more direct question. A raw derivative can
+look large merely because its parameter is measured on a different scale, so
+the curvature matrix rescales the derivatives before we compare them with zero.
+The reported maximum is below the usual `lme4` tolerance of $0.002$.
+
+The covariance matrix returned by `vcov()` uses the inverse local curvature of
+the approximate marginal objective near its optimum. Thus its diagonal entries
+give local fixed effect variance estimates, and their square roots give the
+reported standard errors. This calculation inherits both the local quadratic
+approximation and the Laplace approximation used to construct the objective.
+An eigenvalue here records the variance along one direction determined by the
+coefficient covariance matrix. The positive smallest eigenvalue confirms that
+every such direction has positive estimated variance; the inverse matrix
+consequently has positive curvature in every fixed effect direction.
+
+## Checking the Laplace approximation in a reduced model
+
+The full model contains three crossed collections of random intercepts, so
+high-order adaptive Gaussian quadrature is not available for that full
+integral in `glmer()`. Adaptive quadrature replaces an integral with a weighted
+sum of integrand values placed around its conditional mode; using more points
+records more of the integrand's shape away from that mode. We can still check the approximation on the same binary
+responses after retaining only the participant intercept. This reduced model
+does not replace the scientific model above. It gives us a one-dimensional
+integral for each participant, which `glmer()` can evaluate using either one
+Laplace point or nine adaptive quadrature points.
+
+```{r}
+#| label: supertelicity-reduced-quadrature-check
+reduced_formula <- prep_in ~ verb_type * contentfulness +
+  (1 | participant_id)
+
+reduced_laplace <- glmer(
+  reduced_formula,
+  data = supertelicity,
+  family = binomial(link = "logit"),
+  nAGQ = 1L,
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+reduced_quadrature <- glmer(
+  reduced_formula,
+  data = supertelicity,
+  family = binomial(link = "logit"),
+  nAGQ = 9L,
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+reduced_check <- data.frame(
+  calculation = c("Laplace", "Nine-point adaptive quadrature"),
+  log_likelihood = c(
+    as.numeric(logLik(reduced_laplace)),
+    as.numeric(logLik(reduced_quadrature))
+  ),
+  maximum_absolute_scaled_gradient = c(
+    max(abs(scaled_gradient(reduced_laplace))),
+    max(abs(scaled_gradient(reduced_quadrature)))
+  ),
+  optimizer_code = c(
+    reduced_laplace@optinfo$conv$opt,
+    reduced_quadrature@optinfo$conv$opt
+  )
+)
+
+reduced_coefficient_difference <- max(abs(
+  fixef(reduced_laplace) - fixef(reduced_quadrature)
+))
+reduced_standard_deviation_difference <- abs(
+  attr(VarCorr(reduced_laplace)$participant_id, "stddev") -
+    attr(VarCorr(reduced_quadrature)$participant_id, "stddev")
+)
+
+stopifnot(
+  all(reduced_check$optimizer_code == 0),
+  all(reduced_check$maximum_absolute_scaled_gradient < 2e-3),
+  reduced_coefficient_difference < 0.01,
+  reduced_standard_deviation_difference < 0.01
+)
+
+reduced_check
+c(
+  largest_fixed_effect_difference = reduced_coefficient_difference,
+  participant_standard_deviation_difference =
+    reduced_standard_deviation_difference
+)
+```
+
+The two objective values need not be identical because one calculation keeps
+more information about each one-dimensional integral. The fitted coefficients
+and participant standard deviations are nevertheless close for this reduced
+model. This agreement is evidence about the Laplace approximation on these
+responses under the reduced grouping structure; it does not prove that the
+three-way crossed approximation is exact.
+
 One retained observation and the repetition counts make the unit structure visible:
 
 ```{r}
@@ -137,16 +413,31 @@ One retained observation and the repetition counts make the unit structure visib
 #| echo: true
 supertelicity[1L, c("participant_id", "verb", "sentence_id", "verb_type",
                     "contentfulness", "preposition", "prep_in")]
+verbs_per_sentence <- aggregate(
+  verb ~ sentence_id,
+  data = supertelicity,
+  FUN = function(x) length(unique(x))
+)
+sentences_per_verb <- table(unique(
+  supertelicity[c("verb", "sentence_id")]
+)$verb)
+stopifnot(max(verbs_per_sentence$verb) == 1L)
 c(participant_repetitions = max(table(supertelicity$participant_id)),
   verb_repetitions = max(table(supertelicity$verb)),
-  sentence_repetitions = max(table(supertelicity$sentence_id)))
+  sentence_repetitions = max(table(supertelicity$sentence_id)),
+  minimum_sentences_per_verb = min(sentences_per_verb),
+  maximum_sentences_per_verb = max(sentences_per_verb))
 ```
+
+The incidence check confirms that each sentence belongs to one verb. The
+sentence counts show how many distinct sentence materials contribute to each
+verb intercept.
 
 Sum coding assigns the two verb levels opposite signed values whose column sums are zero; the two contentfulness contrast columns compare the three levels around the coding center. Consequently, the printed `verb_type1` coefficient is one half of the manner-minus-result log odds contrast at the contentfulness coding center. The explicit `-2` transformation below changes its sign and doubles it to produce result minus manner.
 
 The fitting settings govern numerical search. They do not alter the Bernoulli likelihood or compensate for missing random slopes.
 
-The course formula is deliberately smaller than the source analysis, which uses a richer Bayesian random structure involving additional participant, lexical, duration, list, and argument-form terms. This GLMM illustrates the architecture; it does not replace the manuscript's model.
+We retain participant, verb, and sentence intercepts so that the marginal likelihood remains visible. The source analysis also includes participant, lexical, duration, list, and argument-form terms; its coefficients consequently answer a broader question.
 
 ## Raw sentence proportions and fitted probabilities
 

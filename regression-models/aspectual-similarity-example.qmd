@@ -39,6 +39,12 @@ $$
 
 Larger values indicate that a model assigns more probability to the observed assessment responses.
 
+The coefficient and cutpoint estimates maximize the sum of the logged category
+probabilities subject to ordered cutpoints. The [ordinal likelihood](ordinal-regression.qmd)
+derives the score, Hessian, and numerical update used for that maximization. We
+use the same estimator within each training fold below; the folds change which
+verbs contribute likelihood terms.
+
 The logarithm turns products of assigned probabilities into sums and strongly penalizes confident errors. If one model assigns probability $p_1$ to the observed category and another assigns the smaller probability $p_2$, then $\log p_1>\log p_2$. The score evaluates the entire predictive distribution rather than only whether the most probable category happened to be correct. We compute the contribution of an observed MegaVeridicality response below.
 
 ## Preparing the preassigned verb folds
@@ -103,6 +109,22 @@ population_fit <- clm(
     gradTol = 1e-3,
     maxIter = 100L
   )
+)
+
+population_log_likelihood_by_rows <- sum(log(fitted(population_fit)))
+stopifnot(
+  abs(
+    population_log_likelihood_by_rows - as.numeric(logLik(population_fit))
+  ) < 1e-8,
+  population_fit$convergence$code == 0,
+  max(abs(population_fit$gradient)) < 1e-3
+)
+
+data.frame(
+  summed_row_log_likelihood = population_log_likelihood_by_rows,
+  clm_log_likelihood = as.numeric(logLik(population_fit)),
+  optimizer_code = population_fit$convergence$code,
+  maximum_absolute_gradient = max(abs(population_fit$gradient))
 )
 
 raw_probabilities <- as.data.frame(table(
@@ -203,53 +225,99 @@ The [ordinal mixed model](ordinal-mixed-models.qmd) adds respondent and verb dev
 
 ## Comparing additive and interaction models by unseen verb
 
-The helper `mean_log_score()` first obtains the three category probabilities for every assessment row. It then selects the probability assigned to the category that was actually observed, takes its logarithm, and averages across rows. The lower bound `1e-12` prevents a numerical logarithm of zero; it is far below probabilities that would count as substantively plausible predictions here.
+The helper `observed_probability()` first obtains the three category probabilities
+for every assessment row and then selects the probability assigned to the
+category that was actually observed. We require every selected probability to
+be finite and larger than $10^{-12}$. Thus the mean log scores below use the
+probabilities returned by `clm()` without clipping or replacing them.
 
 ```{r}
 #| label: megaveridicality-heldout
-mean_log_score <- function(fit, data) {
+observed_probability <- function(fit, data) {
   probability <- predict(
     fit,
     newdata = data,
     type = "prob"
   )$fit
-  probability <- pmax(probability, 1e-12)
   if (is.null(dim(probability))) {
-    return(mean(log(probability)))
+    observed <- probability
+  } else {
+    observed_column <- match(
+      as.character(data$outcome),
+      colnames(probability)
+    )
+    observed <- probability[cbind(
+      seq_len(nrow(data)),
+      observed_column
+    )]
   }
-  observed_column <- match(
-    as.character(data$outcome),
-    colnames(probability)
+
+  stopifnot(
+    all(is.finite(observed)),
+    all(observed > 1e-12),
+    all(observed <= 1)
   )
-  observed_probability <- probability[cbind(
-    seq_len(nrow(data)),
-    observed_column
-  )]
-  mean(log(observed_probability))
+  observed
+}
+
+mean_log_score <- function(fit, data) {
+  mean(log(observed_probability(fit, data)))
+}
+
+clm_diagnostics <- function(fit) {
+  c(
+    optimizer_code = fit$convergence$code,
+    maximum_absolute_gradient = max(abs(fit$gradient))
+  )
 }
 
 fold_results <- lapply(sort(unique(judgments$fold)), function(fold) {
   training <- judgments[judgments$fold != fold, ]
   assessment <- judgments[judgments$fold == fold, ]
+  fold_control <- clm.control(
+    gradTol = 1e-3,
+    maxIter = 100L
+  )
 
   baseline_fit <- clm(
     outcome ~ 1,
     data = training,
     link = "logit",
-    Hess = FALSE
+    Hess = FALSE,
+    control = fold_control
   )
 
   additive_fit <- clm(
     outcome ~ polarity + task,
     data = training,
     link = "logit",
-    Hess = FALSE
+    Hess = FALSE,
+    control = fold_control
   )
   interaction_fit <- clm(
     outcome ~ polarity * task,
     data = training,
     link = "logit",
-    Hess = FALSE
+    Hess = FALSE,
+    control = fold_control
+  )
+
+  diagnostics <- rbind(
+    baseline = clm_diagnostics(baseline_fit),
+    additive = clm_diagnostics(additive_fit),
+    interaction = clm_diagnostics(interaction_fit)
+  )
+
+  assessment_probabilities <- c(
+    observed_probability(baseline_fit, assessment),
+    observed_probability(additive_fit, assessment),
+    observed_probability(interaction_fit, assessment)
+  )
+
+  stopifnot(
+    all(diagnostics[, "optimizer_code"] == 0),
+    all(diagnostics[, "maximum_absolute_gradient"] < 1e-3),
+    min(assessment_probabilities) > 1e-12
   )
 
   data.frame(
@@ -267,7 +335,12 @@ fold_results <- lapply(sort(unique(judgments$fold)), function(fold) {
     interaction_mean_log_score = mean_log_score(
       interaction_fit,
       assessment
-    )
+    ),
+    largest_optimizer_code = max(diagnostics[, "optimizer_code"]),
+    largest_absolute_gradient = max(
+      diagnostics[, "maximum_absolute_gradient"]
+    ),
+    smallest_assigned_probability = min(assessment_probabilities)
   )
 })
 
@@ -278,6 +351,12 @@ cross_validation$gain <- with(
 )
 cross_validation
 ```
+
+The three diagnostic columns make the numerical checks part of the reported
+fold results. Every optimizer code is zero, every fitted gradient is below the
+stated tolerance, and the smallest probability assigned to an observed
+assessment category remains above the bound in the assertion. No fold score
+therefore depends on probability clipping.
 
 The row weighted interaction gain is computed from the assessment folds:
 

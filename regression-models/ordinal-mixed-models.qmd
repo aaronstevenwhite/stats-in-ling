@@ -9,7 +9,15 @@ The [expected value](../random-variables-and-distributions/expected-values.qmd) 
 
 We first make the task and analysis subset concrete. We then build the cumulative model from the three response categories, fit respondent and verb variation, and state exactly which group deviations enter each prediction.
 
-We use **MegaVeridicality v1**, the *no*, *maybe*, and *yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012)) and distributed through the [official MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). Each row records one response to a low-content sentence containing a clause-embedding verb. The direct task asks whether the embedded event happened after an assertion; the conditional task places that assertion in a conditional antecedent.
+We use **MegaVeridicality v1**, the *no*, *maybe*, and *yes* veridicality judgments described by White and Rawlins ([2018 LingBuzz entry](https://lingbuzz.net/lingbuzz/004012)) and distributed through the [official MegaVeridicality project](https://megaattitude.io/projects/mega-veridicality/). Each row records one respondent's judgment of a low-content, active sentence containing a clause-embedding verb in a *that* clause. The direct task asks whether the embedded event happened after an assertion; the conditional task places that assertion in a conditional antecedent.
+
+The prepared table does not retain sentence strings or a separate stimulus-item
+identifier. It retains the verb, frame, voice, polarity, and task. We can thus
+identify the recorded **stimulus condition** as a combination of those fields,
+but we cannot tell whether rows with the same combination displayed the same
+exact sentence wording. The recurring linguistic unit in the model is the verb,
+and the verb folds hold out whole verbs. Any claim about variation across exact
+sentence items would require an item identifier that this table does not contain.
 
 The two tasks recruited separate samples. Numeric participant labels recur across tasks, so the task label is included when constructing `respondent_id`. Treating repeated numbers as the same people would invent a dependence relation that was not part of the study.
 
@@ -57,7 +65,7 @@ The full active and native speaker table contains `r nrow(full_judgments)` respo
 `r length(unique(judgments$verb))` verbs assigned to fold
 `r analysis_fold`, using a deterministic partition of verb labels created
 before their responses were read. This subset lets us work through the response
-model and its polarity by task contrasts on one declared training fold. The
+model and its polarity by task contrasts in fold `r analysis_fold`. The
 [prediction for unseen verbs](aspectual-similarity-example.qmd) repeats the procedure across the
 complete held out verb comparison.
 
@@ -142,11 +150,125 @@ $$
 
 The ordered thresholds preserve category order without assigning equal numerical spacing to the labels.
 
+The inequalities $\kappa_1<\kappa_2$ ensure that the probability for *maybe* is
+nonnegative. To prepare for the likelihood, let
+$q_{ic}(\boldsymbol\kappa,\boldsymbol\beta,\mathbf b,
+\mathbf u)$ denote the appropriate one of these three probabilities for category
+$c$. If response $i$ has observed category $y_i$, its conditional likelihood
+contribution is $q_{i,y_i}$. Multiplying over responses gives
+
+$$
+p(\mathbf y
+\mid
+\mathbf b,\mathbf u,
+\boldsymbol\kappa,\boldsymbol\beta)
+=
+\prod_i
+q_{i,y_i}
+(\boldsymbol\kappa,\boldsymbol\beta,\mathbf b,\mathbf u).
+$$
+
+This expression uses the probability of the category that was actually
+recorded. For instance, an observed *maybe* contributes the difference between
+the two cumulative probabilities, rather than either cumulative probability by
+itself.
+
 Each selected verb occurs in all four polarity by task cells, so both contrasts vary within verbs and can support slopes by verb. Respondents belong to only one task sample, so a respondent task slope is not identified. We include respondent intercepts and verb slopes, leaving respondent polarity slopes and threshold variation for models with stronger support within respondents or a different account of response style.
+
+The group distributions supply the other part of the joint density. There is
+one three-dimensional normal density for each verb and one univariate normal
+density for each respondent:
+
+$$
+p(\mathbf b,\mathbf u
+\mid\boldsymbol\Sigma_v,\tau_r)
+=
+\prod_v
+\phi_3(\mathbf b_v;\mathbf 0,\boldsymbol\Sigma_v)
+\prod_r
+\phi(u_r;0,\tau_r^2).
+$$
+
+Multiplying the category likelihood by these Gaussian densities gives the joint
+density for the observed responses and the unobserved group deviations. The
+likelihood for the thresholds, population coefficients, and variance parameters
+then integrates out every verb and respondent deviation:
+
+$$
+\begin{aligned}
+L(&\boldsymbol\kappa,\boldsymbol\beta,
+\boldsymbol\Sigma_v,\tau_r;\mathbf y)\\
+&=
+\int
+p(\mathbf y
+\mid\mathbf b,\mathbf u,
+\boldsymbol\kappa,\boldsymbol\beta)
+p(\mathbf b,\mathbf u
+\mid\boldsymbol\Sigma_v,\tau_r)
+\,d\mathbf b\,d\mathbf u.
+\end{aligned}
+$$
+
+This is the [general GLMM integral](generalized-linear-mixed-models.qmd#from-the-conditional-model-to-the-likelihood) with ordered-category contributions in place of Bernoulli contributions. It also shows why fitting cannot consist of choosing a separate best intercept and slope for every verb and respondent. Their possible deviations must be weighted by the Gaussian group densities and then integrated out.
+
+We can now write the objective that `clmm()` will approximate. Collect every
+verb and respondent deviation into one $d$-dimensional vector
+$\mathbf a=(\mathbf b^{\mathsf T},\mathbf u^{\mathsf T})^{\mathsf T}$ and define
+
+$$
+\begin{aligned}
+h(&\mathbf a;
+\boldsymbol\kappa,\boldsymbol\beta,
+\boldsymbol\Sigma_v,\tau_r)\\
+&=
+\log p(\mathbf y
+\mid\mathbf b,\mathbf u,
+\boldsymbol\kappa,\boldsymbol\beta)
++\log p(\mathbf b,\mathbf u
+\mid\boldsymbol\Sigma_v,\tau_r).
+\end{aligned}
+$$
+
+For a particular set of thresholds, population coefficients, and variance
+parameters, let $\widehat{\mathbf a}$ maximize this log integrand. Let
+
+$$
+\mathbf H
+=
+-\left.
+\frac{\partial^2 h(\mathbf a;
+\boldsymbol\kappa,\boldsymbol\beta,
+\boldsymbol\Sigma_v,\tau_r)}
+{\partial\mathbf a\,\partial\mathbf a^{\mathsf T}}
+\right|_{\mathbf a=\widehat{\mathbf a}}
+$$
+
+record its curvature with respect to all verb and respondent deviations. The
+Laplace objective is then
+
+$$
+\begin{aligned}
+\log L(&\boldsymbol\kappa,\boldsymbol\beta,
+\boldsymbol\Sigma_v,\tau_r;\mathbf y)\\
+&\approx
+h(\widehat{\mathbf a};
+\boldsymbol\kappa,\boldsymbol\beta,
+\boldsymbol\Sigma_v,\tau_r)
++\frac d2\log(2\pi)
+-\frac12\log|\mathbf H|.
+\end{aligned}
+$$
+
+Thus a change to a threshold, a population coefficient, or a variance parameter
+requires a new inner calculation of the group deviations and curvature before
+the outer optimizer can compare objective values. The [observed-data Laplace
+check](laplace-approximation.qmd#constructing-the-supertelicity-integrand) makes
+the corresponding contribution, mode, and curvature calculations explicit in
+one dimension.
 
 ## Fitting the verb-and-respondent model
 
-The fitting call below contains two numerical settings that should not appear without explanation. A **gradient** records the first derivatives of the objective; near an optimum, those derivatives should be close to zero, so `gradTol` declares how close is close enough for the convergence check. A **Hessian** is a matrix of second derivatives that records local curvature in several parameter directions. The earlier discussion of [curvature](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature) shows why its inverse is used to approximate uncertainty. We set `Hess = FALSE` because the computation below uses fitted probabilities rather than standard errors computed from the Hessian. The random effect integrals are evaluated with the [Laplace approximation](laplace-approximation.qmd), requested by `nAGQ = 1`.
+The fitting call below contains three numerical settings that should not appear without explanation. A **gradient** records the first derivatives of the objective; near an optimum, those derivatives should be close to zero, so `gradTol` declares how close is close enough for the convergence check. A **Hessian** is a matrix of second derivatives that records local curvature in several parameter directions. The earlier discussion of [curvature](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature) shows why its inverse is used to approximate uncertainty. We set `Hess = TRUE` so that we can inspect that curvature rather than trusting an optimizer code alone. The random effect integral above is evaluated with the [Laplace approximation](laplace-approximation.qmd), requested by `nAGQ = 1`. At each candidate set of thresholds, coefficients, and variance parameters, the inner calculation updates the conditional modes and their curvature; the outer optimizer then compares the resulting approximate marginal likelihoods.
 
 ```{r}
 #| label: fit-megaveridicality-clmm
@@ -206,13 +328,37 @@ fit <- clmm(
   model_formula,
   data = judgments,
   link = "logit",
-  Hess = FALSE,
+  Hess = TRUE,
   nAGQ = 1L,
   control = clmm.control(
     maxIter = 100L,
     gradTol = 1e-3
   )
 )
+
+fit_covariance <- vcov(fit)
+fit_hessian_eigenvalues <- eigen(
+  fit$Hessian,
+  symmetric = TRUE,
+  only.values = TRUE
+)$values
+fit_diagnostics <- c(
+  optimizer_code = fit$optRes$convergence,
+  maximum_absolute_gradient = max(abs(fit$gradient)),
+  smallest_hessian_eigenvalue = min(fit_hessian_eigenvalues),
+  covariance_inverse_curvature_difference = max(abs(
+    fit_covariance - solve(fit$Hessian)
+  ))
+)
+
+stopifnot(
+  fit_diagnostics[["optimizer_code"]] == 0,
+  fit_diagnostics[["maximum_absolute_gradient"]] < 1e-3,
+  fit_diagnostics[["smallest_hessian_eigenvalue"]] > 0,
+  fit_diagnostics[["covariance_inverse_curvature_difference"]] < 1e-8
+)
+
+fit_diagnostics
 
 data_summary <- c(
   judgments = nrow(judgments),
@@ -235,6 +381,16 @@ The `clmm` arguments map directly to assumptions and computation:
 | `link = "logit"` | logistic cumulative distribution and proportional-odds location shift |
 | `nAGQ = 1` | Laplace approximation to random effect integration |
 | `gradTol`, `maxIter` | convergence tolerance and iteration budget, not model assumptions |
+| `Hess = TRUE` | retain local curvature for the convergence and covariance checks |
+
+The zero optimizer code and small maximum gradient tell us that the outer
+search reached a point whose derivatives are near zero under the stated
+tolerance. A Hessian eigenvalue records curvature along one direction
+determined by the Hessian. The positive eigenvalues show that the approximate negative log
+likelihood bends upward in every fitted parameter direction at that point. Finally, the direct
+matrix comparison confirms that `vcov()` is the inverse local curvature of this
+approximate marginal objective. These checks support the numerical solution;
+they do not remove the Laplace approximation from the likelihood.
 
 The threshold and population coefficient estimates are computed directly from the raw ordered responses:
 
@@ -251,7 +407,95 @@ data.frame(
 )
 ```
 
-These values describe the fitted location shifts and group deviations for the analyzed responses. The model contains no latent-category variable or decision rule that would partition clause-embedding verbs into a taxonomy.
+These values are approximate maximum likelihood estimates under the Laplace
+objective. They describe the fitted location shifts and group variation for the
+analyzed responses. The model contains no latent-category variable or decision
+rule that would partition clause-embedding verbs into a taxonomy.
+
+## Checking the approximation with one random intercept
+
+The fitted scientific model has correlated verb slopes and respondent
+intercepts, so `clmm()` cannot replace its high-dimensional integral with
+high-order quadrature. We can check the same ordered responses under a reduced
+model containing one verb intercept. That model gives a one-dimensional integral
+for each verb. Adaptive quadrature replaces each integral with a weighted sum
+of integrand values placed around its conditional mode, and nine points record
+more of the integrand's shape than the local Laplace calculation. This permits
+both a Laplace fit and a nine-point adaptive quadrature fit.
+
+```{r}
+#| label: megaveridicality-reduced-quadrature-check
+reduced_formula <- outcome ~ polarity * task + (1 | verb)
+reduced_control <- clmm.control(
+  maxIter = 100L,
+  gradTol = 5e-3
+)
+
+reduced_laplace <- clmm(
+  reduced_formula,
+  data = judgments,
+  link = "logit",
+  Hess = TRUE,
+  nAGQ = 1L,
+  control = reduced_control
+)
+
+reduced_quadrature <- clmm(
+  reduced_formula,
+  data = judgments,
+  link = "logit",
+  Hess = TRUE,
+  nAGQ = 9L,
+  control = reduced_control
+)
+
+reduced_check <- data.frame(
+  calculation = c("Laplace", "Nine-point adaptive quadrature"),
+  log_likelihood = c(
+    as.numeric(logLik(reduced_laplace)),
+    as.numeric(logLik(reduced_quadrature))
+  ),
+  maximum_absolute_gradient = c(
+    max(abs(reduced_laplace$gradient)),
+    max(abs(reduced_quadrature$gradient))
+  ),
+  optimizer_code = c(
+    reduced_laplace$optRes$convergence,
+    reduced_quadrature$optRes$convergence
+  )
+)
+
+reduced_parameter_difference <- max(abs(
+  c(reduced_laplace$alpha, reduced_laplace$beta) -
+    c(reduced_quadrature$alpha, reduced_quadrature$beta)
+))
+reduced_standard_deviation_difference <- abs(
+  reduced_laplace$ST[[1L]][1L, 1L] -
+    reduced_quadrature$ST[[1L]][1L, 1L]
+)
+
+stopifnot(
+  all(reduced_check$optimizer_code == 0),
+  all(reduced_check$maximum_absolute_gradient < 5e-3),
+  reduced_parameter_difference < 0.01,
+  reduced_standard_deviation_difference < 0.01
+)
+
+reduced_check
+c(
+  largest_threshold_or_fixed_effect_difference =
+    reduced_parameter_difference,
+  verb_standard_deviation_difference =
+    reduced_standard_deviation_difference
+)
+```
+
+The higher-order calculation gives a slightly larger log likelihood because it
+retains more information about the shape of each integral. The threshold,
+fixed effect, and verb standard deviation estimates remain close in the reduced
+model. This check concerns one verb intercept on the analyzed responses. It
+does not establish that the Laplace approximation is exact for the full verb
+slope and respondent intercept model.
 
 ## Comparing observed and fitted category probabilities
 
@@ -357,7 +601,9 @@ White and Rawlins normalize responses and study derived veridicality, factivity,
 1. What does proportional odds assume? A predictor shifts one location $m_i$ across both cumulative cutpoints; it does not receive a separate coefficient at each threshold.
 2. Can an observed-verb conditional mode be used for a new verb? No. A new verb has no estimated deviation; its prediction must use zero deviations or average over the verb distribution.
 3. Which observations do these estimates describe? They describe the
-   respondents, verbs, and items represented in training fold 1. The
+   respondents and verbs represented in fold 1, under the recorded polarity and
+   task conditions. They do not estimate variation across exact sentence items,
+   because the prepared table has no sentence-item identifier. The
    discussion of [unseen verbs](aspectual-similarity-example.qmd) carries out the complete
    held out verb comparison.
 

@@ -13,18 +13,52 @@ In a frequentist `lme4` fit, `ranef()` reports a **conditional mode** for each d
 
 ## Defining the conditional mode
 
-For participant $p$, collect the intercept and frequency slope deviations in $\mathbf b_p$. Conditional on fitted population coefficients and variance components, the estimate is
+Collect every participant intercept and slope deviation and every word intercept
+in one vector $\mathbf b$. The [Gaussian mixed model](fixed-and-random-effects.qmd#gaussian-mixed-model-likelihood)
+writes their covariance as $\mathbf G$ and their trial-level multipliers as
+$\mathbf Z$. Conditional on the fitted population coefficients and variance
+components, the joint estimate is the value that minimizes the following
+expression. We use $\operatorname*{arg\,min}$ to name that minimizing value,
+$\|\mathbf a\|^2$ to mean the sum of the squared entries of a vector
+$\mathbf a$, and $\mathbf G^{-1}$ for the covariance matrix's multiplicative
+inverse.
 
 $$
-\widehat{\mathbf b}_p
-=\operatorname*{arg\,max}_{\mathbf b_p}
+\widehat{\mathbf b}
+=\operatorname*{arg\,min}_{\mathbf b}
 \left{
-\log f(\mathbf y_p\mid\mathbf b_p,\widehat{\boldsymbol\beta},\widehat\sigma)
-+\log g(\mathbf b_p\mid\widehat{\boldsymbol\Sigma}_p)
+\frac{1}{2\widehat\sigma^2}
+\left\|\mathbf y-\mathbf X\widehat{\boldsymbol\beta}-\mathbf Z\mathbf b\right\|^2
++\frac{1}{2}\mathbf b^{\mathsf T}\widehat{\mathbf G}^{-1}\mathbf b
 \right}.
 $$
 
-The notation $\operatorname*{arg\,max}_{\mathbf b_p}$ means “the value of $\mathbf b_p$ that makes the expression as large as possible.” The first term rewards values that fit the participant's trials. The second rewards values plausible under the estimated participant distribution. Their combination produces partial pooling.
+The first term measures the squared trial-level prediction errors. The second term measures
+how far the deviations move from the center of their fitted population
+distribution, accounting for their variances and correlations. Because the
+participant and word deviations enter the same prediction for each trial, we
+solve for them together.
+
+We can see exactly what `lmer()` has to solve by taking a derivative, which
+measures the objective's local change, for every entry of $\mathbf b$ and
+setting those changes equal to zero:
+
+$$
+\left(
+\frac{\mathbf Z^{\mathsf T}\mathbf Z}{\widehat\sigma^2}
++\widehat{\mathbf G}^{-1}
+\right)
+\widehat{\mathbf b}
+=
+\frac{\mathbf Z^{\mathsf T}
+(\mathbf y-\mathbf X\widehat{\boldsymbol\beta})}{\widehat\sigma^2}.
+$$
+
+The matrix on the left is the curvature of the objective: it records how
+quickly the objective rises as we move away from its minimum. Its inverse is
+the plug-in conditional covariance matrix for $\mathbf b$. Here *plug-in*
+means that this calculation holds $\widehat{\boldsymbol\beta}$,
+$\widehat\sigma$, and $\widehat{\mathbf G}$ at their fitted values.
 
 For a simple intercept-only normal model, the same balance appears in
 
@@ -34,7 +68,10 @@ $$
 (\overline y_p-\beta_0).
 $$
 
-The MALD focal model uses a two-dimensional participant vector, so software performs the corresponding multivariate calculation.
+The MALD model uses a participant intercept, a participant frequency slope,
+and a word intercept. Its calculation is therefore multivariate and crossed:
+changing a word intercept changes the participant deviations that best fit the
+same trials.
 
 The scalar formula follows by minimizing
 
@@ -43,11 +80,11 @@ $$
 \frac{b_p^2}{2\tau_p^2}.
 $$
 
-The first term pulls $b_p$ toward the participant's mean deviation; the second pulls it toward the population center. Their curvatures determine both the mode and, under this normal model, its conditional variance $(n_p/\sigma^2+1/\tau_p^2)^{-1}$.
+The first term pulls $b_p$ toward the participant's mean deviation; the second pulls it toward the population center. Their curvatures determine both the mode and, under this scalar normal model, its conditional variance $(n_p/\sigma^2+1/\tau_p^2)^{-1}$. This expression helps us understand partial pooling, but the joint equation above is the calculation used for the crossed MALD model.
 
 ## Extracting estimates and conditional uncertainty
 
-The argument `condVar = TRUE` asks `ranef()` for two things: the conditional modes and a conditional variance for each mode. The returned variance array has one row and column for each participant deviation and one slice for each participant. We take the square root of its intercept entry to obtain `conditional_se`, a local conditional standard error for the participant intercept mode.
+The argument `condVar = TRUE` asks `ranef()` for two things: the conditional modes and the participant block of the plug-in conditional covariance matrix. The returned array has one row and column for each participant deviation and one slice for each participant. We take the square root of its intercept entry to obtain `conditional_se`, a local conditional standard error for the participant intercept mode.
 
 ```{r}
 #| label: mald-ranef
@@ -70,6 +107,7 @@ fit <- lmer(
     (1 + z_frequency | participant_id) +
     (1 | item),
   data = mald,
+  REML = TRUE,
   control = lmerControl(
     optimizer = "bobyqa",
     optCtrl = list(maxfun = 200000L)
@@ -109,6 +147,86 @@ intercepts[c(
 
 The final two rows are observed MALD participants with the largest and smallest conditional standard errors. Trial count is one source of the difference, but predictor coverage and the crossed word structure also contribute. Thus uncertainty cannot be read from the point estimate alone.
 
+We can now check the joint calculation directly on all retained MALD trials.
+Each row is one observed lexical decision trial. The matrices below are sparse:
+most entries are zero because a row belongs to exactly one participant and one
+word. This structure lets us solve the full crossed calculation without
+constructing a dense table of every possible participant by word combination.
+
+The displayed equation uses $\widehat{\mathbf G}^{-1}$ and therefore assumes
+that the fitted group covariance is invertible. `lmer()` uses an equivalent
+factor form that remains usable at a zero variance boundary. It writes
+$\mathbf b=\boldsymbol\Lambda\mathbf u$, assigns
+$\mathbf u$ covariance $\widehat\sigma^2\mathbf I$, and thereby represents
+$\widehat{\mathbf G}=\widehat\sigma^2
+\boldsymbol\Lambda\boldsymbol\Lambda^{\mathsf T}$. The code follows this form.
+
+```{r}
+#| label: joint-conditional-mode-check
+mode_fit <- fit
+
+X <- getME(mode_fit, "X")
+Z <- getME(mode_fit, "Z")
+Lambda <- getME(mode_fit, "Lambda")
+residual_from_population_relation <-
+  getME(mode_fit, "y") - as.numeric(X %*% fixef(mode_fit))
+
+# Work in lme4's factor form rather than inverting G.
+Z_Lambda <- Z %*% Lambda
+u_precision <- crossprod(Z_Lambda) + Matrix::Diagonal(ncol(Z_Lambda))
+u_mode_direct <- Matrix::solve(
+  u_precision,
+  crossprod(Z_Lambda, residual_from_population_relation)
+)
+b_mode_direct <- Lambda %*% u_mode_direct
+
+component_names <- names(getME(mode_fit, "cnms"))
+participant_component <- match("participant_id", component_names)
+component_starts <- getME(mode_fit, "Gp")
+participant_columns <- length(
+  getME(mode_fit, "cnms")[[participant_component]]
+)
+first_participant_indices <-
+  component_starts[[participant_component]] + seq_len(participant_columns)
+
+Lambda_first_participant <- Lambda[first_participant_indices, , drop = FALSE]
+conditional_covariance_direct <-
+  sigma(mode_fit)^2 *
+  as.matrix(
+    Lambda_first_participant %*%
+      Matrix::solve(u_precision, t(Lambda_first_participant))
+  )
+conditional_covariance_lme4 <-
+  attr(ranef(mode_fit, condVar = TRUE)$participant_id, "postVar")[, , 1L]
+
+largest_mode_difference <- max(
+  abs(as.numeric(b_mode_direct) - getME(mode_fit, "b"))
+)
+largest_conditional_covariance_difference <- max(
+  abs(conditional_covariance_direct - conditional_covariance_lme4)
+)
+
+stopifnot(
+  largest_mode_difference < 1e-10,
+  largest_conditional_covariance_difference < 1e-10
+)
+
+data.frame(
+  observed_trials = nrow(mald),
+  participants = length(unique(mald$participant_id)),
+  words = length(unique(mald$item)),
+  largest_mode_difference = largest_mode_difference,
+  largest_conditional_covariance_difference =
+    largest_conditional_covariance_difference
+)
+```
+
+The two final columns compare our calculation with `lmer()` and `ranef()`.
+The assertions require both differences to be smaller than $10^{-10}$ before
+the document can render. Passing them shows that the reported participant
+summaries come from the joint crossed calculation: the word deviations have
+already been estimated alongside the participant deviations.
+
 The main extraction functions answer distinct questions:
 
 | Function | Returned quantity |
@@ -119,6 +237,10 @@ The main extraction functions answer distinct questions:
 | `fixef(fit)` | population coefficients |
 
 The participant standard deviation in `VarCorr(fit)` describes variation across the modeled participant population. A row's `conditional_se` instead describes local uncertainty for one participant's conditional mode, conditional on the fitted population parameters. The two quantities answer different questions.
+
+The plot multiplies each local standard error by $1.96$, the familiar normal
+multiplier for a pointwise 95% conditional interval under the fitted Gaussian
+model.
 
 ```{r}
 #| label: plot-mald-ranef
@@ -144,7 +266,14 @@ ggplot(intercepts, aes(x = estimate, y = order)) +
   )
 ```
 
-The intervals overlap heavily through much of the ordering. A participant placed above another by point estimate need not have a stably higher baseline. Rank uncertainty is part of the result.
+These lines show approximately $1.96$ local conditional standard errors on
+either side of each mode. They are plug-in conditional bands: they hold the
+fitted population coefficients and variance components fixed, and each line
+uses one diagonal entry from the joint conditional covariance matrix. They do
+not provide simultaneous coverage for every participant, and their overlap is
+not a formal test of whether two participants differ. The plot is nevertheless
+useful for seeing that the apparent ordering contains substantial local
+uncertainty.
 
 ## Distinguishing deviations from coefficients for a group
 

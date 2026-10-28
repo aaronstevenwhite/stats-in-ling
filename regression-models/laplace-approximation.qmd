@@ -133,9 +133,17 @@ $$
 
 The height records support at the conditional mode. The curvature records how quickly support falls away from it.
 
+The participant and verb--sentence model has many deviations rather than one. In that case, the
+scalar curvature $H$ becomes the curvature matrix $\mathbf H$, and its
+determinant replaces $H$ in the volume correction. The [full multivariate
+objective](generalized-linear-mixed-models.qmd#from-the-conditional-model-to-the-likelihood)
+also makes the two-stage search explicit: an inner calculation finds the random
+effect mode and curvature for each proposed set of population parameters, and
+an outer optimizer changes those population parameters.
+
 ## Constructing the SuperTelicity integrand
 
-The fuller GLMM has participant, verb, and sentence intercepts. To make one integration step directly inspectable, we restrict the worked model to a participant intercept. The comparison therefore studies Laplace error for that one-dimensional integral rather than the complete crossed model.
+The fuller GLMM has a participant intercept together with verb and sentence intercepts, where sentences are nested within verbs. To make one integration step directly inspectable, we restrict the worked model to a participant intercept. The comparison therefore studies Laplace error for that one-dimensional integral rather than the complete higher-dimensional model.
 
 The code will need the mode and the curvature there. `optimize()` searches a bounded interval for the value of $b$ that minimizes a function, so we give it the negative log integrand to find the maximum of the original log integrand. The curvature calculation also follows directly from the model. For a Bernoulli observation with fitted probability $p_i(b)$, the negative second derivative of its log likelihood with respect to $b$ is $p_i(b)[1-p_i(b)]$. The normal group density contributes $1/\tau^2$. Adding over trials gives
 
@@ -145,14 +153,15 @@ H
 +\frac{1}{\tau^2}.
 $$
 
-Thus the code is evaluating the curvature formula derived above rather than asking software for an unexplained quantity.
+Thus the code is evaluating the curvature formula derived above rather than asking software for an unexplained quantity. The call to `stopifnot()` halts the calculation unless the score is close to zero and the analytic curvature agrees with a finite-difference calculation to the stated tolerance.
 
 ```{r}
 #| label: supertelicity-laplace
 library(lme4)
 library(ggplot2)
 
-supertelicity <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity_all <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+supertelicity <- subset(supertelicity_all, clause_type == "episodic")
 supertelicity$participant_id <- factor(supertelicity$participant_id)
 supertelicity$verb_type <- factor(
   supertelicity$verb_type,
@@ -217,11 +226,49 @@ conditional_mode <- mode_result$minimum
 mode_probability <- plogis(fixed_location + conditional_mode)
 curvature <- sum(mode_probability * (1 - mode_probability)) +
   1 / participant_sd^2
+
+mode_score <- sum(
+  participant_data$prep_in - mode_probability
+) - conditional_mode / participant_sd^2
+
+curvature_step <- 1e-4
+finite_difference_curvature <- -(
+  log_integrand(conditional_mode + curvature_step) -
+    2 * log_integrand(conditional_mode) +
+    log_integrand(conditional_mode - curvature_step)
+) / curvature_step^2
+
+stopifnot(
+  abs(mode_score) < 1e-3,
+  abs(curvature - finite_difference_curvature) < 1e-3
+)
+
+first_trial_log_contribution <-
+  participant_data$prep_in[[1L]] *
+    (fixed_location[[1L]] + conditional_mode) -
+  log1pexp(fixed_location[[1L]] + conditional_mode)
 ```
 
 The selected participant has `r nrow(participant_data)` observed trials. This count and every likelihood quantity below are computed from those responses.
 
 We extend the search interval six fitted random effect standard deviations in each direction, which covers the practically relevant normal density. The participant is selected by median trial count so that the worked curve is not chosen for an unusually sparse or unusually dense response history.
+
+The first observed trial for this participant contributes
+
+```{r}
+#| label: supertelicity-one-likelihood-contribution
+data.frame(
+  response = participant_data$prep_in[[1L]],
+  fixed_location = fixed_location[[1L]],
+  conditional_mode = conditional_mode,
+  fitted_probability = mode_probability[[1L]],
+  bernoulli_log_likelihood_contribution = first_trial_log_contribution
+)
+```
+
+This is one term in the Bernoulli log likelihood. The normal log density for the
+participant deviation is added once, after all of that participant's response
+terms have been summed.
 
 ## Comparing the exact integral with its local approximation
 
@@ -257,7 +304,10 @@ laplace_summary <- data.frame(
   participant_id = selected_participant,
   trials = nrow(participant_data),
   conditional_mode = conditional_mode,
+  score_at_mode = mode_score,
   negative_second_derivative = curvature,
+  finite_difference_negative_second_derivative =
+    finite_difference_curvature,
   exact_log_integral = exact_log_integral,
   laplace_log_integral = laplace_log_integral,
   laplace_minus_exact = laplace_log_integral - exact_log_integral
@@ -265,7 +315,14 @@ laplace_summary <- data.frame(
 laplace_summary
 ```
 
-The difference is an empirical computation diagnostic for these observed trials. Accuracy may differ for other participants and for the higher dimensional crossed model.
+Three checks now come directly from the observed responses. First, the score at
+the reported mode should be close to zero, because moving a small distance in
+either direction should not improve the log integrand. Second, the analytic
+curvature should agree with the finite-difference calculation, which estimates
+the second derivative by evaluating the log integrand immediately to either
+side of the mode. Third, the approximate log integral can be compared with
+direct numerical integration in this one-dimensional case. Accuracy may differ
+for other participants and for the higher dimensional grouped model.
 
 ```{r}
 #| label: plot-laplace
@@ -321,7 +378,7 @@ integrand is concentrated and roughly symmetric near its mode; sparse groups,
 rare responses, boundary variances, or strong asymmetry may make the local
 quadratic less adequate.
 
-In `glmer`, `nAGQ = 1` selects this one-point Laplace calculation. The one-intercept restriction exists only to expose it in one dimension. In the crossed participant, verb, and sentence model, the integral is high-dimensional and can be skewed or weakly concentrated along some covariance directions. Agreement in the selected one-dimensional example thus cannot guarantee equal accuracy in that fitted crossed model.
+In `glmer`, `nAGQ = 1` selects this one-point Laplace calculation. The one-intercept restriction exists only to expose it in one dimension. In the participant and verb--sentence model, the integral is high-dimensional and can be skewed or weakly concentrated along some covariance directions. Agreement in the selected one-dimensional example thus cannot guarantee equal accuracy in that fuller fit.
 
 ## Recap and check
 

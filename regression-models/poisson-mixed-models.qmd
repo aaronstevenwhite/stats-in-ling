@@ -44,7 +44,7 @@ below describes the systematic French-versus-English contrast. The random
 intercept introduces a normal distribution for pair-specific deviations. For
 fixed observed graph counts, the [likelihood](../statistical-inference/maximum-likelihood.qmd#probability-and-likelihood)
 is their joint model mass viewed as a function of those coefficients and variance
-parameters; `glmer()` maximizes an approximation to the likelihood after
+parameters; `glmer()` maximizes a Laplace approximation to the likelihood after
 integrating over the unobserved pair deviations.
 
 For passage pair $p$ and language side $l$,
@@ -100,9 +100,83 @@ $$
 
 The offset fixes the coefficient of $\log W_{pl}$ at one. Doubling word exposure doubles the expected count while holding the rate constant.
 
+The conditional model gives us one probability mass for each side of a pair.
+To obtain a likelihood for the observed counts, we multiply the two masses that
+share $b_p$, multiply by the normal density for that pair deviation, and
+integrate over its possible values. Because the pair deviations are independent,
+the resulting marginal likelihood can be written as
+
+$$
+L(\boldsymbol\beta,\tau_p;\mathbf y)
+=
+\prod_p
+\int_{-\infty}^{\infty}
+\left\{
+\prod_{l\in\{\mathrm{en},\mathrm{fr}\}}
+\frac{
+\exp[-\lambda_{pl}(b)]
+\lambda_{pl}(b)^{y_{pl}}
+}{y_{pl}!}
+\right\}
+\phi(b;0,\tau_p^2)
+\,db.
+$$
+
+This is the version of the [GLMM marginal
+likelihood](generalized-linear-mixed-models.qmd#from-the-conditional-model-to-the-likelihood)
+for the paired design.
+The product inside the integral keeps the aligned English and French graphs
+together. Moving that product outside the integral would instead give each
+language side its own unrelated deviation and would no longer represent the
+paired design.
+
+The Laplace objective follows directly from this integral. Collect the $P$
+pair deviations into $\mathbf b=(b_1,\ldots,b_P)^{\mathsf T}$, and define the
+log of the joint count masses and normal densities as
+
+$$
+h(\mathbf b;\boldsymbol\beta,\tau_p)
+=
+\sum_p
+\left[
+\sum_{l\in\{\mathrm{en},\mathrm{fr}\}}
+\log\mathbb{P}
+\{Y_{pl}=y_{pl}\mid b_p\}
++\log\phi(b_p;0,\tau_p^2)
+\right].
+$$
+
+For each candidate $(\boldsymbol\beta,\tau_p)$, let
+$\widehat{\mathbf b}$ maximize this log integrand and let
+
+$$
+\mathbf H
+=
+-\left.
+\frac{\partial^2h(\mathbf b;\boldsymbol\beta,\tau_p)}
+{\partial\mathbf b\,\partial\mathbf b^{\mathsf T}}
+\right|_{\mathbf b=\widehat{\mathbf b}}
+$$
+
+be its curvature matrix. The approximate objective used by the outer optimizer
+is
+
+$$
+\log L(\boldsymbol\beta,\tau_p;\mathbf y)
+\approx
+h(\widehat{\mathbf b};\boldsymbol\beta,\tau_p)
++\frac P2\log(2\pi)
+-\frac12\log|\mathbf H|.
+$$
+
+Here the curvature matrix has one direction for each passage pair. The
+[worked calculation with observed course data](laplace-approximation.qmd#constructing-the-supertelicity-integrand)
+shows how a conditional mode and curvature enter this objective and checks both
+quantities directly in one dimension.
+
 ## Fitting the paired UCCA model
 
-The function `glmer()` fits a generalized linear mixed model. Here `family = poisson(link = "log")` supplies the conditional count distribution and log link, while `(1 | pair_id)` adds one intercept deviation for each aligned pair. The setting `nAGQ = 1` requests the [Laplace approximation](laplace-approximation.qmd), which approximates the integral over those pair deviations using the height and curvature near each conditional mode. Finally, `bobyqa` names the numerical search algorithm used for the outer optimization. These settings tell the software how to fit the stated probability model; they do not add linguistic assumptions.
+The function `glmer()` fits this marginal likelihood. Here `family = poisson(link = "log")` supplies the conditional count distribution and log link, while `(1 | pair_id)` adds one intercept deviation for each aligned pair. The setting `nAGQ = 1` requests the [Laplace approximation](laplace-approximation.qmd), which approximates each integral using the height and curvature near its conditional mode. Finally, `bobyqa` changes the population coefficients and pair standard deviation in the outer optimization. At every candidate value, the inner calculation must update the pair modes and curvatures before the outer optimizer can compare approximate likelihoods.
 
 ```{r}
 #| label: fit-ucca-poisson
@@ -123,7 +197,10 @@ fit <- glmer(
   data = ucca,
   family = poisson(link = "log"),
   nAGQ = 1L,
-  control = glmerControl(optimizer = "bobyqa")
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
 )
 
 terminal_fit <- glmer(
@@ -133,8 +210,50 @@ terminal_fit <- glmer(
   data = ucca,
   family = poisson(link = "log"),
   nAGQ = 1L,
-  control = glmerControl(optimizer = "bobyqa")
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
 )
+
+scaled_gradient <- function(model) {
+  solve(
+    chol(model@optinfo$derivs$Hessian),
+    model@optinfo$derivs$gradient
+  )
+}
+
+model_diagnostics <- function(model) {
+  fixed_covariance <- as.matrix(vcov(model))
+  c(
+    optimizer_code = model@optinfo$conv$opt,
+    convergence_messages = length(model@optinfo$conv$lme4$messages),
+    maximum_absolute_scaled_gradient = max(abs(scaled_gradient(model))),
+    smallest_fixed_effect_covariance_eigenvalue = min(eigen(
+      fixed_covariance,
+      symmetric = TRUE,
+      only.values = TRUE
+    )$values)
+  )
+}
+
+fit_diagnostics <- rbind(
+  word_exposure = model_diagnostics(fit),
+  terminal_exposure = model_diagnostics(terminal_fit)
+)
+
+stopifnot(
+  all(fit_diagnostics[, "optimizer_code"] == 0),
+  all(fit_diagnostics[, "convergence_messages"] == 0),
+  all(
+    fit_diagnostics[, "maximum_absolute_scaled_gradient"] < 2e-3
+  ),
+  all(
+    fit_diagnostics[, "smallest_fixed_effect_covariance_eigenvalue"] > 0
+  )
+)
+
+fit_diagnostics
 
 data_summary <- c(
   graph_rows = nrow(ucca),
@@ -155,6 +274,167 @@ c(
   sensitivity_rate_ratio_per_terminal = terminal_rate_ratio
 )
 ```
+
+These checks ask whether both outer searches ended normally and whether their
+scaled gradients are close to zero. The scaling uses local curvature so that a
+derivative for the language coefficient can be compared with a derivative for
+the pair standard deviation. The covariance matrix returned by `vcov()` is the
+inverse approximate marginal curvature for the fixed effects near the fitted
+optimum. Its diagonal entries give local variance estimates for the
+coefficients under the Laplace objective. An eigenvalue records the variance
+along one direction determined by this covariance matrix. The positive smallest
+eigenvalue means that every such direction has positive estimated variance;
+the inverse matrix then supplies positive local curvature in those directions.
+
+The estimates from `fit` and `terminal_fit` are approximate maximum likelihood
+estimates under their respective Laplace objectives. We can check that
+approximation directly here because each passage pair contributes a
+one-dimensional integral.
+
+## Reconstructing the paired likelihood
+
+We carry out two checks. First, at the parameters returned by the Laplace fit,
+we find the conditional mode and curvature for every observed pair and add its
+Laplace contribution. Second, we refit the same model with fifteen-point
+adaptive Gaussian quadrature. This calculation replaces each integral with a
+weighted sum of integrand values placed around its conditional mode, using more
+points to record the shape away from that mode. We then numerically integrate
+every pair contribution at both sets of fitted parameters, which gives both
+fits a common likelihood scale.
+
+```{r}
+#| label: ucca-poisson-likelihood-verification
+pair_log_integrand <- function(b, pair_rows, beta, tau) {
+  vapply(b, function(pair_deviation) {
+    linear_predictor <-
+      log(pair_rows$word_count) +
+      beta[["(Intercept)"]] +
+      beta[["languagefr"]] * (pair_rows$language == "fr") +
+      pair_deviation
+    sum(dpois(
+      pair_rows$scene_count,
+      lambda = exp(linear_predictor),
+      log = TRUE
+    )) + dnorm(
+      pair_deviation,
+      mean = 0, # dqr-allow: symbolic-derivation
+      sd = tau,
+      log = TRUE
+    )
+  }, numeric(1))
+}
+
+pair_mode <- function(pair_rows, beta, tau) {
+  optimize(
+    function(b) -pair_log_integrand(b, pair_rows, beta, tau),
+    interval = c(-8 * tau - 4, 8 * tau + 4) # dqr-allow: algorithm-setting
+  )$minimum
+}
+
+reconstructed_laplace_log_likelihood <- function(model, data) {
+  beta <- fixef(model)
+  tau <- unname(attr(VarCorr(model)$pair_id, "stddev"))
+  sum(vapply(split(data, data$pair_id), function(pair_rows) {
+    mode <- pair_mode(pair_rows, beta, tau)
+    linear_predictor <-
+      log(pair_rows$word_count) +
+      beta[["(Intercept)"]] +
+      beta[["languagefr"]] * (pair_rows$language == "fr") +
+      mode
+    curvature <- sum(exp(linear_predictor)) + 1 / tau^2
+    pair_log_integrand(mode, pair_rows, beta, tau) +
+      0.5 * log(2 * pi) -
+      0.5 * log(curvature)
+  }, numeric(1)))
+}
+
+integrated_log_likelihood <- function(model, data) {
+  beta <- fixef(model)
+  tau <- unname(attr(VarCorr(model)$pair_id, "stddev"))
+  sum(vapply(split(data, data$pair_id), function(pair_rows) {
+    mode <- pair_mode(pair_rows, beta, tau)
+    peak <- pair_log_integrand(mode, pair_rows, beta, tau)
+    standardized_integral <- integrate(
+      function(b) {
+        exp(pair_log_integrand(b, pair_rows, beta, tau) - peak)
+      },
+      lower = -Inf,
+      upper = Inf,
+      rel.tol = 1e-10,
+      subdivisions = 500L
+    )$value
+    peak + log(standardized_integral)
+  }, numeric(1)))
+}
+
+quadrature_fit <- glmer(
+  scene_count ~ language +
+    offset(log(word_count)) +
+    (1 | pair_id),
+  data = ucca,
+  family = poisson(link = "log"),
+  nAGQ = 15L,
+  control = glmerControl(
+    optimizer = "bobyqa",
+    optCtrl = list(maxfun = 200000L)
+  )
+)
+
+reconstructed_laplace <- reconstructed_laplace_log_likelihood(fit, ucca)
+software_laplace <- as.numeric(logLik(fit))
+manual_integrated <- c(
+  laplace_parameters = integrated_log_likelihood(fit, ucca),
+  quadrature_parameters = integrated_log_likelihood(quadrature_fit, ucca)
+)
+quadrature_diagnostics <- model_diagnostics(quadrature_fit)
+fixed_effect_difference <- max(abs(
+  fixef(fit) - fixef(quadrature_fit)
+))
+pair_standard_deviation_difference <- abs(
+  attr(VarCorr(fit)$pair_id, "stddev") -
+    attr(VarCorr(quadrature_fit)$pair_id, "stddev")
+)
+
+stopifnot(
+  abs(reconstructed_laplace - software_laplace) < 1e-3,
+  quadrature_diagnostics[["optimizer_code"]] == 0,
+  quadrature_diagnostics[["convergence_messages"]] == 0,
+  quadrature_diagnostics[["maximum_absolute_scaled_gradient"]] < 2e-3,
+  abs(diff(manual_integrated)) < 1e-3,
+  fixed_effect_difference < 1e-3,
+  pair_standard_deviation_difference < 1e-3
+)
+
+data.frame(
+  reconstructed_pairwise_laplace = reconstructed_laplace,
+  glmer_laplace_log_likelihood = software_laplace,
+  absolute_difference = abs(reconstructed_laplace - software_laplace)
+)
+
+data.frame(
+  fitted_parameters = c("Laplace", "Fifteen-point quadrature"),
+  manually_integrated_log_likelihood = unname(manual_integrated),
+  maximum_absolute_scaled_gradient = c(
+    max(abs(scaled_gradient(fit))),
+    quadrature_diagnostics[["maximum_absolute_scaled_gradient"]]
+  )
+)
+
+c(
+  largest_fixed_effect_difference = fixed_effect_difference,
+  pair_standard_deviation_difference =
+    pair_standard_deviation_difference
+)
+```
+
+The reconstructed pairwise sum agrees with the value reported for the Laplace
+fit. The fifteen-point fit uses a different internal objective normalization in
+`glmer()`, so its printed `logLik()` value is not directly comparable with the
+Laplace value. The numerical integrations above avoid that problem: they
+evaluate the same Poisson masses and normal densities for both fitted parameter
+sets. Their near equality, together with the coefficient and standard deviation
+comparisons, shows that increasing the quadrature order barely changes this
+particular fit.
 
 The mathematical pieces map to the fitting call as follows:
 

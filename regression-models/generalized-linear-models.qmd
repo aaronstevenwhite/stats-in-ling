@@ -25,7 +25,7 @@ st[which(st$verb_type == "result")[[1L]], c(
 )]
 ```
 
-First, $Y_i\in\{0,1\}$ records this participant's *for* or *in* choice. Second, the result indicator equals one, so the predictor sum is $\beta_0+\beta_1$. Third, the inverse logit converts that unrestricted sum into a probability between zero and one. For an observed manner verb row, the indicator equals zero and the same calculation reduces to $\beta_0$. Repeating these operations for every row gives the GLM likelihood.
+First, $Y_i\in\{0,1\}$ records this participant's *for* or *in* choice. Second, the result indicator equals one, so the predictor sum is $\beta_0+\beta_1$. Third, the inverse logit converts that unrestricted sum into a probability between zero and one. For an observed manner verb row, the indicator equals zero and the same calculation reduces to $\beta_0$. Repeating these operations gives one conditional mean for every row. To obtain the [likelihood](../statistical-inference/maximum-likelihood.qmd), we evaluate the Bernoulli mass at each observed choice and multiply those masses under the conditional independence assumption.
 
 Recall that a [random variable](../random-variables-and-distributions/why-random-variables.qmd) assigns a numerical value to each possible outcome. A [conditional probability](../foundations/conditional-probability.qmd) restricts the comparison to rows with supplied predictor values. When we later multiply row probabilities, we will be using an [independence](../foundations/independence.qmd) assumption. And when we report uncertainty, keep the response [variance](../random-variables-and-distributions/variance-and-covariance.qmd), which describes variation in choices, separate from a coefficient [standard error](../statistical-inference/standard-errors.qmd), which describes variation in an estimator across hypothetical samples. <!-- dqr-allow: symbolic-derivation -->
 
@@ -49,6 +49,8 @@ raw$n <- as.integer(table(st$verb_type))
 raw$fitted <- predict(fit, newdata = raw, type = "response")
 raw
 ```
+
+The later [IRLS derivation](iteratively-reweighted-least-squares.qmd) shows how `glm()` searches for the coefficients that maximize this likelihood. For current purposes, we use the resulting coefficients to work out the fitted probabilities.
 
 The response component is $Y_i\mid\pi_i\sim\operatorname{Bernoulli}(\pi_i)$, the systematic component is
 
@@ -80,7 +82,7 @@ ggplot(plot_data, aes(verb_type, estimate, shape = kind, group = kind)) +
 
 The fitted values coincide with the two raw group proportions because a two-parameter model is saturated for two group means. This agreement does not erase the row structure: the likelihood is built from `r nrow(st)` binary choices contributed by repeated participants and sentences.
 
-To see what changes in a nonsaturated model, add duration with only one common slope. The model now estimates fewer cell-specific features than the data could support, so fitted probabilities need not equal every empirical subgroup proportion.
+To see what changes in a nonsaturated model, restrict attention to the episodic rows and add the temporal magnitude selected by the participant. On these rows, the participant supplied a numeral and time unit along with the preposition. Duration and preposition are thus jointly elicited responses. A common duration slope describes how the two recorded choices vary together; it cannot tell us how changing an event's duration would cause the preposition choice to change. The model now estimates fewer cell-specific features than the data could support, so fitted probabilities need not equal every empirical subgroup proportion.
 
 ```{r}
 #| label: nonsaturated-supertelicity-glm
@@ -90,6 +92,11 @@ st$duration_centered <- st$log_duration_minutes -
 nonsaturated_rows <- complete.cases(
   st[, c("prep_in", "verb_type", "duration_centered")]
 )
+stopifnot(
+  sum(nonsaturated_rows) == 5380L,
+  all(st$clause_type[nonsaturated_rows] == "episodic"),
+  all(is.na(st$log_duration_minutes[st$clause_type == "generic"]))
+)
 nonsaturated <- glm(prep_in ~ verb_type + duration_centered,
                     family = binomial(link = "logit"),
                     data = st[nonsaturated_rows, ])
@@ -98,7 +105,7 @@ head(data.frame(observed = st$prep_in[nonsaturated_rows],
                 fitted_probability = predict(nonsaturated, type = "response")))
 ```
 
-We use this population GLM to work through the response distribution, linear predictor, and link. The SuperTelicity analysis additionally represents dependence among participants and items, so its uncertainty and inferential target differ from the quantities computed here. The current fit describes the observed population contrast under standard errors that treat rows as independent; the design supplies no causal interpretation of verb type.
+We use this population GLM to work through the response distribution, linear predictor, and link. The SuperTelicity analysis additionally represents dependence among participants and items, so its uncertainty and inferential target differ from the quantities computed here. The verb-type contrast describes the observed rows under standard errors that treat them as independent. The duration slope is further restricted to episodic responses and summarizes two choices made together. Neither coefficient has a causal interpretation under this design.
 
 ## Recap and check
 

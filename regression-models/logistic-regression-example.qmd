@@ -52,6 +52,68 @@ $$
 \qquad \eta_i=\beta_0+\beta_1\operatorname{result}_i.
 $$
 
+The [logistic score and Hessian](iteratively-reweighted-least-squares.qmd)
+give the large sample coefficient covariance estimate
+
+$$
+\widehat{\operatorname{Var}}
+(\widehat{\boldsymbol\beta})
+=
+(\mathbf X^\top\widehat{\mathbf W}\mathbf X)^{-1},
+\qquad
+\widehat{\mathbf W}
+=
+\operatorname{diag}
+\{\widehat\pi_i(1-\widehat\pi_i)\}.
+$$
+
+For a group design row $\mathbf x_g$, the fitted log odds are
+$\widehat\eta_g=\mathbf x_g^\top\widehat{\boldsymbol\beta}$ and their estimated
+variance is
+
+$$
+\widehat{\operatorname{Var}}(\widehat\eta_g)
+=
+\mathbf x_g^\top
+\widehat{\operatorname{Var}}(\widehat{\boldsymbol\beta})
+\mathbf x_g.
+$$
+
+```{r}
+#| label: logistic-application-information-check
+X <- model.matrix(fit)
+pi_hat <- fitted(fit)
+coefficient_covariance_by_hand <- solve(crossprod(
+  X,
+  X * as.numeric(pi_hat * (1 - pi_hat))
+))
+coefficient_covariance_from_glm <- vcov(fit)
+
+group_design <- model.matrix(~ verb_type, data = groups)
+group_link_se_by_hand <- sqrt(diag(
+  group_design %*%
+    coefficient_covariance_by_hand %*%
+    t(group_design)
+))
+
+stopifnot(
+  max(abs(
+    coefficient_covariance_by_hand - coefficient_covariance_from_glm
+  )) < 1e-8,
+  max(abs(group_link_se_by_hand - link_prediction$se.fit)) < 1e-7
+)
+
+data.frame(
+  verb_type = groups$verb_type,
+  direct_link_standard_error = group_link_se_by_hand,
+  predict_link_standard_error = link_prediction$se.fit
+)
+```
+
+The inverse Hessian treats the fitted likelihood curvature as an approximation
+to sampling variation in the coefficients. The direct matrix calculation
+reproduces both `vcov()` and the standard errors returned by `predict()`.
+
 ```{r}
 #| label: logistic-application-plot
 #| echo: true
@@ -82,13 +144,89 @@ with(groups, c(result_minus_manner = fitted[verb_type == "result"] -
 
 For a likelihood based comparison, `confint()` uses a **profile likelihood**. To profile one coefficient, we hold it at a sequence of candidate values and maximize over the remaining coefficients at each candidate. The resulting likelihood curve tells us which candidate values remain sufficiently compatible with the observed data, without requiring the curve to be exactly quadratic near the estimate. The endpoints below remain on the coefficient's log odds scale until transformed.
 
+For a candidate result-verb coefficient $b_1$, write
+
+$$
+\ell_{\mathrm{profile}}(b_1)
+=
+\max_{b_0}\ell(b_0,b_1).
+$$
+
+A 95% profile likelihood interval retains candidate values satisfying
+
+$$
+2\left[
+\ell(\widehat\beta_0,\widehat\beta_1)
+-\ell_{\mathrm{profile}}(b_1)
+\right]
+\leq
+\chi^2_{1,.95}.
+$$
+
+The endpoints occur where the two sides are equal. We solve those equations
+directly from the observed SuperTelicity choices.
+
 ```{r}
 #| label: logistic-profile-interval
 #| echo: true
-profile_link <- suppressMessages(confint(fit, parm = "verb_typeresult"))
-data.frame(scale = c("log odds", "odds ratio"),
-           lower = c(profile_link[1], exp(profile_link[1])),
-           upper = c(profile_link[2], exp(profile_link[2])))
+bernoulli_log_likelihood <- function(intercept, slope, y, result) {
+  eta <- intercept + slope * result
+  log_normalizer <- pmax(eta, 0) + log1p(exp(-abs(eta)))
+  sum(y * eta - log_normalizer)
+}
+
+profile_log_likelihood <- function(slope) {
+  intercept_search <- optimize(
+    function(intercept) -bernoulli_log_likelihood(
+      intercept,
+      slope,
+      y = st$prep_in,
+      result = as.numeric(st$verb_type == "result")
+    ),
+    interval = c(-20, 20),
+    tol = 1e-12
+  )
+  -intercept_search$objective
+}
+
+maximum_log_likelihood <- as.numeric(logLik(fit))
+cutoff <- qchisq(0.95, df = 1)
+profile_equation <- function(slope) {
+  2 * (maximum_log_likelihood - profile_log_likelihood(slope)) - cutoff
+}
+slope_estimate <- coef(fit)[["verb_typeresult"]]
+slope_se <- coef(summary(fit))["verb_typeresult", "Std. Error"]
+direct_profile_link <- c(
+  lower = uniroot(
+    profile_equation,
+    c(slope_estimate - 10 * slope_se, slope_estimate),
+    tol = 1e-10
+  )$root,
+  upper = uniroot(
+    profile_equation,
+    c(slope_estimate, slope_estimate + 10 * slope_se),
+    tol = 1e-10
+  )$root
+)
+software_profile_link <- suppressMessages(confint(
+  fit,
+  parm = "verb_typeresult"
+))
+
+stopifnot(
+  max(abs(direct_profile_link - software_profile_link)) < 1e-3,
+  max(abs(vapply(
+    direct_profile_link,
+    profile_equation,
+    numeric(1L)
+  ))) < 1e-6
+)
+
+data.frame(
+  scale = c("log odds", "odds ratio"),
+  lower = c(direct_profile_link[[1L]], exp(direct_profile_link[[1L]])),
+  upper = c(direct_profile_link[[2L]], exp(direct_profile_link[[2L]]))
+)
 ```
 
 The intervals shown use the GLM's row independence assumption so that we can work through the calculation. The source paper obtains its inferential result from a model that also represents repeated participants and sentence materials. The observed contrast likewise supplies no evidence that verb type causes a completion choice.

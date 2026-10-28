@@ -11,7 +11,7 @@ An **ordinal response** supplies an order without supplying numerical distances.
 
 The basic idea is to model cumulative probabilities: the probability of *no*, and the probability of *no or maybe*. Recall that a [cumulative distribution function](../random-variables-and-distributions/cumulative-distribution-functions.qmd) gives the probability at or below a value. Two cumulative probabilities therefore determine all three category probabilities. We will connect them to predictors with two ordered boundaries, which we call **cutpoints**.
 
-We first derive cumulative category probabilities, then interpret one shared predictor shift across both thresholds and check the proportional-odds restriction.
+We first derive cumulative category probabilities and the likelihood they determine, then we interpret one shared predictor shift across both thresholds and check the proportional-odds restriction.
 
 The response asks whether the inference targeted by the item is supported, using the ordered labels *no*, *maybe*, and *yes*. The direct task presents the target without conditional embedding; the conditional task places the item in a conditional antecedent. Sentence text is absent from the prepared table, so we do not reconstruct it. The table does retain verb, complement frame, polarity, task, ordinal response, and a separate 1--7 acceptability judgment.
 
@@ -25,8 +25,6 @@ stopifnot(nrow(mv) == 14951L, length(unique(mv$verb)) == 375L,
 mv$outcome <- ordered(mv$response, levels = c("no", "maybe", "yes"))
 mv$polarity <- factor(mv$polarity, levels = c("positive", "negative"))
 mv$task <- factor(mv$task, levels = c("direct", "conditional"))
-fit <- clm(outcome ~ polarity * task, data = mv, link = "logit", Hess = TRUE)
-coef(summary(fit))
 ```
 
 The next rows show one actual direct record and one actual conditional record. Each row retains a participant's measurement; we have not averaged responses to the verb level.
@@ -81,6 +79,253 @@ $$
 $$
 
 Order alone leaves the cumulative link unspecified. Choosing the logistic CDF gives an interpretable odds scale and connects to [logistic regression](logistic-regression.qmd); a probit link would impose a different latent error shape. The thresholds locate category boundaries on the model coordinate, without requiring respondents to possess a literal continuous veridicality variable.
+
+## From category probabilities to estimates
+
+We now use the three category probabilities to construct the likelihood. Write $k_i\in\{1,2,3\}$ for the category observed on row $i$, and set $\kappa_0=-\infty$ and $\kappa_3=\infty$. The probability assigned to that observed category is
+
+$$
+p_i
+=F(\kappa_{k_i}-m_i)
+-F(\kappa_{k_i-1}-m_i).
+$$
+
+The [conditional independence](../random-variables-and-distributions/conditional-independence.qmd) assumption lets us multiply the row probabilities and gives
+
+$$
+L(\boldsymbol\beta,\boldsymbol\kappa)
+=\prod_{i=1}^n p_i,
+$$
+
+and hence
+
+$$
+\ell(\boldsymbol\beta,\boldsymbol\kappa)
+=\sum_{i=1}^n\log p_i,
+\qquad
+\kappa_1<\kappa_2.
+$$
+
+This ordering constraint prevents the *maybe* probability from becoming negative. It also means that we cannot maximize the two cutpoints as unrelated real numbers.
+
+The maximum has no closed form expression, so we need the likelihood's derivatives. The **score** collects the first derivatives of the log likelihood with respect to every parameter. For the logistic CDF, define
+
+$$
+f(a)=F(a)[1-F(a)].
+$$
+
+This function is the logistic probability density, which is also the derivative of $F$. Because increasing $m_i$ subtracts the same amount from both category boundaries,
+
+$$
+\frac{\partial p_i}{\partial m_i}
+=f(\kappa_{k_i-1}-m_i)
+-f(\kappa_{k_i}-m_i).
+$$
+
+The row's derivative with respect to its fitted location is thus
+
+$$
+u_i
+=\frac{\partial\log p_i}{\partial m_i}
+=
+\frac{
+f(\kappa_{k_i-1}-m_i)
+-f(\kappa_{k_i}-m_i)
+}{p_i}.
+$$
+
+If $m_i=\mathbf x_i^\mathsf T\boldsymbol\beta$, the coefficient score is
+
+$$
+\mathbf U_{\boldsymbol\beta}
+=\mathbf X^\mathsf T\mathbf u.
+$$
+
+The cutpoint derivatives have a similar form. Let $\mathbb I(k_i=c)$ equal one when row $i$ has category $c$ and zero otherwise. Cutpoint $\kappa_c$ is the upper boundary for category $c$ and the lower boundary for category $c+1$, so
+
+$$
+\frac{\partial\ell}{\partial\kappa_c}
+=\sum_i
+\frac{f(\kappa_c-m_i)}{p_i}
+\left[
+\mathbb I(k_i=c)-\mathbb I(k_i=c+1)
+\right],
+\qquad c\in\{1,2\}.
+$$
+
+These coefficient and cutpoint derivatives together form the score vector. Collect all parameters in
+
+$$
+\boldsymbol\vartheta
+=(\kappa_1,\kappa_2,\boldsymbol\beta^\mathsf T)^\mathsf T.
+$$
+
+We can now write the full curvature compactly. The symbol $\nabla_{\boldsymbol\vartheta}$ means that we differentiate with respect to every entry of $\boldsymbol\vartheta$. If $\mathbf g_i=\nabla_{\boldsymbol\vartheta}p_i$ collects the first derivatives of row probability $p_i$ and $\mathbf Q_i=\nabla_{\boldsymbol\vartheta}^2p_i$ collects its second derivatives, then
+
+$$
+\mathbf U(\boldsymbol\vartheta)
+=\sum_i\frac{\mathbf g_i}{p_i},
+$$
+
+and
+
+$$
+\mathbf H(\boldsymbol\vartheta)
+=\sum_i
+\left[
+\frac{\mathbf Q_i}{p_i}
+-\frac{\mathbf g_i\mathbf g_i^\mathsf T}{p_i^2}
+\right].
+$$
+
+The second term appears because differentiating $\log p_i$ divides by $p_i$.
+We can make the entries visible before using the compact matrices. Define the
+upper and lower boundary arguments for the observed category as
+
+$$
+r_i=\kappa_{k_i}-m_i,
+\qquad
+\ell_i=\kappa_{k_i-1}-m_i,
+\qquad
+p_i=F(r_i)-F(\ell_i).
+$$
+
+We already found
+
+$$
+\frac{\partial p_i}{\partial m_i}
+=f(\ell_i)-f(r_i).
+$$
+
+Differentiating once more gives
+
+$$
+\frac{\partial^2p_i}{\partial m_i^2}
+=f'(r_i)-f'(\ell_i),
+$$
+
+and the second derivative of the row log likelihood is
+
+$$
+\frac{\partial^2\log p_i}{\partial m_i^2}
+=
+\frac{f'(r_i)-f'(\ell_i)}{p_i}
+-
+\left[
+\frac{f(\ell_i)-f(r_i)}{p_i}
+\right]^2.
+$$
+
+Because $m_i=\mathbf x_i^\mathsf T\boldsymbol\beta$, the row's coefficient
+curvature is this scalar multiplied by
+$\mathbf x_i\mathbf x_i^\mathsf T$. For a cutpoint $\kappa_c$, define
+
+$$
+s_{ic}=\mathbb I(k_i=c)-\mathbb I(k_i=c+1).
+$$
+
+Then
+
+$$
+\frac{\partial p_i}{\partial\kappa_c}
+=f(\kappa_c-m_i)s_{ic},
+$$
+
+$$
+\frac{\partial^2\log p_i}
+{\partial m_i\,\partial\kappa_c}
+=
+-\frac{f'(\kappa_c-m_i)s_{ic}}{p_i}
+-
+\frac{
+[f(\ell_i)-f(r_i)]f(\kappa_c-m_i)s_{ic}
+}{p_i^2},
+$$
+
+and
+
+$$
+\frac{\partial^2\log p_i}
+{\partial\kappa_c\,\partial\kappa_d}
+=
+\frac{
+\mathbb I(c=d)f'(\kappa_c-m_i)s_{ic}
+}{p_i}
+-
+\frac{
+f(\kappa_c-m_i)s_{ic}
+f(\kappa_d-m_i)s_{id}
+}{p_i^2}.
+$$
+
+Multiplying the mixed derivative by $\mathbf x_i$ supplies the
+coefficient--cutpoint block. These entries fill $\mathbf g_i$ and
+$\mathbf Q_i$. For the logistic distribution, the remaining density derivative
+is
+
+$$
+f'(a)=f(a)[1-2F(a)].
+$$
+
+Thus the **Hessian** records the derivative of every score component with respect to every parameter, including the relations between a coefficient and a cutpoint. Recall that a [matrix inverse](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates) reverses a linear transformation. Here it converts the score into a simultaneous movement of the cutpoints and coefficients. As in the [earlier calculation](iteratively-reweighted-least-squares.qmd), Newton's method replaces the curved score by a local linear approximation and moves to its zero. The update takes the form
+
+$$
+\boldsymbol\vartheta^{(t+1)}
+=\boldsymbol\vartheta^{(t)}
+-
+\left[
+\mathbf H(\boldsymbol\vartheta^{(t)})
+\right]^{-1}
+\mathbf U(\boldsymbol\vartheta^{(t)}).
+$$
+
+The numerical search recalculates the probabilities, score, and Hessian after each move, while preserving $\kappa_1<\kappa_2$. At the fitted maximum, the score should be approximately zero. The negative Hessian is the observed information, so its inverse gives the usual local covariance approximation:
+
+$$
+\widehat{\operatorname{Var}}(\widehat{\boldsymbol\vartheta})
+\approx
+\left[-\mathbf H(\widehat{\boldsymbol\vartheta})\right]^{-1}.
+$$
+
+We now fit the model to the observed MegaVeridicality responses. The first check reconstructs the log likelihood by summing the log probability assigned to each observed category. The fitting object stores the score under the name `gradient` and stores the negative log likelihood's Hessian under `Hessian`. The remaining checks inspect the fitted score and compare the inverse stored curvature with the covariance matrix used for the printed standard errors.
+
+```{r}
+#| label: fit-and-check-megaveridicality-clm
+#| echo: true
+fit <- clm(
+  outcome ~ polarity * task,
+  data = mv,
+  link = "logit",
+  Hess = TRUE
+)
+
+observed_category_probability <- predict(fit, type = "prob")$fit
+manual_log_likelihood <- sum(log(observed_category_probability))
+software_log_likelihood <- as.numeric(logLik(fit))
+inverse_curvature <- solve(fit$Hessian)
+
+ordinal_fit_check <- data.frame(
+  quantity = c(
+    "absolute log likelihood difference",
+    "largest absolute score component",
+    "largest covariance difference"
+  ),
+  value = c(
+    abs(manual_log_likelihood - software_log_likelihood),
+    max(abs(fit$gradient)),
+    max(abs(inverse_curvature - vcov(fit)))
+  )
+)
+ordinal_fit_check
+stopifnot(
+  ordinal_fit_check$value[[1L]] < 1e-6,
+  ordinal_fit_check$value[[2L]] < 1e-5,
+  ordinal_fit_check$value[[3L]] < 1e-8
+)
+coef(summary(fit))
+```
+
+The summed probabilities for the observed categories reproduce the fitted log likelihood. The approximately zero score marks a [**stationary point**](https://mathworld.wolfram.com/StationaryPoint.html), a point with zero first derivative, and the covariance agreement shows that the printed standard errors come from the fitted curvature.
 
 ## Interpreting one coefficient at both boundaries
 
@@ -142,13 +387,17 @@ The coefficients for negative polarity and its interaction with task differ acro
 1. Why can the labels be ordered without assigning *maybe* the number halfway between *no* and *yes*?
 2. What does proportional odds require at the two cumulative boundaries?
 3. Why do the two binary diagnostics not replace the ordinal model automatically?
+4. Which probability contributes to the likelihood for a row whose observed response is *maybe*?
+5. Where do the standard errors in `coef(summary(fit))` come from?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
 1. Order specifies which category is higher, but it does not specify distances between categories. <!-- dqr-allow: conceptual-answer -->
-2. The same predictor coefficient must shift both cumulative logits. Category-probability changes may still differ. <!-- dqr-allow: conceptual-answer -->
-3. Separate binary fits discard the joint three-category likelihood and need not yield coherent probabilities across all categories. They diagnose the shared-shift restriction. <!-- dqr-allow: conceptual-answer -->
+2. The same predictor coefficient must shift both cumulative logits. Changes in category probabilities may still differ. <!-- dqr-allow: conceptual-answer -->
+3. Separate binary fits discard the joint likelihood for the three categories and need not yield coherent probabilities across all categories. They diagnose the shared shift restriction. <!-- dqr-allow: conceptual-answer -->
+4. It contributes $F(\kappa_2-m_i)-F(\kappa_1-m_i)$, the difference between the two cumulative probabilities. <!-- dqr-allow: symbolic-derivation -->
+5. The fitting procedure inverts the negative Hessian at the fitted parameters and takes square roots of its diagonal entries. <!-- dqr-allow: conceptual-answer -->
 
 </details>
 
