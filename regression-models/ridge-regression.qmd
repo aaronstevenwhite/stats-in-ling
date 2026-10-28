@@ -7,42 +7,48 @@ execute:
   message: false
 ---
 
-[**Ridge regression**](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) adds a squared-coefficient penalty to the least-squares objective stated below.
+[**Ridge regression**](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) adds a squared coefficient penalty to the least squares objective stated below.
 
-The penalty changes the estimator, so its [expected value and variance](../random-variables-and-distributions/expected-values.qmd) and its [standard error](../statistical-inference/standard-errors.qmd) need not match OLS. The rowwise loss is combined under the model's [independence](../foundations/independence.qmd) assumptions. Here $\lambda$ is chosen by held-out squared error, a preview of [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd), rather than by the training objective alone. We call the penalty's pull toward zero [**shrinkage**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html). It may help with correlated MALD predictors, but it cannot settle whether onset-to-response time isolates acoustic duration.
+The penalty changes the estimator, so its [expected value and variance](../random-variables-and-distributions/expected-values.qmd) and its [standard error](../statistical-inference/standard-errors.qmd) need not match OLS. Summing rowwise squared discrepancies defines the fitting criterion without requiring independence; [independence](../foundations/independence.qmd) instead enters the likelihood interpretation and claims about new items. Here $\lambda$ is chosen by held-out squared error, a preview of [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd), rather than by the training objective alone. We call the penalty's pull toward zero [**shrinkage**](https://glmnet.stanford.edu/articles/glmnet.html). It may help with correlated MALD predictors, while the measurement question of whether onset-to-response time isolates acoustic duration remains.
 
-A **validation fold** is one subset held aside for evaluation while the other subsets are used for fitting. We first define the penalty and its scaling, then select it using one fixed assignment of MALD items to validation folds and inspect the resulting coefficient path.
+A **validation fold** is one subset held aside while the other subsets are used
+for fitting. The **development sample** contains the data used to choose
+$\lambda$, while the **test sample** remains untouched until that choice is
+complete. A **coefficient path** traces each fitted coefficient across penalty
+strengths. We first define the penalty and its scaling, then select it in the
+development sample, evaluate the selected model on the test sample, and inspect
+the coefficient path.
 
-Why might shrinking help? Suppose phone count and syllable count carry nearly the same information. Ordinary least squares may fit the data with a large positive coefficient on one and a large negative coefficient on the other, even though their combined prediction is modest. A squared-coefficient penalty prefers a smaller pair when it achieves nearly the same fit. We pay for that stability by pulling the estimates toward zero.
+Why might shrinking help? Suppose phone count and syllable count carry nearly the same information. Ordinary least squares may fit the data with a large positive coefficient on one and a large negative coefficient on the other, even though their combined prediction is modest. A squared coefficient penalty prefers a smaller pair when it achieves nearly the same fit. We pay for that stability by pulling the estimates toward zero.
 
 $$
 \widehat{\boldsymbol\beta}^{\,\text{ridge}}(\lambda)
 =
 \arg\min_{\beta_0,\boldsymbol\beta}
 \left[
-\sum_i
+\frac{1}{2n}\sum_i
 \left(y_i-\beta_0-\mathbf x_i^\top\boldsymbol\beta\right)^2
-+\lambda\sum_j\beta_j^2
++\frac{\lambda}{2}\sum_j\beta_j^2
 \right].
 $$
 
-The symbol $\lambda$ names the **penalty strength**. At $\lambda=0$, the added term vanishes and the criterion reduces to ordinary least squares. As $\lambda$ grows, coefficient size matters more relative to training error. The notation $\arg\min$ means “the argument that minimizes”: here, the coefficient values that make the bracketed criterion smallest.
+The symbol $\lambda$ names the **penalty strength**. At $\lambda=0$, the added term vanishes and the criterion reduces to ordinary least squares. As $\lambda$ grows, coefficient size matters more relative to training error. The notation $\arg\min$ means “the argument that minimizes”: here, the coefficient values that make the bracketed criterion smallest. The factors $1/(2n)$ and $1/2$ state the numerical convention used by [`glmnet`](https://glmnet.stanford.edu/articles/glmnet.html), which we use below.
 
 The intercept is left unpenalized. Recall from [centering and scaling](centering-predictors.qmd) that **standardization** subtracts a training sample mean and divides by a training sample standard deviation. It must be estimated from the training data so that the penalty is comparable across columns without using information from held-out items.
 
-To see the scaling problem, record the same duration in two different units. Changing the unit rescales the coefficient so that the fitted contribution remains unchanged. A penalty applied directly to the raw coefficients would nevertheless treat those two representations differently. Standardizing each predictor to a common training-set scale makes the penalty depend on fitted contribution rather than on an arbitrary measurement unit.
+To see the scaling problem, record the same duration in two different units. Changing the unit rescales the coefficient so that the fitted contribution remains unchanged. A penalty applied directly to the raw coefficients would nevertheless treat those two representations differently. Standardizing each predictor using a scale estimated from the training data makes the penalty depend on fitted contribution rather than on an arbitrary measurement unit.
 
 After centering the response and standardizing the predictor columns, differentiate the penalized objective:
 
 $$
--2\mathbf X^\top(\mathbf y-\mathbf X\boldsymbol\beta)
-+2\lambda\boldsymbol\beta=\mathbf 0.
+-\frac{1}{n}\mathbf X^\top(\mathbf y-\mathbf X\boldsymbol\beta)
++\lambda\boldsymbol\beta=\mathbf 0.
 $$
 
 Thus
 
 $$
-(\mathbf X^\top\mathbf X+\lambda\mathbf I)\widehat{\boldsymbol\beta}^{\,\text{ridge}}
+(\mathbf X^\top\mathbf X+n\lambda\mathbf I)\widehat{\boldsymbol\beta}^{\,\text{ridge}}
 =\mathbf X^\top\mathbf y,
 $$
 
@@ -50,18 +56,98 @@ and
 
 $$
 \widehat{\boldsymbol\beta}^{\,\text{ridge}}
-=(\mathbf X^\top\mathbf X+\lambda\mathbf I)^{-1}\mathbf X^\top\mathbf y.
+=(\mathbf X^\top\mathbf X+n\lambda\mathbf I)^{-1}\mathbf X^\top\mathbf y.
 $$
 
-Adding $\lambda\mathbf I$ stabilizes coefficient directions with weak design support, but it introduces bias toward zero. The hoped-for gain is lower prediction variance, the [bias--variance tradeoff](../model-criticism-and-prediction/bias-variance-tradeoff.qmd), not guaranteed improvement.
+Adding $n\lambda\mathbf I$ introduces bias toward zero while potentially reducing prediction variance, the [bias--variance tradeoff](../model-criticism-and-prediction/bias-variance-tradeoff.qmd). Whether prediction improves remains an empirical question.
 
-## New-item validation in MALD
+## Penalties and priors {#penalties-and-priors}
 
-We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning folds by item is also a row split. `glmnet` estimates standardization separately inside each training-fold fit.
+There is a second way to arrive at exactly the same coefficient estimate. Begin
+with the Gaussian response model from [Bayesian regression](bayesian-linear-regression.qmd),
+but for the moment treat $\sigma^2$ and $\lambda$ as fixed. Give each standardized
+slope a conditionally independent zero centered normal prior:
 
-We cycle through the validation folds so that every item receives a prediction from a model that did not use that item's response. The resulting squared errors estimate performance for the declared target: another word item drawn under comparable measurement and filtering procedures.
+$$
+\beta_j\mid\sigma^2,\lambda
+\overset{\mathrm{iid}}{\sim}
+\mathcal N\left(0,\frac{\sigma^2}{n\lambda}\right).
+$$
 
-This is a **new-item validation target**: the held-out unit is one word item, the score is row-weighted squared error, and every center, scale, and coefficient is learned without that item. Ten folds are a declared computational compromise between training-set size and repeated fitting. The 80-point log-spaced penalty grid covers weak through strong shrinkage; neither ten nor 80 is a mathematical constant.
+The intercept still receives no penalty. Larger $\lambda$ now means a smaller
+prior variance, so the prior places more of its probability near zero. A
+**posterior kernel** retains the part of the posterior density that depends on
+the parameter and omits multiplicative constants that cannot change its shape.
+The Gaussian likelihood and coefficient prior give the kernel
+
+$$
+\begin{aligned}
+p(\boldsymbol\beta\mid\mathbf y,\mathbf X,\sigma^2,\lambda)
+&\propto
+\exp\left\{
+-\frac{1}{2\sigma^2}
+(\mathbf y-\mathbf X\boldsymbol\beta)^\mathsf T
+(\mathbf y-\mathbf X\boldsymbol\beta)
+\right\} \\
+&\quad\times
+\exp\left\{
+-\frac{n\lambda}{2\sigma^2}
+\boldsymbol\beta^\mathsf T\boldsymbol\beta
+\right\}.
+\end{aligned}
+$$
+
+The **posterior mode** is the coefficient vector where this density is highest.
+Taking the negative logarithm turns the product into a sum. Terms that do not
+contain $\boldsymbol\beta$ cannot change the location of the mode, so we minimize
+
+$$
+\frac{1}{2\sigma^2}
+(\mathbf y-\mathbf X\boldsymbol\beta)^\mathsf T
+(\mathbf y-\mathbf X\boldsymbol\beta)
++
+\frac{n\lambda}{2\sigma^2}
+\boldsymbol\beta^\mathsf T\boldsymbol\beta.
+$$
+
+Multiplying by the positive constant $2\sigma^2$ cannot change which coefficient
+vector minimizes the expression. What remains is the ridge objective:
+
+$$
+(\mathbf y-\mathbf X\boldsymbol\beta)^\mathsf T
+(\mathbf y-\mathbf X\boldsymbol\beta)
++
+n\lambda\boldsymbol\beta^\mathsf T\boldsymbol\beta.
+$$
+
+Dividing this last expression by $2n$ returns the objective used above. Thus
+ridge regression is the posterior mode under this Gaussian coefficient prior
+when the same definition of $\lambda$ is used. This equality concerns one point estimate. A Bayesian analysis retains
+the whole posterior distribution, and it may also assign distributions to
+$\sigma^2$ and $\lambda$ rather than fixing them.
+
+The correspondence extends beyond ridge. Replacing the normal prior with a
+zero centered **Laplace prior**, whose density decreases in proportion to
+$\exp(-c|\beta_j|)$ for a positive constant $c$, replaces the squared penalty
+with $\sum_j|\beta_j|$. The resulting posterior mode is the **lasso** estimate.
+The sharper peak at zero allows lasso to set some coefficient estimates exactly
+to zero, whereas ridge generally leaves every coefficient nonzero.
+
+A potential worry is that selecting $\lambda$ by validation and assigning a
+coefficient prior are interchangeable scientific acts. The algebra connects
+their point estimates, but the justifications differ. In the validation below,
+$\lambda$ is chosen to predict held out MALD items. In a Bayesian analysis, the
+prior scale should express assumptions about plausible standardized
+coefficients before the responses are used, or we should place a [prior on that
+scale](random-effects.qmd#shrinkage-and-borrowing-strength).
+
+## Validation on new MALD items
+
+We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning items to folds is also a row split. `glmnet` estimates standardization separately within each fit to training data.
+
+We separate model selection from evaluation. First, we hold out one fifth of the items as an outer test set and leave them untouched while selecting $\lambda$. Within the remaining items, we cycle through ten validation folds and choose a penalty from those validation errors. We then fit once to all remaining items and evaluate both ridge and OLS on the outer test set.
+
+We therefore evaluate prediction for a new word item. Each outer test item contributes equally to the squared error, and the mean, standard deviation, and coefficients are estimated from the remaining items. We use ten inner folds so that most development observations remain available for each fit, and we evaluate 80 penalty values spaced evenly on the log scale. These choices organize the calculation; neither number is determined by the model.
 
 For one held-out item, squared error is the squared difference between its observed and predicted response. **Mean squared error (MSE)** averages those values over items. **Root mean squared error (RMSE)** takes the square root of MSE, returning the score to the response's log time units. Smaller values indicate more accurate predictions under this loss.
 
@@ -78,25 +164,30 @@ X <- model.matrix(
 y <- mald$mean_log_rt
 
 n_folds <- 10L
+test_proportion <- 0.2
 set.seed(20261020)
-fold_id <- sample(rep(seq_len(n_folds), length.out = nrow(mald)))
+outer_test <- sample(
+  c(TRUE, FALSE),
+  size = nrow(mald),
+  replace = TRUE,
+  prob = c(test_proportion, 1 - test_proportion)
+)
+development_rows <- which(!outer_test)
+test_rows <- which(outer_test)
+fold_id <- sample(rep(seq_len(n_folds), length.out = length(development_rows)))
 penalty_grid <- 10^seq(-5, 1, length.out = 80L)
 ridge_mixing <- 0
 fold_mse <- matrix(NA_real_, nrow = n_folds, ncol = length(penalty_grid))
-ridge_predictions <- matrix(
-  NA_real_,
-  nrow = nrow(mald),
-  ncol = length(penalty_grid)
-)
-ols_predictions <- rep(NA_real_, nrow(mald))
+fold_sizes <- integer(n_folds)
 
 for (fold in seq_len(n_folds)) {
-  training <- fold_id != fold
-  testing <- !training
+  inner_training_rows <- development_rows[fold_id != fold]
+  inner_validation_rows <- development_rows[fold_id == fold]
+  fold_sizes[[fold]] <- length(inner_validation_rows)
 
   ridge_fit <- glmnet(
-    x = X[training, , drop = FALSE],
-    y = y[training],
+    x = X[inner_training_rows, , drop = FALSE],
+    y = y[inner_training_rows],
     alpha = ridge_mixing,
     lambda = penalty_grid,
     standardize = TRUE,
@@ -104,21 +195,15 @@ for (fold in seq_len(n_folds)) {
   )
   current_predictions <- predict(
     ridge_fit,
-    newx = X[testing, , drop = FALSE],
+    newx = X[inner_validation_rows, , drop = FALSE],
     s = penalty_grid
   )
-  ridge_predictions[testing, ] <- current_predictions
-  fold_mse[fold, ] <- colMeans((y[testing] - current_predictions)^2)
-
-  ols_fit <- lm(
-    mean_log_rt ~ log_frequency_subtlex + log_duration +
-      n_phones + n_syllables,
-    data = mald[training, ]
+  fold_mse[fold, ] <- colMeans(
+    (y[inner_validation_rows] - current_predictions)^2
   )
-  ols_predictions[testing] <- predict(ols_fit, newdata = mald[testing, ])
 }
 
-mean_mse <- colMeans(fold_mse)
+mean_mse <- colSums(fold_mse * fold_sizes) / sum(fold_sizes)
 se_mse <- apply(fold_mse, 2, sd) / sqrt(n_folds)
 minimum_index <- which.min(mean_mse)
 one_se_candidates <- which(
@@ -127,21 +212,46 @@ one_se_candidates <- which(
 one_se_index <- max(one_se_candidates)
 lambda_min <- penalty_grid[minimum_index]
 lambda_one_se <- penalty_grid[one_se_index]
-ridge_one_se_prediction <- ridge_predictions[, one_se_index]
 
-ridge_rmse <- sqrt(mean((y - ridge_one_se_prediction)^2))
-ols_rmse <- sqrt(mean((y - ols_predictions)^2))
+selected_ridge_fit <- glmnet(
+  x = X[development_rows, , drop = FALSE],
+  y = y[development_rows],
+  alpha = ridge_mixing,
+  lambda = lambda_one_se,
+  standardize = TRUE,
+  intercept = TRUE
+)
+ridge_test_prediction <- as.numeric(predict(
+  selected_ridge_fit,
+  newx = X[test_rows, , drop = FALSE],
+  s = lambda_one_se
+))
+
+ols_fit <- lm(
+  mean_log_rt ~ log_frequency_subtlex + log_duration +
+    n_phones + n_syllables,
+  data = mald[development_rows, ]
+)
+ols_test_prediction <- predict(
+  ols_fit,
+  newdata = mald[test_rows, ]
+)
+
+ridge_rmse <- sqrt(mean((y[test_rows] - ridge_test_prediction)^2))
+ols_rmse <- sqrt(mean((y[test_rows] - ols_test_prediction)^2))
 
 stopifnot(
   nrow(mald) == length(unique(mald$item)),
-  all(is.finite(ridge_one_se_prediction)),
-  all(is.finite(ols_predictions)),
+  all(is.finite(ridge_test_prediction)),
+  all(is.finite(ols_test_prediction)),
+  length(intersect(development_rows, test_rows)) == 0L,
   lambda_one_se >= lambda_min
 )
 
 data.frame(
   method = c("ridge: one-SE rule", "ordinary least squares"),
-  held_out_rmse = c(ridge_rmse, ols_rmse)
+  outer_test_items = length(test_rows),
+  outer_test_rmse = c(ridge_rmse, ols_rmse)
 )
 ```
 
@@ -155,13 +265,13 @@ $$
 \{\widehat L(\lambda_{\min})\}.
 $$
 
-It deliberately trades a small estimated loss increase for a simpler, more stable coefficient vector. The fold standard error is descriptive across these ten folds; folds are not ten independent repetitions of the population.
+It deliberately trades a small estimated loss increase for a simpler, more stable coefficient vector. The fold standard error describes variation among these ten inner folds. Interpreting it as variation across ten independent population samples would overstate the available replication.
 
 ```{r}
 #| label: show-mald-ridge-path
 full_path <- glmnet(
-  x = X,
-  y = y,
+  x = X[development_rows, , drop = FALSE],
+  y = y[development_rows],
   alpha = 0, # dqr-allow: algorithm-setting
   lambda = penalty_grid,
   standardize = TRUE,
@@ -182,13 +292,13 @@ ggplot(path_data, aes(lambda, estimate, linetype = coefficient)) +
   theme_classic(base_size = 11)
 ```
 
-The paths show the algorithmic consequence of increasing $\lambda$: coefficients contract toward zero, with correlated directions sharing the adjustment.
+The paths show what happens as $\lambda$ increases: coefficients contract toward zero, with correlated directions sharing the adjustment.
 
-The minimum error penalty is `r format(lambda_min, digits = 4)`, while the one standard error penalty is `r format(lambda_one_se, digits = 4)`. The RMSE for new items is `r sprintf("%.6f", ridge_rmse)` for the ridge fit selected by that rule and `r sprintf("%.6f", ols_rmse)` for OLS.
+The inner validation calculation selects a minimum error penalty of `r format(lambda_min, digits = 4)` and a one standard error penalty of `r format(lambda_one_se, digits = 4)`. On the outer test items, the RMSE is `r sprintf("%.6f", ridge_rmse)` for the ridge fit selected by that rule and `r sprintf("%.6f", ols_rmse)` for OLS.
 
 ```{r}
 #| label: plot-mald-ridge-validation
-#| fig-cap: "Validation error for new items across the ridge penalty grid. The solid and dashed lines mark the minimum error and one standard error choices."
+#| fig-cap: "Inner validation error across the ridge penalty grid. The solid and dashed lines mark the minimum error and one standard error choices."
 validation_curve <- data.frame(
   lambda = penalty_grid,
   rmse = sqrt(mean_mse)
@@ -204,11 +314,11 @@ ggplot(validation_curve, aes(lambda, rmse)) +
     linewidth = 0.5
   ) +
   scale_x_log10() +
-  labs(x = "Ridge penalty", y = "New-item cross-validated RMSE") +
+  labs(x = "Ridge penalty", y = "Inner validation RMSE") +
   theme_classic(base_size = 12)
 ```
 
-Ridge does not beat OLS in this comparison. That outcome is part of the lesson: shrinkage changes the bias--variance tradeoff, but it does not guarantee lower predictive loss in a particular dataset.
+For this outer test set, ridge has `r if (ridge_rmse < ols_rmse) "lower" else "higher"` RMSE than OLS. Shrinkage changes the bias--variance balance, and its predictive value depends on the data and prediction target.
 
 ## Recap and check your understanding
 
@@ -221,9 +331,9 @@ Ridge does not beat OLS in this comparison. That outcome is part of the lesson: 
 <summary>Answers</summary>
 
 1. All non-intercept predictor coefficients are penalized; the intercept is left unpenalized. <!-- dqr-allow: empirical-answer -->
-2. Full-data standardization uses held-out predictor values to set the penalty scale, so validation no longer evaluates a purely training-fitted new-item procedure and its error estimate may be biased. <!-- dqr-allow: empirical-answer -->
+2. Standardization using all observations uses held-out predictor values to set the penalty scale, so validation no longer evaluates a procedure fitted only to training data and its error estimate may be biased. <!-- dqr-allow: empirical-answer -->
 3. One MALD word item is held out; because every item appears once, the item split is also a row split. <!-- dqr-allow: empirical-answer -->
-4. In these fixed folds, one-SE ridge has higher new-item RMSE than OLS, so shrinkage does not improve this observed prediction comparison. <!-- dqr-allow: empirical-answer -->
+4. The outer test RMSE directly compares predictions from ridge and OLS for items that were excluded from fitting and from selecting $\lambda$. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
