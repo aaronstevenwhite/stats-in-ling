@@ -124,6 +124,23 @@ singularity_check <- c(
 )
 singularity_check
 
+profiled_reml_gradient <- function(model) {
+  numDeriv::grad(
+    getME(model, "devfun"),
+    getME(model, "theta"),
+    method = "Richardson"
+  )
+}
+
+overfit_gradient <- profiled_reml_gradient(overfit)
+revised_gradient <- profiled_reml_gradient(revised)
+stopifnot(
+  length(overfit_gradient) == length(getME(overfit, "theta")),
+  length(revised_gradient) == length(getME(revised, "theta")),
+  all(is.finite(overfit_gradient)),
+  all(is.finite(revised_gradient))
+)
+
 objective_check <- data.frame(
   model = c("Interaction slope requested", "Interaction slope removed"),
   restricted_log_likelihood = c(
@@ -131,8 +148,8 @@ objective_check <- data.frame(
     as.numeric(logLik(revised))
   ),
   maximum_absolute_gradient = c(
-    max(abs(overfit@optinfo$derivs$gradient)),
-    max(abs(revised@optinfo$derivs$gradient))
+    max(abs(overfit_gradient)),
+    max(abs(revised_gradient))
   )
 )
 objective_check
