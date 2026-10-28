@@ -5,15 +5,40 @@ execute:
   message: false
 ---
 
-A [**link function**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) maps a constrained conditional mean to the real-valued linear predictor. We continue with SuperTelicity, where the response is an *in* choice and the first-use source and design are introduced on the [preceding page](why-generalized-linear-models.qmd).
+We have two scales to connect. On the response scale, the fitted probability of an *in* choice must remain between zero and one. On the regression scale, a sum such as $\beta_0+\beta_1x_i$ can take any real value. Recall that this sum is called the [**linear predictor**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214): it combines each predictor value with its coefficient and then adds the products.
 
-This page addresses the **link-choice problem**. A valid link must be one-to-one on the mean space, but the support of that space does not select a unique link. For a Bernoulli mean, the logit, probit, and complementary log-log links are all valid. They instead encode different assumptions about how a real-valued predictor approaches zero and one.
+We will write this sum as $\eta_i$. The symbol only gives the linear predictor a short name. We already use $x_i$ for an observed predictor and $y_i$ for an observed response, so using a third symbol keeps those three quantities distinct. The Greek letter adds no further mathematical assumption.
+
+The basic idea is to use a reversible translation between the two scales. A [**link function**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214) translates a conditional mean to the real line. Its **inverse link** translates the result back to the response scale. “Reversible” means that each allowable mean maps to exactly one regression-scale value and maps back to the same mean. This is what **one-to-one** means here.
+
+The translation below uses odds before we develop them in detail. For current purposes, [odds](odds-and-log-odds.qmd) compare the probability of an *in* response with the probability of a *for* response, $p/(1-p)$. Log odds take the natural logarithm of that ratio. We will return to their interpretation before using them to interpret regression coefficients.
+
+Before writing the formula, consider the two probabilities actually observed in the SuperTelicity verb groups. The code computes each probability from that group's *in* responses and then applies the proposed translations.
+
+```{r}
+#| label: observed-link-scales
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
+observed_link_scales <- aggregate(prep_in ~ verb_type, st, mean)
+names(observed_link_scales)[[2L]] <- "probability_in"
+observed_link_scales$odds_in <- with(
+  observed_link_scales,
+  probability_in / (1 - probability_in)
+)
+observed_link_scales$log_odds_in <- log(observed_link_scales$odds_in)
+observed_link_scales
+```
+
+The group with probability below one half maps to negative log odds, while the group above one half maps to positive log odds. A probability of exactly one half would map to zero because its odds would be one.
+
+The logit link performs exactly this translation. We continue with the SuperTelicity response, whose [measurement and row structure](why-generalized-linear-models.qmd) we have already worked through.
+
+A potential worry is that the zero--one range uniquely forces this particular translation. It does not. The **link-choice problem** is that several reversible functions keep predictions in the correct range, while making different assumptions about how a change on the regression scale behaves near zero and one.
 
 ```{r}
 #| label: load-and-fit-link
 #| echo: true
-st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
-st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
 st$duration_centered <- st$log_duration_minutes -
   mean(st$log_duration_minutes, na.rm = TRUE)
 st <- st[!is.na(st$duration_centered), ]
@@ -82,24 +107,44 @@ ggplot() +
   theme_classic()
 ```
 
-The model is additive in $\eta_i$ but curved in $\pi_i$. A constant coefficient is a constant change in log odds, not in probability. The link changes neither the Bernoulli support nor the observed response. It connects the linear predictor to the family mean.
+The model is additive in $\eta_i$ but curved in $\pi_i$. A coefficient gives a constant change in log odds; the corresponding probability change varies with the baseline. The link leaves the Bernoulli support and observed response unchanged while connecting the linear predictor to the family mean.
 
-For instance, the same one-unit logit coefficient has different response-scale consequences at different baselines.
+For instance, the fitted result verb coefficient has different consequences for response probabilities at two duration values observed in the data. We use the first and third quartiles of the retained duration values and compare the fitted manner and result probabilities at each value.
 
 ```{r}
 #| label: baseline-dependent-probability-change
 #| echo: true
-baseline <- observed$prep_in
-data.frame(baseline,
-  after_one_log_odds_unit = plogis(qlogis(baseline) + 1),
-  probability_change = plogis(qlogis(baseline) + 1) - baseline)
+observed_duration_quartiles <- unname(quantile(
+  st$duration_centered,
+  probs = c(.25, .75)
+))
+contrast_rows <- data.frame(
+  duration_centered = rep(observed_duration_quartiles, each = 2L),
+  verb_type = factor(
+    rep(c("manner", "result"), times = length(observed_duration_quartiles)),
+    levels = levels(st$verb_type)
+  )
+)
+contrast_rows$fitted_probability <- predict(
+  fit,
+  newdata = contrast_rows,
+  type = "response"
+)
+data.frame(
+  duration_centered = observed_duration_quartiles,
+  manner_probability = contrast_rows$fitted_probability[c(1L, 3L)],
+  result_probability = contrast_rows$fitted_probability[c(2L, 4L)],
+  result_minus_manner =
+    contrast_rows$fitted_probability[c(2L, 4L)] -
+    contrast_rows$fitted_probability[c(1L, 3L)]
+)
 ```
 
-For count means the analogous construction uses $\log\lambda_i=\eta_i$ and $\lambda_i=e^{\eta_i}>0$. Thus support constrains a link choice, but it does not determine that choice. A link is not a device for making a histogram look normal.
+For count means the analogous construction uses $\log\lambda_i=\eta_i$ and $\lambda_i=e^{\eta_i}>0$. Thus support constrains a link choice, but it does not determine that choice. The link maps a conditional mean between scales; the response family determines the modeled distributional shape.
 
 ## Recap and check
 
 1. Does a Bernoulli response force the logit link? No. It forces predicted means into $(0,1)$; scientific and computational considerations distinguish valid links.
 2. If a logit coefficient is one, is the probability change one? No. The coefficient is a one-unit log odds change, and the corresponding probability change depends on the baseline.
 
-The [GLM template](generalized-linear-models.qmd) next keeps the response distribution, linear predictor, and link separate.
+We can now assemble the response distribution, linear predictor, and link in the [generalized linear model](generalized-linear-models.qmd).

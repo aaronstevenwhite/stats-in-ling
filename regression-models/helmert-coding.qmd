@@ -11,6 +11,8 @@ Some categorical predictors have an order that licenses planned comparisons. [**
 
 The fitted row contributions factor under the same [independence](../foundations/independence.qmd) assumption as the underlying regression. Coding changes comparisons among recorded MALD item groups; it does not change their selection process or create experimental independence.
 
+Recall from [contrast coding](coding-categorical-predictors.qmd) that a coding column assigns one numerical weight to each category, and the coefficient meaning follows from those weights. Helmert coding is useful when the categories have a meaningful order and our question concerns successive stages in that order.
+
 ## Ordered syllable bands in MALD
 
 We group item syllable counts into one, two, three, and four-or-more syllables. The open top band is internally heterogeneous, so these contrasts do not represent equal one-syllable steps.
@@ -31,7 +33,9 @@ $$
 
 The columns compare two versus one, three versus the earlier-band average, and four-or-more versus the earlier-band average. Because the columns are not divided by their squared lengths, coefficient magnitude depends on this displayed scaling.
 
-For toy fitted means $(6.0,6.2,6.5,6.9)$, the successive mean differences are $.2$, $.4$, and approximately $.667$. Under R's displayed scaling, the corresponding coefficients divide those contrasts by 2, 3, and 4. This is why a raw Helmert coefficient is not itself always the named mean difference.
+Work through the second column. Its weights are $-1$, $-1$, $2$, and $0$. The zero leaves the final band out of the comparison. The two negative weights combine the first two bands, while the positive weight singles out the third. Because the weights sum to zero, a common upward shift in every fitted band mean cancels and the column retains only a comparison among bands.
+
+Let the four adjusted band means be $m_1,m_2,m_3,$ and $m_{4+}$. The named differences are $m_2-m_1$, $m_3-(m_1+m_2)/2$, and $m_{4+}-(m_1+m_2+m_3)/3$. Under R's displayed scaling, the corresponding coefficients divide these differences by 2, 3, and 4. Thus we need both the coding weights and the coefficient to recover a named mean difference. We calculate the differences from the fitted MALD band means below.
 
 ```{r}
 #| label: fit-mald-helmert-coding
@@ -77,6 +81,25 @@ prediction_data$fit <- interval[, "fit"]
 prediction_data$low <- interval[, "lwr"]
 prediction_data$high <- interval[, "upr"]
 
+helmert_comparisons <- data.frame(
+  comparison = c(
+    "two minus one",
+    "three minus mean of one and two",
+    "four-plus minus mean of earlier bands"
+  ),
+  fitted_mean_difference = c(
+    prediction_data$fit[[2]] - prediction_data$fit[[1]],
+    prediction_data$fit[[3]] - mean(prediction_data$fit[1:2]), # dqr-allow: symbolic-derivation
+    prediction_data$fit[[4]] - mean(prediction_data$fit[1:3]) # dqr-allow: symbolic-derivation
+  ),
+  coefficient_times_scale = c(
+    2 * coef(fit)[["syllable_band1"]],
+    3 * coef(fit)[["syllable_band2"]],
+    4 * coef(fit)[["syllable_band3"]]
+  )
+)
+helmert_comparisons
+
 point_opacity <- 0.06
 ggplot(mald, aes(syllable_band, mean_log_rt)) +
   geom_jitter(color = "grey70", alpha = point_opacity, width = 0.16, height = 0, size = 0.55) +
@@ -90,7 +113,9 @@ ggplot(mald, aes(syllable_band, mean_log_rt)) +
   theme_classic(base_size = 12)
 ```
 
-Orthogonality of the coding columns is an algebraic property. It does not make the observed item groups balanced, independent, or causally interpretable.
+Each row in `helmert_comparisons` uses the adjusted means estimated from the observed MALD word items. The last two columns agree because the scaling factors recover exactly the comparisons named by the Helmert columns.
+
+Two coding columns are **orthogonal** when their dot product, the sum of their rowwise products, equals zero. This algebraic property keeps the declared contrast directions perpendicular in the coded design. It gives us no guarantee that the observed item groups are balanced, statistically independent, or causally interpretable.
 
 ## Recap and check your understanding
 
@@ -103,10 +128,10 @@ Orthogonality of the coding columns is an algebraic property. It does not make t
 <summary>Answers</summary>
 
 1. The first Helmert column compares the fitted two-syllable mean with the fitted one-syllable mean. <!-- dqr-allow: empirical-answer -->
-2. The coefficient multiplies the displayed contrast column; because the column is not unit-normalized, the actual mean difference is twice the first coefficient. <!-- dqr-allow: empirical-answer -->
+2. The coefficient multiplies the displayed contrast column; because the column has not been scaled to length one, the actual mean difference is twice the first coefficient. <!-- dqr-allow: empirical-answer -->
 3. The four-or-more-syllable band contains every item with at least four syllables, so its members differ internally and the boundary comparison is not a fixed one-syllable increment. <!-- dqr-allow: empirical-answer -->
 4. No. Orthogonality is a property of the coding columns; it does not make observed item properties or groups statistically independent. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [next page](inverse-helmert-coding.qmd) reverses the direction of the successive grouping.
+We next use [reverse Helmert coding](inverse-helmert-coding.qmd) to reverse the direction of the successive grouping.

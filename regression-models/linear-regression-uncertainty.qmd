@@ -7,13 +7,23 @@ execute:
   message: false
 ---
 
-The fitted Provo regression slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a repeated-sampling model.
+The fitted Provo regression slope is one estimate. **Regression uncertainty** describes how that estimator would vary under a model for repeated samples.
 
-The repeated-sampling calculation treats the [aggregated Provo design](regression-models.qmd#provo-word-position-data) as its observation structure: one response is a word-position mean among readers with retained positive first fixations, and the predictor is modeled cloze surprisal, the negative base-two logarithm of a fitted cloze probability. It does not reconstruct uncertainty across the reader trials removed by aggregation.
+The repeated sampling calculation treats the [aggregated Provo design](regression-models.qmd#provo-word-position-data) as its observation structure: one response is a mean for a word position among readers with retained positive first fixations, and the predictor is modeled cloze surprisal, the negative base 2 logarithm of a fitted cloze probability. It does not reconstruct uncertainty across the reader trials removed by aggregation.
 
-The derivation uses a [**design matrix**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133), whose rows encode observations and whose columns multiply coefficients; the [design-matrix page](design-matrices.qmd) develops that representation later. A **residual** is provisionally observed minus fitted response and receives its full treatment on the [residual page](residuals.qmd). Under [independent](../foundations/independence.qmd) errors, their [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) determine the sampling covariance of $\widehat{\boldsymbol\beta}$. Posterior uncertainty instead conditions on the observed data and uses a [posterior distribution](../statistical-inference/posterior-distributions.qmd).
+The derivation uses a [**design matrix**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=133), whose rows encode observations and whose columns multiply coefficients; we develop that representation fully under [design matrices](design-matrices.qmd). A **residual** is provisionally observed minus fitted response; the discussion of [residuals](residuals.qmd) derives its properties. Under [independent](../foundations/independence.qmd) errors, their [variance and covariance](../random-variables-and-distributions/variance-and-covariance.qmd) determine the sampling covariance of $\widehat{\boldsymbol\beta}$. Posterior uncertainty instead conditions on the observed data and uses a [posterior distribution](../statistical-inference/posterior-distributions.qmd).
 
 Two uncertainty targets share the same fitted line but differ by one variance term: the conditional mean and a new response. Deriving the OLS covariance shows exactly where that distinction enters.
+
+Before using the matrix formula, consider the result for one predictor. With an intercept, the conventional slope variance is
+
+$$
+\operatorname{Var}[\widehat\beta_1\mid\mathbf x]
+=
+\frac{\sigma^2}{\sum_i(x_i-\overline x)^2}.
+$$
+
+The numerator, $\sigma^2$, measures how widely responses vary around the line. The denominator measures how widely the observed predictor values are spread. A noisier response makes slopes harder to pin down, while a broader predictor range makes it easier to distinguish one slope from another. The matrix calculation packages this same logic for several coefficients whose estimates may vary together.
 
 ## Conventional OLS uncertainty
 
@@ -24,6 +34,8 @@ $$
 \qquad
 \boldsymbol\varepsilon\sim\mathcal N(\mathbf 0,\sigma^2\mathbf I).
 $$
+
+The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance) builds matrix multiplication from row-by-column scalar products. In the present equation, each row of $\mathbf X$ contains the coefficient multipliers for one observation, so $\mathbf X\boldsymbol\beta$ contains one conditional mean per observation. The vector $\boldsymbol\varepsilon$ contains the corresponding deviations from those means. The symbol $\mathbf I$ denotes the identity matrix: ones on the diagonal and zeros elsewhere. Multiplying by $\sigma^2$ therefore assigns every error the same variance and every distinct pair covariance zero.
 
 The OLS estimator is
 
@@ -37,6 +49,8 @@ Write
 $$
 \mathbf A=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top.
 $$
+
+Calling a matrix an **inverse** means that multiplying it by the original matrix returns the identity matrix, just as multiplying a nonzero number $a$ by $a^{-1}=1/a$ returns $1$. The derivation under [least squares](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates) works through why this inverse appears. For now, $\mathbf A$ is simply the fixed set of weights that turns the response vector into the coefficient estimates.
 
 Conditional on the observed design matrix, $\widehat{\boldsymbol\beta}=\mathbf A\mathbf Y$. The covariance propagation rule from [standard errors](../statistical-inference/standard-errors.qmd) gives
 
@@ -53,12 +67,15 @@ $$
 \end{aligned}
 $$
 
-Because a linear transformation of a normal vector is normal,
+The covariance identity above uses only the second moments of the response. The Gaussian model adds a distributional result: multiplying a jointly normal response vector by fixed weights produces another jointly normal vector because each new coordinate is a weighted sum of the original coordinates. Thus
 
 $$
-\operatorname{Var}[\widehat{\boldsymbol\beta}\mid\mathbf X]
-=
-\sigma^2(\mathbf X^\top\mathbf X)^{-1}.
+\widehat{\boldsymbol\beta}\mid\mathbf X
+\sim
+\mathcal N\!\left(
+\boldsymbol\beta,
+\sigma^2(\mathbf X^\top\mathbf X)^{-1}
+\right).
 $$
 
 Replacing $\sigma^2$ with
@@ -69,7 +86,7 @@ $$
 
 gives the conventional covariance estimate. Here $p$ is the number of fitted coefficients, including the intercept.
 
-Why divide by $n-p$ rather than $n$? Fitting $p$ linearly independent coefficients imposes $p$ constraints on the residual vector. Under the Gaussian linear model,
+Why divide by $n-p$ rather than $n$? Recall that [degrees of freedom](../random-variables-and-distributions/chi-squared-distribution.qmd) count the independent pieces left after fitted constraints are imposed. Fitting $p$ linearly independent coefficients imposes $p$ constraints on the residual vector, leaving $n-p$ degrees of freedom. Under the Gaussian linear model,
 
 $$
 \frac{\operatorname{SSE}}{\sigma^2}\sim\chi^2_{n-p},
@@ -85,7 +102,7 @@ $$
 \sim t_{n-p}.
 $$
 
-A two-sided confidence interval adds and subtracts the appropriate $t_{n-p}$ critical value. Its repeated-sampling interpretation is the one developed on the [confidence-interval page](../statistical-inference/confidence-intervals.qmd); it is not a posterior probability for the fixed coefficient.
+A two-sided confidence interval adds and subtracts the appropriate $t_{n-p}$ critical value. Recall from [confidence intervals](../statistical-inference/confidence-intervals.qmd) that the probability statement concerns the long-run behavior of the interval procedure. It does not assign a posterior probability to the fixed coefficient.
 
 ```{r}
 #| label: compute-provo-regression-uncertainty
@@ -129,7 +146,9 @@ data.frame(
 
 The conventional slope standard error is `r sprintf("%.6f", conventional_se[["cloze_surprisal_c"]])`; the passage-clustered HC1 sensitivity estimate is `r sprintf("%.6f", cluster_se[["cloze_surprisal_c"]])`. The latter allows arbitrary residual dependence within the observed passages while treating passages as independent clusters.
 
-The clustered estimator replaces the model-based middle covariance with a sum of passage-level score outer products, then surrounds that empirical middle by the same design “bread.” Intuitively, positions in one passage may move together, so the 55 passage score totals, not 1,593 position rows, supply cluster replication. HC1 applies a finite-sample scaling; it does not make 55 selected passages a random sample of every English text.
+The clustered estimator first adds one outer product for each passage and then multiplies that sum on the left and right by the matrices that convert responses into coefficient estimates. A **score** records the direction in which one passage pushes the coefficient estimates. Its **outer product** multiplies that score vector by its transposed row, producing a matrix that records how those pushes vary together. This three-part multiplication is called a **sandwich covariance estimator** because the summed score products sit between the two design matrices.
+
+Intuitively, positions in one passage may move together, so the 55 passage score totals, rather than 1,593 position rows, supply cluster replication. HC1 multiplies the basic cluster covariance by $G/(G-1)\times(n-1)/(n-p)$, where $G$ is the number of passages, $n$ is the number of position rows, and $p$ is the number of fitted coefficients. This correction adjusts the covariance for the finite numbers of clusters and observations; it cannot turn the 55 selected passages into a random sample of every English text.
 
 This sensitivity calculation does not recover reader variation. The raw readers were removed by aggregation, so neither uncertainty estimate substitutes for a participant-by-item model.
 
@@ -153,7 +172,7 @@ $$
 
 Thus a prediction interval is wider than a confidence interval for the mean.
 
-`predict.lm(..., interval="confidence")` implements the first variance and uses the $t_{n-p}$ critical value. `interval="prediction"` adds the new residual variance represented by the extra 1. Both intervals rely on the linear mean, independent Gaussian errors, and common residual variance for their exact finite-sample form.
+`predict.lm(..., interval="confidence")` implements the first variance and uses the $t_{n-p}$ critical value. `interval="prediction"` adds the new residual variance represented by the extra 1. Both intervals rely on the linear mean, independent Gaussian errors, and common residual variance for their exact finite sample form.
 
 ```{r}
 #| label: plot-provo-regression-uncertainty
@@ -210,7 +229,7 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
 1. Which assumption yields the factor $\sigma^2\mathbf I$?
 2. Why does the response prediction variance contain an extra $1$?
 3. Which grouping unit does the clustered sensitivity analysis retain?
-4. Why can it not represent reader-level uncertainty?
+4. Why can it not represent uncertainty across readers?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -218,8 +237,8 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
 1. Independent, homoscedastic errors with common variance $\sigma^2$ yield $\operatorname{Var}[\boldsymbol\varepsilon\mid\mathbf X]=\sigma^2\mathbf I$. <!-- dqr-allow: empirical-answer -->
 2. A new response contains both uncertainty in the fitted mean and a new observation error with variance $\sigma^2$, represented by the extra $1$. <!-- dqr-allow: empirical-answer -->
 3. The passage-clustered HC1 sensitivity analysis retains the Provo passage as the clustering unit through `Text_ID`. <!-- dqr-allow: empirical-answer -->
-4. The item-position table has already aggregated away reader identities and trial-level responses, so reader covariance cannot be estimated. <!-- dqr-allow: empirical-answer -->
+4. The table of item positions has already aggregated away reader identities and individual trial responses, so reader covariance cannot be estimated. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [next page](coefficient-of-determination.qmd) measures the reduction in squared error relative to a mean-only baseline.
+We next measure the [reduction in squared error](coefficient-of-determination.qmd) relative to a mean-only baseline.

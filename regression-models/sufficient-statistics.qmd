@@ -5,11 +5,28 @@ execute:
   message: false
 ---
 
-A statistic is **sufficient** for a parameter when, under the stated model, it retains all sample information about that parameter. The [maximum likelihood page](../statistical-inference/maximum-likelihood.qmd) treats the observed responses as fixed while comparing parameter values, and the [binomial page](../random-variables-and-distributions/binomial-distribution.qmd) describes a count obtained from independent Bernoulli trials. The factorization theorem makes the compression claim precise in the equation below.
+We begin with four observed SuperTelicity rows: two *in* responses and two *for* responses. The identifiers remain visible so that the compression we are about to study does not masquerade as a claim that participants or sentences are interchangeable.
+
+```{r}
+#| label: observed-sufficiency-rows
+#| echo: true
+st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+observed_sufficiency_rows <- st[c(
+  which(st$prep_in == 1L)[1:2],
+  which(st$prep_in == 0L)[1:2]
+), c("participant_id", "sentence_id", "verb", "verb_type", "preposition", "prep_in")]
+observed_sufficiency_rows
+```
+
+If our model contains only one common probability of an *in* response, the parameter-dependent likelihood uses the two successes and two failures. Reordering these four observed values would not change that intercept only likelihood. Once the predictors and identifiers matter to the model, however, we may no longer reorder the rows.
+
+This is a form of data compression. A **statistic** is any function computed from the sample; the total $\sum_iY_i$ is one such function. A statistic is **sufficient** for a parameter when, under the stated model, the statistic retains all the sample information relevant to that parameter. “Under the stated model” matters: once predictor values or participant identities enter, the arrangement of the responses may matter again.
+
+Recall that [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed responses fixed while comparing parameter values. Also recall that a [binomial count](../random-variables-and-distributions/binomial-distribution.qmd) totals the successes in a fixed number of independent Bernoulli trials. The **factorization theorem** gives us an algebraic test for sufficiency: we must be able to separate the sample probability into one factor that uses the data only through the statistic and another factor that contains no parameter of interest.
 
 The row model uses [independence](../foundations/independence.qmd) to multiply Bernoulli contributions, while the corresponding [PMF](../random-variables-and-distributions/probability-mass-functions.qmd) assigns mass to the resulting count. Sufficiency is always relative to that declared model and parameter; it does not imply that linguistic preprocessing is lossless for every later question.
 
-We first factor the intercept-only Bernoulli likelihood through a count, then show exactly why predictor-bearing row arrangements prevent the same compression.
+We first factor the intercept only Bernoulli likelihood through a count, then show exactly why predictor-bearing row arrangements prevent the same compression. In the equation, $T(\mathbf y)$ is the proposed statistic, $g$ contains all dependence on the parameter $\theta$, and $h$ may depend on the full data but cannot depend on $\theta$.
 
 $$
 p(\mathbf y\mid\theta)=g(T(\mathbf y),\theta)h(\mathbf y),
@@ -20,12 +37,30 @@ where $h$ does not depend on $\theta$. For an intercept-only Bernoulli model of 
 ```{r}
 #| label: supertelicity-sufficient-statistic
 #| echo: true
-st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
 y <- st$prep_in
 n <- length(y)
 s <- sum(y)
 data.frame(outcome = c("for", "in"), count = c(n - s, s))
 ```
+
+The total count is enough for the intercept only probability, but the predictor model needs to know where those responses occurred. The plot decomposes the same observed *in* and *for* totals by verb type. Summing each color across the two bars recovers the sufficient count above; retaining the two bars preserves the verb-type allocation.
+
+```{r}
+#| label: plot-sufficiency-compression
+#| echo: true
+library(ggplot2)
+observed_by_verb <- as.data.frame(table(
+  verb_type = st$verb_type,
+  response = st$preposition
+))
+ggplot(observed_by_verb,
+       aes(verb_type, Freq, fill = response)) +
+  geom_col(position = "dodge", color = "white") +
+  labs(x = "Verb type", y = "Observed responses", fill = "Response") +
+  theme_classic()
+```
+
+This is why sufficiency must name both the model and the parameter. The overall success count suffices for one common probability; comparing verb types additionally requires knowing how responses are allocated across them.
 
 The joint likelihood is
 
@@ -40,7 +75,7 @@ $$
 \pi^{`r s`}(1-\pi)^{`r n - s`}.
 $$
 
-Every arrangement with these same two totals has the same likelihood for the intercept-only $\pi$. In the four-row illustration below, $1100$ and $1010$ both reduce to $\pi^2(1-\pi)^2$ before predictors are attached to row positions.
+Every arrangement with these same two totals has the same likelihood for the intercept only $\pi$. The calculation below checks the equality for all observed SuperTelicity responses by comparing the rowwise Bernoulli log likelihood with the parameter-dependent part of the corresponding binomial count likelihood.
 
 ```{r}
 #| label: compare-row-and-compressed-likelihood
@@ -55,24 +90,38 @@ c(row_form = row_log_likelihood,
 
 The combinatorial term in the binomial mass does not involve $\pi$; removing it gives the same parameter-dependent log likelihood as the row product.
 
-The Bernoulli row model and the binomial count model are related but not identical sample descriptions. The row likelihood gives one particular response arrangement probability. The binomial PMF sums over all $\binom ns$ arrangements having $s$ successes, which produces the combinatorial constant.
+The Bernoulli row likelihood gives the probability of one particular response arrangement. The binomial PMF instead sums over all $\binom ns$ arrangements having $s$ successes, which produces the combinatorial constant.
 
-This equivalence breaks as soon as a predictor attaches meaning to row position. The two response vectors below contain the same number of successes. They have the same intercept-only likelihood but different likelihoods when the first two rows have predictor value zero and the last two have value one.
+This equivalence breaks as soon as a predictor attaches meaning to row position. We now construct two groups of four observed SuperTelicity records. Group A contains two *in* responses for manner verbs and two *for* responses for result verbs. Group B contains one *in* and one *for* response at each verb type. Both groups contain two successes, but they distribute those successes differently across the observed predictor values.
 
 ```{r}
 #| label: sufficiency-breaks-with-predictors
 #| echo: true
-x <- c(0, 0, 1, 1) # dqr-allow: symbolic-derivation
-y_a <- c(1, 1, 0, 0) # dqr-allow: symbolic-derivation
-y_b <- c(1, 0, 1, 0) # dqr-allow: symbolic-derivation
-pi0 <- .5
-pi_x <- plogis(-1 + 2 * x)
+observed_sets <- list(
+  A = rbind(
+    head(st[st$verb_type == "manner" & st$prep_in == 1L, ], 2L),
+    head(st[st$verb_type == "result" & st$prep_in == 0L, ], 2L)
+  ),
+  B = rbind(
+    head(st[st$verb_type == "manner" & st$prep_in == 1L, ], 1L),
+    head(st[st$verb_type == "manner" & st$prep_in == 0L, ], 1L),
+    head(st[st$verb_type == "result" & st$prep_in == 1L, ], 1L),
+    head(st[st$verb_type == "result" & st$prep_in == 0L, ], 1L)
+  )
+)
+full_verb_fit <- glm(prep_in ~ verb_type, binomial(), st)
+set_likelihood <- function(rows) {
+  intercept_probability <- mean(rows$prep_in)
+  predictor_probability <- predict(full_verb_fit, newdata = rows, type = "response")
+  c(
+    successes = sum(rows$prep_in),
+    intercept_only = sum(dbinom(rows$prep_in, 1L, intercept_probability, log = TRUE)),
+    predictor_model = sum(dbinom(rows$prep_in, 1L, predictor_probability, log = TRUE))
+  )
+}
 data.frame(
-  arrangement = c("1100", "1010"),
-  intercept_only = c(sum(dbinom(y_a, 1, pi0, log = TRUE)),
-                     sum(dbinom(y_b, 1, pi0, log = TRUE))),
-  predictor_model = c(sum(dbinom(y_a, 1, pi_x, log = TRUE)),
-                      sum(dbinom(y_b, 1, pi_x, log = TRUE)))
+  observed_set = names(observed_sets),
+  do.call(rbind, lapply(observed_sets, set_likelihood))
 )
 ```
 
@@ -83,4 +132,4 @@ This compression is model-specific. Once verb type, contentfulness, participant,
 1. May we discard participant IDs because the total number of *in* responses is sufficient for an intercept? No. The sufficiency statement holds only for the stated intercept-only independent Bernoulli model.
 2. Why does `dbinom()` include `choose(n, s)`? It gives the probability of any arrangement with $s$ successes; the row likelihood concerns the particular observed arrangement.
 
-The [odds page](odds-and-log-odds.qmd) now returns to the parameterization used by logistic regression.
+We now return to [odds and log odds](odds-and-log-odds.qmd), the parameterization used by logistic regression.

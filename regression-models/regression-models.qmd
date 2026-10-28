@@ -22,21 +22,25 @@ $$
 
 This function asks how the center of a response changes across observed linguistic contexts. It does not yet require the center to be a straight line.
 
+The vertical bar in $\mathbb{E}[Y\mid X=x]$ tells us to restrict attention to positions having the stated predictor value before taking the mean. If several observed positions share one predictor value, we can average their responses directly. The function $m(x)$ asks for the corresponding center in the modeled population, including at values where the sample provides no exact duplicate.
+
+This distinction between an empirical group mean and a conditional mean function is the first reason to use regression. A table can directly average repeated predictor values. A regression model supplies a rule that connects the centers across predictor values, and we must decide what form that rule should take.
+
 Recall from [conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd) that $X=x$ is held fixed inside this expectation. Before observing a sample, $Y$ and $X$ are [random variables](../random-variables-and-distributions/defining-random-variables.qmd): functions that assign numerical values to outcomes. After observation, $y_i$ and $x_i$ denote the realized position summary and surprisal for row $i$.
 
-## Provo word-position data
+## Provo word position data
 
 We develop this idea with data from the [Provo Corpus](https://osf.io/sjefs/). Luke and Christianson ([2018](https://doi.org/10.3758/s13428-017-0908-4)) collected cloze norms and eye movements for 55 English passages. A **fixation** is an interval during which a reader's eyes remain relatively stable on a region of text. The **first fixation duration (FFD)** for a word is the duration of the first recorded fixation on that word. It differs from gaze duration, which adds first pass refixations, and from total reading time, which can include later returns. The [full Provo data ladder](../statistical-inference/beyond-conjugacy.qmd#provo-data-ladder) introduces the measurement with an example passage and names the conditioning event.
 
-We use FFD because it provides a relatively early word-level measure and is available in the source data. That choice narrows the target to an early local duration rather than later rereading. A reader who skipped the word contributes no positive FFD. The table analyzed here retains content-word positions with the required fields and at least one positive fixation. A row is a word position nested in a passage after FFDs have been aggregated across readers. Passage text and reader-level responses are unavailable in this table, so we inspect the retained fields and link to the source example.
+We use FFD because it provides a relatively early measure for each word and is available in the source data. That choice narrows the target to an early local duration rather than later rereading. A reader who skipped the word contributes no positive FFD. The table analyzed here retains content word positions with the required fields and at least one positive fixation. A row is a word position nested in a passage after FFDs have been aggregated across readers. Passage text and individual reader responses are unavailable in this table, so we inspect the retained fields and link to the source example.
 
-The release variable `OrthoMatchModel` is a fitted cloze probability that avoids exact zero and one. It is not a language-model probability. We call
+The Provo variable `OrthoMatchModel` is a fitted cloze probability that avoids exact zero and one. It comes from the cloze norm fit rather than from a language model. We call
 
 $$
 X_i=-\log_2(\widehat p_i)
 $$
 
-**modeled cloze surprisal**, and let $Y_i$ be the **fixation-contingent mean log FFD** at position $i$.
+**modeled cloze surprisal**, and let $Y_i$ be the **mean log FFD among readers who fixated the word** at position $i$.
 
 ```{r}
 #| label: load-provo-conditional-means
@@ -64,6 +68,27 @@ c(
 )
 ```
 
+We can now make the conditioning operation concrete with observed Provo rows. The code below finds the fitted cloze probability shared by the largest number of retained positions and averages their observed responses. Because surprisal is a one-to-one transformation of this probability, these positions also share one observed surprisal value.
+
+```{r}
+#| label: inspect-provo-repeated-surprisal
+probability_counts <- sort(table(provo$cloze_probability), decreasing = TRUE)
+repeated_probability <- as.numeric(names(probability_counts)[[1L]])
+same_predictor_rows <- subset(
+  provo,
+  cloze_probability == repeated_probability
+)
+
+data.frame(
+  shared_cloze_probability = repeated_probability,
+  shared_surprisal_bits = -log2(repeated_probability),
+  observed_positions = nrow(same_predictor_rows),
+  empirical_conditional_mean = mean(same_predictor_rows$mean_log_ffd)
+)
+```
+
+The final column is the empirical conditional mean among those observed word positions. Regression will connect such conditional centers across the much larger set of observed predictor values.
+
 Here is one actual retained observation. `position_id` joins passage and position; `Word_Number` and `Word_In_Sentence_Number` locate the word; `Word_POS` and `Word_Length` describe it; `OrthoMatchModel` supplies modeled cloze probability; and `n_fixations` records how many positive FFDs contributed to `mean_log_ffd`.
 
 ```{r}
@@ -85,9 +110,9 @@ Y_i
 \log D_{ri}.
 $$
 
-The logarithm is applied to each positive duration before averaging. This choice reduces right skew on the modeled scale and gives every retained reader fixation equal weight within a position. Aggregation makes the later algebra visible and targets the average log FFD among readers who fixated that position, but it removes reader identities, between-reader variation, unequal within-position uncertainty, and the probability of skipping. The [response-transformation page](response-transformations.qmd) returns to the difference between mean duration, mean log duration, and geometric mean.
+The logarithm is applied to each positive duration before averaging. This choice reduces right skew on the modeled scale and gives every retained reader fixation equal weight within a position. Aggregation makes the later algebra visible and targets the average log FFD among readers who fixated that position, but it removes reader identities, variation among readers, unequal uncertainty across positions, and the probability of skipping. The discussion of [response transformations](response-transformations.qmd) returns to the difference between mean duration, mean log duration, and geometric mean.
 
-The retained table contains `r nrow(provo)` positions from `r length(unique(provo$Text_ID))` passages. Reader-level variation is no longer recoverable.
+The retained table contains `r nrow(provo)` positions from `r length(unique(provo$Text_ID))` passages. Variation among readers is no longer recoverable.
 
 ## Estimating a changing center
 
@@ -99,7 +124,9 @@ $$
 \frac{1}{n_b}\sum_{i:X_i\in B_b}Y_i,
 $$
 
-where $B_b$ is surprisal bin $b$ and $n_b$ is its observed number of positions. The bins are a display device, not a fitted regression model.
+where $B_b$ is surprisal bin $b$ and $n_b$ is its observed number of positions. We use the bins only to display local averages; the fitted regression will use the individual observed predictor values.
+
+Here **equal-count** means that we choose the bin boundaries so that each bin contains approximately the same number of observed positions. We then average both the predictor and response within each bin. This operation helps us see whether the conditional center tends to rise, fall, or bend; it does not assert that all predictor values inside a bin are equal.
 
 ```{r}
 #| label: compute-provo-conditional-means
@@ -161,9 +188,9 @@ The bin means tend to increase with modeled cloze surprisal. This pattern licens
 
 1. One observation is a retained content-word position within a Provo passage, with first fixation duration already aggregated across readers. <!-- dqr-allow: empirical-answer -->
 2. Each black point is a bin mean computed from many position summaries, so it estimates a conditional center rather than recording one raw observation. <!-- dqr-allow: empirical-answer -->
-3. Individual reader responses, reader identities, and reader-level variation and dependence were lost. <!-- dqr-allow: empirical-answer -->
+3. Individual reader responses, reader identities, and variation and dependence among readers were lost. <!-- dqr-allow: empirical-answer -->
 4. The binned empirical means generally rise with modeled cloze surprisal; a straight line is a simple first approximation to that trend. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [next page](simple-linear-regression.qmd) restricts the conditional mean to a straight line.
+We next use [simple linear regression](simple-linear-regression.qmd) to restrict the conditional mean to a straight line.

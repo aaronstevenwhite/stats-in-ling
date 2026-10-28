@@ -5,17 +5,21 @@ execute:
   message: false
 ---
 
-Many GLM response distributions can be rewritten so that the response,
-parameter, and normalizing terms occupy the same algebraic positions. This
-shared arrangement is the **exponential-family form**. Its derivatives will
-supply a distribution's mean and variance, and the arrangement will later help
-us identify [sufficient statistics](sufficient-statistics.qmd). Recall that a
-[PMF](../random-variables-and-distributions/probability-mass-functions.qmd)
-assigns mass to possible discrete response values, whereas the [expectation of
-a function](../random-variables-and-distributions/expectation-of-functions.qmd)
-averages that function under the distribution.
+Okay. Why rewrite a familiar distribution in an unfamiliar way? The reason is
+that the Bernoulli, Poisson, and Gaussian formulas contain a common piece of
+algebra. Once we expose that piece, the same two calculations will recover each
+distribution's mean and variance. We will call the shared arrangement the
+[**exponential family**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=214).
 
-For continuous members, a [PDF](../random-variables-and-distributions/probability-density-functions.qmd) supplies density rather than point mass. The derivatives below recover [expectation and variance](../random-variables-and-distributions/variance-and-covariance.qmd). When observed responses are held fixed, the same expression becomes a likelihood in the sense developed on the [maximum likelihood page](../statistical-inference/maximum-likelihood.qmd).
+Begin with something concrete. A Bernoulli response can be zero or one, and its
+[probability mass function](../random-variables-and-distributions/probability-mass-functions.qmd)
+assigns a probability to each of those two values. Suppose that we take the
+logarithm of that probability. Recall that a logarithm turns multiplication
+into addition, which makes a product likelihood easier to differentiate. A
+derivative, in turn, records how a quantity changes after a very small change
+in its input. These are the only two calculus moves we need at first.
+
+For continuous members, a [probability density function](../random-variables-and-distributions/probability-density-functions.qmd) supplies density rather than point mass. The derivatives below recover [expectation and variance](../random-variables-and-distributions/variance-and-covariance.qmd). When we hold the observed responses fixed and vary the parameter, the same expression becomes a [likelihood](../statistical-inference/maximum-likelihood.qmd).
 
 We first rewrite a Bernoulli mass, then generalize its algebra, recover the mean
 and variance, and map the Poisson and Gaussian families into the same template.
@@ -35,6 +39,50 @@ names(counts) <- c("preposition", "observations")
 counts$probability <- counts$observations / sum(counts$observations)
 counts
 ```
+
+The Bernoulli mean--variance relation is visible across observed subsets of the same experiment. The code divides the selected duration measure into observed quantile groups within each verb type, computes the *in* proportion in each group, and then obtains the Bernoulli variance $\widehat\pi(1-\widehat\pi)$ from that observed proportion.
+
+```{r}
+#| label: plot-observed-bernoulli-mean-variance
+#| echo: true
+library(ggplot2)
+st_duration <- st[!is.na(st$log_duration_minutes), ]
+duration_breaks <- unique(quantile(
+  st_duration$log_duration_minutes,
+  probs = seq(0, 1, length.out = 7L)
+))
+st_duration$duration_group <- cut(
+  st_duration$log_duration_minutes,
+  breaks = duration_breaks,
+  include.lowest = TRUE
+)
+observed_mean_variance <- aggregate(
+  prep_in ~ verb_type + duration_group,
+  st_duration,
+  function(values) c(probability = mean(values), observations = length(values))
+)
+observed_mean_variance <- data.frame(
+  verb_type = observed_mean_variance$verb_type,
+  duration_group = observed_mean_variance$duration_group,
+  probability = observed_mean_variance$prep_in[, "probability"],
+  observations = observed_mean_variance$prep_in[, "observations"]
+)
+observed_mean_variance$bernoulli_variance <- with(
+  observed_mean_variance,
+  probability * (1 - probability)
+)
+ggplot(observed_mean_variance,
+       aes(probability, bernoulli_variance, shape = verb_type,
+           size = observations)) +
+  geom_point(color = "#1F5A85") +
+  scale_size_area(max_size = 4) +
+  labs(x = "Observed probability of an in-completion",
+       y = "Bernoulli variance",
+       shape = NULL, size = "Observed rows") +
+  theme_classic()
+```
+
+Every vertical coordinate is calculated directly from its observed group probability, so the connecting arch serves only as a visual guide. The plot shows the algebraic fact we will recover below: Bernoulli variance is small near probability zero or one and largest near one half.
 
 For one fixed response \(y_i\in\{0,1\}\), the Bernoulli mass is
 
@@ -66,10 +114,16 @@ For an absolutely continuous member, the same form is written as a PDF
 
 The **canonical parameter** \(\theta\) is the parameter that multiplies the
 response \(y\) directly in the exponent. The function \(b(\theta)\) will
-determine the mean and variance, while \(a(\phi)\) scales dispersion. Finally,
-\(c(y,\phi)\) contains the response- and dispersion-dependent terms needed to
-make the total mass or density equal one. To derive the moment identities,
-start from that normalizing requirement:
+determine the mean and variance. The parameter \(\phi\) controls the variation
+left after the mean has been fixed; we call it the **dispersion parameter**, and
+\(a(\phi)\) places that dispersion on the scale used in the exponent. Finally,
+\(c(y,\phi)\) contains the response and dispersion terms needed to make the
+total mass or density equal one.
+
+The notation \(d\nu(y)\) below lets one equation cover two cases. For a
+discrete response, the integral means that we sum over every possible value of
+\(y\). For a continuous response, it means that we integrate over those values.
+We can now start from the requirement that the total probability equals one:
 
 $$
 1=\int \exp\left\{\frac{y\theta-b(\theta)}{a(\phi)}+c(y,\phi)\right\}\,d\nu(y).
@@ -130,7 +184,7 @@ develops that local-curvature interpretation. For independent observations,
 the log likelihood, score, and Hessian each add their observation-level
 contributions.
 
-For the Bernoulli calculation at the beginning of the page,
+For the Bernoulli calculation above,
 \(b(\theta)=\log(1+e^\theta)\) and \(a(\phi)=1\). Its first two derivatives
 recover \(b'(\theta)=\pi\) and \(b''(\theta)=\pi(1-\pi)\).
 
@@ -167,7 +221,7 @@ $$
 \end{aligned}
 $$
 
-with $b(\theta)=e^\theta$, $a(\phi)=1$, and $c(y,\phi)=-\log(y!)$. The derivatives are $b'(\theta)=e^\theta=\lambda$ and $b''(\theta)=e^\theta=\lambda$, which recover the Poisson mean and variance. At a fitted mean of $\lambda=2$, for instance, $\theta=\log 2$ and both derivatives equal $2$. This substitution is the operation summarized by the Poisson row of the table; the table is a cross-check rather than a new list of formulas to memorize. <!-- dqr-allow: symbolic-derivation -->
+with $b(\theta)=e^\theta$, $a(\phi)=1$, and $c(y,\phi)=-\log(y!)$. The derivatives are $b'(\theta)=e^\theta=\lambda$ and $b''(\theta)=e^\theta=\lambda$, which recover the Poisson mean and variance. This substitution is the operation summarized by the Poisson row of the table; the table is a cross-check rather than a new list of formulas to memorize. <!-- dqr-allow: symbolic-derivation -->
 
 | Family | $\theta$ | $b(\theta)$ | $a(\phi)$ | Mean | Variance |
 |---|---:|---:|---:|---:|---:|
@@ -193,4 +247,4 @@ The shared form links distributions to GLM computation, but it does not make the
 1. Does membership in the exponential family allow a Poisson model for binary data? No. Family membership does not erase support or variance restrictions.
 2. What work does $c(y,\phi)$ do? It contains response-dependent terms, including the base measure, required for normalization even when those terms do not contain $\theta$.
 
-The [sufficient-statistics page](sufficient-statistics.qmd) uses the same factorized likelihood to ask exactly which sample features retain information about a parameter.
+We can use the same factorized likelihood to ask which sample features retain information about a parameter. This leads to [sufficient statistics](sufficient-statistics.qmd).

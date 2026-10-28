@@ -5,11 +5,19 @@ execute:
   message: false
 ---
 
-The [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) is absolutely continuous on $0<y<1$. Its PDF gives density height, not probability at a point: for any exact $a$ in its support, $\mathbb{P}(Y=a)=\int_a^a f(y)\,dy=0$. MegaNegRaising contains recorded zeros and ones on both sliders, where the ordinary beta likelihood is not defined.
+The [beta distribution](../random-variables-and-distributions/beta-distribution.qmd) may initially look ideal for a zero-to-one slider because it can take many shapes inside that interval. But its support is the open interval $0<y<1$: exact zero and exact one are excluded.
 
-The [PDF definition](../random-variables-and-distributions/probability-density-functions.qmd) explains why probability comes from integration, and the [expected value](../random-variables-and-distributions/expected-values.qmd) of the beta model describes an interior mean. The likelihood holds the recorded slider values fixed while comparing shape parameters, following [maximum likelihood](../statistical-inference/maximum-likelihood.qmd).
+To see why, recall the distinction between density and probability. The height of a [probability density function](../random-variables-and-distributions/probability-density-functions.qmd) tells us how probability is concentrated around a value. Probability comes from area over an interval. An interval with identical endpoints has width zero, so
 
-The first empirical question is whether the problematic endpoints actually occur. Once they do, moving them inward by a sample-size-dependent amount changes the recorded responses rather than repairing the ordinary beta likelihood.
+$$
+\mathbb{P}(Y=a)=\int_a^a f(y)\,dy=0.
+$$
+
+This remains true even if the density becomes very tall near $a$. MegaNegRaising contains recorded zeros and ones on both sliders, so the ordinary beta likelihood is undefined for some observed responses.
+
+The [expected value](../random-variables-and-distributions/expected-values.qmd) of the beta model describes an interior mean. The [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the recorded slider values fixed while comparing shape parameters, so it cannot silently replace an endpoint with a nearby interior value.
+
+The first empirical question is whether the problematic endpoints actually occur. Once they do, moving them inward by an amount that depends on sample size changes the recorded responses rather than repairing the ordinary beta likelihood.
 
 ```{r}
 #| label: load-meganegraising-beta
@@ -48,7 +56,7 @@ $$
 y_i^*=\frac{y_i(n-1)+1/2}{n}.
 $$
 
-The consequence is data-dependent and should be computed, not illustrated with chosen values.
+Because the consequence depends on the observed sample size, we compute it from the retained judgments below.
 
 ```{r}
 #| label: actual-endpoint-nudge
@@ -59,14 +67,15 @@ data.frame(recorded = c(0, 1), transformed = transform_endpoint(c(0, 1)),
            sample_size = n)
 ```
 
-The dependence on sample size is visible by applying the same rule to the observed sample size and to a half-sample benchmark derived from it:
+The dependence on sample size is visible without inventing another dataset. We apply the rule separately to the observed active-voice and passive-voice subsets, which contain different numbers of retained judgments:
 
 ```{r}
 #| label: endpoint-nudge-by-sample-size
 #| echo: true
-n_values <- unique(c(floor(n / 2), n))
-do.call(rbind, lapply(n_values, function(nn) {
-  data.frame(sample_size = nn, recorded = c(0, 1),
+n_values <- table(mnr$voice)
+do.call(rbind, lapply(names(n_values), function(voice_value) {
+  nn <- unname(n_values[[voice_value]])
+  data.frame(voice = voice_value, sample_size = nn, recorded = c(0, 1),
              transformed = (c(0, 1) * (nn - 1) + .5) / nn)
 }))
 ```
@@ -87,11 +96,11 @@ For the `r n` retained judgments, zero becomes `r format(transform_endpoint(0), 
 
 An endpoint can arise because a continuous intention was rounded to the displayed boundary or because a respondent deliberately selected the endpoint as a qualitatively meaningful response. Those mechanisms imply different measurement models. The prepared table cannot distinguish them, so an explicit endpoint-mass model states the retained assumption instead of silently moving the values.
 
-A likelihood that contains explicit endpoint probabilities is more faithful to the recorded response. The next page uses ordered-beta regression for both sliders without changing or filtering either outcome.
+A likelihood that contains explicit endpoint probabilities preserves the recorded response. [Ordered beta regression](ordered-beta-regression.qmd) does this for both sliders without changing or filtering either outcome.
 
 ## Recap and check
 
 1. Does a large beta density near zero assign positive probability to the exact value zero? No. Density over a nonzero interval can be positive; mass at one exact point remains zero.
 2. Why is the nudge not innocuous? It changes endpoint values when unrelated rows are added and assumes endpoints are merely interior measurements in disguise.
 
-The [ordered-beta page](ordered-beta-regression.qmd) makes its stronger assumptions explicit: a shared latent location orders zero, interior, and one, and two cutpoints determine the endpoint masses.
+[Ordered beta regression](ordered-beta-regression.qmd) also makes a stronger assumption: one shared location orders zero, the interior, and one, while two cutpoints determine the endpoint masses.

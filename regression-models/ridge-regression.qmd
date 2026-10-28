@@ -9,9 +9,11 @@ execute:
 
 [**Ridge regression**](https://islp.readthedocs.io/en/latest/labs/Ch06-varselect-lab.html#ridge-regression-and-the-lasso) adds a squared-coefficient penalty to the least-squares objective stated below.
 
-The penalty changes the estimator, so its [expected value and variance](../random-variables-and-distributions/expected-values.qmd) and its [standard error](../statistical-inference/standard-errors.qmd) need not match OLS. The rowwise loss is combined under the model's [independence](../foundations/independence.qmd) assumptions. Here $\lambda$ is chosen by held-out squared error, a preview of [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd), rather than by the training objective alone. Shrinkage addresses correlated MALD predictors but cannot settle whether onset-to-response time isolates acoustic duration.
+The penalty changes the estimator, so its [expected value and variance](../random-variables-and-distributions/expected-values.qmd) and its [standard error](../statistical-inference/standard-errors.qmd) need not match OLS. The rowwise loss is combined under the model's [independence](../foundations/independence.qmd) assumptions. Here $\lambda$ is chosen by held-out squared error, a preview of [predictive loss](../model-criticism-and-prediction/predictive-loss.qmd), rather than by the training objective alone. We call the penalty's pull toward zero [**shrinkage**](https://bruno.nicenboim.me/bayescogsci/ch-hierarchical.html). It may help with correlated MALD predictors, but it cannot settle whether onset-to-response time isolates acoustic duration.
 
-This page first defines the penalty and its scaling, then selects it by frozen new-item folds and inspects the resulting MALD coefficient path.
+A **validation fold** is one subset held aside for evaluation while the other subsets are used for fitting. We first define the penalty and its scaling, then select it using one fixed assignment of MALD items to validation folds and inspect the resulting coefficient path.
+
+Why might shrinking help? Suppose phone count and syllable count carry nearly the same information. Ordinary least squares may fit the data with a large positive coefficient on one and a large negative coefficient on the other, even though their combined prediction is modest. A squared-coefficient penalty prefers a smaller pair when it achieves nearly the same fit. We pay for that stability by pulling the estimates toward zero.
 
 $$
 \widehat{\boldsymbol\beta}^{\,\text{ridge}}(\lambda)
@@ -24,7 +26,11 @@ $$
 \right].
 $$
 
-The intercept is left unpenalized. When predictors are on different scales, standardization must be estimated from the training data so that the penalty is comparable across columns.
+The symbol $\lambda$ names the **penalty strength**. At $\lambda=0$, the added term vanishes and the criterion reduces to ordinary least squares. As $\lambda$ grows, coefficient size matters more relative to training error. The notation $\arg\min$ means “the argument that minimizes”: here, the coefficient values that make the bracketed criterion smallest.
+
+The intercept is left unpenalized. Recall from [centering and scaling](centering-predictors.qmd) that **standardization** subtracts a training sample mean and divides by a training sample standard deviation. It must be estimated from the training data so that the penalty is comparable across columns without using information from held-out items.
+
+To see the scaling problem, record the same duration in two different units. Changing the unit rescales the coefficient so that the fitted contribution remains unchanged. A penalty applied directly to the raw coefficients would nevertheless treat those two representations differently. Standardizing each predictor to a common training-set scale makes the penalty depend on fitted contribution rather than on an arbitrary measurement unit.
 
 After centering the response and standardizing the predictor columns, differentiate the penalized objective:
 
@@ -53,7 +59,11 @@ Adding $\lambda\mathbf I$ stabilizes coefficient directions with weak design sup
 
 We use log frequency, log duration, phone count, and syllable count to predict a new MALD item summary. Every item occurs once in the table, so assigning folds by item is also a row split. `glmnet` estimates standardization separately inside each training-fold fit.
 
+We cycle through the validation folds so that every item receives a prediction from a model that did not use that item's response. The resulting squared errors estimate performance for the declared target: another word item drawn under comparable measurement and filtering procedures.
+
 This is a **new-item validation target**: the held-out unit is one word item, the score is row-weighted squared error, and every center, scale, and coefficient is learned without that item. Ten folds are a declared computational compromise between training-set size and repeated fitting. The 80-point log-spaced penalty grid covers weak through strong shrinkage; neither ten nor 80 is a mathematical constant.
+
+For one held-out item, squared error is the squared difference between its observed and predicted response. **Mean squared error (MSE)** averages those values over items. **Root mean squared error (RMSE)** takes the square root of MSE, returning the score to the response's log time units. Smaller values indicate more accurate predictions under this loss.
 
 ```{r}
 #| label: validate-mald-ridge
@@ -135,7 +145,7 @@ data.frame(
 )
 ```
 
-The minimum-error rule selects $\lambda_{\min}$ with the smallest fold-mean MSE. The one-standard-error rule selects the largest, hence most strongly regularized, candidate satisfying
+The minimum error rule selects $\lambda_{\min}$ with the smallest mean MSE across folds. The one standard error rule selects the largest, hence most strongly regularized, candidate satisfying
 
 $$
 \widehat L(\lambda)
@@ -174,11 +184,11 @@ ggplot(path_data, aes(lambda, estimate, linetype = coefficient)) +
 
 The paths show the algorithmic consequence of increasing $\lambda$: coefficients contract toward zero, with correlated directions sharing the adjustment.
 
-The minimum-error penalty is `r format(lambda_min, digits = 4)`, while the one-standard-error penalty is `r format(lambda_one_se, digits = 4)`. The new-item RMSE is `r sprintf("%.6f", ridge_rmse)` for the one-SE ridge fit and `r sprintf("%.6f", ols_rmse)` for OLS.
+The minimum error penalty is `r format(lambda_min, digits = 4)`, while the one standard error penalty is `r format(lambda_one_se, digits = 4)`. The RMSE for new items is `r sprintf("%.6f", ridge_rmse)` for the ridge fit selected by that rule and `r sprintf("%.6f", ols_rmse)` for OLS.
 
 ```{r}
 #| label: plot-mald-ridge-validation
-#| fig-cap: "New-item validation error across the ridge penalty grid. The solid and dashed lines mark the minimum-error and one-standard-error choices."
+#| fig-cap: "Validation error for new items across the ridge penalty grid. The solid and dashed lines mark the minimum error and one standard error choices."
 validation_curve <- data.frame(
   lambda = penalty_grid,
   rmse = sqrt(mean_mse)
@@ -217,4 +227,4 @@ Ridge does not beat OLS in this comparison. That outcome is part of the lesson: 
 
 </details>
 
-The [next page](residualizing-a-predictor.qmd) gives another representation of a partial coefficient.
+We next use [residualization](residualizing-a-predictor.qmd) to derive another representation of a partial coefficient.

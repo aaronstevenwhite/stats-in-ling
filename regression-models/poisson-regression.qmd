@@ -5,7 +5,11 @@ execute:
   message: false
 ---
 
-Poisson regression models a nonnegative count with a positive conditional mean. We use Nettle's ([1998](https://doi.org/10.1006/jaar.1998.0328)) country-level study of language diversity and climate. One row is one country; the response is its reported language count, mean growing season (MGS) is the ecological predictor, and area measures geographic opportunity.
+Suppose that a response records how many languages are associated with a country. The possible values are $0,1,2,\ldots$; negative counts and fractional counts are unavailable. A linear regression can assign a negative fitted mean, so we need a response distribution and a link that respect count support.
+
+The [**Poisson distribution**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) is one candidate. It assigns probability to nonnegative integers and has a positive mean. But it adds an important restriction: once the predictors determine the conditional mean, that same number also determines the conditional variance. [**Poisson regression**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) combines this response distribution with a log link, which converts any real-valued linear predictor into a positive mean.
+
+We use Nettle's ([1998](https://doi.org/10.1006/jaar.1998.0328)) study of language diversity and climate across countries. One row is one country; the response is its reported language count, mean growing season (MGS) is the ecological predictor, and area measures geographic opportunity.
 
 The Poisson restriction equates conditional [variance](../random-variables-and-distributions/variance-and-covariance.qmd) with the conditional mean. Its [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed country totals fixed while comparing coefficient values, and its product assumes [independence](../foundations/independence.qmd) across country rows after predictors. Shared regions, histories, and cross-border languages make that factorization a substantive approximation.
 
@@ -13,6 +17,8 @@ The main modeling decision is whether country area may be treated as proportiona
 exposure for a database count whose entries depend on geopolitical boundaries.
 Defining that response and opportunity structure gives the coefficient its units
 before the log-mean equation is fitted.
+
+Here **exposure** means the amount of opportunity over which a count could accumulate. An [offset](exposure-offsets.qmd) is a predictor whose coefficient is fixed in advance. Entering log area as an offset fixes its coefficient at one, which requires expected language count to be directly proportional to area. We will derive that restriction after we first inspect the count model it enters.
 
 ## What the country count measures {#nettle-country-counts}
 
@@ -48,7 +54,9 @@ fit <- glm(language_count ~ mean_growing_season_months + offset(log_area_km2),
            family = poisson(link = "log"), data = nettle)
 ```
 
-The Algeria row makes the units visible. The source stores population and area on a base-ten log scale, while the offset requires a natural logarithm.
+The Algeria row makes the units visible. The teaching table stores population and area on a base-ten log scale, while the offset requires a natural logarithm.[^nettle-teaching-table]
+
+[^nettle-teaching-table]: The transformed table comes from Bodo Winter's [course data](https://github.com/bodowinter/applied_statistics_book_data). Nettle's appendix reports population in thousands and area in square kilometers; the teaching table stores their base-ten logarithms.
 
 ```{r}
 #| label: inspect-one-nettle-country
@@ -111,7 +119,7 @@ ggplot(nettle, aes(mean_growing_season_months, observed_rate)) +
        y = "Languages per square kilometer") + theme_classic()
 ```
 
-A one-month increase in MGS multiplies the fitted rate by `r round(exp(coef(fit)[[2L]]), 3)`, conditional on the fixed-area-exposure specification. Nettle instead estimated the log-area coefficient. Fixing it to one asserts that twice the area yields twice the expected reported country total at fixed MGS. The estimate therefore describes an area-normalized association among these 74 geopolitical records under that assumption; it supplies no climate intervention or sampling design for a causal claim.
+A one month increase in MGS multiplies the fitted rate by `r round(exp(coef(fit)[[2L]]), 3)`, conditional on the fixed area exposure specification. Nettle instead estimated the log area coefficient. Fixing it to one asserts that twice the area yields twice the expected reported country total at fixed MGS. The estimate therefore describes an area normalized association among these 74 geopolitical records under that assumption; it supplies no climate intervention or sampling design for a causal claim.
 
 ## Recap and check your understanding
 
@@ -128,4 +136,4 @@ A one-month increase in MGS multiplies the fitted rate by `r round(exp(coef(fit)
 
 </details>
 
-The [next page](exposure-offsets.qmd) examines the proportional-exposure claim directly.
+We now examine the proportional exposure claim by deriving [exposure offsets](exposure-offsets.qmd).

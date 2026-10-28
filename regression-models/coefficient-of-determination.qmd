@@ -9,11 +9,13 @@ execute:
 
 The OLS line minimizes squared error. The [**coefficient of determination**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85), $R^2$, compares that error with the error from predicting every Provo position by the same sample mean.
 
-Each response in this comparison is the [word position mean of log first fixation duration](regression-models.qmd#provo-word-position-data) among readers with a retained positive fixation. The fitted line uses modeled cloze surprisal, the negative base-two logarithm of the fitted cloze probability defined in that discussion. Thus the squared variation is among those fixation contingent summaries, with passage grouping still present.
+Each response in this comparison is the [Provo word position mean](regression-models.qmd#provo-word-position-data) of log first fixation duration among readers with a retained positive fixation. The fitted line uses modeled cloze surprisal, the negative base-two logarithm of the fitted cloze probability defined in that discussion. Thus the squared variation is among those fixation contingent summaries, with passage grouping still present.
 
-We use **residual** provisionally for $e_i=y_i-\widehat y_i$, the observed response minus its fitted value. The [residual page](residuals.qmd) later develops its algebra and diagnostic interpretation.
+We use **residual** provisionally for $e_i=y_i-\widehat y_i$, the observed response minus its fitted value. We later develop its algebra and diagnostic interpretation under [residuals](residuals.qmd).
 
-The central question is how much training-sample squared error the Provo line removes relative to one constant prediction. Total and residual sums of squares make that comparison explicit before its inferential limits are considered.
+The central question is how much squared error in the training sample the Provo line removes relative to one constant prediction. Total and residual sums of squares make that comparison explicit before its inferential limits are considered.
+
+Let $Q_0$ be the squared error from always predicting the observed response mean, and let $Q_1$ be the squared error left by a fitted regression. The regression removes $Q_0-Q_1$ squared error units, or $(Q_0-Q_1)/Q_0$ as a proportion of the baseline. The coefficient of determination applies this comparison to the observed Provo responses below.
 
 ## Two sums of squares
 
@@ -24,6 +26,8 @@ $$
 =
 \sum_{i=1}^n(y_i-\overline y)^2.
 $$
+
+We will use [**total sum of squares (SST)**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) for the error made by the baseline that always predicts the mean and **error sum of squares (SSE)** for the error left after fitting the regression. Both quantities add squared distances on the response scale. The names differ only in which prediction supplies the reference point.
 
 The fitted model leaves the error sum of squares
 
@@ -51,13 +55,13 @@ $$
 +2\sum_i e_i(\widehat y_i-\overline y).
 $$
 
-The final cross-product is zero because OLS residuals are orthogonal to every design column and hence to the fitted values. Thus
+The final cross-product is zero because least squares makes the residual vector perpendicular to every fitted direction. In scalar terms, the positive and negative products $e_i(\widehat y_i-\overline y)$ cancel exactly at the least squares solution. The later [projection diagram](design-matrices.qmd#projection-as-fitted-plus-residual) draws this right-angle relation between fitted and residual vectors. Thus
 
 $$
 \operatorname{SST}=\operatorname{SSR}+\operatorname{SSE}.
 $$
 
-For a three-response arithmetic example $\mathbf y=(1,2,6)$ and fitted values $\widehat{\mathbf y}=(1,3,5)$, the residuals sum to zero but are not orthogonal to the fitted values, so these numbers cannot be an intercept-containing OLS fit. This failed example is useful: the decomposition is a consequence of the OLS projection, not an identity for arbitrary predictions.
+The decomposition is a consequence of the least squares projection, rather than an identity for arbitrary predictions. We can verify the required cancellation directly on the fitted Provo values.
 
 ## Computing $R^2$ for the Provo regression
 
@@ -79,13 +83,24 @@ y_hat <- fitted(fit)
 sst <- sum((y - mean(y))^2)
 sse <- sum((y - y_hat)^2)
 r_squared <- 1 - sse / sst
+residual_fitted_cross_product <- sum(
+  (y - y_hat) * (y_hat - mean(y))
+)
 
-stopifnot(abs(r_squared - summary(fit)$r.squared) < 1e-12)
+stopifnot(
+  abs(r_squared - summary(fit)$r.squared) < 1e-12,
+  abs(residual_fitted_cross_product) < 1e-10
+)
 
-data.frame(sst = sst, sse = sse, r_squared = r_squared)
+data.frame(
+  sst = sst,
+  sse = sse,
+  residual_fitted_cross_product = residual_fitted_cross_product,
+  r_squared = r_squared
+)
 ```
 
-The straight line reduces squared error by `r sprintf("%.2f", 100 * r_squared)` percent relative to the mean-only predictor for these retained position summaries. The remaining proportion, `r sprintf("%.2f", 100 * (1 - r_squared))` percent, is not automatically measurement error. It includes lexical, contextual, passage, reader-aggregation, and functional-form variation that this one-predictor line does not represent.
+The straight line reduces squared error by `r sprintf("%.2f", 100 * r_squared)` percent relative to always predicting the mean for these retained position summaries. The remaining `r sprintf("%.2f", 100 * (1 - r_squared))` percent combines lexical, contextual, passage, reader aggregation, and functional form variation omitted by this line with one predictor; measurement error may contribute only part of it.
 
 For an OLS model with an intercept,
 
@@ -132,9 +147,9 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
-$R^2$ is a within-sample descriptive comparison on the modeled response scale. It is not a predictive evaluation on new passages, and a larger $R^2$ does not by itself license a stronger linguistic explanation.
+$R^2$ gives a descriptive comparison on the modeled response scale using the same observations that fitted the line. Evaluating new passages requires predictions for passages held out during fitting, and a stronger linguistic explanation requires evidence beyond a larger $R^2$ in the training sample.
 
-Adjusted $R^2$ applies a parameter-count correction to training fit, while held-out loss evaluates a declared new-observation target. The [prediction-target page](../model-criticism-and-prediction/prediction-targets.qmd) explains why neither is a substitute for naming whether a new row, passage, participant, or item is being predicted.
+Adjusted $R^2$ applies a parameter-count correction to training fit, while held-out loss evaluates a declared new-observation target. The discussion of [prediction targets](../model-criticism-and-prediction/prediction-targets.qmd) explains why neither is a substitute for naming whether a new row, passage, participant, or item is being predicted.
 
 ## Recap and check your understanding
 
@@ -148,9 +163,9 @@ Adjusted $R^2$ applies a parameter-count correction to training fit, while held-
 
 1. The baseline predicts every retained Provo position by the same sample mean response. <!-- dqr-allow: empirical-answer -->
 2. Both SSE and SST are computed after choosing a response transformation; changing that scale changes squared distances and their ratio. <!-- dqr-allow: empirical-answer -->
-3. The unexplained proportion contains lexical, contextual, passage, reader-aggregation, functional-form, and other variation omitted by the one-predictor line. <!-- dqr-allow: empirical-answer -->
+3. The unexplained proportion contains lexical, contextual, and passage variation, together with variation from aggregating readers, from the chosen functional form, and from other features omitted by the one predictor line. <!-- dqr-allow: empirical-answer -->
 4. The reported $R^2$ is calculated on the same positions used to fit the model, with no held-out passages or other out-of-sample prediction target. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-The [next page](residuals.qmd) inspects the observation-level discrepancies that make up SSE.
+We next inspect the [residuals](residuals.qmd) that make up SSE.
