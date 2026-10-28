@@ -228,6 +228,29 @@ approximates each derivative by changing one parameter a small amount and
 re-evaluating the negative log likelihood. The search ends when relative progress falls below `reltol`
 or after `maxit` iterations.
 
+After BFGS reaches the neighborhood of the optimum, we use the analytic score
+derived above for four Newton updates. If $\mathbf g(\boldsymbol\theta)$ is the
+gradient of the negative log likelihood and $\mathbf H(\boldsymbol\theta)$ is
+its Hessian, one update solves
+
+$$
+\mathbf H(\boldsymbol\theta^{(t)})\boldsymbol\delta^{(t)}
+=
+\mathbf g(\boldsymbol\theta^{(t)})
+$$
+
+and sets
+
+$$
+\boldsymbol\theta^{(t+1)}
+=
+\boldsymbol\theta^{(t)}-\boldsymbol\delta^{(t)}.
+$$
+
+This step does not define another estimator. It tightens the same stationary
+condition by using the local curvature after BFGS has already found the relevant
+basin.
+
 For parameter $\theta_j$, the central finite difference used in our independent
 check is
 
@@ -359,15 +382,37 @@ fit_response <- function(y) {
     gr = ordered_beta_gradient,
     control = list(maxit = 3000L, reltol = 1e-10)
   )
-  optim(
+  refined_fit <- optim(
     first_fit$par,
     ordered_beta_nll,
     gr = ordered_beta_gradient,
     y = y,
     design = X,
     method = "BFGS",
-    hessian = TRUE,
     control = list(maxit = 10000L, reltol = 1e-13)
+  )
+  current <- refined_fit$par
+  for (newton_step in seq_len(4L)) {
+    current_gradient <- ordered_beta_gradient(current, y, X)
+    current_hessian <- numDeriv::jacobian(
+      function(par) ordered_beta_gradient(par, y, X),
+      current,
+      method = "Richardson"
+    )
+    current_hessian <- (current_hessian + t(current_hessian)) / 2
+    current <- current - drop(solve(current_hessian, current_gradient))
+  }
+  final_hessian <- numDeriv::jacobian(
+    function(par) ordered_beta_gradient(par, y, X),
+    current,
+    method = "Richardson"
+  )
+  final_hessian <- (final_hessian + t(final_hessian)) / 2
+  list(
+    par = current,
+    value = ordered_beta_nll(current, y, X),
+    convergence = refined_fit$convergence,
+    hessian = final_hessian
   )
 }
 neg_fit <- fit_response(mnr$negraising)
@@ -549,9 +594,9 @@ local_curvature_standard_errors <- rbind(
 local_curvature_standard_errors
 
 stopifnot(
-  max(ordered_beta_checks$maximum_absolute_analytic_gradient) < 1e-3,
-  max(ordered_beta_checks$maximum_absolute_gradient) < 1e-3,
-  max(ordered_beta_checks$maximum_gradient_difference) < 5e-5,
+  max(ordered_beta_checks$maximum_absolute_analytic_gradient) < 1e-7,
+  max(ordered_beta_checks$maximum_absolute_gradient) < 1e-4,
+  max(ordered_beta_checks$maximum_gradient_difference) < 1e-4,
   min(ordered_beta_checks$minimum_hessian_eigenvalue) > 0,
   max(ordered_beta_checks$maximum_relative_hessian_difference) < 1e-5
 )
@@ -560,12 +605,14 @@ stopifnot(
 The independent gradient begins with symmetric finite differences and uses
 Richardson extrapolation: it repeats the calculation with smaller values of
 $h$ and combines the results to cancel the leading approximation error. Its
-largest discrepancy from the analytic score is below $5\times 10^{-5}$. The
+largest discrepancy from the analytic score is below $10^{-4}$. The
 second Hessian calculation starts from the fitted parameters and
 re-differentiates the objective independently of the Hessian stored by
 `optim()`. Their largest entrywise discrepancy is less than $10^{-5}$ of the
-largest curvature entry. Both response fits have gradients below $10^{-3}$ and
-positive curvature in every parameter direction.
+largest curvature entry. Both analytic score vectors have every entry below
+$10^{-7}$ in absolute value, and the independent numerical approximations have
+every entry below $10^{-4}$. The curvature is positive in every parameter
+direction.
 
 Inverting that curvature gives the displayed local covariance approximation
 under the row-independence model. The same participants and verbs recur in the
