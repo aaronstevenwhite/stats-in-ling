@@ -124,6 +124,20 @@ singularity_check <- c(
 )
 singularity_check
 
+profiled_reml_gradient <- function(model) {
+  numDeriv::grad(
+    getME(model, "devfun"),
+    getME(model, "theta"),
+    method = "Richardson"
+  )
+}
+overfit_gradient <- profiled_reml_gradient(overfit)
+revised_gradient <- profiled_reml_gradient(revised)
+stopifnot(
+  all(is.finite(overfit_gradient)),
+  all(is.finite(revised_gradient))
+)
+
 objective_check <- data.frame(
   model = c("Interaction slope requested", "Interaction slope removed"),
   restricted_log_likelihood = c(
@@ -131,8 +145,12 @@ objective_check <- data.frame(
     as.numeric(logLik(revised))
   ),
   maximum_absolute_gradient = c(
-    max(abs(overfit@optinfo$derivs$gradient)),
-    max(abs(revised@optinfo$derivs$gradient))
+    max(abs(overfit_gradient)),
+    max(abs(revised_gradient))
+  ),
+  convergence_messages = c(
+    length(overfit@optinfo$conv$lme4$messages),
+    length(revised@optinfo$conv$lme4$messages)
   )
 )
 objective_check
@@ -149,7 +167,8 @@ The model requesting participant interaction-slope variation is singular. Removi
 The objective table separates fit from computation. The restricted log
 likelihoods describe two different covariance structures with the same
 population predictors. The maximum gradient components report whether each
-numerical search reached a locally stationary point. Neither quantity tells us
+numerical search reached a locally stationary point, while the message count
+records whether `lmer()` raised a separate convergence concern. Neither quantity tells us
 whether the fitted covariance matrix has full rank, which is why the singularity
 check remains separate.
 
