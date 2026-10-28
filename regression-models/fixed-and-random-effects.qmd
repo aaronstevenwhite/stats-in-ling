@@ -11,6 +11,13 @@ The model uses [variance, covariance, and standard deviation](../random-variable
 
 The basic idea is to begin with one shared regression line and then allow sampled listeners and words to depart from it. We first work through that idea with one predictor, then write the compact notation used by the full model.
 
+When we refer to listener and word populations below, we mean the exchangeable
+distributions specified by the model. The retained MALD listeners and words were
+not drawn as probability samples. Extending the fitted variation beyond the
+represented listeners and items therefore depends on the assumption that these
+model distributions provide a useful account of the new listeners and words we
+care about.
+
 ## Beginning with the scientific target
 
 Begin with log frequency alone. If the population intercept is $\beta_0$ and the population frequency coefficient is $\beta_f$, the shared relation is
@@ -21,7 +28,7 @@ $$
 
 Here $Y_i$ is log response time on trial $i$, and $x_i$ is standardized log frequency for the spoken word on that trial. A negative $\beta_f$ means that expected log response time decreases as frequency increases; a positive value means that it increases. This coefficient describes the shared relation before we ask whether a particular listener is generally faster or slower.
 
-The full analysis also contains standardized log acoustic duration and standardized trial order. Recall that [standardizing a variable](../factorization/centering-and-scaling.qmd) subtracts its sample mean and divides by its sample standard deviation. We can collect the intercept and these three predictor values in a row vector $\mathbf x_i$, and collect their coefficients in a column vector $\boldsymbol\beta$. Their matrix product is shorthand for the familiar sum
+The full analysis also contains standardized log acoustic duration and standardized trial order. Recall that [standardizing a variable](centering-predictors.qmd) subtracts its sample mean and divides by its sample standard deviation. We can collect the intercept and these three predictor values in a row vector $\mathbf x_i$, and collect their coefficients in a column vector $\boldsymbol\beta$. Their matrix product is shorthand for the familiar sum
 
 $$
 \mathbf x_i^{\mathsf T}\boldsymbol\beta
@@ -86,9 +93,276 @@ The grouping terms follow the participant-by-word incidence structure. A partici
 
 The frequency column and participant identifier both enter the construction of the linear predictor, but they have different roles. Frequency is a measured predictor with a population coefficient. Participant identity indexes deviations drawn from a population distribution.
 
+## From the conditional model to the marginal likelihood {#gaussian-mixed-model-likelihood}
+
+How do we estimate the population coefficients and the variances of the group
+deviations? The conditional equation above describes the response after the
+participant and word deviations have been supplied. But those deviations are
+unobserved. The likelihood for the observed responses must average over their
+normal distributions.
+
+Stack the trial responses in a vector $\mathbf y$, the population predictor rows
+in a matrix $\mathbf X$, and the participant and word predictor rows in a matrix
+$\mathbf Z$. Collect all group deviations in $\mathbf b$. The model becomes
+
+$$
+\begin{aligned}
+\mathbf Y\mid\mathbf b
+&\sim
+\mathcal N(\mathbf X\boldsymbol\beta+\mathbf Z\mathbf b,
+\sigma^2\mathbf I),\\
+\mathbf b
+&\sim
+\mathcal N(\mathbf 0,\mathbf G_{\boldsymbol\theta}).
+\end{aligned}
+$$
+
+The matrix $\mathbf G_{\boldsymbol\theta}$ contains the participant and word
+variances and covariances. We will use $\boldsymbol\theta$ for those covariance
+parameters together with the residual variance. Conditional independence gives
+the normal density $p(\mathbf y\mid\mathbf b,\boldsymbol\beta,
+\boldsymbol\theta)$. Averaging that density over the possible group deviations
+gives the **marginal likelihood**:
+
+$$
+L(\boldsymbol\beta,\boldsymbol\theta;\mathbf y)
+=
+\int
+p(\mathbf y\mid\mathbf b,\boldsymbol\beta,\boldsymbol\theta)
+p(\mathbf b\mid\boldsymbol\theta)
+\,d\mathbf b.
+$$
+
+For a Gaussian mixed model, this integral has a closed form. The group
+deviations contribute $\mathbf Z\mathbf G_{\boldsymbol\theta}\mathbf Z^{\mathsf T}$
+to the response covariance, while trial residuals contribute
+$\sigma^2\mathbf I$. We can see both contributions by calculating the marginal
+mean and variance:
+
+$$
+\begin{aligned}
+\mathbb{E}[\mathbf Y]
+&=
+\mathbf X\boldsymbol\beta
++\mathbf Z\mathbb{E}[\mathbf b]
++\mathbb{E}[\boldsymbol\varepsilon]
+=\mathbf X\boldsymbol\beta,\\[4pt]
+\operatorname{Var}[\mathbf Y]
+&=
+\mathbf Z\operatorname{Var}[\mathbf b]\mathbf Z^{\mathsf T}
++\operatorname{Var}[\boldsymbol\varepsilon]\\
+&=
+\mathbf Z\mathbf G_{\boldsymbol\theta}\mathbf Z^{\mathsf T}
++\sigma^2\mathbf I.
+\end{aligned}
+$$
+
+The variance sum uses the assumed independence of $\mathbf b$ and
+$\boldsymbol\varepsilon$. A linear combination of jointly Gaussian variables
+is Gaussian. Thus
+
+$$
+\mathbf Y
+\sim
+\mathcal N(
+\mathbf X\boldsymbol\beta,
+\mathbf V_{\boldsymbol\theta}),
+\qquad
+\mathbf V_{\boldsymbol\theta}
+=
+\mathbf Z\mathbf G_{\boldsymbol\theta}\mathbf Z^{\mathsf T}
++\sigma^2\mathbf I.
+$$
+
+This covariance is where the repeated units enter the likelihood. Two rows that
+share a participant or word receive a nonzero covariance through the appropriate
+columns of $\mathbf Z$. In the expression below,
+$|\mathbf V_{\boldsymbol\theta}|$ is the **determinant**, a single number that
+records the volume implied by the covariance, and
+$\mathbf V_{\boldsymbol\theta}^{-1}$ is the matrix inverse that rescales
+residual differences by that covariance.
+
+The full marginal log likelihood is
+
+$$
+\begin{aligned}
+\ell(\boldsymbol\beta,\boldsymbol\theta)
+&=
+-\frac n2\log(2\pi)
+-\frac12\log|\mathbf V_{\boldsymbol\theta}|\\
+&\quad
+-\frac12
+(\mathbf y-\mathbf X\boldsymbol\beta)^{\mathsf T}
+\mathbf V_{\boldsymbol\theta}^{-1}
+(\mathbf y-\mathbf X\boldsymbol\beta).
+\end{aligned}
+$$
+
+The final quadratic measures residual distance after accounting for the fitted
+covariance. A derivative records how the log likelihood changes under a small
+change in a parameter. If we hold $\boldsymbol\theta$ fixed and take one
+derivative for each entry of $\boldsymbol\beta$, the resulting collection is
+the **score**. At an interior maximum it equals zero, giving
+
+$$
+\mathbf X^{\mathsf T}
+\mathbf V_{\boldsymbol\theta}^{-1}
+(\mathbf y-\mathbf X\boldsymbol\beta)
+=\mathbf 0.
+$$
+
+When the columns of $\mathbf X$ are linearly independent, no column can be
+constructed as a weighted sum of the others. Under this condition the required
+inverse exists, and the solution is the
+**generalized least squares (GLS)** estimate
+
+$$
+\widehat{\boldsymbol\beta}_{\boldsymbol\theta}
+=
+(\mathbf X^{\mathsf T}\mathbf V_{\boldsymbol\theta}^{-1}\mathbf X)^{-1}
+\mathbf X^{\mathsf T}\mathbf V_{\boldsymbol\theta}^{-1}\mathbf y.
+$$
+
+The basic idea is familiar from ordinary least squares. We are still choosing
+coefficients by a weighted squared discrepancy. The inverse covariance gives
+less weight to directions with greater modeled variation and prevents repeated
+rows from being treated as independent copies.
+
+The covariance score shows why the remaining estimates require a search. Let
+$\mathbf V_k=\partial\mathbf V_{\boldsymbol\theta}/\partial\theta_k$ be the
+change in the response covariance produced by a small change in covariance
+parameter $\theta_k$, and let
+$\mathbf r=\mathbf y-\mathbf X\boldsymbol\beta$. We will also use
+$\operatorname{tr}(\mathbf A)$, the **trace** of a square matrix $\mathbf A$,
+which means the sum of its diagonal entries. Holding the population
+coefficients fixed, we use two matrix derivative identities:
+
+$$
+\frac{\partial}{\partial\theta_k}\log|\mathbf V|
+=
+\operatorname{tr}(\mathbf V^{-1}\mathbf V_k),
+\qquad
+\frac{\partial\mathbf V^{-1}}{\partial\theta_k}
+=
+-\mathbf V^{-1}\mathbf V_k\mathbf V^{-1}.
+$$
+
+The first identity differentiates the log determinant. The second says that an
+increase in covariance produces the corresponding decrease in precision.
+Applying the first identity to the determinant term and the second to the
+quadratic term gives
+
+$$
+\frac{\partial\ell}{\partial\theta_k}
+=
+-\frac12\operatorname{tr}
+(\mathbf V_{\boldsymbol\theta}^{-1}\mathbf V_k)
++\frac12
+\mathbf r^{\mathsf T}\mathbf V_{\boldsymbol\theta}^{-1}
+\mathbf V_k
+\mathbf V_{\boldsymbol\theta}^{-1}\mathbf r.
+$$
+
+The first term charges for increasing the volume of the fitted covariance; the
+second rewards a covariance change when it better accommodates the residual
+pattern. Substituting the GLS estimate into the likelihood gives
+the same profiled score because the coefficient score is zero at that estimate.
+
+The variance and covariance parameters generally have no closed form. For each
+candidate $\boldsymbol\theta$, `lmer()` finds the corresponding GLS coefficient
+vector and evaluates a profiled objective. A numerical optimizer then searches
+over the remaining covariance parameters. The search reported below uses
+`bobyqa`, which proposes new parameter values from a local quadratic
+approximation while respecting the nonnegative variance constraints.
+
+### Maximum likelihood and restricted maximum likelihood
+
+There are two related objectives in common use. **Maximum likelihood (ML)**
+maximizes the marginal log likelihood above over both
+$\boldsymbol\beta$ and $\boldsymbol\theta$. **Restricted maximum likelihood
+(REML)** first removes the $p$ population coefficient directions and then
+estimates the covariance parameters from the remaining $n-p$ response
+directions. To make “removes” concrete, choose an $n\times(n-p)$ matrix
+$\mathbf A$ whose columns satisfy $\mathbf A^{\mathsf T}\mathbf X=\mathbf 0$.
+Then $\mathbf A^{\mathsf T}\mathbf Y$ has mean zero and covariance
+$\mathbf A^{\mathsf T}\mathbf V_{\boldsymbol\theta}\mathbf A$, so its
+likelihood contains no $\boldsymbol\beta$. Different valid choices of
+$\mathbf A$ lead to the same covariance estimates. Writing that likelihood in
+terms of the original response gives, up to a parameter independent constant,
+
+$$
+\begin{aligned}
+\ell_{\mathrm R}(\boldsymbol\theta)
+&=
+-\frac12\Bigl[
+(n-p)\log(2\pi)
++\log|\mathbf V_{\boldsymbol\theta}|\\
+&\qquad
++\log|\mathbf X^{\mathsf T}
+\mathbf V_{\boldsymbol\theta}^{-1}\mathbf X|
++\mathbf y^{\mathsf T}\mathbf P_{\boldsymbol\theta}\mathbf y
+\Bigr],
+\end{aligned}
+$$
+
+where
+
+$$
+\mathbf P_{\boldsymbol\theta}
+=
+\mathbf V_{\boldsymbol\theta}^{-1}
+-
+\mathbf V_{\boldsymbol\theta}^{-1}\mathbf X
+(\mathbf X^{\mathsf T}\mathbf V_{\boldsymbol\theta}^{-1}\mathbf X)^{-1}
+\mathbf X^{\mathsf T}\mathbf V_{\boldsymbol\theta}^{-1}.
+$$
+
+This is the covariance-weighted version of the earlier [projection into fitted
+and residual directions](design-matrices.qmd#fig-projection-fitted-residual).
+Using the same determinant and inverse identities as above, together with
+
+$$
+\frac{\partial\mathbf P_{\boldsymbol\theta}}
+{\partial\theta_k}
+=
+-\mathbf P_{\boldsymbol\theta}\mathbf V_k
+\mathbf P_{\boldsymbol\theta},
+$$
+
+we can differentiate each term of the restricted objective. The covariance
+score is
+
+$$
+\frac{\partial\ell_{\mathrm R}}{\partial\theta_k}
+=
+-\frac12\operatorname{tr}(\mathbf P_{\boldsymbol\theta}\mathbf V_k)
++\frac12
+\mathbf y^{\mathsf T}\mathbf P_{\boldsymbol\theta}
+\mathbf V_k\mathbf P_{\boldsymbol\theta}\mathbf y.
+$$
+
+The optimizer searches for covariance parameters that make these score
+components approximately zero, subject to the requirement that the fitted
+covariance matrices remain valid.
+
+Why introduce a second objective? In an ordinary linear regression with Gaussian errors, ML uses
+$\operatorname{SSE}/n$ for the residual variance, while removing the $p$ fitted
+coefficient directions gives $\operatorname{SSE}/(n-p)$. REML generalizes that
+degrees of freedom correction to the covariance parameters of a mixed model.
+There is no single replacement denominator once several participant and word
+variance components enter $\mathbf V_{\boldsymbol\theta}$; the determinant and
+quadratic terms perform the correction together.
+
+A potential worry is that REML gives a likelihood for comparing any two mixed
+models. The restricted objective depends on the columns of $\mathbf X$, so REML
+values from models with different population predictors are not directly
+comparable. We use ML for likelihood comparisons that change those predictors.
+REML remains useful for estimating covariance components when the population
+predictor structure is held fixed.
+
 ## Fitting the MALD model
 
-The function `lmer()` fits a Gaussian linear mixed model. Its formula reads from left to right: `log_rt` is the response; the terms before the first grouping expression receive population coefficients; `(1 + z_frequency | participant_id)` gives each participant an intercept and frequency slope deviation; and `(1 | item)` gives each word an intercept deviation. The helper function `standardize()` below uses `scale()` to subtract a column's mean and divide by its standard deviation. Finally, `bobyqa` names the numerical search algorithm, and `maxfun` raises the number of objective evaluations it may use.
+The function `lmer()` fits the Gaussian mixed model. Its formula reads from left to right: `log_rt` is the response; the terms before the first grouping expression receive population coefficients; `(1 + z_frequency | participant_id)` gives each participant an intercept and frequency slope deviation; and `(1 | item)` gives each word an intercept deviation. The helper function `standardize()` below uses `scale()` to subtract a column's mean and divide by its standard deviation. We request REML explicitly. Finally, `maxfun` raises the number of objective evaluations available to `bobyqa`.
 
 ```{r}
 #| label: mald-fixed-random
@@ -111,6 +385,7 @@ fit <- lmer(
     (1 + z_frequency | participant_id) +
     (1 | item),
   data = mald,
+  REML = TRUE,
   control = lmerControl(
     optimizer = "bobyqa",
     optCtrl = list(maxfun = 200000L)
@@ -135,6 +410,94 @@ data.frame(
     participant_deviations[example_participant, "z_frequency"]
 )
 ```
+
+The full MALD covariance is large because there is one row per retained trial.
+To check the likelihood algebra directly, we take the one hundred words with the
+most retained responses and keep every observed participant response to those
+words. We then fit an intercept-only group structure to that subtable. This
+keeps the covariance matrix small enough to display every operation while
+preserving repeated words and the participants who supplied the responses.
+
+The calculation uses a **Cholesky factor** to evaluate the covariance
+determinant. For a positive definite covariance matrix, `chol()` finds an upper
+triangular matrix $\mathbf R$ satisfying
+$\mathbf V=\mathbf R^{\mathsf T}\mathbf R$. The determinant of a triangular
+matrix is the product of its diagonal entries, so
+$\log|\mathbf V|=2\sum_j\log R_{jj}$. This factorization avoids expanding a
+large determinant term by term. The call to `stopifnot()` at the end halts the
+calculation if either direct result differs from `lmer()` by more than the stated
+numerical tolerance.
+
+```{r}
+#| label: check-mald-marginal-likelihood
+
+item_counts <- sort(table(mald$item), decreasing = TRUE)
+selected_items <- names(head(item_counts, 100L))
+mald_check <- mald[mald$item %in% selected_items, ]
+
+check_fit <- lmer(
+  log_rt ~ z_frequency + z_duration + z_trial +
+    (1 | participant_id) + (1 | item),
+  data = mald_check,
+  REML = FALSE
+)
+
+X_check <- model.matrix(check_fit)
+y_check <- model.response(model.frame(check_fit))
+Z_participant <- model.matrix(
+  ~ 0 + factor(participant_id),
+  data = mald_check
+)
+Z_item <- model.matrix(~ 0 + factor(item), data = mald_check)
+check_variances <- as.data.frame(VarCorr(check_fit))
+tau_participant2 <- check_variances$vcov[
+  check_variances$grp == "participant_id" &
+    is.na(check_variances$var2)
+]
+tau_item2 <- check_variances$vcov[
+  check_variances$grp == "item" & is.na(check_variances$var2)
+]
+sigma2_check <- sigma(check_fit)^2
+
+V_check <-
+  tau_participant2 * tcrossprod(Z_participant) +
+  tau_item2 * tcrossprod(Z_item) +
+  sigma2_check * diag(nrow(mald_check))
+V_inverse_X <- solve(V_check, X_check)
+V_inverse_y <- solve(V_check, y_check)
+beta_gls <- solve(
+  crossprod(X_check, V_inverse_X),
+  crossprod(X_check, V_inverse_y)
+)
+check_residual <- y_check - drop(X_check %*% beta_gls)
+V_cholesky <- chol(V_check)
+log_determinant_V <- 2 * sum(log(diag(V_cholesky)))
+log_likelihood_direct <- -.5 * (
+  nrow(mald_check) * log(2 * pi) +
+    log_determinant_V +
+    crossprod(check_residual, solve(V_check, check_residual))
+)
+
+stopifnot(
+  max(abs(drop(beta_gls) - fixef(check_fit))) < 1e-7,
+  abs(drop(log_likelihood_direct) - as.numeric(logLik(check_fit))) < 1e-6
+)
+
+data.frame(
+  observed_trials = nrow(mald_check),
+  observed_participants = length(unique(mald_check$participant_id)),
+  observed_words = length(unique(mald_check$item)),
+  direct_log_likelihood = drop(log_likelihood_direct),
+  lmer_log_likelihood = as.numeric(logLik(check_fit)),
+  largest_gls_coefficient_difference =
+    max(abs(drop(beta_gls) - fixef(check_fit)))
+)
+```
+
+The direct calculation uses the fitted covariance parameters and recovers both
+the GLS population coefficients and the ML log likelihood reported by `lmer()`.
+Thus the software output instantiates the marginal Gaussian likelihood rather
+than introducing a separate estimation rule.
 
 The second table instantiates the earlier equation with one observed MALD participant. Adding each fitted deviation to its population coefficient gives that participant's fitted intercept and frequency slope.
 
@@ -210,7 +573,7 @@ The points are raw bin means. The line sets participant and item deviations to z
 
 Frequency, participant, item, and part of speech can all be stored as columns. Their storage types do not decide whether they receive population coefficients or group distributions. The decision follows the estimand and sampling design. A measured property that encodes a theoretical contrast belongs in the population relation. A sampled identifier that records repeated observations can index remaining variation around that relation.
 
-The course formula omits controls analyzed by Tucker et al. It isolates the covariance concepts needed here and does not reproduce their predictor comparison.
+We fit frequency, acoustic duration, and trial order because those terms let us isolate the participant and word covariance calculation. Tucker et al. analyze additional controls, so the coefficient comparison here answers a narrower question.
 
 ## Recap and check
 

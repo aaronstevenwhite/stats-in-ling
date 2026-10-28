@@ -9,21 +9,13 @@ The Nettle language rate model asks whether expected reported language density c
 
 We ask four questions. Does a longer mean growing season correspond to a different expected language rate? How uncertain is that association under the row independence approximation? Does the Poisson mean--variance relation fit the observed counts? And which claims remain unavailable because countries and reported languages do not form independent biological sampling units?
 
-The fitted Poisson [variance](../random-variables-and-distributions/variance-and-covariance.qmd) equals its fitted mean. The printed interval uses a row [independence](../foundations/independence.qmd) approximation, even though the discussion of the country counts gives several reasons that neighboring rows may remain related.
+The fitted Poisson [variance](../random-variables-and-distributions/variance-and-covariance.qmd) equals its fitted mean. The printed interval uses a row [independence](../foundations/independence.qmd) approximation, even though neighboring country records may remain related through geography, history, and documentation practices.
 
 ```{r}
 #| label: load-nettle-application
 #| echo: true
 nettle <- read.csv("data/nettle/nettle-1999-climate.csv")
-correct <- glm(language_count ~ mean_growing_season_months + offset(log_area_km2),
-               poisson(), nettle)
-mismatched <- glm(language_count ~ mean_growing_season_months + offset(log10_area_km2),
-                  poisson(), nettle)
-data.frame(
-  offset = c("natural log area", "base-10 log area inserted directly"),
-  mgs_coefficient = c(coef(correct)[[2L]], coef(mismatched)[[2L]]),
-  rate_ratio = exp(c(coef(correct)[[2L]], coef(mismatched)[[2L]]))
-)
+stopifnot(nrow(nettle) == 74L)
 ```
 
 The primary model is
@@ -34,7 +26,73 @@ Y_i\mid\lambda_i\sim\operatorname{Poisson}(\lambda_i),
 \log\lambda_i=\log A_i+\beta_0+\beta_1\operatorname{MGS}_i.
 $$
 
-Thus $\exp(\widehat\beta_1)$ is the fitted multiplicative change in expected languages per square kilometer for one additional month of mean growing season. A Wald interval on the log-rate scale becomes a rate-ratio interval after exponentiation.
+The [Poisson likelihood](poisson-regression.qmd#from-the-count-model-to-the-coefficient-estimates) gives the coefficient estimates and also gives a local measure of their uncertainty. Recall that the Hessian collects the second derivatives of the log likelihood with respect to every pair of coefficients. At the fitted coefficients, its negative is
+
+$$
+\widehat{\mathbf I}
+=\mathbf X^\mathsf T
+\operatorname{diag}(\widehat\lambda_1,\ldots,\widehat\lambda_n)
+\mathbf X.
+$$
+
+This matrix is called the **observed information** because it records the log likelihood's fitted curvature. A sharply curved likelihood changes quickly when a coefficient moves away from its estimate, while a flatter likelihood changes more slowly. Under the model and with enough independent rows, the inverse curvature approximates the sampling covariance of the coefficient estimator:
+
+$$
+\widehat{\operatorname{Var}}
+(\widehat{\boldsymbol\beta})
+\approx
+\widehat{\mathbf I}^{-1}.
+$$
+
+The square root of a diagonal entry is the corresponding coefficient [standard error](../statistical-inference/standard-errors.qmd). Thus an approximate 95% Wald interval for the MGS coefficient is
+
+$$
+\widehat\beta_1
+\mathbin{\pm}
+1.96\operatorname{SE}(\widehat\beta_1).
+$$
+
+The coefficient lies on the log rate scale. Exponentiating its estimate gives the fitted multiplicative change in expected languages per square kilometer for one additional month of mean growing season, and exponentiating the two interval endpoints gives the corresponding interval for the rate ratio.
+
+We can now fit the stated model and check the reported standard errors against the inverse curvature calculation. The second fit deliberately inserts base-10 log area into a model whose link uses natural logarithms, allowing us to inspect the consequence of that mismatch.
+
+```{r}
+#| label: fit-nettle-application
+#| echo: true
+correct <- glm(
+  language_count ~ mean_growing_season_months + offset(log_area_km2),
+  poisson(link = "log"),
+  nettle
+)
+mismatched <- glm(
+  language_count ~ mean_growing_season_months + offset(log10_area_km2),
+  poisson(link = "log"),
+  nettle
+)
+
+X <- model.matrix(correct)
+observed_information <- crossprod(X, X * fitted(correct))
+manual_standard_error <- sqrt(diag(solve(observed_information)))
+software_standard_error <- coef(summary(correct))[, "Std. Error"]
+
+standard_error_check <- data.frame(
+  coefficient = names(coef(correct)),
+  manual = manual_standard_error,
+  software = software_standard_error,
+  difference = manual_standard_error - software_standard_error,
+  row.names = NULL
+)
+standard_error_check
+stopifnot(max(abs(standard_error_check$difference)) < 1e-8)
+
+data.frame(
+  offset = c("natural log area", "base-10 log area inserted directly"),
+  mgs_coefficient = c(coef(correct)[[2L]], coef(mismatched)[[2L]]),
+  rate_ratio = exp(c(coef(correct)[[2L]], coef(mismatched)[[2L]]))
+)
+```
+
+The two standard error calculations agree because both invert the same fitted likelihood curvature. The row independence and Poisson variance assumptions still determine whether the interval has its advertised repeated sampling behavior for these country records.
 
 ```{r}
 #| label: nettle-rate-ratio-uncertainty
@@ -111,7 +169,8 @@ data.frame(pearson_dispersion,
 
 ## Recap and check
 
-1. What happens if base-10 log area is inserted as a natural-log offset? The fixed coefficient no longer represents proportional exposure, and the climate estimate changes.
+1. What happens if base-10 log area is inserted as a natural log offset? The fixed coefficient no longer represents proportional exposure, and the climate estimate changes.
 2. Does a positive fitted rate ratio establish a climate effect? No. It is a descriptive association under the distribution, mean, exposure, and independence assumptions.
+3. Where does the Wald standard error come from? It is the square root of the relevant diagonal entry in the inverse fitted information matrix.
 
 The [Pearson dispersion ratio](count-overdispersion.qmd) helps us assess whether the counts vary more than the fitted Poisson model permits.

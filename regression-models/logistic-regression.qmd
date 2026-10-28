@@ -28,18 +28,51 @@ $$
 
 where $\pi_i=\operatorname{logit}^{-1}(\beta_0+\beta_1\operatorname{result}_i)$. Before observing the data, $Y_i$ is random. After observation, $y_i$ is the fixed zero or one that enters this likelihood.
 
+For a general logistic regression, let $\mathbf X$ be the design matrix, let $\boldsymbol\eta=\mathbf X\boldsymbol\beta$, and let $\boldsymbol\pi$ contain the probabilities obtained by applying the inverse logit to each entry of $\boldsymbol\eta$. The joint log likelihood can then be written
+
+$$
+\ell(\boldsymbol\beta)
+=\sum_i
+\left[
+y_i\eta_i-\log(1+e^{\eta_i})
+\right].
+$$
+
+Differentiating once gives the score, the vector of log likelihood slopes:
+
+$$
+\mathbf U(\boldsymbol\beta)
+=\mathbf X^\mathsf T(\mathbf y-\boldsymbol\pi).
+$$
+
+Differentiating again gives the Hessian,
+
+$$
+\mathbf H(\boldsymbol\beta)
+=-\mathbf X^\mathsf T\mathbf W\mathbf X,
+\qquad
+W_{ii}=\pi_i(1-\pi_i).
+$$
+
+The score depends on $\boldsymbol\beta$ through the inverse logit, so it generally does not rearrange into a closed form coefficient estimate. Newton's method instead uses the current curvature to update all coefficients together:
+
+$$
+\boldsymbol\beta^{(t+1)}
+=\boldsymbol\beta^{(t)}
++
+(\mathbf X^\mathsf T\mathbf W^{(t)}\mathbf X)^{-1}
+\mathbf X^\mathsf T
+(\mathbf y-\boldsymbol\pi^{(t)}).
+$$
+
+The [IRLS derivation](iteratively-reweighted-least-squares.qmd) works through this update row by row. Recall that the [matrix inverse](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates) converts the score into a movement on the coefficient scale.
+
 ```{r}
-#| label: fit-logistic-regression
+#| label: load-logistic-regression
 #| echo: true
 st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
 st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
-fit <- glm(prep_in ~ verb_type, family = binomial(link = "logit"), data = st)
-coef_table <- data.frame(term = names(coef(fit)), estimate = unname(coef(fit)),
-                         odds_multiplier = exp(unname(coef(fit))))
-coef_table
 ```
-
-Read the `glm()` call from left to right. `prep_in ~ verb_type` names the response and predictor. `binomial()` supplies the Bernoulli likelihood for zero--one rows, and `link = "logit"` states how the conditional probability connects to the linear predictor. `data = st` tells R where those columns live. The call therefore encodes the same three GLM components that appear in the equations.
 
 The intercept is the log odds for manner verbs. The result coefficient is the difference in log odds between result and manner verbs, so
 
@@ -49,7 +82,33 @@ e^{\beta_1}
         {\pi_{\mathrm{manner}}/(1-\pi_{\mathrm{manner}})}.
 $$
 
-In this saturated two-group case, let $s_m/n_m$ and $s_r/n_r$ be the observed group proportions. Maximizing each group's binomial likelihood gives $\widehat\pi_m=s_m/n_m$ and $\widehat\pi_r=s_r/n_r$. Treatment coding thus yields
+The current model has one fitted probability for each observed verb group. A model with enough parameters to reproduce every observed group proportion is called **saturated**. In this saturated case with two groups, let $s_m/n_m$ and $s_r/n_r$ be the observed group proportions. We can obtain the fitted probability for either group directly. If a group contains $s$ *in* responses among $n$ trials, its log likelihood is
+
+$$
+\ell(\pi)
+=s\log\pi+(n-s)\log(1-\pi).
+$$
+
+The derivative records how that log likelihood changes as we move $\pi$:
+
+$$
+\frac{d\ell(\pi)}{d\pi}
+=\frac{s}{\pi}-\frac{n-s}{1-\pi}.
+$$
+
+At an interior maximum, this derivative equals zero. Multiplying by $\pi(1-\pi)$ and collecting terms gives
+
+$$
+s(1-\pi)-(n-s)\pi=0
+\quad\Longrightarrow\quad
+s-n\pi=0
+\quad\Longrightarrow\quad
+\widehat\pi=\frac{s}{n}.
+$$
+
+This interior calculation assumes $0<s<n$. If every response in a group is zero or every response is one, the likelihood is maximized at the boundary, where the corresponding log odds is infinite. Both observed verb groups contain both responses, so the interior calculation applies here.
+
+Applying this calculation to the two verb groups gives $\widehat\pi_m=s_m/n_m$ and $\widehat\pi_r=s_r/n_r$. Treatment coding thus yields
 
 $$
 \widehat\beta_0=\operatorname{logit}(s_m/n_m),
@@ -57,6 +116,26 @@ $$
 \widehat\beta_1=\operatorname{logit}(s_r/n_r)-
 \operatorname{logit}(s_m/n_m).
 $$
+
+We can now fit the model and check that its coefficients equal the two direct calculations.
+
+```{r}
+#| label: fit-logistic-regression
+#| echo: true
+fit <- glm(
+  prep_in ~ verb_type,
+  family = binomial(link = "logit"),
+  data = st
+)
+coef_table <- data.frame(
+  term = names(coef(fit)),
+  estimate = unname(coef(fit)),
+  odds_multiplier = exp(unname(coef(fit)))
+)
+coef_table
+```
+
+Read the `glm()` call from left to right. `prep_in ~ verb_type` names the response and predictor. `binomial()` supplies the Bernoulli likelihood for zero--one rows, and `link = "logit"` states how the conditional probability connects to the linear predictor. `data = st` tells R where those columns live. The call thus encodes the same three GLM components that appear in the equations.
 
 ```{r}
 #| label: derive-two-group-logistic-coefficients
@@ -67,8 +146,21 @@ manual <- with(group_counts,
   c(intercept = qlogis(prep_in[1, "successes"] / prep_in[1, "trials"]),
     result = qlogis(prep_in[2, "successes"] / prep_in[2, "trials"]) -
       qlogis(prep_in[1, "successes"] / prep_in[1, "trials"])))
-rbind(manual = manual, glm = coef(fit))
+coefficient_check <- rbind(manual = manual, glm = coef(fit))
+X <- model.matrix(fit)
+score_at_fit <- drop(crossprod(X, st$prep_in - fitted(fit)))
+coefficient_check
+data.frame(
+  coefficient = colnames(X),
+  score_at_fit = score_at_fit
+)
+stopifnot(
+  max(abs(manual - coef(fit))) < 1e-8,
+  max(abs(score_at_fit)) < 1e-6
+)
 ```
+
+The two direct estimates agree with `glm()`, and both fitted score components are approximately zero. Thus the software fit reaches the same maximum as the group likelihood calculation.
 
 The fitted coefficient is `r round(coef(fit)[[2L]], 3)` and its exponential is `r round(exp(coef(fit)[[2L]]), 3)`. The exponential gives the odds ratio. A probability ratio would instead divide the two fitted probabilities.
 
@@ -103,5 +195,6 @@ This population model leaves participant and sentence deviations outside the lik
 
 1. Does $\exp(\beta_1)$ give a probability ratio? No. It gives an odds ratio.
 2. Does this fit make repeated participants independent? No. The likelihood omits shared participant terms even though the same people contribute multiple rows, so its independence assumption remains a model limitation.
+3. Why did the direct group calculation assume $0<s<n$? A group containing only zeros or only ones places its maximum at a probability boundary, where the corresponding log odds is infinite.
 
 We now carry these mechanics through uncertainty and model checking in the [SuperTelicity contrast](logistic-regression-example.qmd).

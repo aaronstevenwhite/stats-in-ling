@@ -5,56 +5,61 @@ execute:
   message: false
 ---
 
-Suppose that a response records how many languages are associated with a country. The possible values are $0,1,2,\ldots$; negative counts and fractional counts are unavailable. A linear regression can assign a negative fitted mean, so we need a response distribution and a link that respect count support.
+Suppose that a response records how many languages are associated with a country
+or territory. The possible values are $0,1,2,\ldots$; negative counts and
+fractional counts are unavailable. A linear regression can assign a negative
+fitted mean, so we need a response distribution and a link that respect count
+support.
 
 The [**Poisson distribution**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) is one candidate. It assigns probability to nonnegative integers and has a positive mean. But it adds an important restriction: once the predictors determine the conditional mean, that same number also determines the conditional variance. [**Poisson regression**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=234) combines this response distribution with a log link, which converts any real-valued linear predictor into a positive mean.
 
-We use Nettle's ([1998](https://doi.org/10.1006/jaar.1998.0328)) study of language diversity and climate across countries. One row is one country; the response is its reported language count, mean growing season (MGS) is the ecological predictor, and area measures geographic opportunity.
+We use Nettle's ([1998](https://doi.org/10.1006/jaar.1998.0328)) study of language diversity and climate across countries and territories. One row is one country-or-territory record; the response is its reported language count, mean growing season (MGS) is the ecological predictor, and area measures geographic opportunity.
 
-The Poisson restriction equates conditional [variance](../random-variables-and-distributions/variance-and-covariance.qmd) with the conditional mean. Its [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed country totals fixed while comparing coefficient values, and its product assumes [independence](../foundations/independence.qmd) across country rows after predictors. Shared regions, histories, and cross-border languages make that factorization a substantive approximation.
+The Poisson restriction equates conditional [variance](../random-variables-and-distributions/variance-and-covariance.qmd) with the conditional mean. Its [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observed language totals fixed while comparing coefficient values, and its product assumes [independence](../foundations/independence.qmd) across country-or-territory rows after predictors. Shared regions, histories, and cross-border languages make that factorization a substantive approximation.
 
-The main modeling decision is whether country area may be treated as proportional
+The main modeling decision is whether geographic area may be treated as proportional
 exposure for a database count whose entries depend on geopolitical boundaries.
 Defining that response and opportunity structure gives the coefficient its units
 before the log-mean equation is fitted.
 
+We proceed in three steps: first, we inspect what one country-or-territory row measures; second, we derive the joint likelihood and the iterative coefficient calculation; and finally, we interpret the fitted rate association on the response scale.
+
 Here **exposure** means the amount of opportunity over which a count could accumulate. An [offset](exposure-offsets.qmd) is a predictor whose coefficient is fixed in advance. Entering log area as an offset fixes its coefficient at one, which requires expected language count to be directly proportional to area. We will derive that restriction after we first inspect the count model it enters.
 
-## What the country count measures {#nettle-country-counts}
+## What the country-or-territory count measures {#nettle-country-counts}
 
 `Langs` is the source table's reported number of languages associated with a
-country. The course file contains only that total; it has no language identifiers,
+country or territory. The course file contains only that total; it has no language identifiers,
 speaker counts, documentation records, or rule for distinguishing a language from
-a variety. Country totals consequently do not partition a single list of languages.
-A language used across a political border can contribute to more than one country
+a variety. These totals consequently do not partition a single list of languages.
+A language used across a political border can contribute to more than one
 total, and this table cannot audit that overlap.
 
-The row unit also matters. A country is a geopolitical aggregation whose borders,
+The row unit also matters. A country or territory is a geopolitical aggregation whose borders,
 settlement history, contact patterns, and documentation practices may all affect
-the reported total. Mean growing season and area are country summaries attached to
-that same unit. The analysis below asks whether the 74 represented country totals
+the reported total. Mean growing season and area are summaries attached to that
+same unit. The analysis below asks whether the 74 represented language totals
 vary with those summaries under a declared mean model. It does not sample
 individual languages or language users.
 
 | Stage | Quantity available here | Limit on the claim |
 |:--|:--|:--|
-| Source record | One reported language total per country | Language overlap and language-versus-variety decisions are unavailable. |
-| Predictor record | Country mean growing season and geographic area | Neither variable is an assigned intervention. |
-| Model row | One of 74 countries | Nearby countries and shared histories may remain dependent. |
-| Fitted target | Conditional variation among represented country totals | The coefficient does not identify a climate mechanism or a population of independent languages. |
+| Source record | One reported language total per country or territory | Language overlap and language-versus-variety decisions are unavailable. |
+| Predictor record | Precomputed mean growing season and geographic area | Neither variable is an assigned intervention. |
+| Model row | One of 74 country-or-territory records | Nearby records and shared histories may remain dependent. |
+| Fitted target | Conditional variation among represented language totals | The coefficient does not identify a climate mechanism or a population of independent languages. |
 
 ```{r}
 #| label: load-nettle-poisson
 #| echo: true
 nettle <- read.csv("data/nettle/nettle-1999-climate.csv")
 stopifnot(nrow(nettle) == 74L)
-count_fit <- glm(language_count ~ mean_growing_season_months,
-                 family = poisson(link = "log"), data = nettle)
-fit <- glm(language_count ~ mean_growing_season_months + offset(log_area_km2),
-           family = poisson(link = "log"), data = nettle)
 ```
 
-The Algeria row makes the units visible. The teaching table stores population and area on a base-ten log scale, while the offset requires a natural logarithm.[^nettle-teaching-table]
+The Algeria row makes the units visible. The source population value is in
+thousands of people before the base-ten logarithm is taken; it should not be
+read as a count of individual people. The teaching table also stores area on a
+base-ten log scale, while the offset requires a natural logarithm.[^nettle-teaching-table]
 
 [^nettle-teaching-table]: The transformed table comes from Bodo Winter's [course data](https://github.com/bodowinter/applied_statistics_book_data). Nettle's appendix reports population in thousands and area in square kilometers; the teaching table stores their base-ten logarithms.
 
@@ -65,10 +70,19 @@ transform(
     "country", "log10_population", "log10_area_km2", "log_area_km2",
     "mean_growing_season_months", "language_count"
   )],
-  population = 10^log10_population,
+  population_thousands = 10^log10_population,
+  population_people = 1000 * 10^log10_population,
   area_km2 = 10^log10_area_km2
 )
 ```
+
+The table supplies MGS as a precomputed number of months. Neither the local
+table nor its accompanying course source retains the monthly climate records,
+the criterion for deciding whether a month belongs to the growing season, or
+the spatial aggregation used to form the value. We can therefore interpret the
+column as the source's mean growing season in months, but we cannot reconstruct
+its measurement from the materials available here. The coefficient below is
+conditional on that supplied variable.
 
 Before using area, the count-only model states
 
@@ -76,7 +90,7 @@ $$
 \log\lambda_i=\beta_0+\beta_1\operatorname{MGS}_i.
 $$
 
-Its mean is an expected language count per country. The offset model below asks a stronger rate question by assuming that expected count is proportional to geographic area.
+Its mean is an expected language count per country-or-territory record. The offset model below asks a stronger rate question by assuming that expected count is proportional to geographic area.
 
 The model is
 
@@ -91,7 +105,211 @@ $$
 
 Thus $\lambda_i/A_i=\exp(\beta_0+\beta_1\operatorname{MGS}_i)$ is the fitted language rate per square kilometer.
 
-The [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd) adds more than count support: conditional on the predictors, its variance equals its mean. The log link keeps $\lambda_i$ positive and makes a coefficient additive in log rate, hence multiplicative after exponentiation. [Conditional independence](../random-variables-and-distributions/conditional-independence.qmd) also requires the joint country-count distribution to factorize once MGS and area are supplied. Shared histories, cross-border languages, contact, and spatial proximity make that restriction substantive and checkable.
+The [Poisson distribution](../random-variables-and-distributions/poisson-distribution.qmd) adds more than count support: conditional on the predictors, its variance equals its mean. The log link keeps $\lambda_i$ positive and makes a coefficient additive in log rate, hence multiplicative after exponentiation. [Conditional independence](../random-variables-and-distributions/conditional-independence.qmd) also requires the joint distribution of the recorded totals to factorize once MGS and area are supplied. Shared histories, cross-border languages, contact, and spatial proximity make that restriction substantive and checkable.
+
+## From the count model to the coefficient estimates
+
+We now need to find the coefficient values that make the observed language counts most probable under the model. We do this in two steps: first, we write the joint log likelihood; then, we use its slope and curvature to move toward its maximum.
+
+For one country-or-territory record, the Poisson probability mass is
+
+$$
+\mathbb{P}(Y_i=y_i\mid\lambda_i)
+=\frac{e^{-\lambda_i}\lambda_i^{y_i}}{y_i!}.
+$$
+
+Conditional independence lets us multiply these masses across records. Taking a logarithm turns that product into the sum
+
+$$
+\ell(\boldsymbol\beta)
+=\sum_{i=1}^n
+\left[
+y_i\log\lambda_i-\lambda_i-\log(y_i!)
+\right].
+$$
+
+To connect this expression to regression, let $\mathbf X$ contain a column of ones and the MGS column, let $\boldsymbol\beta=(\beta_0,\beta_1)^\mathsf T$, and write $o_i=\log A_i$ for the offset. The linear predictor and mean are then
+
+$$
+\eta_i=o_i+\mathbf x_i^\mathsf T\boldsymbol\beta,
+\qquad
+\lambda_i=e^{\eta_i}.
+$$
+
+Substituting $\log\lambda_i=\eta_i$ gives
+
+$$
+\ell(\boldsymbol\beta)
+=\sum_{i=1}^n
+\left[
+y_i(o_i+\mathbf x_i^\mathsf T\boldsymbol\beta)
+-e^{o_i+\mathbf x_i^\mathsf T\boldsymbol\beta}
+-\log(y_i!)
+\right].
+$$
+
+The **score** is the vector of first derivatives of this log likelihood, one derivative for each coefficient. Because
+
+$$
+\frac{\partial\lambda_i}{\partial\beta_j}
+=x_{ij}\lambda_i,
+$$
+
+the derivative with respect to coefficient $\beta_j$ is
+
+$$
+\frac{\partial\ell}{\partial\beta_j}
+=\sum_i x_{ij}(y_i-\lambda_i).
+$$
+
+Collecting the coefficient derivatives into one vector gives
+
+$$
+\mathbf U(\boldsymbol\beta)
+=\mathbf X^\mathsf T(\mathbf y-\boldsymbol\lambda).
+$$
+
+At the maximum, moving any coefficient a small amount should produce no first order increase in the log likelihood, so we seek the value at which this score is zero. But $\boldsymbol\lambda=\exp(\mathbf o+\mathbf X\boldsymbol\beta)$ depends on the coefficients through an exponential, and the score equation does not rearrange into a closed form expression for $\boldsymbol\beta$.
+
+We thus use curvature to improve a current guess. The **Hessian** collects the second derivatives:
+
+$$
+\mathbf H(\boldsymbol\beta)
+=-\mathbf X^\mathsf T\mathbf W\mathbf X,
+\qquad
+\mathbf W=\operatorname{diag}(\lambda_1,\ldots,\lambda_n).
+$$
+
+Every diagonal entry of $\mathbf W$ is positive, so the Hessian bends downward in every coefficient direction that the design matrix identifies. We call this downward bending **concavity**. With a full-rank design, strict concavity permits at most one finite maximum. Existence is a separate question: some count and predictor patterns allow the likelihood to approach its supremum only as a coefficient diverges.
+
+More precisely, a **recession direction** is a nonzero vector $\mathbf d$ such
+that
+
+$$
+\mathbf x_i^\mathsf T\mathbf d=0
+\quad\text{for every }y_i>0,
+$$
+
+and
+
+$$
+\mathbf x_i^\mathsf T\mathbf d\leq0
+\quad\text{for every }y_i=0,
+$$
+
+with at least one strict inequality in the second set. Moving indefinitely in
+that direction leaves the positive-count contributions unchanged while driving
+one or more zero-count fitted means toward zero. A finite maximum therefore
+requires the absence of such a direction. The observed Nettle fit below reaches
+a finite interior solution with a near-zero score.
+
+Recall that a [matrix inverse](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates) undoes a linear transformation, much as multiplying a scalar by its reciprocal undoes scalar multiplication. Here the inverse curvature converts the current score into a movement on the coefficient scale.
+
+Newton's method replaces the curved score by its tangent plane at the current coefficients and moves to the zero of that local approximation. Starting from a current value $\boldsymbol\beta^{(t)}$, the update is
+
+$$
+\boldsymbol\beta^{(t+1)}
+=\boldsymbol\beta^{(t)}
++
+\left(
+\mathbf X^\mathsf T\mathbf W^{(t)}\mathbf X
+\right)^{-1}
+\mathbf X^\mathsf T
+(\mathbf y-\boldsymbol\lambda^{(t)}).
+$$
+
+The [earlier derivation](iteratively-reweighted-least-squares.qmd) calls this calculation **iteratively reweighted least squares (IRLS)** because every step solves a weighted linear regression and then recalculates the weights. For the Poisson log link, define the working response
+
+$$
+z_i^{(t)}
+=\eta_i^{(t)}
++\frac{y_i-\lambda_i^{(t)}}{\lambda_i^{(t)}}.
+$$
+
+Then
+
+$$
+\boldsymbol\beta^{(t+1)}
+=
+\left(
+\mathbf X^\mathsf T\mathbf W^{(t)}\mathbf X
+\right)^{-1}
+\mathbf X^\mathsf T\mathbf W^{(t)}
+(\mathbf z^{(t)}-\mathbf o).
+$$
+
+The following calculation applies these updates to the 74 observed language totals. The initial intercept sets one common language rate across the observed area, and the initial MGS coefficient is zero. We then update both coefficients until neither changes appreciably. In the code, `crossprod(X, v)` computes $\mathbf X^\mathsf T\mathbf v$, while `solve(A, b)` finds the vector $\mathbf q$ satisfying $\mathbf A\mathbf q=\mathbf b$.
+
+```{r}
+#| label: derive-nettle-poisson-irls
+#| echo: true
+y <- nettle$language_count
+X <- model.matrix(~ mean_growing_season_months, data = nettle)
+offset <- nettle$log_area_km2
+
+beta <- c(log(sum(y) / sum(exp(offset))), 0)
+maximum_iterations <- 100L
+tolerance <- 1e-11
+iteration_path <- data.frame()
+
+for (iteration in seq_len(maximum_iterations)) {
+  eta <- offset + drop(X %*% beta)
+  lambda <- exp(eta)
+  weights <- lambda
+  working_response <- eta + (y - lambda) / lambda
+  information <- crossprod(X, X * weights)
+  beta_new <- drop(solve(
+    information,
+    crossprod(X, weights * (working_response - offset))
+  ))
+
+  maximum_change <- max(abs(beta_new - beta))
+  beta <- beta_new
+  iteration_path <- rbind(
+    iteration_path,
+    data.frame(
+      iteration = iteration,
+      intercept = beta[[1L]],
+      mgs = beta[[2L]],
+      maximum_change = maximum_change
+    )
+  )
+  if (maximum_change < tolerance) break
+}
+
+manual_beta <- beta
+fit <- glm(
+  language_count ~ mean_growing_season_months + offset(log_area_km2),
+  family = poisson(link = "log"),
+  data = nettle
+)
+
+fitted_lambda <- fitted(fit)
+score_at_fit <- drop(crossprod(X, y - fitted_lambda))
+manual_log_likelihood <- sum(dpois(y, fitted_lambda, log = TRUE))
+
+poisson_fit_check <- data.frame(
+  quantity = c(
+    "largest coefficient difference",
+    "largest absolute score component",
+    "absolute log likelihood difference"
+  ),
+  value = c(
+    max(abs(manual_beta - coef(fit))),
+    max(abs(score_at_fit)),
+    abs(manual_log_likelihood - as.numeric(logLik(fit)))
+  )
+)
+poisson_fit_check
+
+stopifnot(
+  poisson_fit_check$value[[1L]] < 1e-6,
+  poisson_fit_check$value[[2L]] < 1e-4,
+  poisson_fit_check$value[[3L]] < 1e-6
+)
+```
+
+The direct updates and `glm()` agree, the score is approximately zero at the fitted coefficients, and the probability masses sum to the fitted log likelihood. Thus the estimates returned by `glm()` solve the likelihood problem we just worked through.
 
 ```{r}
 #| label: nettle-poisson-summary
@@ -119,20 +337,24 @@ ggplot(nettle, aes(mean_growing_season_months, observed_rate)) +
        y = "Languages per square kilometer") + theme_classic()
 ```
 
-A one month increase in MGS multiplies the fitted rate by `r round(exp(coef(fit)[[2L]]), 3)`, conditional on the fixed area exposure specification. Nettle instead estimated the log area coefficient. Fixing it to one asserts that twice the area yields twice the expected reported country total at fixed MGS. The estimate therefore describes an area normalized association among these 74 geopolitical records under that assumption; it supplies no climate intervention or sampling design for a causal claim.
+A one month increase in the supplied MGS variable multiplies the fitted rate by `r round(exp(coef(fit)[[2L]]), 3)`, conditional on the fixed area exposure specification. Nettle instead estimated the log area coefficient. Fixing it to one asserts that twice the area yields twice the expected reported language total at fixed MGS. The estimate therefore describes an area normalized association among these 74 geopolitical records under that assumption; it supplies no climate intervention or sampling design for a causal claim.
 
 ## Recap and check your understanding
 
 1. Which assumption is added when area becomes an offset rather than an estimated predictor?
 2. Why does nonnegative-integer support not establish the Poisson variance restriction?
 3. What does exponentiating the MGS coefficient produce?
+4. Why can we not solve the Poisson score equation for $\boldsymbol\beta$ in one algebraic step?
+5. What should happen to the score as the IRLS calculation reaches the maximum?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
 1. The area coefficient is fixed at one on the log scale, so doubling area must double the expected count at fixed MGS. <!-- dqr-allow: conceptual-answer -->
 2. Many count distributions share the same support. Poisson additionally requires conditional mean and variance to be equal. <!-- dqr-allow: conceptual-answer -->
-3. It produces the fitted multiplicative change in expected count or rate for a one-month MGS increase, conditional on the remaining specification. <!-- dqr-allow: conceptual-answer -->
+3. It produces the fitted multiplicative change in expected count or rate for a one month MGS increase, conditional on the remaining specification. <!-- dqr-allow: conceptual-answer -->
+4. The mean vector is $\exp(\mathbf o+\mathbf X\boldsymbol\beta)$, so the unknown coefficients remain inside an exponential in the score equation. <!-- dqr-allow: symbolic-derivation -->
+5. Every score component should approach zero, since no small coefficient movement should increase the log likelihood to first order. <!-- dqr-allow: conceptual-answer -->
 
 </details>
 

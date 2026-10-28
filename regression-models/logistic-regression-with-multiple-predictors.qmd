@@ -13,12 +13,19 @@ Both fits compare likelihoods in the [maximum likelihood](../statistical-inferen
 
 Adding the result verb indicator changes the contentfulness coefficient into a conditional comparison. Writing both linear predictors side by side makes that change visible before their likelihoods and limitations from repeated units are compared.
 
-The [SuperTelicity responses](why-generalized-linear-models.qmd) define the response and row unit. Here `contentful`, `bleached`, and `templatic` are the three contentfulness labels supplied by the table; it does not include source sentences that would support inventing lexical examples. We can, however, inspect the six observed design cells before interpreting partial coefficients.
+The [SuperTelicity responses](why-generalized-linear-models.qmd) define the response and row unit. In a **contentful** sentence, the verb's arguments are ordinary lexical phrases such as *the batter* and *the ball*. A **bleached** sentence replaces those phrases with very general nouns such as *the person* and *the thing*. A **templatic** sentence reduces the material to a frame such as *X hit Y*. The table contains generic and episodic clauses for the first two classes, but templatic sentences occur only in the episodic condition. We first display that inventory, then restrict the comparison to episodic clauses so that a templatic coefficient is not inseparable from the missing generic cell.
 
 ```{r}
 #| label: fit-multiple-logistic
 #| echo: true
-st <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+st_all <- read.csv("data/supertelicity/supertelicity-cloze.csv")
+clause_inventory <- as.data.frame(xtabs(
+  ~ contentfulness + clause_type,
+  data = st_all
+))
+clause_inventory
+
+st <- subset(st_all, clause_type == "episodic")
 st$verb_type <- factor(st$verb_type, levels = c("manner", "result"))
 st$contentfulness <- factor(st$contentfulness,
                             levels = c("contentful", "bleached", "templatic"))
@@ -79,10 +86,46 @@ ggplot(cells, aes(contentfulness, prep_in, shape = verb_type, group = verb_type)
 ```{r}
 #| label: compare-multiple-logistic
 #| echo: true
-anova(additive, interaction, test = "Chisq")
+log_likelihood_additive <- as.numeric(logLik(additive))
+log_likelihood_interaction <- as.numeric(logLik(interaction))
+lr_statistic <- 2 * (
+  log_likelihood_interaction - log_likelihood_additive
+)
+released_coefficients <-
+  attr(logLik(interaction), "df") - attr(logLik(additive), "df")
+lr_p_value <- pchisq(
+  lr_statistic,
+  df = released_coefficients,
+  lower.tail = FALSE
+)
+
+software_comparison <- anova(additive, interaction, test = "Chisq")
+stopifnot(
+  abs(lr_statistic - software_comparison$Deviance[[2L]]) < 1e-10,
+  released_coefficients == software_comparison$Df[[2L]],
+  abs(lr_p_value - software_comparison$`Pr(>Chi)`[[2L]]) < 1e-10
+)
+
+data.frame(
+  additive_log_likelihood = log_likelihood_additive,
+  interaction_log_likelihood = log_likelihood_interaction,
+  likelihood_ratio_statistic = lr_statistic,
+  degrees_of_freedom = released_coefficients,
+  p_value = lr_p_value
+)
+software_comparison
 ```
 
-The likelihood ratio statistic is twice the fitted log likelihood difference. Under the regular large sample conditions required for a [deviance comparison](deviance.qmd), it is compared with a chi-squared reference distribution whose degrees of freedom equal the two interaction coefficients set to zero by the additive model. Contrasts among fitted probabilities show what those restrictions on the log odds scale mean substantively.
+The direct calculation takes twice the difference between the two maximized log
+likelihoods. The interaction model adds two product coefficients: one for the
+change in the result--manner contrast in the bleached class and one for its
+change in the templatic class. The additive model fixes both coefficients at
+zero, so releasing its restrictions adds two degrees of freedom. Under the
+regular large sample conditions required for a [deviance comparison](deviance.qmd),
+the likelihood ratio statistic is compared with a chi-squared distribution with
+those two degrees of freedom. The direct calculation and `anova()` output agree.
+Contrasts among fitted probabilities show what the restrictions on the log odds
+scale mean substantively.
 
 ```{r}
 #| label: contentfulness-specific-probability-contrasts
@@ -92,7 +135,7 @@ wide <- reshape(cells[c("verb_type", "contentfulness", "interaction")],
 transform(wide, result_minus_manner = interaction.result - interaction.manner)
 ```
 
-A partial coefficient is meaningful only because the observed design supplies overlap among the represented cells. This population model still omits participant and sentence dependence and does not replace the paper's mixed analysis. [Problem Set 3](../problem-sets/ps3/) asks students to interpret related fitted contrasts.
+Within the episodic subset, every contentfulness class contains both verb types, so the displayed contrasts compare represented cells. This population model still omits participant and sentence dependence and does not replace the paper's mixed analysis. [Problem Set 3](../problem-sets/ps3/) asks students to interpret related fitted contrasts.
 
 ## Recap and check
 

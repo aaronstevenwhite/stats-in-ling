@@ -49,6 +49,28 @@ $$
 
 The Poisson score is the same sum without the constant $1/\phi$. Multiplying a score by a nonzero constant does not change its root. This is why the Poisson and quasi-Poisson coefficient estimates agree for the same mean specification.
 
+The same scale factor enters coefficient uncertainty. For a log link, define
+
+$$
+\mathbf W
+=
+\operatorname{diag}(\mu_1,\ldots,\mu_n).
+$$
+
+The model based covariance estimate is
+
+$$
+\widehat{\operatorname{Var}}
+(\widehat{\boldsymbol\beta})
+=
+\widehat\phi
+(\mathbf X^\top\mathbf W\mathbf X)^{-1}.
+$$
+
+Multiplying a covariance matrix by $\widehat\phi$ multiplies each diagonal
+variance by $\widehat\phi$. A standard error is the square root of a diagonal
+variance, so every standard error is multiplied by $\sqrt{\widehat\phi}$.
+
 ```{r}
 #| label: load-and-fit-quasi
 #| echo: true
@@ -57,12 +79,28 @@ formula <- language_count ~ mean_growing_season_months + offset(log_area_km2)
 poisson_fit <- glm(formula, poisson(), nettle)
 quasi_fit <- glm(formula, quasipoisson(), nettle)
 stopifnot(max(abs(fitted(poisson_fit) - fitted(quasi_fit))) < 1e-8)
+X <- model.matrix(quasi_fit)
+mu_hat <- fitted(quasi_fit)
+phi_hat <- summary(quasi_fit)$dispersion
+quasi_covariance_by_hand <-
+  phi_hat * solve(crossprod(X, X * as.numeric(mu_hat)))
+quasi_covariance_from_glm <- vcov(quasi_fit)
+stopifnot(
+  max(abs(
+    quasi_covariance_by_hand - quasi_covariance_from_glm
+  )) < 1e-8
+)
 data.frame(
   model = c("Poisson", "quasi-Poisson"),
   mgs_estimate = c(coef(poisson_fit)[[2L]], coef(quasi_fit)[[2L]]),
   mgs_standard_error = c(summary(poisson_fit)$coefficients[2L, 2L],
                          summary(quasi_fit)$coefficients[2L, 2L]),
   dispersion = c(1, summary(quasi_fit)$dispersion)
+)
+data.frame(
+  term = colnames(X),
+  direct_standard_error = sqrt(diag(quasi_covariance_by_hand)),
+  glm_standard_error = sqrt(diag(quasi_covariance_from_glm))
 )
 ```
 

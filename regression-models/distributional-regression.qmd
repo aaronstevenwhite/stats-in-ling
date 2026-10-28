@@ -9,7 +9,7 @@ execute:
 
 **Distributional regression** gives more than one response-distribution parameter a predictor equation. For MALD correct log response times, we use the location-scale specification stated below.
 
-Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the likelihood is the joint density of the realized item summaries viewed as a function of the location and scale coefficients. Conditional [variance and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) describe response spread, a [residual](residuals.qmd) is observed minus fitted location, and the likelihood product requires the stated [independence](../foundations/independence.qmd) approximation. Retained trial counts and the variances observed for each item improve the precision story, though the response remains conditional on correct trials and uses onset to response timing.
+Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the likelihood is the joint density of the realized item summaries viewed as a function of the location and scale coefficients. Conditional [variance and standard deviation](../random-variables-and-distributions/variance-and-covariance.qmd) describe response spread, a [residual](residuals.qmd) is observed minus fitted location, and the likelihood product requires the stated [independence](../foundations/independence.qmd) approximation. Under the grouped Gaussian model, each item's retained count, mean, and variance reconstruct its likelihood contribution, so items with different numbers of trials and different spreads contribute differently. The response remains conditional on correct trials and uses onset to response timing.
 
 One predictor equation cannot say that MALD item means and their remaining spread change differently with frequency. Separate location and scale equations supply those two conditional targets and require their coefficients to be interpreted separately.
 
@@ -43,7 +43,31 @@ The normal choice assumes that retained correct log response times are condition
 
 ## A likelihood for grouped item summaries
 
-The course table does not retain the individual correct trials used in this sequence. For item $i$, it retains their count $n_i$, mean $\overline y_i$, and variance $s_i^2$. The identity
+The MALD item table does not retain the individual correct trials used in this sequence. For item $i$, it retains their count $n_i$, mean $\overline y_i$, and variance $s_i^2$. These three values reconstruct the item's Gaussian likelihood contribution and allow items with different retained counts and spreads to contribute differently.
+
+Here is one observed word before we write the general formula:
+
+```{r}
+#| label: inspect-one-mald-distributional-item
+#| echo: true
+mald <- read.csv("data/mald/mald-items.csv", stringsAsFactors = FALSE)
+example_item_index <- 1L
+mald[
+  example_item_index,
+  c(
+    "item",
+    "n_observations",
+    "mean_log_rt",
+    "variance_log_rt",
+    "log_frequency_subtlex",
+    "log_duration",
+    "n_phones"
+  )
+]
+```
+
+The count records how many retained correct trials contributed to this word's
+mean and variance. The identity
 
 $$
 \sum_{j=1}^{n_i}(y_{ij}-\mu_i)^2
@@ -63,6 +87,122 @@ $$
 
 After squaring and summing, the cross product vanishes because $\sum_j(y_{ij}-\overline y_i)=0$. The first squared term is $(n_i-1)s_i^2$ and the second is $n_i(\overline y_i-\mu_i)^2$. Thus the grouped likelihood is algebraically equal to the row likelihood only under the declared Gaussian mean and scale shared by the trials for an item.
 
+Write the mean and log scale as
+
+$$
+\mu_i=\mathbf x_i^\top\boldsymbol\beta,
+\qquad
+\log\sigma_i=\mathbf z_i^\top\boldsymbol\gamma,
+$$
+
+and define the reconstructed squared error for item $i$ as
+
+$$
+R_i(\boldsymbol\beta)
+=
+(n_i-1)s_i^2
++n_i
+(\overline y_i-\mathbf x_i^\top\boldsymbol\beta)^2.
+$$
+
+The negative grouped log likelihood is then
+
+$$
+\begin{aligned}
+\mathcal L(\boldsymbol\beta,\boldsymbol\gamma)
+&=
+-\ell(\boldsymbol\beta,\boldsymbol\gamma)\\
+&=
+\frac12
+\sum_i
+\left[
+n_i\log(2\pi)
++2n_i\mathbf z_i^\top\boldsymbol\gamma
++R_i(\boldsymbol\beta)
+\exp\{-2\mathbf z_i^\top\boldsymbol\gamma\}
+\right].
+\end{aligned}
+$$
+
+This is the function evaluated by the R code below. Its coefficient gradients
+show what the numerical search must balance. For the conditional mean
+coefficients,
+
+$$
+\nabla_{\boldsymbol\beta}\mathcal L
+=
+-\sum_i
+n_i
+\exp\{-2\mathbf z_i^\top\boldsymbol\gamma\}
+\mathbf x_i
+(\overline y_i-\mathbf x_i^\top\boldsymbol\beta).
+$$
+
+Thus item mean discrepancies receive more weight when an item has more retained
+trials and when its fitted conditional variance is smaller. For the log scale
+coefficients,
+
+$$
+\nabla_{\boldsymbol\gamma}\mathcal L
+=
+\sum_i
+\mathbf z_i
+\left[
+n_i
+-
+\frac{R_i(\boldsymbol\beta)}{\sigma_i^2}
+\right].
+$$
+
+At a stationary point, each gradient equals zero. The first equation balances
+weighted mean residuals; the second balances reconstructed squared errors with
+the fitted variances.
+
+We can also derive the full Hessian rather than asking the optimizer to supply
+an unexplained curvature matrix. Let
+$r_i=\overline y_i-\mathbf x_i^\mathsf T\boldsymbol\beta$, let
+$\mathbf D(\mathbf a)$ place the entries of vector $\mathbf a$ on a diagonal,
+and let the divisions below be rowwise. The three Hessian blocks are
+
+$$
+\mathbf H_{\beta\beta}
+=
+\mathbf X^\mathsf T
+\mathbf D\left(\frac{\mathbf n}{\boldsymbol\sigma^2}\right)
+\mathbf X,
+$$
+
+$$
+\mathbf H_{\beta\gamma}
+=
+2\mathbf X^\mathsf T
+\mathbf D\left(\frac{\mathbf n\odot\mathbf r}{\boldsymbol\sigma^2}\right)
+\mathbf Z,
+$$
+
+and
+
+$$
+\mathbf H_{\gamma\gamma}
+=
+\mathbf Z^\mathsf T
+\mathbf D\left(\frac{2\mathbf R}{\boldsymbol\sigma^2}\right)
+\mathbf Z.
+$$
+
+Here $\odot$ means rowwise multiplication. The lower-left block is
+$\mathbf H_{\gamma\beta}=\mathbf H_{\beta\gamma}^\mathsf T$. Joining these
+four blocks gives the observed Hessian of the negative log likelihood. Its
+inverse provides a local model-based covariance approximation when the grouped
+Gaussian independence assumptions hold.
+
+The stored $s_i^2$ uses denominator $n_i-1$. Multiplication by $n_i-1$ in
+$R_i$ recovers the corresponding within-item sum of squares. Later, the starting
+value for a common $\sigma^2$ divides the reconstructed total by the number of
+trials, as a Gaussian maximum likelihood calculation would. That value only
+starts the numerical search; the fitted scale coefficients come from minimizing
+$\mathcal L$.
+
 ## How we will search for the likelihood maximum
 
 There is no closed-form solution for all the location and scale coefficients
@@ -75,7 +215,8 @@ derivatives and describes local curvature, as developed in the [Hessian
 discussion](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature).
 
 We use **BFGS**, an algorithm that learns an approximation to the inverse Hessian
-from successive gradients. Each iteration combines the current gradient with
+from successive gradients. The `gr` function below evaluates the two gradients
+derived above. Each iteration combines the current gradient with
 that curvature approximation to propose another coefficient vector. The search
 stops when its relative progress falls below `reltol` or when it reaches the
 `maxit` ceiling. Neither stopping rule assesses whether the distributional
@@ -126,6 +267,62 @@ negative_log_likelihood <- function(parameters, X, Z, data) {
   )
 }
 
+negative_log_likelihood_gradient <- function(parameters, X, Z, data) {
+  n_beta <- ncol(X)
+  beta <- parameters[seq_len(n_beta)]
+  gamma <- parameters[n_beta + seq_len(ncol(Z))]
+  mu <- drop(X %*% beta)
+  log_sigma <- drop(Z %*% gamma)
+  inverse_sigma_squared <- exp(-2 * log_sigma)
+  mean_residual <- data$mean_log_rt - mu
+  squared_error <-
+    (data$n_observations - 1) * data$variance_log_rt +
+    data$n_observations * mean_residual^2
+
+  beta_gradient <- -drop(crossprod(
+    X,
+    data$n_observations * inverse_sigma_squared * mean_residual
+  ))
+  gamma_gradient <- drop(crossprod(
+    Z,
+    data$n_observations - squared_error * inverse_sigma_squared
+  ))
+  c(beta_gradient, gamma_gradient)
+}
+
+negative_log_likelihood_hessian <- function(parameters, X, Z, data) {
+  n_beta <- ncol(X)
+  beta <- parameters[seq_len(n_beta)]
+  gamma <- parameters[n_beta + seq_len(ncol(Z))]
+  mu <- drop(X %*% beta)
+  log_sigma <- drop(Z %*% gamma)
+  inverse_sigma_squared <- exp(-2 * log_sigma)
+  mean_residual <- data$mean_log_rt - mu
+  squared_error <-
+    (data$n_observations - 1) * data$variance_log_rt +
+    data$n_observations * mean_residual^2
+
+  H_beta_beta <- crossprod(
+    X,
+    X * as.numeric(data$n_observations * inverse_sigma_squared)
+  )
+  H_beta_gamma <- 2 * crossprod(
+    X,
+    Z * as.numeric(
+      data$n_observations * mean_residual * inverse_sigma_squared
+    )
+  )
+  H_gamma_gamma <- crossprod(
+    Z,
+    Z * as.numeric(2 * squared_error * inverse_sigma_squared)
+  )
+
+  rbind(
+    cbind(H_beta_beta, H_beta_gamma),
+    cbind(t(H_beta_gamma), H_gamma_gamma)
+  )
+}
+
 weighted_mean_fit <- lm(
   mean_log_rt ~ log_frequency_c + log_duration_c + n_phones_c,
   data = mald,
@@ -140,6 +337,7 @@ initial_sigma <- sqrt(sum(
 constant_scale_fit <- optim(
   c(initial_beta, log(initial_sigma)),
   negative_log_likelihood,
+  gr = negative_log_likelihood_gradient,
   X = X_mu,
   Z = Z_constant,
   data = mald,
@@ -149,12 +347,22 @@ constant_scale_fit <- optim(
 frequency_scale_fit <- optim(
   c(initial_beta, log(initial_sigma), 0),
   negative_log_likelihood,
+  gr = negative_log_likelihood_gradient,
   X = X_mu,
   Z = Z_frequency,
   data = mald,
   method = "BFGS",
   hessian = TRUE,
   control = list(maxit = 4000L, reltol = 1e-11)
+)
+independent_frequency_fit <- nlminb(
+  start = c(initial_beta, log(initial_sigma), 0),
+  objective = negative_log_likelihood,
+  gradient = negative_log_likelihood_gradient,
+  X = X_mu,
+  Z = Z_frequency,
+  data = mald,
+  control = list(eval.max = 4000L, iter.max = 4000L, rel.tol = 1e-11)
 )
 
 n_beta <- ncol(X_mu)
@@ -184,17 +392,63 @@ model_comparison$aic <-
 
 stopifnot(
   constant_scale_fit$convergence == 0L,
-  frequency_scale_fit$convergence == 0L
+  frequency_scale_fit$convergence == 0L,
+  independent_frequency_fit$convergence == 0L
 )
 
 coefficient_table
 model_comparison
 ```
 
+We can now carry the displayed word through one fitted likelihood contribution.
+
+```{r}
+#| label: inspect-one-fitted-mald-distributional-item
+fitted_beta <- frequency_scale_fit$par[seq_len(n_beta)]
+fitted_gamma <- frequency_scale_fit$par[
+  n_beta + seq_len(ncol(Z_frequency))
+]
+example_mean <- drop(
+  X_mu[example_item_index, , drop = FALSE] %*% fitted_beta
+)
+example_log_sigma <- drop(
+  Z_frequency[example_item_index, , drop = FALSE] %*% fitted_gamma
+)
+example_sigma <- exp(example_log_sigma)
+example_n <- mald$n_observations[[example_item_index]]
+example_observed_mean <- mald$mean_log_rt[[example_item_index]]
+example_observed_variance <- mald$variance_log_rt[[example_item_index]]
+example_reconstructed_error <-
+  (example_n - 1) * example_observed_variance +
+  example_n * (example_observed_mean - example_mean)^2
+example_negative_log_likelihood <- .5 * (
+  example_n * log(2 * pi) +
+  2 * example_n * example_log_sigma +
+  example_reconstructed_error / example_sigma^2
+)
+
+data.frame(
+  item = mald$item[[example_item_index]],
+  retained_trials = example_n,
+  observed_mean = example_observed_mean,
+  observed_variance = example_observed_variance,
+  fitted_mean = example_mean,
+  fitted_standard_deviation = example_sigma,
+  reconstructed_squared_error = example_reconstructed_error,
+  negative_log_likelihood_contribution = example_negative_log_likelihood
+)
+```
+
+The reconstructed squared error combines the spread around the word's observed
+mean with the discrepancy between that mean and the fitted mean. Dividing by
+the fitted variance and adding the normalizing terms gives exactly the word's
+contribution to the grouped objective.
+
 `X_mu` maps the four mean coefficients to $\mu_i$; `Z_frequency` maps an intercept and centered frequency to $\log\sigma_i$. The optimizer parameter vector thus contains the mean coefficients first and the scale coefficients second. Weighted least squares supplies stable mean starting values, pooled residual sums of squares supply the scale start, and the added zero initializes no frequency change in scale.
 
 A zero convergence code reports that this search stabilized numerically. We
-also request a Hessian at the reported solution. An **eigenvector** of the
+also check that a finite difference gradient is close to zero and request a
+Hessian at the reported solution. An **eigenvector** of the
 Hessian is a direction in coefficient space whose direction is unchanged by the
 curvature transformation; its **eigenvalue** records the amount and sign of
 curvature in that direction. Positive eigenvalues in every direction are what
@@ -205,14 +459,95 @@ An eigenvector is easiest to think of as a direction through the coefficient sur
 
 ```{r}
 #| label: check-mald-distributional-curvature
+finite_difference_gradient <- function(fn, parameters, ...) {
+  vapply(
+    seq_along(parameters),
+    function(j) {
+      step <- 1e-5 * max(1, abs(parameters[[j]]))
+      upper <- parameters
+      lower <- parameters
+      upper[[j]] <- upper[[j]] + step
+      lower[[j]] <- lower[[j]] - step
+      (fn(upper, ...) - fn(lower, ...)) / (2 * step)
+    },
+    numeric(1L)
+  )
+}
+
+gradient_at_solution <- finite_difference_gradient(
+  negative_log_likelihood,
+  frequency_scale_fit$par,
+  X = X_mu,
+  Z = Z_frequency,
+  data = mald
+)
+analytic_gradient_at_solution <- negative_log_likelihood_gradient(
+  frequency_scale_fit$par,
+  X = X_mu,
+  Z = Z_frequency,
+  data = mald
+)
+analytic_hessian_at_solution <- negative_log_likelihood_hessian(
+  frequency_scale_fit$par,
+  X = X_mu,
+  Z = Z_frequency,
+  data = mald
+)
+hessian_relative_difference <- max(abs(
+  analytic_hessian_at_solution - frequency_scale_fit$hessian
+)) / max(abs(analytic_hessian_at_solution))
+local_covariance <- solve(analytic_hessian_at_solution)
+local_standard_errors <- sqrt(diag(local_covariance))
+
+minimum_hessian_eigenvalue <- min(eigen(
+  analytic_hessian_at_solution,
+  symmetric = TRUE,
+  only.values = TRUE
+)$values)
+
+stopifnot(
+  max(abs(analytic_gradient_at_solution)) < 1e-2,
+  max(abs(
+    gradient_at_solution - analytic_gradient_at_solution
+  )) < 1e-3,
+  hessian_relative_difference < 1e-4,
+  minimum_hessian_eigenvalue > 0,
+  max(abs(
+    frequency_scale_fit$par - independent_frequency_fit$par
+  )) < 1e-4,
+  abs(
+    frequency_scale_fit$value - independent_frequency_fit$objective
+  ) < 1e-5
+)
+
 data.frame(
-  minimum_hessian_eigenvalue = min(eigen(
-    frequency_scale_fit$hessian,
-    symmetric = TRUE,
-    only.values = TRUE
-  )$values)
+  maximum_absolute_analytic_gradient =
+    max(abs(analytic_gradient_at_solution)),
+  maximum_finite_difference_discrepancy = max(abs(
+    gradient_at_solution - analytic_gradient_at_solution
+  )),
+  hessian_relative_difference = hessian_relative_difference,
+  minimum_hessian_eigenvalue = minimum_hessian_eigenvalue,
+  maximum_independent_coefficient_difference = max(abs(
+    frequency_scale_fit$par - independent_frequency_fit$par
+  )),
+  independent_objective_difference = abs(
+    frequency_scale_fit$value - independent_frequency_fit$objective
+  )
+)
+
+data.frame(
+  term = parameter_names,
+  local_model_based_standard_error = local_standard_errors
 )
 ```
+
+The analytic Hessian agrees with the curvature returned by `optim()`, while the
+separate `nlminb()` search reaches the same coefficients and objective value.
+The inverted Hessian standard errors are conditional on the grouped Gaussian
+model. Participant identifiers are absent from these summaries, so the values
+do not account for repeated listeners and should not be read as population
+uncertainty for a crossed participant-by-word design.
 
 The frequency coefficient in the mean equation is `r sprintf("%.4f", frequency_scale_fit$par[[2]])`; the frequency coefficient in the log-scale equation is `r sprintf("%.4f", tail(frequency_scale_fit$par, 1))`. Thus greater observed frequency is associated with both a lower item mean and a lower fitted conditional spread in this grouped specification.
 

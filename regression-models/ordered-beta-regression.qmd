@@ -130,6 +130,89 @@ zero and one and makes the location additive in log odds. Bounded support alone
 would permit other CDFs. The precision $\phi$ controls interior beta variance at
 fixed $\mu_i$; endpoint mass is controlled by the ordered-region probabilities.
 
+## Deriving the score
+
+The score shows which way each parameter must move to increase the observed-row
+likelihood. Let
+
+$$
+a_{0i}=\kappa_0-\eta_i,
+\qquad
+a_{1i}=\kappa_1-\eta_i,
+\qquad
+p_{mi}=F(a_{1i})-F(a_{0i}),
+$$
+
+and write $f(a)=F(a)[1-F(a)]$ for the logistic density. For a zero response,
+
+$$
+\frac{\partial\log p_{0i}}{\partial\eta_i}
+=-[1-F(a_{0i})],
+\qquad
+\frac{\partial\log p_{0i}}{\partial\kappa_0}
+=1-F(a_{0i}).
+$$
+
+For a one response,
+
+$$
+\frac{\partial\log p_{1i}}{\partial\eta_i}
+=F(a_{1i}),
+\qquad
+\frac{\partial\log p_{1i}}{\partial\kappa_1}
+=-F(a_{1i}).
+$$
+
+For an interior response, the region-probability part contributes
+
+$$
+\frac{\partial\log p_{mi}}{\partial\eta_i}
+=
+\frac{f(a_{0i})-f(a_{1i})}{p_{mi}},
+$$
+
+$$
+\frac{\partial\log p_{mi}}{\partial\kappa_0}
+=-\frac{f(a_{0i})}{p_{mi}},
+\qquad
+\frac{\partial\log p_{mi}}{\partial\kappa_1}
+=\frac{f(a_{1i})}{p_{mi}}.
+$$
+
+The beta-density part also changes with $\eta_i$ and $\phi$. Set
+$\alpha_i=\mu_i\phi$, $\beta_i=(1-\mu_i)\phi$, and let
+$\psi$ denote the [digamma function](negative-binomial-regression.qmd), the
+derivative of $\log\Gamma$. Differentiating the beta log density gives
+
+$$
+\begin{aligned}
+\frac{\partial\log b(y_i;\alpha_i,\beta_i)}{\partial\eta_i}
+&=
+\mu_i(1-\mu_i)\phi
+\left[
+-\psi(\alpha_i)+\psi(\beta_i)
++\log y_i-\log(1-y_i)
+\right],\\[4pt]
+\frac{\partial\log b(y_i;\alpha_i,\beta_i)}{\partial\phi}
+&=
+\psi(\phi)
+-\mu_i\psi(\alpha_i)
+-(1-\mu_i)\psi(\beta_i)\\
+&\quad
++\mu_i\log y_i
++(1-\mu_i)\log(1-y_i).
+\end{aligned}
+$$
+
+The interior location score is the sum of its region and beta-density
+contributions. Since $\eta_i=\mathbf x_i^\mathsf T\boldsymbol\beta$, the
+coefficient score is $\mathbf X^\mathsf T\mathbf s_\eta$. Summing the cutpoint
+and precision contributions gives their scores. The observed Hessian is the
+derivative of this full score vector; its off-diagonal entries record, for
+instance, how changing a coefficient changes the cutpoint score. We evaluate
+that derivative numerically below and check it with a second numerical
+calculation.
+
 The visible likelihood below constrains the cutpoint gap and precision to be positive.
 
 We must search for the coefficient, cutpoint, and precision values together.
@@ -137,11 +220,29 @@ Recall that a [derivative is a local rate of
 change](../random-variables-and-distributions/expected-values.qmd#derivatives-as-local-rates-of-change).
 A **gradient** collects that rate for every parameter of the negative log
 likelihood. A **Hessian** collects the second derivatives and describes its local
-curvature; the discussion of the [Hessian](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
+curvature; the [Hessian](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature)
 develops that interpretation. We use **BFGS**, which builds an approximation to
 the inverse Hessian from successive gradients and uses it to choose each next
-parameter vector. The search ends when relative progress falls below `reltol`
+parameter vector. Because we do not supply an analytic gradient to `optim()`, R
+approximates each derivative by changing one parameter a small amount and
+re-evaluating the negative log likelihood. The search ends when relative progress falls below `reltol`
 or after `maxit` iterations.
+
+For parameter $\theta_j$, the central finite difference used in our independent
+check is
+
+$$
+\frac{\partial\mathcal L}{\partial\theta_j}
+\approx
+\frac{
+\mathcal L(\boldsymbol\theta+h\mathbf e_j)
+-\mathcal L(\boldsymbol\theta-h\mathbf e_j)
+}{2h},
+$$
+
+where $\mathbf e_j$ changes only parameter $j$ and $h$ is a small step. The
+same local idea underlies the numerical gradient used when an analytic gradient
+is unavailable.
 
 The objects in the code correspond to the model as follows:
 
@@ -164,27 +265,110 @@ ordered_beta_nll <- function(parameters, y, design) {
   upper <- lower + exp(parameters[[p + 2L]])
   precision <- exp(parameters[[p + 3L]])
   eta <- drop(design %*% beta)
-  p_zero <- plogis(lower - eta)
-  p_one <- plogis(eta - upper)
-  p_middle <- pmax(1 - p_zero - p_one, 1e-15)
+  log_p_zero <- plogis(lower - eta, log.p = TRUE)
+  log_p_one <- plogis(eta - upper, log.p = TRUE)
+  log_F_upper <- plogis(upper - eta, log.p = TRUE)
+  log_F_lower <- plogis(lower - eta, log.p = TRUE)
+  log_one_minus_exp <- function(x) {
+    ifelse(
+      x < log(0.5),
+      log1p(-exp(x)),
+      log(-expm1(x))
+    )
+  }
+  log_p_middle <-
+    log_F_upper + log_one_minus_exp(log_F_lower - log_F_upper)
   mu <- plogis(eta)
   log_likelihood <- numeric(length(y))
   is_zero <- y == 0
   is_one <- y == 1
   interior <- !is_zero & !is_one
-  log_likelihood[is_zero] <- log(pmax(p_zero[is_zero], 1e-15))
-  log_likelihood[is_one] <- log(pmax(p_one[is_one], 1e-15))
-  log_likelihood[interior] <- log(p_middle[interior]) +
+  log_likelihood[is_zero] <- log_p_zero[is_zero]
+  log_likelihood[is_one] <- log_p_one[is_one]
+  log_likelihood[interior] <- log_p_middle[interior] +
     dbeta(y[interior], mu[interior] * precision,
           (1 - mu[interior]) * precision, log = TRUE)
   -sum(log_likelihood)
 }
+ordered_beta_gradient <- function(parameters, y, design) {
+  p <- ncol(design)
+  beta <- parameters[seq_len(p)]
+  lower <- parameters[[p + 1L]]
+  log_gap <- parameters[[p + 2L]]
+  gap <- exp(log_gap)
+  upper <- lower + gap
+  precision <- exp(parameters[[p + 3L]])
+  eta <- drop(design %*% beta)
+  mu <- plogis(eta)
+
+  score_eta <- score_lower <- score_upper <- score_precision <-
+    numeric(length(y))
+  is_zero <- y == 0
+  is_one <- y == 1
+  interior <- !is_zero & !is_one
+
+  score_eta[is_zero] <- -plogis(eta[is_zero] - lower)
+  score_lower[is_zero] <- plogis(eta[is_zero] - lower)
+  score_eta[is_one] <- plogis(upper - eta[is_one])
+  score_upper[is_one] <- -plogis(upper - eta[is_one])
+
+  if (any(interior)) {
+    eta_i <- eta[interior]
+    mu_i <- mu[interior]
+    y_i <- y[interior]
+    F_lower <- plogis(lower - eta_i)
+    F_upper <- plogis(upper - eta_i)
+    f_lower <- dlogis(lower - eta_i)
+    f_upper <- dlogis(upper - eta_i)
+    p_middle <- F_upper - F_lower
+    alpha <- mu_i * precision
+    beta_shape <- (1 - mu_i) * precision
+
+    score_eta[interior] <-
+      (f_lower - f_upper) / p_middle +
+      mu_i * (1 - mu_i) * precision *
+      (-digamma(alpha) + digamma(beta_shape) +
+         log(y_i) - log1p(-y_i))
+    score_lower[interior] <- -f_lower / p_middle
+    score_upper[interior] <- f_upper / p_middle
+    score_precision[interior] <-
+      digamma(precision) -
+      mu_i * digamma(alpha) -
+      (1 - mu_i) * digamma(beta_shape) +
+      mu_i * log(y_i) +
+      (1 - mu_i) * log1p(-y_i)
+  }
+
+  score <- c(
+    drop(crossprod(design, score_eta)),
+    sum(score_lower + score_upper),
+    gap * sum(score_upper),
+    precision * sum(score_precision)
+  )
+  -score
+}
 fit_response <- function(y) {
   start <- c(qlogis(mean(y)), rep(0, ncol(X) - 1L),
              qlogis(mean(y == 0) + .01), log(3), log(5)) # dqr-allow: algorithm-setting
-  optim(start, ordered_beta_nll, y = y, design = X,
-        method = "BFGS", hessian = TRUE,
-        control = list(maxit = 3000L, reltol = 1e-10))
+  first_fit <- optim(
+    start,
+    ordered_beta_nll,
+    y = y,
+    design = X,
+    method = "BFGS",
+    gr = ordered_beta_gradient,
+    control = list(maxit = 3000L, reltol = 1e-10)
+  )
+  optim(
+    first_fit$par,
+    ordered_beta_nll,
+    gr = ordered_beta_gradient,
+    y = y,
+    design = X,
+    method = "BFGS",
+    hessian = TRUE,
+    control = list(maxit = 10000L, reltol = 1e-13)
+  )
 }
 neg_fit <- fit_response(mnr$negraising)
 ease_fit <- fit_response(mnr$acceptability)
@@ -268,11 +452,12 @@ do.call(rbind, lapply(seq_len(nrow(observed_conditions)), function(i) {
 }))
 ```
 
-The starting values place the intercept near the empirical interior location,
-initialize contrasts at zero, set a finite ordered gap, and set moderate
-precision. They start the numerical search and carry no prior probability. The
-`1e-15` bounds prevent floating-point `log(0)`; they do not add observed
-pseudo-counts.
+The starting values place the intercept at the logit of the overall response
+mean, including the endpoint observations, initialize contrasts at zero, set a
+finite ordered gap, and set moderate precision. They start the numerical search
+and carry no prior probability. Stable logistic CDF and log difference
+calculations keep the numerical objective equal to the displayed likelihood
+when a region probability is extremely small.
 
 The optimizer reports convergence, but a return code alone is not enough. To
 check the gradient independently, we move one parameter a small distance above
@@ -286,30 +471,107 @@ consistent with a strict local minimum of the negative log likelihood.
 
 ```{r}
 #| label: check-ordered-beta-optimum
-finite_difference_gradient <- function(fit, y, design) {
-  vapply(seq_along(fit$par), function(j) {
-    step <- 1e-5 * max(1, abs(fit$par[[j]]))
-    plus <- minus <- fit$par
-    plus[[j]] <- plus[[j]] + step
-    minus[[j]] <- minus[[j]] - step
-    (
-      ordered_beta_nll(plus, y, design) -
-        ordered_beta_nll(minus, y, design)
-    ) / (2 * step)
-  }, numeric(1))
+check_ordered_beta_fit <- function(fit, y, design, response_name) {
+  analytic_gradient <- ordered_beta_gradient(fit$par, y, design)
+  gradient <- numDeriv::grad(
+    ordered_beta_nll,
+    fit$par,
+    y = y,
+    design = design,
+    method = "Richardson"
+  )
+  independent_hessian <- optimHess(
+    fit$par,
+    ordered_beta_nll,
+    y = y,
+    design = design
+  )
+  eigenvalues <- eigen(
+    independent_hessian,
+    symmetric = TRUE,
+    only.values = TRUE
+  )$values
+  covariance <- solve(independent_hessian)
+
+  list(
+    check = data.frame(
+      response = response_name,
+      maximum_absolute_analytic_gradient = max(abs(analytic_gradient)),
+      maximum_absolute_gradient = max(abs(gradient)),
+      maximum_gradient_difference = max(abs(
+        analytic_gradient - gradient
+      )),
+      minimum_hessian_eigenvalue = min(eigenvalues),
+      maximum_hessian_difference = max(abs(
+        independent_hessian - fit$hessian
+      )),
+      maximum_relative_hessian_difference = max(abs(
+        independent_hessian - fit$hessian
+      )) / max(abs(independent_hessian))
+    ),
+    standard_errors = sqrt(diag(covariance))
+  )
 }
 
-neg_gradient <- finite_difference_gradient(neg_fit, mnr$negraising, X)
-neg_hessian_eigenvalues <- eigen(
-  neg_fit$hessian,
-  symmetric = TRUE,
-  only.values = TRUE
-)$values
-data.frame(
-  maximum_absolute_gradient = max(abs(neg_gradient)),
-  minimum_hessian_eigenvalue = min(neg_hessian_eigenvalues)
+neg_check <- check_ordered_beta_fit(
+  neg_fit,
+  mnr$negraising,
+  X,
+  "neg-raising"
+)
+ease_check <- check_ordered_beta_fit(
+  ease_fit,
+  mnr$acceptability,
+  X,
+  "ease"
+)
+ordered_beta_checks <- rbind(neg_check$check, ease_check$check)
+ordered_beta_checks
+
+parameter_names <- c(
+  colnames(X),
+  "lower cutpoint",
+  "log cutpoint gap",
+  "log precision"
+)
+local_curvature_standard_errors <- rbind(
+  data.frame(
+    response = "neg-raising",
+    parameter = parameter_names,
+    local_standard_error = neg_check$standard_errors
+  ),
+  data.frame(
+    response = "ease",
+    parameter = parameter_names,
+    local_standard_error = ease_check$standard_errors
+  )
+)
+local_curvature_standard_errors
+
+stopifnot(
+  max(ordered_beta_checks$maximum_absolute_analytic_gradient) < 1e-3,
+  max(ordered_beta_checks$maximum_absolute_gradient) < 1e-3,
+  max(ordered_beta_checks$maximum_gradient_difference) < 5e-5,
+  min(ordered_beta_checks$minimum_hessian_eigenvalue) > 0,
+  max(ordered_beta_checks$maximum_relative_hessian_difference) < 1e-5
 )
 ```
+
+The independent gradient begins with symmetric finite differences and uses
+Richardson extrapolation: it repeats the calculation with smaller values of
+$h$ and combines the results to cancel the leading approximation error. Its
+largest discrepancy from the analytic score is below $5\times 10^{-5}$. The
+second Hessian calculation starts from the fitted parameters and
+re-differentiates the objective independently of the Hessian stored by
+`optim()`. Their largest entrywise discrepancy is less than $10^{-5}$ of the
+largest curvature entry. Both response fits have gradients below $10^{-3}$ and
+positive curvature in every parameter direction.
+
+Inverting that curvature gives the displayed local covariance approximation
+under the row-independence model. The same participants and verbs recur in the
+data, so we use those standard errors only to diagnose the fitted objective. The
+analysis below treats the coefficients as point estimates. Population
+uncertainty would require a grouped model that represents the repeated units.
 
 ```{r}
 #| label: ordered-beta-raw-and-fit

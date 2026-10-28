@@ -102,6 +102,32 @@ curves upward in every coefficient direction. The solution at which both
 derivatives equal zero is therefore the unique minimum rather than a maximum or
 a flat region.
 
+To verify that claim, differentiate both normal equations once more. The matrix
+of second derivatives, called the [**Hessian**](../statistical-inference/beyond-conjugacy.qmd#hessian-as-local-curvature), is
+
+$$
+\nabla^2Q
+=
+2
+\begin{bmatrix}
+n & \sum_i x_i\\
+\sum_i x_i & \sum_i x_i^2
+\end{bmatrix}.
+$$
+
+For any proposed coefficient direction
+$\mathbf a=(a_0,a_1)^\mathsf T$, its curvature in that direction is
+
+$$
+\mathbf a^\mathsf T\nabla^2Q\mathbf a
+=
+2\sum_i(a_0+a_1x_i)^2.
+$$
+
+This sum is positive for every nonzero $\mathbf a$ when the observed $x_i$
+values are not all equal. Thus every movement away from the stationary point
+eventually raises squared error, which establishes the unique minimum.
+
 Before sampling, $\widehat\beta_1(\mathbf Y)$ is an estimator: a random function of the response vector. Once the observed vector $\mathbf y$ is inserted, $\widehat\beta_1(\mathbf y)$ is the numerical estimate printed below. The distinction follows the [estimator terminology](../statistical-inference/properties-of-estimators.qmd).
 
 ## Computing the Provo regression estimate
@@ -161,6 +187,56 @@ observed_ols_estimates <- data.frame(
 observed_ols_estimates
 ```
 
+The contour plot evaluates the same residual sum of squares over nearby
+intercept and slope candidates. Each contour joins candidate lines with the
+same squared error; the fitted coefficients sit at the center of the nested
+contours.
+
+```{r}
+#| label: fig-provo-ols-objective
+#| fig-cap: "Residual sum of squares for nearby intercept and slope candidates in the Provo regression."
+intercept_grid <- seq(
+  intercept_by_hand - 0.08,
+  intercept_by_hand + 0.08,
+  length.out = 80L
+)
+slope_grid <- seq(
+  slope_by_hand - 0.03,
+  slope_by_hand + 0.03,
+  length.out = 80L
+)
+ols_surface <- expand.grid(
+  intercept = intercept_grid,
+  slope = slope_grid
+)
+ols_surface$rss <- vapply(
+  seq_len(nrow(ols_surface)),
+  function(i) {
+    sum((
+      y - ols_surface$intercept[[i]] - ols_surface$slope[[i]] * x
+    )^2)
+  },
+  numeric(1L)
+)
+
+ggplot(ols_surface, aes(slope, intercept, z = rss)) +
+  geom_contour(bins = 12L, color = "#2C6E9B") +
+  geom_point(
+    data = data.frame(
+      slope = slope_by_hand,
+      intercept = intercept_by_hand
+    ),
+    aes(slope, intercept),
+    inherit.aes = FALSE,
+    size = 2.4
+  ) +
+  labs(
+    x = "Candidate surprisal coefficient",
+    y = "Candidate intercept"
+  ) +
+  theme_classic()
+```
+
 The first table shows every observed quantity needed by the formulas. Substituting
 those Provo values gives
 
@@ -207,6 +283,342 @@ The second table checks these direct calculations against `lm()`. The two
 methods agree to numerical precision, but the formulas, rather than the software
 call, define the OLS estimate.
 
+## Deriving the estimates from a Gaussian model
+
+The squared error calculation did not require a probability distribution. We
+can arrive at the same coefficient estimates from a Gaussian model, but this
+second route makes additional assumptions. Those assumptions explain why the
+sum of squared errors appears in the likelihood and what the likelihood says
+about the residual variance.
+
+Condition on the observed predictor values $x_1,\ldots,x_n$. Suppose that each
+response has a Gaussian distribution with conditional mean
+$\beta_0+\beta_1x_i$ and common conditional variance $\sigma^2$:
+
+$$
+Y_i\mid x_i,\beta_0,\beta_1,\sigma^2
+\sim
+\mathcal N(\beta_0+\beta_1x_i,\sigma^2).
+$$
+
+The word **common** means that the model uses the same $\sigma^2$ at every
+predictor value. We also assume that the responses are conditionally
+[independent](../foundations/independence.qmd). Independence allows us to
+multiply the individual Gaussian densities to obtain the joint density.
+
+Okay. So what does the likelihood look like? For candidate coefficients $b_0$
+and $b_1$ and candidate variance $v>0$, the Gaussian density for response $i$
+is
+
+$$
+f(y_i\mid x_i,b_0,b_1,v)
+=
+\frac{1}{\sqrt{2\pi v}}
+\exp\left\{
+-\frac{(y_i-b_0-b_1x_i)^2}{2v}
+\right\}.
+$$
+
+The [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the
+observed $x_i$ and $y_i$ values fixed and treats $b_0$, $b_1$, and $v$ as the
+values to be compared. Conditional independence gives
+
+$$
+\begin{aligned}
+L(b_0,b_1,v;\mathbf y,\mathbf x)
+&=
+\prod_{i=1}^n
+f(y_i\mid x_i,b_0,b_1,v) \\
+&=
+\prod_{i=1}^n
+\frac{1}{\sqrt{2\pi v}}
+\exp\left\{
+-\frac{(y_i-b_0-b_1x_i)^2}{2v}
+\right\} \\
+&=
+(2\pi v)^{-n/2}
+\exp\left\{
+-\frac{1}{2v}
+\sum_{i=1}^n(y_i-b_0-b_1x_i)^2
+\right\}.
+\end{aligned}
+$$
+
+Taking a logarithm turns the product into a sum. Because the logarithm is
+increasing, the parameter values that maximize the likelihood also maximize the
+log likelihood:
+
+$$
+\begin{aligned}
+\ell(b_0,b_1,v)
+&=
+\log L(b_0,b_1,v;\mathbf y,\mathbf x) \\
+&=
+-\frac n2\log(2\pi)
+-\frac n2\log v
+-\frac{1}{2v}
+\sum_{i=1}^n(y_i-b_0-b_1x_i)^2.
+\end{aligned}
+$$
+
+For a fixed positive value of $v$, the first two terms do not depend on the
+coefficients. The factor $-1/(2v)$ multiplying the squared error is negative.
+Thus increasing the squared error lowers the log likelihood, and maximizing the
+log likelihood over $b_0$ and $b_1$ gives the same coefficients as minimizing
+$Q(b_0,b_1)$.
+
+We can also see this equivalence directly from the derivatives. Differentiating
+the log likelihood with respect to the two coefficients gives
+
+$$
+\frac{\partial\ell}{\partial b_0}
+=
+\frac{1}{v}
+\sum_{i=1}^n(y_i-b_0-b_1x_i)
+$$
+
+and
+
+$$
+\frac{\partial\ell}{\partial b_1}
+=
+\frac{1}{v}
+\sum_{i=1}^n x_i(y_i-b_0-b_1x_i).
+$$
+
+Setting these derivatives to zero gives exactly the two normal equations derived
+from squared error. Their solutions are therefore
+
+$$
+\widehat\beta_{1,\mathrm{ML}}
+=
+\frac{\sum_i(x_i-\overline x)(y_i-\overline y)}
+{\sum_i(x_i-\overline x)^2}
+$$
+
+and
+
+$$
+\widehat\beta_{0,\mathrm{ML}}
+=
+\overline y-\widehat\beta_{1,\mathrm{ML}}\overline x.
+$$
+
+The remaining question is how to estimate the common variance. Differentiate
+the log likelihood with respect to the candidate variance $v$:
+
+$$
+\frac{\partial\ell}{\partial v}
+=
+-\frac{n}{2v}
++
+\frac{1}{2v^2}
+\sum_{i=1}^n(y_i-b_0-b_1x_i)^2.
+$$
+
+Setting this derivative to zero and multiplying both sides by $2v^2$ gives
+
+$$
+0
+=
+-nv
++
+\sum_{i=1}^n(y_i-b_0-b_1x_i)^2.
+$$
+
+For any fixed coefficient pair, the maximizing variance is therefore the mean
+squared discrepancy:
+
+$$
+\widehat v(b_0,b_1)
+=
+\frac{1}{n}
+\sum_{i=1}^n(y_i-b_0-b_1x_i)^2.
+$$
+
+The remaining question is whether this stationary value is a maximum. The
+second derivative with respect to $v$ is
+
+$$
+\frac{\partial^2\ell}{\partial v^2}
+=
+\frac{n}{2v^2}
+-
+\frac{1}{v^3}
+\sum_{i=1}^n(y_i-b_0-b_1x_i)^2.
+$$
+
+At $v=\widehat v(b_0,b_1)$, the sum of squared discrepancies equals $nv$.
+Substitution gives
+
+$$
+\left.
+\frac{\partial^2\ell}{\partial v^2}
+\right|_{v=\widehat v(b_0,b_1)}
+=
+-\frac{n}{2v^2}<0.
+$$
+
+The log likelihood therefore curves downward in the variance direction at this
+value. Substituting $\widehat v(b_0,b_1)$ into the log likelihood gives the
+profile log likelihood for the coefficients:
+
+$$
+\ell_{\mathrm{profile}}(b_0,b_1)
+=
+-\frac n2
+\left[
+\log(2\pi)+1+
+\log\left\{
+\frac{Q(b_0,b_1)}{n}
+\right\}
+\right].
+$$
+
+Because the logarithm is increasing and the expression is multiplied by
+$-n/2$, this profile log likelihood is largest exactly where $Q(b_0,b_1)$ is
+smallest.
+
+At the maximizing coefficients, this expression becomes
+
+$$
+\widehat\sigma^2_{\mathrm{ML}}
+=
+\frac{1}{n}
+\sum_{i=1}^n
+(y_i-\widehat\beta_{0,\mathrm{ML}}
+-\widehat\beta_{1,\mathrm{ML}}x_i)^2
+=
+\frac{\mathrm{SSE}}{n}.
+$$
+
+Why does the denominator equal $n$? Maximum likelihood selects the value of
+$v$ that makes the observed responses most likely after the fitted coefficients
+have been inserted. Under the Gaussian model, this estimator tends to be a bit
+too small on average because the same data were used to fit two coefficients.
+The usual unbiased estimator corrects for those two fitted coefficients:
+
+$$
+s^2
+=
+\frac{\mathrm{SSE}}{n-2}.
+$$
+
+We will derive the $n-2$ denominator from the residual degrees of freedom when
+we calculate the [residual standard error](residuals.qmd#residual-standard-error).
+
+## Computing the Gaussian maximum likelihood estimates
+
+The coefficient estimates have already been calculated from the Provo data. We
+can now insert the same observed responses into the two variance formulas.
+
+```{r}
+#| label: compute-provo-gaussian-mle
+fitted_by_hand <- intercept_by_hand + slope_by_hand * x
+ols_residuals <- y - fitted_by_hand
+sse <- sum(ols_residuals^2)
+n_positions <- length(y)
+
+sigma2_mle <- sse / n_positions
+sigma2_residual <- sse / (n_positions - 2L)
+
+gaussian_log_likelihood_by_hand <-
+  -n_positions / 2 * log(2 * pi) -
+  n_positions / 2 * log(sigma2_mle) -
+  sse / (2 * sigma2_mle)
+
+gaussian_estimates <- data.frame(
+  quantity = c(
+    "intercept MLE",
+    "slope MLE",
+    "error sum of squares",
+    "Gaussian variance MLE: SSE / n",
+    "residual variance estimate: SSE / (n - 2)",
+    "Gaussian standard deviation MLE",
+    "residual standard error"
+  ),
+  direct_calculation = c(
+    intercept_by_hand,
+    slope_by_hand,
+    sse,
+    sigma2_mle,
+    sigma2_residual,
+    sqrt(sigma2_mle),
+    sqrt(sigma2_residual)
+  )
+)
+
+stopifnot(
+  abs(gaussian_log_likelihood_by_hand - as.numeric(logLik(fit))) < 1e-8,
+  abs(sqrt(sigma2_residual) - summary(fit)$sigma) < 1e-12
+)
+
+gaussian_estimates
+```
+
+The table separates two quantities that answer different estimation questions.
+The Gaussian maximum likelihood estimate of $\sigma^2$ uses $n$ because it
+maximizes the likelihood. The residual variance estimate reported by
+`summary(lm())` uses $n-2$ because it corrects the average squared residual for
+the two fitted coefficients.
+
+We can also see the coefficient maximum rather than merely reading it from the
+table. For each candidate slope below, we choose its best intercept
+$\overline y-b_1\overline x$ and its best variance $Q(b_0,b_1)/n$. The resulting
+**profile log likelihood** is the log likelihood after those other parameters
+have been maximized for that candidate slope.
+
+```{r}
+#| label: plot-provo-slope-profile-likelihood
+#| fig-cap: "Gaussian profile log likelihood for the Provo surprisal slope. The vertical line marks the directly calculated maximum likelihood estimate."
+#| fig-alt: "A concave curve of relative profile log likelihood against candidate surprisal slope, with its maximum marked by a vertical line."
+
+profile_half_width <- max(0.01, 1.5 * abs(slope_by_hand))
+slope_grid <- seq(
+  slope_by_hand - profile_half_width,
+  slope_by_hand + profile_half_width,
+  length.out = 301L
+)
+
+profile_log_likelihood <- vapply(
+  slope_grid,
+  function(candidate_slope) {
+    candidate_intercept <- y_bar - candidate_slope * x_bar
+    candidate_sse <- sum(
+      (y - candidate_intercept - candidate_slope * x)^2
+    )
+    candidate_variance <- candidate_sse / n_positions
+    -n_positions / 2 * (
+      log(2 * pi) + log(candidate_variance) + 1
+    )
+  },
+  numeric(1L)
+)
+
+profile_data <- data.frame(
+  slope = slope_grid,
+  relative_log_likelihood =
+    profile_log_likelihood - max(profile_log_likelihood)
+)
+
+ggplot(profile_data, aes(slope, relative_log_likelihood)) +
+  geom_line(color = "#2C6E9B", linewidth = 0.9) +
+  geom_vline(
+    xintercept = slope_by_hand,
+    color = "#8C2D2D",
+    linetype = "dashed"
+  ) +
+  labs(
+    x = "Candidate surprisal slope",
+    y = "Profile log likelihood relative to its maximum"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The curve reaches its maximum at the same slope obtained by minimizing squared
+error. This agreement follows from the Gaussian likelihood algebra; the plot is
+a check using the observed Provo responses.
+
 ## Fitting the same line with `lm()`
 
 The call used above was
@@ -235,8 +647,8 @@ question:
    while the [coefficient $t$ statistic](regression-t-statistic.qmd) divides the
    distance from a stated null value by that standard error.
 4. [Residual spread](residuals.qmd#residual-standard-error) estimates the
-   conditional response variation around the line and explains the units and
-   denominator of `Residual standard error`.
+   conditional response variation around the line. Its $n-2$ denominator gives
+   the `Residual standard error`; the Gaussian variance MLE above uses $n$.
 5. [$R^2$](coefficient-of-determination.qmd) compares the line's squared error
    with the squared error from predicting every response by the sample mean.
 6. The [regression $F$ statistic](regression-f-statistic.qmd) compares that
@@ -250,29 +662,6 @@ its linked derivation.
 The fitted slope is `r sprintf("%.6f", slope_by_hand)`: one additional bit of modeled cloze surprisal corresponds to that change in the fitted word position mean of log first fixation duration. Squaring makes large vertical discrepancies count more heavily, which is one reason a few unusual responses may affect the fit.
 
 Squared error is plausible when positive and negative deviations on the modeled scale should receive the same penalty and larger deviations should matter increasingly. This criterion comes from a working modeling decision rather than from the eye movement measurement itself. A heavy-tailed response model or absolute loss would reduce the relative influence of unusually large discrepancies.
-
-If
-
-$$
-Y_i\mid x_i,\beta_0,\beta_1,\sigma
-\sim
-\mathcal N(\beta_0+\beta_1x_i,\sigma^2),
-$$
-
-then the log likelihood is
-
-$$
-\ell(\beta_0,\beta_1,\sigma)
-=
--n\log\sigma
--\frac{1}{2\sigma^2}
-\sum_i(y_i-\beta_0-\beta_1x_i)^2
-+C.
-$$
-
-For fixed $\sigma$, maximizing this likelihood is equivalent to minimizing the
-**error sum of squares (SSE)**. OLS and Gaussian maximum likelihood thus select
-the same coefficient estimates.
 
 ```{r}
 #| label: plot-provo-ols-fit
@@ -308,16 +697,20 @@ address through uncertainty calculations and diagnostics.
 
 1. Which quantity does OLS minimize?
 2. Why does the slope contain cross-products of centered $x$ and $y$?
-3. Under which response model does OLS coincide with maximum likelihood?
-4. What feature of squared error makes influence worth checking later?
+3. Which assumptions allow the Gaussian likelihood to factor into a product over observations?
+4. Why do the Gaussian maximum likelihood coefficient estimates equal the OLS estimates?
+5. Why does the Gaussian maximum likelihood estimate of $\sigma^2$ use $n$, while the residual variance estimate uses $n-2$?
+6. What feature of squared error makes influence worth checking later?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
 1. OLS minimizes the residual sum of squares, $\sum_i(y_i-\beta_0-\beta_1x_i)^2$. <!-- dqr-allow: empirical-answer -->
 2. The centered cross-products measure whether deviations in $x$ and $y$ have the same direction; dividing by centered $x$ variation converts that co-movement into change in $y$ per unit $x$. <!-- dqr-allow: empirical-answer -->
-3. OLS coefficient estimates coincide with maximum likelihood under independent normal responses with linear means and a common variance. <!-- dqr-allow: empirical-answer -->
-4. Squaring gives unusually large residuals disproportionate weight, so a few observations can strongly affect the fitted coefficients. <!-- dqr-allow: empirical-answer -->
+3. Conditional independence allows the individual Gaussian densities to be multiplied. The model also assumes a linear conditional mean and a common conditional variance. <!-- dqr-allow: empirical-answer -->
+4. For any fixed positive variance, the Gaussian log likelihood contains the residual sum of squares multiplied by a negative constant. Maximizing the log likelihood over the coefficients therefore minimizes that sum. <!-- dqr-allow: empirical-answer -->
+5. Dividing SSE by $n$ maximizes the Gaussian likelihood after the two coefficients have been fitted. Dividing by $n-2$ corrects the average squared residual for the two fitted coefficients and gives the usual unbiased residual variance estimator under the Gaussian model. <!-- dqr-allow: empirical-answer -->
+6. Squaring gives unusually large residuals disproportionate weight, so a few observations can strongly affect the fitted coefficients. <!-- dqr-allow: empirical-answer -->
 
 </details>
 

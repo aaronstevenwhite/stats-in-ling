@@ -116,6 +116,33 @@ $$
 (\boldsymbol\beta-\mathbf b_0).
 $$
 
+We also need to keep track of the powers of $\sigma^2$. Let $p$ be the number
+of coefficients in $\boldsymbol\beta$. The likelihood contributes
+$(\sigma^2)^{-n/2}$, the conditional normal prior for the $p$ coefficients
+contributes $(\sigma^2)^{-p/2}$, and the inverse gamma prior contributes
+$(\sigma^2)^{-(a_0+1)}\exp(-d_0/\sigma^2)$. Their joint posterior kernel is
+
+$$
+\begin{aligned}
+p(\boldsymbol\beta,\sigma^2\mid\mathbf y)
+&\propto
+(\sigma^2)^{-n/2}
+(\sigma^2)^{-p/2}
+(\sigma^2)^{-(a_0+1)}\\
+&\quad\times
+\exp\left\{
+-\frac{
+(\mathbf y-\mathbf X\boldsymbol\beta)^\top
+(\mathbf y-\mathbf X\boldsymbol\beta)
++(\boldsymbol\beta-\mathbf b_0)^\top
+\mathbf V_0^{-1}
+(\boldsymbol\beta-\mathbf b_0)
++2d_0
+}{2\sigma^2}
+\right\}.
+\end{aligned}
+$$
+
 Collect the terms involving $\boldsymbol\beta$:
 
 $$
@@ -162,6 +189,24 @@ The second term contains no $\boldsymbol\beta$, so it becomes part of the update
 inverse gamma scale $d_n$. Thus the posterior parameters are the quantities left
 by completing the square.
 
+More explicitly, the completed-square term contributes the conditional normal
+kernel
+
+$$
+(\sigma^2)^{-p/2}
+\exp\left\{
+-\frac{
+(\boldsymbol\beta-\mathbf b_n)^\top
+\mathbf V_n^{-1}
+(\boldsymbol\beta-\mathbf b_n)
+}{2\sigma^2}
+\right\}.
+$$
+
+After factoring out this kernel, the remaining power of the variance is
+$(\sigma^2)^{-(a_0+n/2+1)}$. This is why the updated inverse gamma shape is
+$a_0+n/2$ rather than a value that also contains $p/2$.
+
 The posterior is again normal--inverse-gamma, with
 
 $$
@@ -196,6 +241,50 @@ $$
 
 ## Computing the posterior
 
+Before looking at the Provo response vector, suppose we had made the following
+choices. At centered surprisal, place the prior mean at $\log(250)$, corresponding
+to 250 milliseconds on the original duration scale. Place the prior mean of the
+surprisal coefficient at zero. Set
+
+$$
+\mathbf b_0
+=
+\begin{pmatrix}
+\log(250)\\
+0
+\end{pmatrix},
+\qquad
+\mathbf V_0
+=
+\begin{pmatrix}
+4 & 0\\ % dqr-allow: algorithm-setting
+0 & 0.04 % dqr-allow: algorithm-setting
+\end{pmatrix}.
+$$
+
+Conditional on a residual standard deviation $\sigma$, these choices give the
+intercept a prior standard deviation of $2\sigma$ and the slope a prior standard <!-- dqr-allow: algorithm-setting -->
+deviation of $0.2\sigma$ per bit. The zero off-diagonal entries say that the
+prior does not make the intercept and slope move together before the responses
+are observed.
+
+For the residual variance, choose $a_0=3$ and $d_0=0.125$. Under our inverse <!-- dqr-allow: algorithm-setting -->
+gamma parameterization, the prior mean is
+
+$$
+\mathbb{E}[\sigma^2]
+=
+\frac{d_0}{a_0-1}
+=
+0.0625,
+$$
+
+which corresponds to a residual standard deviation of $0.25$ on the log <!-- dqr-allow: algorithm-setting -->
+millisecond scale at the prior mean. These numerical values come from the units
+and plausible range of first fixation durations. They do not use the Provo
+responses that enter the likelihood. A prior predictive calculation below will
+show the response distributions they imply.
+
 Before drawing all coefficients, begin with a vector \(\mathbf z\) whose
 coordinates are independent standard normal random variables. A matrix
 \(\mathbf L\) can mix those coordinates into a new deviation vector
@@ -211,8 +300,8 @@ $$
 
 As in [matrix multiplication](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance),
 each coordinate of the result is a sum of scalar products. We will use the
-covariance estimated from the observed Provo responses and plot the resulting
-posterior coefficient draws below.
+posterior covariance obtained after updating with the observed Provo responses
+and plot the resulting coefficient draws below.
 
 We call a lower-triangular mixing matrix with this property a **Cholesky
 factor**. In general, \(\mathbf L\) satisfies
@@ -237,15 +326,11 @@ provo$cloze_surprisal_c <-
 ols_fit <- lm(mean_log_ffd ~ cloze_surprisal_c, data = provo)
 X <- model.matrix(ols_fit)
 y <- provo$mean_log_ffd
-residual_scale <- summary(ols_fit)$sigma
 
-b0 <- c(mean(y), 0)
-V0 <- diag(c(
-  (2 * sd(y) / residual_scale)^2,
-  (2 * sd(y) / (sd(provo$cloze_surprisal_c) * residual_scale))^2
-))
-a0 <- ncol(X) + 1
-d0 <- (a0 - 1) * residual_scale^2
+b0 <- c(log(250), 0)
+V0 <- diag(c(4, 0.04))
+a0 <- 3
+d0 <- 0.125
 
 Vn <- solve(solve(V0) + crossprod(X))
 bn <- drop(Vn %*% (solve(V0) %*% b0 + crossprod(X, y)))
@@ -331,9 +416,9 @@ change the posterior distribution.
 
 The posterior mean slope is `r sprintf("%.6f", mean(beta_draws[, "cloze_surprisal_c"]))`, with a central interval from `r sprintf("%.6f", slope_interval[[1]])` to `r sprintf("%.6f", slope_interval[[2]])`.
 
-The coefficient prior location and scale use the observed Provo response and predictor scales. The inverse gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. These priors depend on the data and are useful for connecting conjugate algebra to regression, but they were not specified independently for a confirmatory analysis.
-
-The following prior predictive calculation makes that limitation visible. It draws parameters from a prior calibrated to these data and a response at centered surprisal before conditioning on the likelihood.
+The following prior predictive calculation checks the fixed prior before the
+Provo responses enter the update. It draws parameters from the prior and then
+draws a response at centered surprisal.
 
 ```{r}
 #| label: check-provo-prior-predictive
@@ -372,7 +457,11 @@ data.frame(
 )
 ```
 
-A [prior predictive check](../statistical-inference/prior-predictive-distributions.qmd) ordinarily precedes looking at the responses. Here it documents the implications of a prior already calibrated to those responses; it cannot retroactively make the prior independent of the sample.
+A [prior predictive check](../statistical-inference/prior-predictive-distributions.qmd)
+asks what responses the prior and likelihood jointly predict before the observed
+responses are used for updating. The table above keeps that question on the log
+millisecond scale. We should revise the prior if it assigns substantial
+probability to values that are incompatible with the measurement process.
 
 ```{r}
 #| label: plot-provo-bayesian-regression
@@ -425,7 +514,7 @@ The posterior therefore represents uncertainty for the aggregated position likel
 ## Recap and check your understanding
 
 1. Which part of the model is shared with OLS?
-2. Why do these priors fail to support a confirmatory analysis?
+2. Which information fixed the prior parameters before the Provo responses were used?
 3. Why are predictions computed for every posterior draw?
 4. Which data limitation survives the Bayesian formulation?
 
@@ -433,7 +522,7 @@ The posterior therefore represents uncertainty for the aggregated position likel
 <summary>Answers</summary>
 
 1. The Gaussian linear response model, including the straight conditional mean and common independent residual variance, is shared with OLS. <!-- dqr-allow: empirical-answer -->
-2. The coefficient and variance priors are calibrated from the observed predictor, response, and OLS residual scales rather than specified independently before seeing the data. <!-- dqr-allow: empirical-answer -->
+2. The intercept prior uses a 250 millisecond reference value, the slope prior uses change per surprisal bit, and the variance prior uses a plausible residual scale for log first fixation duration. None of these values is calculated from the Provo response vector used in the likelihood. <!-- dqr-allow: empirical-answer -->
 3. Evaluating the fitted mean within every joint draw propagates posterior covariance among coefficients into uncertainty about the prediction. <!-- dqr-allow: empirical-answer -->
 4. The data still contain position summaries aggregated across readers, so individual responses and dependence among participants remain unavailable. <!-- dqr-allow: empirical-answer -->
 

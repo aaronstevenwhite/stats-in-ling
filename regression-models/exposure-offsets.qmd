@@ -45,6 +45,22 @@ $$
 
 An offset model thus says twice the area implies twice the expected reported country total. Calling area “opportunity” does not make this proportionality automatic; it remains a substantive claim about geopolitical database counts. A free area model replaces the fixed one by $\gamma\log A_i$; an ordinary area covariate on the unlogged scale instead assumes $\log\lambda_i$ changes linearly per square kilometer. These are different scientific claims.
 
+The offset changes the mean that enters the likelihood, but it does not add a coefficient for the fitting algorithm to estimate. To see this, let $\mathbf X$ contain the intercept and MGS columns, and let $\mathbf o$ contain the log areas. Then
+
+$$
+\boldsymbol\lambda
+=\exp(\mathbf o+\mathbf X\boldsymbol\beta).
+$$
+
+Recall that the [Poisson score](poisson-regression.qmd#from-the-count-model-to-the-coefficient-estimates) is
+
+$$
+\mathbf U(\boldsymbol\beta)
+=\mathbf X^\mathsf T(\mathbf y-\boldsymbol\lambda).
+$$
+
+The offset affects every fitted value in $\boldsymbol\lambda$, but $\mathbf o$ contributes no column to $\mathbf X$. Thus the algorithm updates $\beta_0$ and $\beta_1$ while holding the area coefficient at one. In the free area model, $\log A_i$ becomes another column of $\mathbf X$, and its coefficient $\gamma$ is updated along with the others.
+
 ```{r}
 #| label: derive-and-fit-offset
 #| echo: true
@@ -58,8 +74,23 @@ raw_area <- exp(nettle$derived_log_area)
 area_covariate <- glm(language_count ~ mean_growing_season_months + raw_area,
                       poisson(link = "log"), nettle)
 nettle$fitted_count <- predict(fit, type = "response")
+offset_design <- model.matrix(
+  ~ mean_growing_season_months,
+  data = nettle
+)
+offset_score <- drop(crossprod(
+  offset_design,
+  nettle$language_count - fitted(fit)
+))
 head(nettle[c("country", "language_count", "fitted_count")])
+data.frame(
+  coefficient = colnames(offset_design),
+  score_at_fit = offset_score
+)
+stopifnot(max(abs(offset_score)) < 1e-4)
 ```
+
+Both score components are approximately zero at the fitted coefficients. There is no third component for area in this model because the offset fixed that coefficient before maximization.
 
 ```{r}
 #| label: compare-area-specifications
@@ -91,6 +122,7 @@ Changing area units does not change the rate ratio for growing season: multiplyi
 ## Recap and check
 
 1. Is “twice the area means twice the expected languages” scientifically defensible here? The offset model imposes that assumption. The data alone do not. Comparing the model with an estimated area coefficient makes the assumption inspectable.
-2. Why must the offset use natural logs? `glm(..., family = poisson(link = "log"))` uses the natural-log linear predictor.
+2. Why must the offset use natural logs? `glm(..., family = poisson(link = "log"))` uses the natural log linear predictor.
+3. Why does the offset have no score equation of its own? Its coefficient is fixed at one before fitting, so the offset changes $\boldsymbol\lambda$ without adding a column to the estimated design matrix.
 
 We now use the [Nettle association](poisson-regression-example.qmd) to carry the offset model through interpretation and model criticism.

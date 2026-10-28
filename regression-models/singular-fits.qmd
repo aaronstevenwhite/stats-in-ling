@@ -73,6 +73,12 @@ The stress-test model asks participants to vary in an intercept, frequency slope
 
 Before fitting, the design audit asks whether each requested slope's predictor varies within its group. Frequency, duration, trial order, and their frequency-by-duration product vary within participants. Trial order varies within words because the same word occurs at different points for different participants. This support is necessary, but it does not guarantee that the data estimate all variances and correlations away from a boundary.
 
+Both fits use the
+[restricted Gaussian objective](fixed-and-random-effects.qmd#gaussian-mixed-model-likelihood).
+The restricted log likelihood measures fit after accounting for the common
+population coefficient directions, while the numerical gradient checks whether
+the optimizer has stopped near a stationary point of that objective.
+
 ```{r}
 #| label: mald-singular
 library(lme4)
@@ -99,6 +105,7 @@ overfit <- lmer(
     (1 + z_frequency * z_duration + z_trial | participant_id) +
     (1 + z_trial | item),
   data = mald,
+  REML = TRUE,
   control = fit_control
 )
 
@@ -107,6 +114,7 @@ revised <- lmer(
     (1 + z_frequency + z_duration + z_trial | participant_id) +
     (1 + z_trial | item),
   data = mald,
+  REML = TRUE,
   control = fit_control
 )
 
@@ -115,6 +123,19 @@ singularity_check <- c(
   revised_model = isSingular(revised, tol = 1e-4)
 )
 singularity_check
+
+objective_check <- data.frame(
+  model = c("Interaction slope requested", "Interaction slope removed"),
+  restricted_log_likelihood = c(
+    as.numeric(logLik(overfit)),
+    as.numeric(logLik(revised))
+  ),
+  maximum_absolute_gradient = c(
+    max(abs(overfit@optinfo$derivs$gradient)),
+    max(abs(revised@optinfo$derivs$gradient))
+  )
+)
+objective_check
 ```
 
 `isSingular(..., tol = 1e-4)` declares a fitted covariance direction effectively
@@ -124,6 +145,13 @@ tolerance can change a borderline flag, so the rotated standard deviations
 below remain part of the evidence.
 
 The model requesting participant interaction-slope variation is singular. Removing only that unsupported random slope gives the prespecified nonsingular revision. This comparison does not remove the fixed frequency-by-duration interaction or the item trial-order slope.
+
+The objective table separates fit from computation. The restricted log
+likelihoods describe two different covariance structures with the same
+population predictors. The maximum gradient components report whether each
+numerical search reached a locally stationary point. Neither quantity tells us
+whether the fitted covariance matrix has full rank, which is why the singularity
+check remains separate.
 
 ## Inspecting the fitted dimensions
 

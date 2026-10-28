@@ -44,6 +44,11 @@ $$
 
 The frequency slope standard deviation describes how much the fitted lexical frequency association varies across the participant population.
 
+The population coefficients and covariance parameters are estimated with the
+[Gaussian mixed model objective](fixed-and-random-effects.qmd#gaussian-mixed-model-likelihood).
+We keep the population predictor structure fixed and request REML for the
+participant and word covariance components.
+
 ## Checking that the design contains the contrast
 
 A participant frequency association requires frequency variation within participants. A word has one lexical frequency, so repeated responses to that word cannot identify a frequency slope for the item.
@@ -80,6 +85,7 @@ fit <- lmer(
     (1 + z_frequency | participant_id) +
     (1 | item),
   data = mald,
+  REML = TRUE,
   control = lmerControl(
     optimizer = "bobyqa",
     optCtrl = list(maxfun = 200000L)
@@ -92,9 +98,15 @@ support_summary <- c(
   maximum_item_range = max(within_item_range$z_frequency)
 )
 support_summary
+
+data.frame(
+  restricted_log_likelihood = as.numeric(logLik(fit)),
+  maximum_absolute_objective_gradient =
+    max(abs(fit@optinfo$derivs$gradient))
+)
 ```
 
-Every participant spans a nonzero range of standardized frequency, whereas the maximum range within an item is `r sprintf("%.1f", max(within_item_range$z_frequency))`. The data thus support participant frequency slopes but not frequency slopes by word.
+Every participant spans a nonzero range of standardized frequency, whereas the maximum range within an item is `r sprintf("%.1f", max(within_item_range$z_frequency))`. The nonzero participant ranges establish that a within-listener frequency contrast exists. They do not tell us how precisely the variance of those listener associations can be estimated, whether that variance differs appreciably from zero, or whether the random slope is needed for the scientific question. By contrast, the zero within-word range rules out a frequency slope by word because no within-word frequency contrast exists. The second output reports the restricted log likelihood at the fitted MALD covariance parameters and the largest numerical gradient component. A small gradient says only that the returned values are near a stationary point of the REML objective.
 
 Two actual participants make the support requirement concrete:
 
@@ -107,7 +119,12 @@ range_examples <- within_participant_range[
 range_examples
 ```
 
-Both have nonzero within-listener contrasts, though their ranges differ. By contrast, every repetition of a given word carries the same lexical-frequency value, so an item-specific frequency slope would ask the data to identify a within-item contrast that does not exist.
+Both have nonzero within-listener contrasts, though their ranges differ. This
+comparison checks identifiability at the level of the observed design; it does
+not measure the uncertainty of the fitted slope variance. By contrast, every
+repetition of a given word carries the same lexical-frequency value, so an
+item-specific frequency slope would ask the data to identify a within-item
+contrast that does not exist.
 
 ## Comparing raw and fitted participant relations
 
@@ -215,7 +232,12 @@ $$
 
 Trial pairs at different frequency values thus need not have the same covariance. A constant participant ICC no longer summarizes every pair.
 
-The model still imposes one population frequency coefficient. The random slope states that this average is incomplete as a description of individual listeners. Its inclusion is licensed by both the within-participant frequency range and the goal of generalizing the frequency association across listeners.
+The model still imposes one population frequency coefficient. The random slope
+allows the listener associations to depart from that average. The observed
+within-listener ranges make this variation identifiable in principle, while the
+fitted variance and its uncertainty determine how much the data say about it.
+Whether the term belongs in the final model also depends on the intended claim
+about variation across listeners.
 
 ## Recap and check
 
