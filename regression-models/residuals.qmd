@@ -7,7 +7,7 @@ execute:
   message: false
 ---
 
-The Provo regression line assigns each word position a fitted conditional mean. A [**residual**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is the observed response minus that fitted value, as defined below.
+The Provo regression line assigns each word position a fitted conditional mean. A [**residual**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85) is the observed response minus that fitted value.
 
 The [Provo measurements](regression-models.qmd#provo-word-position-data) define that observed response as a mean of log first fixation durations among readers with a retained positive fixation. They also define modeled cloze surprisal as the negative base 2 logarithm of a fitted cloze probability. A residual therefore belongs to the aggregated word position and cannot recover a skipped fixation or a particular reader's discrepancy.
 
@@ -48,6 +48,14 @@ stopifnot(
 summary(provo$residual)
 ```
 
+The printed summary contains five observed order statistics: the smallest and
+largest residuals, the first and third quartiles, and the median. About one
+quarter of the residuals fall at or below the first quartile, while the median
+is the middle ordered residual. It also prints the arithmetic mean, which is
+numerically zero because this fit contains an intercept. These values give a
+compact description, though the plot remains necessary because different
+distributions can share them.
+
 The first observed subtraction is:
 
 ```{r}
@@ -59,9 +67,9 @@ provo[1L, c(
 
 Read the output one row at a time. `mean_log_ffd` supplies $y_i$, `fitted_mean_log_ffd` supplies $\widehat y_i$, and `residual` records their difference. Keeping those three columns together is a useful check whenever residuals are computed by hand or transformed in code.
 
-This response remains a position level mean over reader log FFDs, as defined for the [Provo response](regression-models.qmd#provo-word-position-data). A residual plot can expose patterns across positions or passages, but it cannot diagnose listener heterogeneity after listener identifiers have been removed.
+This response remains a mean calculated for each word position over reader log FFDs, as defined for the [Provo response](regression-models.qmd#provo-word-position-data). A residual plot can expose patterns across positions or passages, while reader heterogeneity lies outside a table from which reader identifiers have been removed.
 
-Why do these discrepancies sum to zero? Recall from [least squares](frequentist-linear-regression.qmd#from-discrepancies-to-an-objective) that the fitted coefficients minimize the sum of squared residuals. With an intercept, moving the entire line slightly upward or downward is one available adjustment. At the minimum, neither movement can reduce squared error. The corresponding intercept equation is
+Why do these discrepancies sum to zero? Recall from [least squares](frequentist-linear-regression.qmd#from-discrepancies-to-an-objective) that the fitted coefficients minimize the **error sum of squares (SSE)**, the sum of the squared residuals. With an intercept, moving the entire line slightly upward or downward is one available adjustment. At the minimum, neither movement can reduce squared error. The corresponding intercept equation is
 
 $$
 \frac{\partial\operatorname{SSE}}{\partial\beta_0}
@@ -75,7 +83,115 @@ $$
 \sum_i e_i=0.
 $$
 
-The Provo regression residuals sum to `r format(sum(provo$residual), scientific = TRUE, digits = 3)`. That algebraic property is not evidence that positive and negative discrepancies are equally plausible in every region of the predictor.
+The Provo regression residuals sum to `r format(sum(provo$residual), scientific = TRUE, digits = 3)`. The zero sum follows from fitting an intercept; it tells us nothing about whether positive and negative discrepancies are equally plausible throughout the predictor range.
+
+## Residual standard error {#residual-standard-error}
+
+The residuals also give us an estimate of the response spread around the fitted
+line. Let $p$ be the number of fitted coefficients, including the intercept. In
+the current model, $p=2$ because we estimated an intercept and one slope. The
+**residual degrees of freedom** are therefore $n-p=n-2$. Recall that [degrees of
+freedom](../random-variables-and-distributions/chi-squared-distribution.qmd)
+count the independent pieces of information left after accounting for fitted
+constraints.
+
+The SSE introduced above is
+
+$$
+\operatorname{SSE}=\sum_{i=1}^n e_i^2.
+$$
+
+Dividing by the residual degrees of freedom gives the residual variance
+estimate,
+
+$$
+s^2=\frac{\operatorname{SSE}}{n-p},
+$$
+
+and taking the square root gives the **residual standard error (RSE)**,
+
+$$
+s
+=
+\sqrt{\frac{\operatorname{SSE}}{n-p}}.
+$$
+
+Why do we subtract two in this regression? The fitted residuals obey two
+constraints. The intercept calculation gives $\sum_i e_i=0$, and the slope
+calculation gives $\sum_i x_i e_i=0$. Thus the residuals have two fewer ways to
+vary freely after we estimate the intercept and slope. In [design matrix
+notation](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates),
+the same result follows from the rank of the fitted space.
+
+```{r}
+#| label: compute-provo-residual-standard-error
+residual_sse <- sum(provo$residual^2)
+number_of_coefficients <- length(coef(fit))
+residual_degrees_of_freedom <- nrow(provo) - number_of_coefficients
+residual_standard_error <- sqrt(
+  residual_sse / residual_degrees_of_freedom
+)
+
+stopifnot(
+  residual_degrees_of_freedom == df.residual(fit),
+  abs(residual_standard_error - summary(fit)$sigma) < 1e-12
+)
+
+data.frame(
+  error_sum_of_squares = residual_sse,
+  observations = nrow(provo),
+  fitted_coefficients = number_of_coefficients,
+  residual_degrees_of_freedom = residual_degrees_of_freedom,
+  residual_standard_error = residual_standard_error
+)
+```
+
+Substituting the Provo quantities gives
+
+$$
+\begin{aligned}
+s
+&=
+\sqrt{
+\frac{`r format(residual_sse, digits = 7)`}
+{`r residual_degrees_of_freedom`}
+} \\
+&=
+`r format(residual_standard_error, digits = 7)`.
+\end{aligned}
+$$
+
+Because the response is mean log first fixation duration, the RSE has that same
+unit. It estimates the conditional spread of responses around the line under
+the common variance model. A coefficient standard error answers another
+question: how much an estimated intercept or slope would vary across repeated
+samples under the sampling model. We use the RSE to construct those coefficient
+standard errors when we turn to [slope uncertainty](linear-regression-uncertainty.qmd).
+
+```{r}
+#| label: plot-provo-residual-spread
+#| fig-cap: "Distribution of the Provo residuals. The dashed lines mark one residual standard error below and above zero."
+ggplot(provo, aes(residual)) +
+  geom_histogram(
+    bins = 35L,
+    boundary = 0,
+    color = "white",
+    fill = "grey70"
+  ) +
+  geom_vline(xintercept = 0, color = "grey35", linewidth = 0.4) +
+  geom_vline(
+    xintercept = c(-residual_standard_error, residual_standard_error),
+    color = "#2C6E9B",
+    linetype = 2,
+    linewidth = 0.7
+  ) +
+  labs(x = "Residual", y = "Number of Provo positions") +
+  theme_classic(base_size = 12)
+```
+
+The dashed lines merely provide a spread reference. A confidence interval
+requires an estimator and sampling distribution, and the RSE formula supplies
+no fixed residual coverage probability.
 
 ```{r}
 #| label: plot-provo-data-and-residuals
@@ -125,23 +241,27 @@ ggplot(provo, aes(fitted_mean_log_ffd, residual)) +
   theme_classic(base_size = 12)
 ```
 
-The smooth bends modestly rather than remaining perfectly horizontal. This pattern motivates checking the form of the fitted function; it does not by itself establish which alternative model is correct.
+The smooth bends modestly rather than remaining perfectly horizontal. This
+pattern motivates checking the fitted function. Choosing an alternative still
+requires a specified comparison.
 
 ## Recap and check your understanding
 
 1. Why does a positive residual place an observation above the line?
 2. Why must OLS residuals sum to zero when the model has an intercept?
 3. Is a residual the same object as an error term?
-4. What model restriction does curvature challenge?
+4. Why does the RSE use $n-2$ for this fitted line?
+5. What model restriction does curvature challenge?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
 
 1. Because $e_i=y_i-\widehat y_i$, a positive value means $y_i>\widehat y_i$ and the point lies above the fitted line. <!-- dqr-allow: empirical-answer -->
 2. The intercept normal equation sets the derivative with respect to $\beta_0$ to zero, which requires $\sum_i e_i=0$. <!-- dqr-allow: empirical-answer -->
-3. No. A residual is an observed post-fit discrepancy; an error term is an unobserved random quantity in the population model. <!-- dqr-allow: empirical-answer -->
-4. Curvature challenges the restriction that the conditional mean is a straight line in modeled cloze surprisal. <!-- dqr-allow: empirical-answer -->
+3. No. A residual is an observed discrepancy after fitting; an error term is an unobserved random quantity in the population model. <!-- dqr-allow: empirical-answer -->
+4. Estimating the intercept and slope imposes two constraints on the residuals, leaving $n-2$ residual degrees of freedom. <!-- dqr-allow: empirical-answer -->
+5. Curvature challenges the restriction that the conditional mean is a straight line in modeled cloze surprisal. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-We next turn residual patterns into explicit [model checks](checking-linear-regression.qmd).
+We next use the residual spread to derive [slope uncertainty](linear-regression-uncertainty.qmd).

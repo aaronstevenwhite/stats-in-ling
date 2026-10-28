@@ -1,0 +1,326 @@
+---
+title: "The regression t statistic"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
+---
+
+The fitted Provo slope is positive. But the observed slope would change if we
+could repeat the sampling process. How large is the estimate relative to the
+sampling variation expected when the population slope has a particular value?
+The **coefficient $t$ statistic** answers that question by measuring the distance
+between an estimate and a hypothesized coefficient in estimated standard error
+units.
+
+Recall that a [null hypothesis](../statistical-inference/null-hypotheses-and-test-statistics.qmd)
+specifies the value used to derive the reference distribution of a test
+statistic. We will use $H_0:\beta_1=0$, where $\beta_1$ is the population slope
+for modeled cloze surprisal. We first derive the sampling variance of the slope,
+then replace the unknown response variance with the residual estimate, and
+finally calculate the resulting statistic from the Provo observations.
+
+## Deriving the slope standard error
+
+Suppose that the responses follow the Gaussian linear model
+
+$$
+Y_i=\beta_0+\beta_1x_i+\varepsilon_i,
+\qquad
+\varepsilon_i
+\overset{\mathrm{iid}}{\sim}
+\mathcal N(0,\sigma^2).
+$$
+
+The abbreviation **iid** means independent and identically distributed. Thus
+the model assigns each error a Gaussian distribution with mean zero and common
+variance $\sigma^2$, and it treats distinct errors as independent. These
+assumptions give the exact finite sample reference distribution derived below.
+
+The OLS slope from [least squares](frequentist-linear-regression.qmd#from-discrepancies-to-an-objective)
+is
+
+$$
+\widehat\beta_1
+=
+\frac{\sum_i(x_i-\overline x)(Y_i-\overline Y)}
+{\sum_i(x_i-\overline x)^2}.
+$$
+
+Let
+
+$$
+S_{xx}=\sum_i(x_i-\overline x)^2.
+$$
+
+Substitute $Y_i=\beta_0+\beta_1x_i+\varepsilon_i$ into the slope formula. The
+constant intercept disappears after centering, and the centered predictor
+multiplied by $\beta_1$ contributes $\beta_1S_{xx}$. We therefore obtain
+
+$$
+\widehat\beta_1
+=
+\beta_1
++
+\frac{\sum_i(x_i-\overline x)\varepsilon_i}{S_{xx}}.
+$$
+
+This equation isolates the sampling error in the slope. Because the errors are
+independent and each has variance $\sigma^2$, the variance of their weighted sum
+is the sum of the weighted variances:
+
+$$
+\begin{aligned}
+\operatorname{Var}[\widehat\beta_1\mid\mathbf x]
+&=
+\frac{
+\sum_i(x_i-\overline x)^2\sigma^2
+}{S_{xx}^2} \\
+&=
+\frac{\sigma^2}{S_{xx}}.
+\end{aligned}
+$$
+
+If $\sigma$ were known, dividing $\widehat\beta_1-\beta_1$ by
+$\sigma/\sqrt{S_{xx}}$ would produce a standard normal random variable. We do
+not know $\sigma$. The [residual standard error](residuals.qmd#residual-standard-error)
+
+$$
+s=\sqrt{\frac{\operatorname{SSE}}{n-2}}
+$$
+
+estimates it. The corresponding **standard error of the slope** is
+
+$$
+\operatorname{SE}(\widehat\beta_1)
+=
+\frac{s}{\sqrt{S_{xx}}}.
+$$
+
+Why does replacing $\sigma$ produce a $t$ distribution? Standardize each error
+as $z_i=\varepsilon_i/\sigma$ and define
+
+$$
+u_i=\frac{x_i-\overline x}{\sqrt{S_{xx}}}.
+$$
+
+The [projection geometry](design-matrices.qmd#projection-as-fitted-plus-residual)
+gives a useful way to read this equation. A **direction** is a vector that points
+along one axis of possible variation, and a **component** is the amount of
+another vector pointing along that direction. Because $\sum_i u_i^2=1$, the
+vector $\mathbf u$ has length one and is called a **unit direction**. The
+standardized slope error is the component of the Gaussian error vector in the
+$\mathbf u$ direction:
+
+$$
+\frac{\widehat\beta_1-\beta_1}{\sigma/\sqrt{S_{xx}}}
+=
+\sum_i u_i z_i.
+$$
+
+Fitting the intercept and slope removes two directions from the error vector:
+the constant direction and the centered predictor direction $\mathbf u$. The
+residuals occupy the remaining $n-2$ perpendicular directions. A Gaussian error
+vector with covariance $\sigma^2\mathbf I$ has independent standard normal
+components along perpendicular unit directions. Thus the slope component is
+independent of the residual components, while the sum of the $n-2$ squared
+residual components has a [chi-squared distribution](../random-variables-and-distributions/chi-squared-distribution.qmd).
+Specifically,
+
+$$
+\frac{(n-2)s^2}{\sigma^2}
+\sim
+\chi^2_{n-2}.
+$$
+
+A standard normal component divided by the square root of an independent
+chi-squared random variable divided by its degrees of freedom has a
+[Student $t$ distribution](../random-variables-and-distributions/student-t-distribution.qmd).
+Thus, under $H_0:\beta_1=\beta_{1,0}$,
+
+$$
+T
+=
+\frac{
+\widehat\beta_1-\beta_{1,0}
+}{
+s/\sqrt{S_{xx}}
+}
+\sim
+t_{n-2}.
+$$
+
+The null value for the usual `lm()` output is $\beta_{1,0}=0$.
+
+## Calculating the Provo t statistic
+
+```{r}
+#| label: calculate-provo-regression-t
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+
+x <- provo$cloze_surprisal_bits
+sxx <- sum((x - mean(x))^2)
+sse <- sum(residuals(fit)^2)
+residual_df <- nrow(provo) - length(coef(fit))
+residual_standard_error <- sqrt(sse / residual_df)
+slope_estimate <- coef(fit)[["cloze_surprisal_bits"]]
+slope_standard_error <- residual_standard_error / sqrt(sxx)
+null_slope <- 0
+t_observed <-
+  (slope_estimate - null_slope) / slope_standard_error
+two_sided_p_value <-
+  2 * pt(-abs(t_observed), df = residual_df)
+
+lm_slope_output <- coef(summary(fit))["cloze_surprisal_bits", ]
+stopifnot(
+  abs(slope_standard_error - lm_slope_output[["Std. Error"]]) < 1e-12,
+  abs(t_observed - lm_slope_output[["t value"]]) < 1e-12,
+  abs(two_sided_p_value - lm_slope_output[["Pr(>|t|)"]]) < 1e-12
+)
+
+data.frame(
+  slope_estimate = slope_estimate,
+  residual_standard_error = residual_standard_error,
+  sxx = sxx,
+  slope_standard_error = slope_standard_error,
+  null_slope = null_slope,
+  t_statistic = t_observed,
+  residual_degrees_of_freedom = residual_df,
+  two_sided_p_value = two_sided_p_value
+)
+```
+
+The direct calculation is
+
+$$
+\begin{aligned}
+\operatorname{SE}(\widehat\beta_1)
+&=
+\frac{`r format(residual_standard_error, digits = 7)`}
+{\sqrt{`r format(sxx, digits = 7)`}} \\
+&=
+`r format(slope_standard_error, digits = 7)`, \\
+T
+&=
+\frac{`r format(slope_estimate, digits = 7)`-0}
+{`r format(slope_standard_error, digits = 7)`} \\
+&=
+`r format(t_observed, digits = 7)`.
+\end{aligned}
+$$
+
+This value matches the `t value` in `summary(fit)`. The calculation also shows
+what that output means: the estimated Provo slope lies about
+`r sprintf("%.2f", abs(t_observed))` estimated OLS standard errors from the null
+value zero.
+
+```{r}
+#| label: plot-provo-data-for-t
+#| fig-cap: "Observed Provo position summaries and the fitted line whose slope enters the t statistic."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(min(x), max(x), length.out = 160L)
+)
+grid$fitted <- predict(fit, newdata = grid)
+point_opacity <- 0.22
+
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_line(
+    data = grid,
+    aes(y = fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+## Reading the reference distribution
+
+The two-sided $p$ value adds the probability, under the null model, of obtaining
+a $t$ statistic at least as far from zero in either direction:
+
+$$
+p
+=
+\mathbb{P}_{H_0}
+\left(
+|T|\geq |t_{\mathrm{obs}}|
+\right).
+$$
+
+```{r}
+#| label: plot-provo-t-reference
+#| fig-cap: "Two-sided tail probability under a zero Provo slope. The point marks the statistic and p value calculated from the observed data."
+t_tail_grid <- data.frame(
+  absolute_t = seq(0, abs(t_observed) * 1.08, length.out = 2001L)
+)
+t_tail_grid$two_sided_probability <-
+  2 * pt(-t_tail_grid$absolute_t, df = residual_df)
+
+ggplot(t_tail_grid, aes(absolute_t, two_sided_probability)) +
+  geom_line(color = "grey30", linewidth = 0.7) +
+  geom_vline(
+    xintercept = abs(t_observed),
+    color = "#B4473A",
+    linewidth = 0.7
+  ) +
+  geom_point(
+    data = data.frame(
+      absolute_t = abs(t_observed),
+      two_sided_probability = two_sided_p_value
+    ),
+    color = "#B4473A",
+    size = 2
+  ) +
+  scale_y_log10() +
+  labs(x = "Absolute t statistic", y = "Two-sided tail probability (log scale)") +
+  theme_classic(base_size = 12)
+```
+
+For these data, the two-sided value is
+`r format(two_sided_p_value, scientific = TRUE, digits = 4)`. Under repeated
+samples from the null model, this is the probability of obtaining a statistic
+at least this extreme. The probability that the null hypothesis is true is a
+different quantity.
+
+The exact $t$ reference calculation treats the Provo position rows as
+independent Gaussian observations with a common conditional variance. Positions
+from the same passage may remain dependent. The [clustered sensitivity
+calculation](linear-regression-uncertainty.qmd#conventional-ols-uncertainty)
+changes the estimated coefficient variance to retain passage grouping. That
+change also changes the appropriate reference calculation.
+
+## Recap and check your understanding
+
+1. Why does greater spread in $x$ reduce the conventional slope standard error?
+2. Where does the $n-2$ degrees of freedom come from?
+3. What does the numerator of the $t$ statistic measure?
+4. Which assumptions give the exact Student $t$ reference distribution?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. A larger $S_{xx}$ provides more information about how the conditional mean changes across predictor values, and the standard error divides by $\sqrt{S_{xx}}$. <!-- dqr-allow: empirical-answer -->
+2. The simple regression estimates two coefficients, an intercept and a slope, leaving $n-2$ residual degrees of freedom. <!-- dqr-allow: empirical-answer -->
+3. It measures the distance between the estimated slope and the slope specified by the null hypothesis. <!-- dqr-allow: empirical-answer -->
+4. Independent Gaussian errors with mean zero and a common conditional variance give the exact finite sample result. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+We next compare the fitted line with the mean-only baseline using
+[squared error](coefficient-of-determination.qmd).

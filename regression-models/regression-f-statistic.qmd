@@ -1,0 +1,340 @@
+---
+title: "The regression F statistic"
+execute:
+  enabled: true
+  echo: true
+  warning: false
+  message: false
+---
+
+The coefficient of determination tells us how much squared error the Provo line
+removes relative to predicting every response by its sample mean. The
+**regression $F$ statistic** asks how large that reduction is relative to the
+residual variation expected under a Gaussian linear model.
+
+This comparison uses two **nested models**. One model is nested within another
+when the smaller model can be obtained by fixing one or more coefficients in the
+larger model. Here the reduced model contains only an intercept, while the full
+model adds modeled cloze surprisal:
+
+$$
+\begin{aligned}
+\mathcal M_0:
+Y_i
+&=
+\beta_0+\varepsilon_i, \\
+\mathcal M_1:
+Y_i
+&=
+\beta_0+\beta_1x_i+\varepsilon_i.
+\end{aligned}
+$$
+
+Setting $\beta_1=0$ in $\mathcal M_1$ recovers $\mathcal M_0$. We first derive
+the comparison for $q$ restrictions, then calculate it for the one restriction
+$\beta_1=0$ in the Provo regression.
+
+## From two error sums to an F statistic
+
+Let $\operatorname{SSE}_0$ be the squared error left by the reduced model and
+$\operatorname{SSE}_1$ the squared error left by the full model. Because every
+candidate available to the reduced model is also available to the full model,
+least squares guarantees
+
+$$
+\operatorname{SSE}_1
+\leq
+\operatorname{SSE}_0.
+$$
+
+The difference
+
+$$
+\operatorname{SSE}_0-\operatorname{SSE}_1
+$$
+
+is the squared error removed by relaxing $q$ linearly independent restrictions.
+Dividing by $q$ gives the removed squared error per independent restriction
+relaxed. The full model's residual mean square is
+
+$$
+\frac{\operatorname{SSE}_1}{n-p},
+$$
+
+where $p$ counts the coefficients in the full model. The comparison is
+
+$$
+F
+=
+\frac{
+(\operatorname{SSE}_0-\operatorname{SSE}_1)/q
+}{
+\operatorname{SSE}_1/(n-p)
+}.
+$$
+
+Because the numerator and denominator have the same squared response unit,
+their ratio has no unit. A value near one means that the removed error per
+relaxed restriction is comparable to the residual error per remaining degree of
+freedom; larger values indicate a greater reduction relative to that residual
+scale.
+
+Where does the reference distribution come from? A **full rank design** has $p$
+predictor columns with no column equal to an exact weighted combination of the
+others. The $q$ restrictions are **linearly independent** when none can be
+obtained as a weighted combination of the rest. Suppose those conditions hold,
+the errors are independent Gaussian random variables with common variance
+$\sigma^2$, and the restrictions in the reduced model are true.
+
+The [projection geometry](design-matrices.qmd#projection-as-fitted-plus-residual)
+helps us see the next step. Think of the response as a vector with one
+coordinate per observation. A **component** is the amount of that vector
+pointing along a chosen direction. Moving from the reduced model to the full
+model adds $q$ fitted directions. When the restrictions are true, the response
+mean has no component in those directions; any observed improvement comes from
+the Gaussian error vector. The full model residual occupies the $n-p$
+directions perpendicular to every fitted direction. Thus the improvement and
+the remaining residual error are squared lengths of perpendicular Gaussian
+components.
+
+As in the [chi-squared construction](../random-variables-and-distributions/chi-squared-distribution.qmd),
+the squared length of $k$ independent standard normal components follows a
+$\chi^2_k$ distribution. Perpendicular components of a Gaussian vector with
+covariance $\sigma^2\mathbf I$ are independent. It follows that
+
+$$
+\frac{
+\operatorname{SSE}_0-\operatorname{SSE}_1
+}{\sigma^2}
+\sim
+\chi^2_q
+$$
+
+and
+
+$$
+\frac{\operatorname{SSE}_1}{\sigma^2}
+\sim
+\chi^2_{n-p}.
+$$
+
+The projection argument also gives the independence of these two quantities. An
+**$F$ distribution** is the distribution of one independent chi-squared random
+variable divided by its degrees of freedom, divided in turn by a second such
+quantity. Thus
+
+$$
+F
+\sim
+F_{q,n-p}
+$$
+
+when the restrictions are true. The first subscript gives the numerator degrees
+of freedom; the second gives the denominator degrees of freedom.
+
+## Calculating the Provo F statistic
+
+```{r}
+#| label: calculate-provo-regression-f
+library(ggplot2)
+
+provo <- read.csv(
+  "data/provo/content-word-positions.csv",
+  stringsAsFactors = FALSE
+)
+provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
+
+reduced_fit <- lm(mean_log_ffd ~ 1, data = provo)
+full_fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+
+sse_reduced <- sum(residuals(reduced_fit)^2)
+sse_full <- sum(residuals(full_fit)^2)
+q <- length(coef(full_fit)) - length(coef(reduced_fit))
+p <- length(coef(full_fit))
+denominator_df <- nrow(provo) - p
+removed_mean_square <- (sse_reduced - sse_full) / q
+residual_mean_square <- sse_full / denominator_df
+f_observed <- removed_mean_square / residual_mean_square
+f_p_value <- pf(
+  f_observed,
+  df1 = q,
+  df2 = denominator_df,
+  lower.tail = FALSE
+)
+
+lm_f_output <- summary(full_fit)$fstatistic
+stopifnot(
+  abs(f_observed - unname(lm_f_output[["value"]])) < 1e-10,
+  q == unname(lm_f_output[["numdf"]]),
+  denominator_df == unname(lm_f_output[["dendf"]])
+)
+
+data.frame(
+  reduced_sse = sse_reduced,
+  full_sse = sse_full,
+  restrictions = q,
+  removed_mean_square = removed_mean_square,
+  residual_mean_square = residual_mean_square,
+  f_statistic = f_observed,
+  numerator_degrees_of_freedom = q,
+  denominator_degrees_of_freedom = denominator_df,
+  p_value = f_p_value
+)
+```
+
+Substituting the observed Provo sums of squares gives
+
+$$
+\begin{aligned}
+F
+&=
+\frac{
+(`r format(sse_reduced, digits = 7)`-
+`r format(sse_full, digits = 7)`)/`r q`
+}{
+`r format(sse_full, digits = 7)`/`r denominator_df`
+} \\
+&=
+`r format(f_observed, digits = 7)`.
+\end{aligned}
+$$
+
+This direct calculation matches the `F-statistic` printed by
+`summary(full_fit)`.
+
+```{r}
+#| label: plot-provo-nested-fits
+#| fig-cap: "Observed Provo position summaries with the reduced mean-only fit and the full fitted line."
+grid <- data.frame(
+  cloze_surprisal_bits = seq(
+    min(provo$cloze_surprisal_bits),
+    max(provo$cloze_surprisal_bits),
+    length.out = 160L
+  )
+)
+grid$full_fitted <- predict(full_fit, newdata = grid)
+point_opacity <- 0.22
+
+ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
+  geom_point(color = "grey65", alpha = point_opacity, size = 0.8) +
+  geom_hline(
+    yintercept = coef(reduced_fit)[["(Intercept)"]],
+    color = "grey35",
+    linetype = 2,
+    linewidth = 0.7
+  ) +
+  geom_line(
+    data = grid,
+    aes(y = full_fitted),
+    color = "#2C6E9B",
+    linewidth = 0.8
+  ) +
+  labs(
+    x = "Modeled cloze surprisal (bits)",
+    y = "Mean log first fixation duration"
+  ) +
+  theme_classic(base_size = 12)
+```
+
+The dashed line gives the reduced prediction and the blue line the full
+prediction. Their vertical separation grows with modeled cloze surprisal, and
+the $F$ calculation asks how much squared discrepancy the blue line removes.
+
+```{r}
+#| label: plot-provo-f-reference
+#| fig-cap: "Right-tail probability under a zero Provo slope. The point marks the F statistic and p value calculated from the observed data."
+f_tail_grid <- data.frame(
+  f = seq(0, f_observed * 1.08, length.out = 2001L)
+)
+f_tail_grid$right_tail_probability <- pf(
+  f_tail_grid$f,
+  df1 = q,
+  df2 = denominator_df,
+  lower.tail = FALSE
+)
+
+ggplot(f_tail_grid, aes(f, right_tail_probability)) +
+  geom_line(color = "grey30", linewidth = 0.7) +
+  geom_vline(
+    xintercept = f_observed,
+    color = "#B4473A",
+    linewidth = 0.7
+  ) +
+  geom_point(
+    data = data.frame(
+      f = f_observed,
+      right_tail_probability = f_p_value
+    ),
+    color = "#B4473A",
+    size = 2
+  ) +
+  scale_y_log10() +
+  labs(x = "F statistic", y = "Right-tail probability (log scale)") +
+  theme_classic(base_size = 12)
+```
+
+The right-tail probability is
+`r format(f_p_value, scientific = TRUE, digits = 4)`. It describes how often a
+null model with a zero slope would produce at least this much mean-square
+improvement under the stated sampling assumptions.
+
+## Why F equals t squared here
+
+The current comparison relaxes one restriction, $\beta_1=0$. For a single
+coefficient in an OLS model, the regression $F$ statistic equals the square of
+the corresponding coefficient $t$ statistic:
+
+$$
+F_{1,n-p}=T_{n-p}^2.
+$$
+
+```{r}
+#| label: verify-provo-f-equals-t-squared
+slope_t <- coef(summary(full_fit))[
+  "cloze_surprisal_bits",
+  "t value"
+]
+
+stopifnot(abs(f_observed - slope_t^2) < 1e-10)
+
+data.frame(
+  slope_t_statistic = slope_t,
+  squared_t_statistic = slope_t^2,
+  regression_f_statistic = f_observed
+)
+```
+
+The equality holds because both statistics compare the same one-dimensional
+departure from $\beta_1=0$ with the same residual variance estimate. The $F$
+form becomes more useful when a comparison relaxes several restrictions at
+once, because it combines their reduction in SSE into one numerator mean
+square.
+
+A large $F$ value addresses only the restrictions that distinguish the reduced
+and full models. Assessing the full linear specification requires [model
+checks](checking-linear-regression.qmd). A causal interpretation additionally
+requires an appropriate research design, while prediction for new passages
+requires a declared [prediction target](../model-criticism-and-prediction/prediction-targets.qmd).
+
+## Recap and check your understanding
+
+1. What makes two regression models nested?
+2. What does the numerator mean square measure?
+3. Which assumptions give the exact $F_{q,n-p}$ reference distribution?
+4. Why does $F=T^2$ for the current comparison?
+
+<details class="understanding-answers">
+<summary>Answers</summary>
+
+1. The reduced model can be obtained by fixing one or more coefficients in the full model. <!-- dqr-allow: empirical-answer -->
+2. It measures the reduction in squared error per restriction relaxed when moving from the reduced model to the full model. <!-- dqr-allow: empirical-answer -->
+3. Independent Gaussian errors with a common conditional variance, together with true reduced-model restrictions, give the exact finite sample distribution. <!-- dqr-allow: empirical-answer -->
+4. The comparison tests one slope restriction with the same residual variance estimate used by the slope $t$ statistic. <!-- dqr-allow: empirical-answer -->
+
+</details>
+
+We next examine whether the fitted line's restrictions agree with the observed
+[residual patterns](checking-linear-regression.qmd).

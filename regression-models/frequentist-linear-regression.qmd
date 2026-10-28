@@ -9,9 +9,9 @@ execute:
 
 The [Provo measurements](regression-models.qmd#provo-word-position-data) define each response as a mean log first fixation duration aggregated across readers and modeled cloze surprisal as the negative base 2 logarithm of a fitted cloze probability. The regression specifies a straight conditional mean for those summaries. We now need an estimation rule. **Ordinary least squares (OLS)** chooses the coefficients whose fitted values minimize the residual sum of squares. This is the squared error rule introduced for the observed sample; the [maximum likelihood connection](../statistical-inference/maximum-likelihood.qmd) comes after the minimizer is derived.
 
-Here a **residual** is provisionally $y_i-\widehat y_i$, the observed response minus its fitted value, developed later under [residuals](residuals.qmd). The Gaussian likelihood factors over rows only under the stated [independence](../foundations/independence.qmd) assumption, and its [variance](../random-variables-and-distributions/variance-and-covariance.qmd) controls the scale of squared error.
+Here a [**residual**](residuals.qmd) provisionally means $y_i-\widehat y_i$, the observed response minus its fitted value. The Gaussian likelihood factors over rows only under the stated [independence](../foundations/independence.qmd) assumption, and its [variance](../random-variables-and-distributions/variance-and-covariance.qmd) controls the scale of squared error.
 
-We first derive the squared-error objective and its minimizer, then compute the Provo estimate and reconnect the resulting rule to its sampling assumptions.
+We first derive the squared error objective and its minimizer, then compute the Provo estimate and reconnect the resulting rule to its sampling assumptions.
 
 The basic idea is to try a line, measure every vertical discrepancy, and then adjust the line until the sum of the squared discrepancies cannot be made smaller. Squaring serves two purposes in this calculation: it prevents a positive discrepancy $e$ and a negative discrepancy $-e$ from canceling, and it gives a larger discrepancy more weight. Their combined squared contribution is $e^2+(-e)^2=2e^2$.
 
@@ -52,7 +52,9 @@ $$
 =-2\sum_i x_i(y_i-b_0-b_1x_i).
 $$
 
-At the minimizer both derivatives are zero. The first normal equation gives
+At the minimizer both derivatives are zero. The equations obtained by setting
+these derivatives to zero are called the **normal equations**. The first normal
+equation gives
 
 $$
 \sum_i y_i=n\widehat\beta_0+\widehat\beta_1\sum_i x_i,
@@ -94,6 +96,12 @@ $$
 {\sum_i(x_i-\overline x)^2}
 $$
 
+This formula requires at least two distinct observed predictor values, so that
+$\sum_i(x_i-\overline x)^2>0$. Under that condition the squared error objective
+curves upward in every coefficient direction. The solution at which both
+derivatives equal zero is therefore the unique minimum rather than a maximum or
+a flat region.
+
 Before sampling, $\widehat\beta_1(\mathbf Y)$ is an estimator: a random function of the response vector. Once the observed vector $\mathbf y$ is inserted, $\widehat\beta_1(\mathbf y)$ is the numerical estimate printed below. The distinction follows the [estimator terminology](../statistical-inference/properties-of-estimators.qmd).
 
 ## Computing the Provo regression estimate
@@ -110,31 +118,138 @@ x <- -log2(provo$OrthoMatchModel)
 y <- provo$mean_log_ffd
 x_bar <- mean(x)
 y_bar <- mean(y)
+centered_cross_product <- sum((x - x_bar) * (y - y_bar))
+centered_x_squares <- sum((x - x_bar)^2)
 
-slope_by_hand <-
-  sum((x - x_bar) * (y - y_bar)) /
-  sum((x - x_bar)^2)
+slope_by_hand <- centered_cross_product / centered_x_squares
 intercept_by_hand <- y_bar - slope_by_hand * x_bar
 
-fit <- lm(y ~ x)
+provo$cloze_surprisal_bits <- x
+fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
 
 stopifnot(
-  abs(slope_by_hand - coef(fit)[["x"]]) < 1e-12,
+  abs(slope_by_hand - coef(fit)[["cloze_surprisal_bits"]]) < 1e-12,
   abs(intercept_by_hand - coef(fit)[["(Intercept)"]]) < 1e-12
 )
 
-data.frame(
+observed_ols_calculation <- data.frame(
+  quantity = c(
+    "number of Provo positions",
+    "mean modeled cloze surprisal",
+    "mean log first fixation duration",
+    "centered x-y cross-product",
+    "centered x sum of squares"
+  ),
+  observed_value = c(
+    length(x),
+    x_bar,
+    y_bar,
+    centered_cross_product,
+    centered_x_squares
+  )
+)
+observed_ols_calculation
+
+observed_ols_estimates <- data.frame(
   term = c("intercept", "modeled cloze surprisal"),
   estimate_by_hand = c(intercept_by_hand, slope_by_hand),
   estimate_from_lm = unname(coef(fit))
 )
+observed_ols_estimates
 ```
 
-The code implements the final two formulas directly: `sum((x-x_bar)*(y-y_bar))` is the centered cross-product, `sum((x-x_bar)^2)` is centered predictor variation, and the intercept then forces the fitted line through $(\overline x,\overline y)$.
+The first table shows every observed quantity needed by the formulas. Substituting
+those Provo values gives
 
-The fitted slope is `r sprintf("%.6f", slope_by_hand)` log milliseconds per bit. Squaring makes large vertical discrepancies count more heavily, which is one reason a few unusual responses may affect the fit.
+$$
+\begin{aligned}
+\widehat\beta_1
+&=
+\frac{
+`r format(centered_cross_product, digits = 7)`
+}{
+`r format(centered_x_squares, digits = 7)`
+} \\
+&=
+`r format(slope_by_hand, digits = 7)`,
+\end{aligned}
+$$
 
-Squared error is plausible when positive and negative deviations on the modeled scale should receive the same penalty and larger deviations should matter increasingly. This criterion comes from a working modeling decision rather than from the eye-tracking measurement itself. A heavy-tailed response model or absolute loss would reduce the relative influence of unusually large discrepancies.
+and
+
+$$
+\begin{aligned}
+\widehat\beta_0
+&=
+`r format(y_bar, digits = 7)`
+-
+\left(`r format(slope_by_hand, digits = 7)`\right)
+\left(`r format(x_bar, digits = 7)`\right) \\
+&=
+`r format(intercept_by_hand, digits = 7)`.
+\end{aligned}
+$$
+
+Thus the directly calculated fitted line is
+
+$$
+\widehat m(x)
+=
+`r format(intercept_by_hand, digits = 7)`
++
+`r format(slope_by_hand, digits = 7)`x.
+$$
+
+The second table checks these direct calculations against `lm()`. The two
+methods agree to numerical precision, but the formulas, rather than the software
+call, define the OLS estimate.
+
+## Fitting the same line with `lm()`
+
+The call used above was
+
+```{r}
+#| label: show-provo-lm-summary
+fit <- lm(
+  mean_log_ffd ~ cloze_surprisal_bits,
+  data = provo
+)
+summary(fit)
+```
+
+Read the formula from left to right. `mean_log_ffd` is the response. The tilde
+means “is modeled using,” and `cloze_surprisal_bits` is the predictor. The
+`data` argument tells R where those two columns are stored.
+
+The printed output contains several summaries, each of which answers a different
+question:
+
+1. `Call` repeats the model specification that R fit.
+2. `Residuals` reports selected quantiles of the [residuals](residuals.qmd), the
+   observed responses minus their fitted values.
+3. In `Coefficients`, `Estimate` contains the same intercept and slope calculated
+   above. `Std. Error` describes sampling variation in each coefficient estimate,
+   while the [coefficient $t$ statistic](regression-t-statistic.qmd) divides the
+   distance from a stated null value by that standard error.
+4. [Residual spread](residuals.qmd#residual-standard-error) estimates the
+   conditional response variation around the line and explains the units and
+   denominator of `Residual standard error`.
+5. [$R^2$](coefficient-of-determination.qmd) compares the line's squared error
+   with the squared error from predicting every response by the sample mean.
+6. The [regression $F$ statistic](regression-f-statistic.qmd) compares that
+   reduction in squared error with the residual spread.
+
+The output gathers several quantities, each with its own interpretation and
+sampling assumptions. At this point, we have derived only the two `Estimate`
+entries. Each remaining quantity requires the additional assumptions stated in
+its linked derivation.
+
+The fitted slope is `r sprintf("%.6f", slope_by_hand)`: one additional bit of modeled cloze surprisal corresponds to that change in the fitted word position mean of log first fixation duration. Squaring makes large vertical discrepancies count more heavily, which is one reason a few unusual responses may affect the fit.
+
+Squared error is plausible when positive and negative deviations on the modeled scale should receive the same penalty and larger deviations should matter increasingly. This criterion comes from a working modeling decision rather than from the eye movement measurement itself. A heavy-tailed response model or absolute loss would reduce the relative influence of unusually large discrepancies.
 
 If
 
@@ -155,16 +270,19 @@ $$
 +C.
 $$
 
-For fixed $\sigma$, maximizing this likelihood is equivalent to minimizing SSE. OLS and Gaussian maximum likelihood thus select the same coefficient estimates.
+For fixed $\sigma$, maximizing this likelihood is equivalent to minimizing the
+**error sum of squares (SSE)**. OLS and Gaussian maximum likelihood thus select
+the same coefficient estimates.
 
 ```{r}
 #| label: plot-provo-ols-fit
 #| fig-cap: "Reader-aggregated Provo positions and the OLS conditional mean."
-plot_data <- transform(provo, cloze_surprisal_bits = x)
+plot_data <- provo
 grid <- data.frame(
   cloze_surprisal_bits = seq(min(x), max(x), length.out = 160L)
 )
-grid$fitted <- predict(fit, newdata = data.frame(x = grid$cloze_surprisal_bits))
+grid$fitted <- intercept_by_hand +
+  slope_by_hand * grid$cloze_surprisal_bits
 
 point_opacity <- 0.22
 ggplot(plot_data, aes(cloze_surprisal_bits, mean_log_ffd)) +
@@ -182,7 +300,9 @@ ggplot(plot_data, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
-OLS estimates the best line under its squared-error criterion. It does not establish that the line is an adequate description, nor does it account for the passage grouping. Those questions require uncertainty calculations and diagnostics.
+OLS supplies the best line under the squared error criterion. The adequacy of
+that line and the dependence among passages remain open questions, which we
+address through uncertainty calculations and diagnostics.
 
 ## Recap and check your understanding
 
@@ -201,4 +321,4 @@ OLS estimates the best line under its squared-error criterion. It does not estab
 
 </details>
 
-We next derive [uncertainty in the fitted slope](linear-regression-uncertainty.qmd).
+We next work through the [residuals](residuals.qmd) that remain after fitting the line.

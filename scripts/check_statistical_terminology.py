@@ -31,6 +31,7 @@ NICENBOIM_10 = "https://bruno.nicenboim.me/bayescogsci/ch-custom.html"
 NICENBOIM_12 = "https://bruno.nicenboim.me/bayescogsci/ch-comparison.html"
 NICENBOIM_14 = "https://bruno.nicenboim.me/bayescogsci/ch-cv.html"
 NICENBOIM_WORKFLOW = "https://bruno.nicenboim.me/bayescogsci/ch-workflow.html"
+GLMNET = "https://glmnet.stanford.edu/articles/glmnet.html"
 PSU_CONDITIONAL_PROBABILITY = "https://online.stat.psu.edu/stat414/Lesson04"
 PSU_INDEPENDENCE = "https://online.stat.psu.edu/stat414/Lesson05"
 PSU_STUDENT_T = "https://online.stat.psu.edu/stat414/Lesson26"
@@ -402,7 +403,8 @@ add(PSU_ORDINAL, "Ordinal regression", "proportional odds assumption")
 add(WINTER_POISSON, "Poisson regression", "exposure offset", "Pearson residual", "Pearson estimate of dispersion", "quasi-Poisson model", "zero-inflated model", "negative binomial regression")
 add(ORDERED_BETA_SOURCE, "bounded response", "beta regression", "Ordered-beta regression")
 
-add(NICENBOIM_5, "crossed", "fixed effects", "random effects", "partial pooling", "Complete pooling", "No pooling", "Partial pooling", "shrinkage", "random-intercept model", "random-slope model", "random-effects correlation", "generalized linear mixed model", "GLMM")
+add(NICENBOIM_5, "crossed", "fixed effects", "random effects", "partial pooling", "Complete pooling", "No pooling", "Partial pooling", "random-intercept model", "random-slope model", "random-effects correlation", "generalized linear mixed model", "GLMM")
+add(GLMNET, "shrinkage")
 add(PSU_ICC, "intraclass correlation coefficient (ICC)")
 add(BRMS_FAMILIES, "ordinal mixed model")
 add(LME4_GLMER, "Poisson mixed-effects model")

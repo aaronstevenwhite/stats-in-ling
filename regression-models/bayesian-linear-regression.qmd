@@ -11,9 +11,12 @@ The Provo Gaussian linear model can be combined with a prior to produce a poster
 
 The [Provo measurements](regression-models.qmd#provo-word-position-data) define each response as a word position mean of log first fixation durations among readers with a retained positive fixation. They define modeled cloze surprisal as the negative base 2 logarithm of a fitted cloze probability. Skipped reader by word trials do not enter that mean, and the available table retains passage grouping rather than reader identities.
 
-Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the likelihood is the joint density of the fixed observed responses viewed as a function of unknown parameters. Its factorization uses [independence](../foundations/independence.qmd); its covariance matrix records [variances and covariances](../random-variables-and-distributions/variance-and-covariance.qmd). The later discussion of [Monte Carlo integration](../statistical-inference/monte-carlo-integration.qmd) explains why averages over posterior draws approximate integrals. A [residual](residuals.qmd) remains observed minus fitted response, now evaluated across posterior draws when uncertainty is propagated.
+Recall from [maximum likelihood](../statistical-inference/maximum-likelihood.qmd) that the likelihood is the joint density of the fixed observed responses viewed as a function of unknown parameters. Its factorization uses [independence](../foundations/independence.qmd); its covariance matrix records [variances and covariances](../random-variables-and-distributions/variance-and-covariance.qmd). [Monte Carlo integration](../statistical-inference/monte-carlo-integration.qmd) approximates posterior integrals by averaging over draws. A [residual](residuals.qmd) remains observed minus fitted response, now evaluated across posterior draws when uncertainty is propagated.
 
-The derivation has three parts: we first choose a prior that permits a **closed form update**, meaning that a finite sequence of algebraic operations gives the posterior parameters; we then perform that update and compute posterior summaries and fitted means.
+We will proceed in three steps. First, we choose a prior that permits a **closed
+form update**, meaning that a finite sequence of algebraic operations gives the
+posterior parameters. Second, we derive those updated parameters. Finally, we
+use them to compute posterior summaries and fitted means.
 
 The basic idea is the same as in the earlier [Beta--Binomial update](../statistical-inference/conjugate-priors.qmd): we begin with a probability distribution over possible parameter values, use the observed responses to reweight those values, and normalize. Regression adds several coefficients and an unknown residual variance, so the bookkeeping uses vectors and matrices. We will begin with a one-coefficient calculation each time the matrix notation would otherwise hide the operation.
 
@@ -31,7 +34,11 @@ A prior family is **conjugate** when multiplying its density by the likelihood p
 
 Why condition the coefficient prior on $\sigma^2$? Imagine two otherwise identical regression problems. In one, responses cluster tightly around their lines; in the other, they vary widely. Scaling the prior coefficient covariance by $\sigma^2$ lets the same dimensionless prior specification expand or contract with the residual scale. This coupling is what yields the closed-form update below.
 
-We use the normal--inverse-gamma specification
+The **inverse gamma distribution** is supported on positive values, which makes
+it available as a distribution for the variance $\sigma^2$. We use a
+normal--inverse-gamma specification: conditionally on $\sigma^2$, the
+coefficient vector is multivariate normal, while $\sigma^2$ has an inverse gamma
+distribution.
 
 $$
 \boldsymbol\beta\mid\sigma^2
@@ -45,7 +52,9 @@ $$
 \sigma^2\sim\operatorname{InverseGamma}(a_0,d_0).
 $$
 
-We use the shape--scale parameterization
+We use the **shape--scale parameterization**. Here $a_0$ is the shape parameter
+that controls the power on $\sigma^2$, and $d_0$ is the scale parameter that
+controls exponential decay through $d_0/\sigma^2$. Its density kernel is
 
 $$
 p(\sigma^2)
@@ -54,9 +63,7 @@ p(\sigma^2)
 \exp\left(-\frac{d_0}{\sigma^2}\right),
 $$
 
-whose mean is $d_0/(a_0-1)$ when $a_0>1$. Conditional conjugacy is useful here because it makes every updating step visible. Other prior families remain available and will generally require a different computational strategy.
-
-The name **inverse gamma** refers to a probability distribution supported on positive values, which makes it eligible for a variance. The displayed kernel tells us exactly which version we use: $a_0$ controls the power on $\sigma^2$, and $d_0$ appears divided by $\sigma^2$ inside the exponential. Writing the kernel prevents software packages with different parameter conventions from silently changing the prior.
+Its mean is $d_0/(a_0-1)$ when $a_0>1$. Conditional conjugacy is useful here because it makes every updating step visible. Other prior families remain available and will generally require a different computational strategy. When we later discuss [coefficient shrinkage](ridge-regression.qmd#penalties-and-priors), we will derive why a zero centered normal prior gives the ridge estimate as its posterior mode and why a zero centered Laplace prior gives the lasso estimate. Thus alternative coefficient priors change both posterior uncertainty and the form of regularization represented by the posterior mode. Software packages use different inverse gamma parameterizations, so we display the kernel to make our convention explicit.
 
 ## From likelihood and prior to posterior
 
@@ -84,9 +91,9 @@ $$
 
 The coefficient \(A\) is the **precision**, the inverse of the variance, and
 \(h\) is the precision-weighted total that combines the prior center with the
-data. Their ratio \(h/A\) is the updated center. The matrix derivation below
-performs this same operation for several coefficients at once: precision
-becomes a matrix and the precision-weighted total becomes a vector.
+data. Their ratio \(h/A\) is the updated center. For several coefficients, the
+same operation replaces the scalar precision $A$ with a matrix and the
+precision-weighted total $h$ with a vector.
 
 The likelihood kernel is
 
@@ -150,7 +157,10 @@ $$
 -\mathbf b_n^\top\mathbf V_n^{-1}\mathbf b_n.
 $$
 
-The first term is the kernel of the updated conditional normal distribution. The remaining scalar joins the inverse-gamma scale. Thus the posterior parameters are the quantities left by completing the square.
+The first term is the kernel of the updated conditional normal distribution.
+The second term contains no $\boldsymbol\beta$, so it becomes part of the updated
+inverse gamma scale $d_n$. Thus the posterior parameters are the quantities left
+by completing the square.
 
 The posterior is again normal--inverse-gamma, with
 
@@ -199,10 +209,10 @@ $$
 \mathbf L\mathbf L^{\mathsf T}.
 $$
 
-The [matrix primer](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance)
-builds this row by column calculation from scalar multiplication and addition.
-We will use the covariance estimated from the observed Provo responses and
-plot the resulting posterior coefficient draws below.
+As in [matrix multiplication](../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance),
+each coordinate of the result is a sum of scalar products. We will use the
+covariance estimated from the observed Provo responses and plot the resulting
+posterior coefficient draws below.
 
 We call a lower-triangular mixing matrix with this property a **Cholesky
 factor**. In general, \(\mathbf L\) satisfies
@@ -323,7 +333,7 @@ The posterior mean slope is `r sprintf("%.6f", mean(beta_draws[, "cloze_surprisa
 
 The coefficient prior location and scale use the observed Provo response and predictor scales. The inverse gamma shape is one plus the observed design dimension, and its scale sets the prior mean of $\sigma^2$ to the OLS residual variance. These priors depend on the data and are useful for connecting conjugate algebra to regression, but they were not specified independently for a confirmatory analysis.
 
-The following prior predictive calculation makes that limitation visible. It draws parameters from the data-calibrated prior and a response at centered surprisal before conditioning on the likelihood.
+The following prior predictive calculation makes that limitation visible. It draws parameters from a prior calibrated to these data and a response at centered surprisal before conditioning on the likelihood.
 
 ```{r}
 #| label: check-provo-prior-predictive
@@ -410,12 +420,12 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
-The posterior represents uncertainty under the same aggregated position likelihood. Bayesian updating does not restore participant observations or make the association causal.
+The posterior therefore represents uncertainty for the aggregated position likelihood. Participant responses remain unavailable, and a causal interpretation would require a research design that supports it.
 
 ## Recap and check your understanding
 
 1. Which part of the model is shared with OLS?
-2. Why is this not a confirmatory prior analysis?
+2. Why do these priors fail to support a confirmatory analysis?
 3. Why are predictions computed for every posterior draw?
 4. Which data limitation survives the Bayesian formulation?
 

@@ -9,9 +9,9 @@ execute:
 
 The OLS line minimizes squared error. The [**coefficient of determination**](https://appliedstatisticsforlinguists.org/bwinter_stats_proofs.pdf#page=85), $R^2$, compares that error with the error from predicting every Provo position by the same sample mean.
 
-Each response in this comparison is the [Provo word position mean](regression-models.qmd#provo-word-position-data) of log first fixation duration among readers with a retained positive fixation. The fitted line uses modeled cloze surprisal, the negative base-two logarithm of the fitted cloze probability defined in that discussion. Thus the squared variation is among those fixation contingent summaries, with passage grouping still present.
+Each response in this comparison is the [Provo word position mean](regression-models.qmd#provo-word-position-data) of log first fixation duration among readers with a retained positive fixation. The fitted cloze probability is the modeled probability of the observed word, and modeled cloze surprisal is its negative base 2 logarithm. Thus the squared variation is among word position means calculated from retained positive fixations, with passage grouping still present.
 
-We use **residual** provisionally for $e_i=y_i-\widehat y_i$, the observed response minus its fitted value. We later develop its algebra and diagnostic interpretation under [residuals](residuals.qmd).
+Recall from [residuals](residuals.qmd) that $e_i=y_i-\widehat y_i$ is the observed response minus its fitted value.
 
 The central question is how much squared error in the training sample the Provo line removes relative to one constant prediction. Total and residual sums of squares make that comparison explicit before its inferential limits are considered.
 
@@ -55,7 +55,33 @@ $$
 +2\sum_i e_i(\widehat y_i-\overline y).
 $$
 
-The final cross-product is zero because least squares makes the residual vector perpendicular to every fitted direction. In scalar terms, the positive and negative products $e_i(\widehat y_i-\overline y)$ cancel exactly at the least squares solution. The later [projection diagram](design-matrices.qmd#projection-as-fitted-plus-residual) draws this right-angle relation between fitted and residual vectors. Thus
+Why is the final cross-product zero? In this simple regression,
+
+$$
+\widehat y_i-\overline y
+=
+\widehat\beta_1(x_i-\overline x).
+$$
+
+Therefore,
+
+$$
+\sum_i e_i(\widehat y_i-\overline y)
+=
+\widehat\beta_1
+\left(
+\sum_i x_i e_i
+-
+\overline x\sum_i e_i
+\right)
+=0,
+$$
+
+because the intercept and slope equations give $\sum_i e_i=0$ and
+$\sum_i x_i e_i=0$. This cancellation is the same right angle developed through
+[projection geometry](design-matrices.qmd#projection-as-fitted-plus-residual).
+Define the **regression sum of squares (SSR)** as
+$\sum_i(\widehat y_i-\overline y)^2$. Thus
 
 $$
 \operatorname{SST}=\operatorname{SSR}+\operatorname{SSE}.
@@ -83,12 +109,17 @@ y_hat <- fitted(fit)
 sst <- sum((y - mean(y))^2)
 sse <- sum((y - y_hat)^2)
 r_squared <- 1 - sse / sst
+number_of_coefficients <- length(coef(fit))
+adjusted_r_squared <- 1 -
+  (sse / (nrow(provo) - number_of_coefficients)) /
+  (sst / (nrow(provo) - 1L))
 residual_fitted_cross_product <- sum(
   (y - y_hat) * (y_hat - mean(y))
 )
 
 stopifnot(
   abs(r_squared - summary(fit)$r.squared) < 1e-12,
+  abs(adjusted_r_squared - summary(fit)$adj.r.squared) < 1e-12,
   abs(residual_fitted_cross_product) < 1e-10
 )
 
@@ -96,7 +127,8 @@ data.frame(
   sst = sst,
   sse = sse,
   residual_fitted_cross_product = residual_fitted_cross_product,
-  r_squared = r_squared
+  r_squared = r_squared,
+  adjusted_r_squared = adjusted_r_squared
 )
 ```
 
@@ -110,7 +142,7 @@ $$
 \operatorname{SSR}+\operatorname{SSE},
 $$
 
-where $\operatorname{SSR}=\sum_i(\widehat y_i-\overline y)^2$. This decomposition yields the equivalent expression
+This decomposition yields the equivalent expression
 
 $$
 R^2=\frac{\operatorname{SSR}}{\operatorname{SST}}.
@@ -147,16 +179,58 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
+The squared vertical distances to the dashed mean line sum to SST, while the
+squared vertical distances to the blue fitted line sum to SSE. The next plot
+places those two observed sums on the same scale.
+
+```{r}
+#| label: plot-provo-sums-of-squares
+#| fig-cap: "Observed Provo total and error sums of squares. Their proportional reduction is R-squared."
+sums_of_squares <- data.frame(
+  prediction = c("Sample mean", "Fitted line"),
+  squared_error = c(sst, sse)
+)
+
+ggplot(sums_of_squares, aes(prediction, squared_error, fill = prediction)) +
+  geom_col(width = 0.65, show.legend = FALSE) +
+  scale_fill_manual(
+    values = c("grey65", "#2C6E9B") # dqr-allow: plot-aesthetic
+  ) +
+  labs(x = NULL, y = "Sum of squared discrepancies") +
+  theme_classic(base_size = 12)
+```
+
 $R^2$ gives a descriptive comparison on the modeled response scale using the same observations that fitted the line. Evaluating new passages requires predictions for passages held out during fitting, and a stronger linguistic explanation requires evidence beyond a larger $R^2$ in the training sample.
 
-Adjusted $R^2$ applies a parameter-count correction to training fit, while held-out loss evaluates a declared new-observation target. The discussion of [prediction targets](../model-criticism-and-prediction/prediction-targets.qmd) explains why neither is a substitute for naming whether a new row, passage, participant, or item is being predicted.
+The `summary()` output also reports **adjusted $R^2$**. Its formula is
+
+$$
+\overline R^2
+=
+1-
+\frac{\operatorname{SSE}/(n-p)}
+{\operatorname{SST}/(n-1)},
+$$
+
+where $p$ counts all fitted coefficients, including the intercept. Ordinary
+$R^2$ can only stay the same or increase when predictors are added to a model
+fitted on the same observations. Adjusted $R^2$ instead compares the residual
+mean square, $\operatorname{SSE}/(n-p)$, with the mean square around the sample
+mean, $\operatorname{SST}/(n-1)$. For the current Provo regression, direct
+substitution gives $\overline R^2=`r sprintf("%.5f", adjusted_r_squared)`$.
+
+Adjusted $R^2$ still summarizes fit to the training data. Evaluating prediction
+requires holding out the unit we plan to predict, whether a new row, passage,
+participant, or item; [prediction targets](../model-criticism-and-prediction/prediction-targets.qmd)
+explains why that choice matters.
 
 ## Recap and check your understanding
 
 1. What is the baseline model in the $R^2$ calculation?
 2. Why is $R^2$ tied to the response scale?
 3. What does the unexplained proportion contain?
-4. Why is this not a new-passage prediction score?
+4. Why can adjusted $R^2$ decrease when a predictor is added?
+5. Why does this value fail to measure prediction for a new passage?
 
 <details class="understanding-answers">
 <summary>Answers</summary>
@@ -164,8 +238,9 @@ Adjusted $R^2$ applies a parameter-count correction to training fit, while held-
 1. The baseline predicts every retained Provo position by the same sample mean response. <!-- dqr-allow: empirical-answer -->
 2. Both SSE and SST are computed after choosing a response transformation; changing that scale changes squared distances and their ratio. <!-- dqr-allow: empirical-answer -->
 3. The unexplained proportion contains lexical, contextual, and passage variation, together with variation from aggregating readers, from the chosen functional form, and from other features omitted by the one predictor line. <!-- dqr-allow: empirical-answer -->
-4. The reported $R^2$ is calculated on the same positions used to fit the model, with no held-out passages or other out-of-sample prediction target. <!-- dqr-allow: empirical-answer -->
+4. Adding a predictor reduces residual degrees of freedom. Adjusted $R^2$ increases only when the accompanying reduction in SSE is large enough to offset that change. <!-- dqr-allow: empirical-answer -->
+5. The reported $R^2$ is calculated on the same positions used to fit the model, with no held-out passages or other out-of-sample prediction target. <!-- dqr-allow: empirical-answer -->
 
 </details>
 
-We next inspect the [residuals](residuals.qmd) that make up SSE.
+We next use these sums of squares to derive the [regression $F$ statistic](regression-f-statistic.qmd).

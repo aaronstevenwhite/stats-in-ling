@@ -6,13 +6,13 @@ Why use regression for reading time? We could divide words into two groups and c
 
 Okay. So what must we know before we write down a regression equation? We need four pieces of information: (i) what one row of the data represents, (ii) which measured quantity we want to explain, (iii) which measured quantities we will use to make the explanation more specific, and (iv) which aspects of the response distribution we allow to change. We will call these the **observational unit**, the **response**, the **predictors**, and the **regression target**, respectively. The names matter because a coefficient has no interpretation until all four have been fixed.
 
-For instance, suppose a table contains one row for each word position. If the response is the average log reading time at that position and the predictor is word predictability, then the fitted relation compares word positions. It does not yet describe how two individual readers differ, because readers do not occupy rows in that table. We will return to this row question at the start of each new dataset rather than assuming that the answer carries over from one analysis to the next.
+For instance, suppose a table contains one row for each word position. If the response is the average log reading time at that position and the predictor is word predictability, then the fitted relation compares word positions. Comparing individual readers would require rows that retain reader identities. We will return to this row question at the start of each new dataset rather than assuming that the answer carries over from one analysis to the next.
 
-We will begin with the [Provo Corpus](https://osf.io/sjefs/), which records eye movements and predictability norms for words in short English passages ([Luke and Christianson 2018](https://doi.org/10.3758/s13428-017-0908-4)). The first table contains one row for each content word position, with eye movement measurements averaged across the readers who fixated that word. The [Provo measurements](regression-models.qmd#provo-word-position-data) explain what a first fixation is, walk through one row, and show exactly what was averaged.
+We will begin with the [Provo Corpus](https://osf.io/sjefs/), which records eye movements and predictability norms for words in short English passages ([Luke and Christianson 2018](https://doi.org/10.3758/s13428-017-0908-4)). The first table contains one row for each content word position, with eye movement measurements averaged across the readers who fixated that word. We therefore begin by defining the [Provo measurements](regression-models.qmd#provo-word-position-data): what a first fixation is, what one row represents, and what was averaged.
 
-This averaging creates what we will call the **reader to position compression problem**. The original experiment contains an observation for each reader and word, whereas the table we analyze contains summaries for word positions. Those summaries let us make the regression calculations visible, but they no longer contain the variation among readers. We will keep track of that loss as we interpret each fitted model.
+This **aggregation across readers** turns the original reader and word observations into summaries for word positions. Those summaries let us make the regression calculations visible, but they no longer contain the variation among readers. We will keep track of that loss as we interpret each fitted model.
 
-The basic regression idea builds directly on [expectation and variance](../random-variables-and-distributions/expected-values.qmd). We describe how the center of a response distribution changes with predictors, then ask how observations vary around that center. We begin with linear models for continuous responses, extend the same architecture to other response types with [generalized linear models](why-generalized-linear-models.qmd), and finally return to reader-by-item data with [mixed models](structured-data.qmd) for repeated units.
+The basic regression idea builds directly on [expectation and variance](../random-variables-and-distributions/expected-values.qmd). We describe how the center of a response distribution changes with predictors, then ask how observations vary around that center. We begin with linear models for continuous responses, extend the same architecture to other response types with [generalized linear models](why-generalized-linear-models.qmd), and finally return to data containing repeated readers and items with [mixed models](structured-data.qmd).
 
 ```{r}
 #| label: regression-index-data
@@ -22,7 +22,7 @@ provo$cloze_surprisal_bits <- -log2(provo$OrthoMatchModel)
 
 regression_inventory <- data.frame(
   object = c(
-    "content-word positions",
+    "content word positions",
     "passages",
     "parts of speech",
     "finite mean log first fixation durations"
@@ -63,39 +63,67 @@ ggplot(provo, aes(cloze_surprisal_bits, mean_log_ffd)) +
   theme_classic(base_size = 12)
 ```
 
-The response tends to rise with surprisal, though the curve also suggests that a straight line may be only an approximation. The first branch of the sequence turns this visible pattern into a conditional mean, a fitted line, and explicit checks of the line's restrictions.
+The response tends to rise with surprisal, though the curve also suggests that a straight line may be only an approximation. We begin by turning this visible pattern into a conditional mean and a fitted line, then check the restrictions introduced by that line.
 
 A regression model specifies which parameter of a response distribution depends on which observed predictors, and through which function. The response distribution states which measurements are possible and how they vary; the regression function states how its parameters change across predictor values represented in the data.
 
-The basic idea is easiest to see with a pair of predictions. Compare the fitted mean at a predictor value $x$ with the fitted mean at $x+1$. Their difference is the model's fitted change for one additional predictor unit. The rest of the sequence asks where such predictions come from, how uncertain they are, and what must be true for the contrast to answer the linguistic question we had in mind.
+The basic idea is easiest to see with a pair of predictions. Compare the fitted mean at a predictor value $x$ with the fitted mean at $x+1$. Their difference is the model's fitted change for one additional predictor unit. We next ask where such predictions come from, how uncertain they are, and what must be true for the contrast to answer the linguistic question we had in mind.
 
 This specification assumes the earlier [estimator terminology](../statistical-inference/properties-of-estimators.qmd): an estimand is the target, an estimator is a random rule, and an estimate is its observed value. It also assumes that a [likelihood](../statistical-inference/maximum-likelihood.qmd) holds the observations fixed while comparing parameter values. We will briefly recall these objects whenever they do explanatory work.
 
 ## Linear regression
 
-The Provo run builds ordinary linear regression in stages. [Conditional means](regression-models.qmd) state the target, [simple linear regression](simple-linear-regression.qmd) restricts that mean to a line, and the subsequent fitting, uncertainty, residual, and diagnostic calculations ask what this restriction licenses. Raw summaries for word positions and fitted lines remain visible on the same response scale.
+We begin with a [conditional mean](regression-models.qmd), restrict that mean to a line under [simple linear regression](simple-linear-regression.qmd), and then ask what the fitted line licenses through uncertainty, residual, and diagnostic calculations. Raw summaries for Provo word positions and fitted lines remain visible on the same response scale.
 
-At the move to [multiple regression](multiple-regression.qmd), the running dataset changes to MALD auditory lexical-decision items. These item rows summarize correct retained trials and cannot recover participant effects. This natural break introduces multiple lexical and acoustic predictors, categorical coding, correlated predictors, influence, heteroscedasticity, and distributional regression while keeping the running data stable. It also introduces **regularization**, which modifies a fitting criterion to discourage coefficient values that the data support weakly; [ridge regression](ridge-regression.qmd) develops the penalty. [Interactions](interactions.qmd) use MegaOrientation's paired past and future means to define frame-specific differences in orientation shifts; the ordinal fit is deferred until cumulative logit regression has been introduced.
+We introduce [multiple regression](multiple-regression.qmd) with MALD auditory
+lexical decision items. These rows summarize retained correct trials and cannot
+recover participant effects. With the MALD measurements fixed, we can ask how
+to [code categories](coding-categorical-predictors.qmd), what happens when
+[predictors correlate](correlated-predictors.qmd), how individual observations
+[influence](influence.qmd) a fit, and how to represent [unequal
+variance](heteroscedasticity.qmd). **Regularization** modifies a fitting
+criterion to discourage coefficient values that the data support weakly;
+[ridge regression](ridge-regression.qmd) develops that penalty.
+[Interactions](interactions.qmd) use MegaOrientation's paired past and future
+means to define differences among verb frame orientation shifts.
 
 ## Generalized response distributions
 
-A Gaussian straight-line mean is not appropriate for every linguistic response. Binary choices, ordinal judgments, counts, and bounded sliders have different supports and patterns of variation. [Generalized linear models](why-generalized-linear-models.qmd) retain a predictor-dependent parameter while changing the response family and link.
-
-The generalized model sequence uses SuperTelicity cloze choices for Bernoulli models, MegaVeridicality for ordered responses, Nettle and Storme for counts, and MegaNegRaising for sliders that include their endpoints. Each dataset enters when we change the response family. The population fits leave repeated participants and items out of the likelihood so that we can see how each family changes the calculation; their conclusions consequently concern population associations in the analyzed rows. MegaNegRaising adds a second restriction: verbs entered the analyzed subset only after an earlier acceptability screen. The measurement procedure also controls the interpretation. SuperTelicity records an elicited temporal preposition choice, MegaVeridicality records an ordered task response, and a country language total becomes a modeled rate only after area enters as exposure.
+A Gaussian straight line mean is not appropriate for every linguistic response.
+Binary choices, ordinal judgments, counts, and bounded sliders have different
+supports and patterns of variation. [Generalized linear models](why-generalized-linear-models.qmd)
+retain a predictor dependent parameter while changing the response family and
+link. We therefore introduce each dataset when its measurement
+scale requires a new family: SuperTelicity for Bernoulli models,
+MegaVeridicality for ordered responses, Nettle and Storme for counts, and
+MegaNegRaising for sliders that may attain their endpoints. In these population
+fits, repeated participants and items remain outside the likelihood, so the
+coefficients describe associations among the analyzed rows. The design of each
+dataset adds a further interpretive constraint. MegaNegRaising verbs passed an
+earlier acceptability screen; SuperTelicity records a temporal preposition
+choice; MegaVeridicality records an ordered task response; and Nettle country
+language totals become rates only after area enters as exposure.
 
 ## Repeated units
 
-The discussion of [structured data](structured-data.qmd) returns to connected MALD trials and distinguishes response rows from repeated listeners and spoken words. Random intercepts represent persistent modeled differences among sampled groups, while random slopes represent group variation in a predictor association.
+When we introduce [structured data](structured-data.qmd), we return to connected MALD trials and distinguish response rows from repeated listeners and spoken words. Random intercepts represent persistent modeled differences among sampled groups, while random slopes represent group variation in a predictor association.
 
-The mixed model sequence then extends the earlier response families: SuperTelicity supplies a crossed logistic model, MegaVeridicality an ordinal mixed model and a comparison using unseen verbs, and paired French--English UCCA passages a count model with an exposure offset. For each analysis, we retain the part of the source design needed to answer the current modeling question and name the omitted terms before interpreting its coefficients.
+We then combine repeated units with the earlier response families. A [logistic
+mixed model](generalized-linear-mixed-models.qmd) represents repeated
+SuperTelicity participants and items; an [ordinal mixed model](ordinal-mixed-models.qmd)
+represents repeated MegaVeridicality respondents and verbs; and a [count mixed
+model](poisson-mixed-models.qmd) represents paired French and English UCCA
+passages while adjusting for passage length. For each analysis, we retain the
+part of the source design needed to answer the current modeling question and
+name the omitted terms before interpreting its coefficients.
 
-The changing datasets can otherwise make the observational unit easy to lose. This map names the row and the dependence that each branch must represent or explicitly leave outside the model.
+To keep the observational unit visible, we record the analyzed row and the dependence retained or omitted in each dataset.
 
 | Resource | Analyzed row | Response used here | Dependence or selection to remember |
 |---|---|---|---|
-| [Provo](regression-models.qmd#provo-word-position-data) | content-word position within a passage | mean log first fixation duration across retained readers | reader variation was removed by aggregation; positions remain grouped by passage |
+| [Provo](regression-models.qmd#provo-word-position-data) | content word position within a passage | mean log first fixation duration across retained readers | reader variation was removed by aggregation; positions remain grouped by passage |
 | [MALD](multiple-regression.qmd#mald-word-item-data) | word item or connected participant--word trial, depending on the analysis | log latency for correct trials | item summaries cannot recover listener effects; trial rows repeat listeners and words |
-| [MegaOrientation](interactions.qmd) | participant judgment of a verb-frame item | ordered orientation response | participants and verbs repeat; the descriptive analysis uses paired cell means |
+| [MegaOrientation](interactions.qmd) | participant judgment of a verb frame item | ordered orientation response | participants and verbs repeat; the descriptive analysis uses paired cell means |
 | [SuperTelicity](why-generalized-linear-models.qmd) | participant choice for one sentence item | *in* versus *for* | participants, verbs, and sentences repeat |
 | [MegaVeridicality](ordinal-regression.qmd) | respondent judgment of one low-content verb sentence | *no*, *maybe*, or *yes* | respondents and verbs repeat; task samples were recruited separately |
 | [Nettle](poisson-regression.qmd#nettle-country-counts) | country database record | reported language total | boundaries, cross-border languages, documentation, and regional history affect rows |
@@ -103,13 +131,39 @@ The changing datasets can otherwise make the observational unit easy to lose. Th
 | [MegaNegRaising](bounded-responses.qmd) | participant slider response to one sentence | neg-raising or ease slider location | participants and verbs repeat; the balanced verbs passed an earlier acceptability screen |
 | [French--English UCCA](poisson-mixed-models.qmd) | passage in one language | UCCA Scene count with node count as exposure | the two language rows for a passage form a pair |
 
-The [dependency graph](../learning-path.qmd) displays the linear, generalized linear, and mixed effects branches. In each branch, the order is the same: identify the response and repeated units, state the conditional target, fit on the observed support, show data and fitted values together, and evaluate the restrictions the model added.
+For every dataset, we identify the response and repeated units, state the conditional target, fit on the observed support, show data and fitted values together, and evaluate the restrictions the model added. The [dependency graph](../learning-path.qmd) records how the required concepts connect.
+
+## Where the estimates come from
+
+Some fitting rules have a closed form; others require an iterative calculation.
+We will not treat a software call as the definition of an estimator. When a
+closed form exists, we derive it from the stated loss or likelihood. When it
+does not, we derive the quantity being optimized or integrated and then explain
+the algorithm used to approximate the answer.
+
+| Estimate | What is derived |
+|---|---|
+| [Simple OLS](frequentist-linear-regression.qmd#from-discrepancies-to-an-objective) | Differentiate squared error, solve the two normal equations, and obtain the slope and intercept formulas. |
+| [Matrix OLS](design-matrices.qmd#from-squared-error-to-the-coefficient-estimates) | Expand the quadratic, compute its gradient, solve the normal equations, and state the full rank condition for a unique solution. |
+| [Regression $t$](regression-t-statistic.qmd) | Standardize one coefficient estimate by its directly calculated standard error and derive its null distribution. |
+| [Regression $F$](regression-f-statistic.qmd) | Compare the reductions in squared error from nested regressions and derive the resulting mean-square ratio. |
+| [Bayesian regression](bayesian-linear-regression.qmd#from-likelihood-and-prior-to-posterior) | Complete the square, derive every posterior parameter, and compute the posterior from the observed Provo design. |
+| [Ridge](ridge-regression.qmd#penalties-and-priors) | Differentiate the penalized objective and derive its equality with the posterior mode under a Gaussian coefficient prior. |
+| [Logistic fitting](iteratively-reweighted-least-squares.qmd) | Differentiate the Bernoulli log likelihood and derive the working response and weighted least squares update used by IRLS. |
+| [Mixed model fitting](laplace-approximation.qmd) | Write the integrated likelihood and derive the local quadratic approximation used when the integral has no elementary solution. |
+
+The ordinal, count, and ordered beta discussions likewise begin from each
+observed row's likelihood contribution. Their coefficient estimates have no
+general closed form, so the corresponding computation maximizes the displayed
+likelihood numerically. This distinction matters: defining an estimator by its
+objective is exact even when finding its numerical value requires an iterative
+algorithm.
 
 ## Prerequisite map and learning targets
 
-The linear branch uses [conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd), [estimator properties](../statistical-inference/properties-of-estimators.qmd), and [confidence intervals](../statistical-inference/confidence-intervals.qmd). The generalized branch adds response support, mean--variance relations, and link functions. The mixed branch returns to the [independent-sampling claim](../statistical-inference/independent-sampling.qmd): repeated rows are not new participants or items merely because they occupy different lines in a table.
+Linear regression uses [conditional expectation](../random-variables-and-distributions/conditional-expectation.qmd), [estimator properties](../statistical-inference/properties-of-estimators.qmd), and [confidence intervals](../statistical-inference/confidence-intervals.qmd). Generalized linear models add response support, mean--variance relations, and link functions. Mixed models return to [independent sampling](../statistical-inference/independent-sampling.qmd): each additional row records another observation, whereas another participant or item requires another sampled unit.
 
-By the end of the regression sequence, students should be able to:
+After completing these discussions, students should be able to:
 
 1. state the response, observational unit, repeated units, and conditional target before fitting a model;
 2. justify a response family and link by naming their restrictions and an observable failure mode;
