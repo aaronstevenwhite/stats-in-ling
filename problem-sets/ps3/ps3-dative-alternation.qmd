@@ -267,7 +267,7 @@ frequency_doubling_ratio
 
 Report the frequency test statistic, standard error, degrees of freedom, and p value, followed by the three slopes and their model based [95% confidence intervals](../../regression-models/linear-regression-uncertainty.qmd). Interpret the frequency doubling contrast and duration slope while holding the other predictors fixed. Use the discussion of [correlated predictors](../../regression-models/correlated-predictors.qmd) to explain whether the phone count coefficient supports a causal claim that adding phones makes a word easier to recognize. Exercise 3 will relax the equal variance assumption.
 
-Explain why changing each word's variance or resampling word rows would leave listener dependence unaccounted for. Specify the trial level identifiers needed and describe a model for responses that share a listener or word. A description of that model is sufficient here.
+Explain why changing each word's variance or resampling word rows would leave listener dependence unaccounted for. Which trial level identifiers would we need to determine how many words each listener contributed to? Explain why the number of word rows alone does not tell us how much independent information the data contain.
 
 ::: {.callout-note title="Your result"}
 Replace this sentence with your answers to Exercise 2.
@@ -604,7 +604,7 @@ The semantic classes are abstract (`a`), communication (`c`), future transfer (`
 | Baseline | relative log length, modality, and semantic class |
 | Alignment | all baseline predictors, plus recipient and theme accessibility, recipient and theme pronominality, and recipient animacy |
 
-These are additive models: the linear predictor contains no interactions or verb and speaker effects. The first level listed for each factor in `factor_levels` is its [reference category](../../regression-models/coding-categorical-predictors.qmd). For instance, the new recipient coefficient compares new with accessible recipients at fixed values of the other predictors.
+These are additive models: the linear predictor contains no interactions. The first level listed for each factor in `factor_levels` is its [reference category](../../regression-models/coding-categorical-predictors.qmd). For instance, the new recipient coefficient compares new with accessible recipients at fixed values of the other predictors.
 
 Before fitting, make a table predicting the coefficient signs for eight contrasts: relative log length; given and new recipients relative to accessible recipients; given and new themes relative to accessible themes; pronominal recipients and themes relative to nonpronominal counterparts; and inanimate recipients relative to animate recipients. A positive [log odds coefficient](../../regression-models/odds-and-log-odds.qmd) favors PP order, with the theme first; a negative coefficient favors NP order, with the recipient first. Use this coding to explain each prediction.
 
@@ -736,7 +736,7 @@ alignment_fit <- brm(
 # These gates assess sampling, not whether the response model is correct.
 check_dative_fit <- function(fit, max_treedepth = 10) {
   diagnostics <- summarise_draws(as_draws(fit), "rhat", "ess_bulk", "ess_tail") |>
-    filter(grepl("^(b_|sd_|r_)", variable))
+    filter(grepl("^b_", variable))
   nuts <- nuts_params(fit)
   divergences <- sum(nuts$Parameter == "divergent__" & nuts$Value == 1)
   treedepth_hits <- sum(nuts$Parameter == "treedepth__" & nuts$Value >= max_treedepth)
@@ -800,7 +800,7 @@ Compare all eight posterior median coefficient signs with your predictions. For 
 
 Interpret the sign fraction as a posterior probability conditional on the data, likelihood, and prior. Distinguish it from a p value, which concerns a test statistic under a null hypothesis. If every sampled draw has the same sign, report the count and total draws; the unobserved tail may still have positive probability.
 
-The likelihood assumes conditional independence across tokens. Check its predictions in Section 5.6 and examine verb and speaker effects in Section 5.7.
+The likelihood assumes conditional independence across tokens. Check its predictions in Section 5.6 and examine the observation units in Section 5.7.
 
 ::: {.callout-note title="Your result"}
 Replace this sentence with your answers to Sections 5.1–5.5.
@@ -899,9 +899,11 @@ For each grouping, report how many of the 1,000 simulated discrepancies reached 
 Replace this sentence with your answers to Section 5.6.
 :::
 
-### 5.7 Check how conclusions change with verb and speaker effects
+### 5.7 Check the observation units and independence assumption
 
-Tokens may share verb or speaker effects beyond those captured by the predictors. Fit models that include these effects and compare their coefficient summaries with the original fit. This sensitivity analysis assesses how the independence assumption affects the conclusions. Begin by checking the available verb and speaker identifiers.
+Each row records one dative choice. But the same speaker may contribute several choices, and the same verb may occur in many rows. Choices from one speaker may share habits or discourse contexts that the predictors do not capture. Choices containing one verb may share properties of its use. Either source of similarity can leave tokens dependent after conditioning on the predictors.
+
+Count the available verb and speaker identifiers, then count how many tokens share each identifier. The first table separates spoken and written tokens because speaker IDs are missing for the written data.
 
 ```{r}
 items$speaker_recorded <- !is.na(items$speaker_id) &
@@ -914,108 +916,29 @@ dependence_audit <- items |>
     missing_speaker_ids = sum(!speaker_recorded), .groups = "drop"
   )
 dependence_audit
+
+verb_counts <- items |> count(verb, name = "token_count")
+speaker_counts <- items |>
+  filter(speaker_recorded) |>
+  count(speaker_id, name = "token_count")
+unit_summary <- bind_rows(
+  data.frame(unit = "verb type", verb_counts["token_count"]),
+  data.frame(unit = "identified speaker", speaker_counts["token_count"])
+) |>
+  group_by(unit) |>
+  summarize(
+    units = n(), units_with_multiple_tokens = sum(token_count > 1),
+    minimum_tokens = min(token_count), median_tokens = median(token_count),
+    maximum_tokens = max(token_count), .groups = "drop"
+  )
+unit_summary
 ```
 
-Speaker IDs are available only for spoken tokens. Leave written tokens out of the speaker comparison, and keep the rows fixed within each pair of fits:
+Report the number of tokens, verb types, and identified speakers in each modality, along with the number of verbs and identified speakers contributing multiple tokens. Explain why 3,263 token rows need not provide the same amount of independent information as 3,263 choices from different speakers. What can we determine about repeated written speakers from this table?
 
-| Rows | Original model | Model with group effects |
-|---|---|---|
-| All tokens | alignment model from Section 5.4 | alignment model plus a shared intercept adjustment for each verb |
-| Spoken tokens only | alignment model refitted without modality | the same spoken model plus shared intercept adjustments for verbs and speakers |
+The credible intervals use a likelihood that treats tokens as independent given their predictors. Chain diagnostics assess the posterior simulation under this likelihood; they do not verify the independence assumption. The predictive checks can reveal errors in the PP rates, but they do not establish independence either. Explain how these limitations affect claims about uncertainty for new samples of speakers.
 
-Omit modality from the spoken fits because it is constant in that subset. Pooling the blank written speaker IDs into one group would incorrectly assign every written token to the same person.
-
-A [random intercept](../../regression-models/random-intercepts.qmd) gives a group's tokens a shared log odds adjustment. Add $u_{v[i]}$ for token $i$'s verb, with $u_v\sim\mathcal N(0,\tau_v^2)$. In the spoken model, also add $a_{s[i]}$ for its speaker, with $a_s\sim\mathcal N(0,\tau_s^2)$. The verb and speaker effects are *crossed*: each token receives an adjustment from both grouping factors. Use independent $\operatorname{Exponential}(1)$ priors on $\tau_v$ and $\tau_s$.
-
-In [`brms`](https://paulbuerkner.com/brms/reference/brmsformula.html), `(1 | verb)` adds verb intercepts and `(1 | speaker_id)` adds speaker intercepts. The grouped fits use longer chains and a higher `adapt_delta` to obtain adequate sampling diagnostics.
-
-```{r}
-group_prior <- c(dative_prior, prior(exponential(1), class = sd))
-verb_formula <- update(alignment_formula, . ~ . + (1 | verb))
-verb_fit <- brm(
-  verb_formula, data = items, family = bernoulli(link = "logit"),
-  prior = group_prior, chains = 4, cores = core_count, iter = 4000, warmup = 2000,
-  seed = 214308, backend = "cmdstanr",
-  control = list(adapt_delta = .99, max_treedepth = 12), refresh = 0,
-  file = "stan_cache/dative-verb-sensitivity-4000", file_refit = "on_change"
-)
-spoken_items <- items[items$modality == "spoken", ]
-stopifnot(all(spoken_items$speaker_recorded))
-spoken_formula <- update(alignment_formula, . ~ . - modality)
-spoken_fit <- brm(
-  spoken_formula, data = spoken_items, family = bernoulli(link = "logit"),
-  prior = dative_prior, chains = 4, cores = core_count, iter = 2000, warmup = 1000,
-  seed = 214309, backend = "cmdstanr", control = list(adapt_delta = .95), refresh = 0,
-  file = "stan_cache/dative-spoken-sensitivity", file_refit = "on_change"
-)
-spoken_group_formula <- update(spoken_formula, . ~ . + (1 | verb) + (1 | speaker_id))
-spoken_group_fit <- brm(
-  spoken_group_formula, data = spoken_items, family = bernoulli(link = "logit"),
-  prior = group_prior, chains = 4, cores = core_count, iter = 4000, warmup = 2000,
-  seed = 214310, backend = "cmdstanr",
-  control = list(adapt_delta = .99, max_treedepth = 12), refresh = 0,
-  file = "stan_cache/dative-spoken-group-sensitivity-4000", file_refit = "on_change"
-)
-sensitivity_diagnostics <- bind_rows(
-  full_verb = check_dative_fit(verb_fit, max_treedepth = 12),
-  spoken_additive = check_dative_fit(spoken_fit),
-  spoken_grouped = check_dative_fit(spoken_group_fit, max_treedepth = 12),
-  .id = "model"
-)
-sensitivity_diagnostics
-
-focal_terms <- c(
-  "relative_log_length", "recipient_accessibilitygiven", "recipient_accessibilitynew",
-  "theme_accessibilitygiven", "theme_accessibilitynew",
-  "recipient_pronominalitypronominal", "theme_pronominalitypronominal",
-  "recipient_animacyinanimate"
-)
-summarize_focal <- function(fit, label) {
-  draws <- as_draws_df(fit)
-  lapply(focal_terms, function(term) {
-    values <- draws[[paste0("b_", term)]]
-    data.frame(model = label, term = term, median = median(values),
-               lower_95 = unname(quantile(values, .025)),
-               upper_95 = unname(quantile(values, .975)),
-               probability_positive = mean(values > 0))
-  }) |> bind_rows()
-}
-sensitivity_table <- bind_rows(
-  summarize_focal(alignment_fit, "full additive"),
-  summarize_focal(verb_fit, "full verb intercepts"),
-  summarize_focal(spoken_fit, "spoken additive"),
-  summarize_focal(spoken_group_fit, "spoken verb and speaker intercepts")
-)
-sensitivity_table
-
-# Preserve iterations and chains when estimating Monte Carlo error for a quantile.
-spoken_new_recipient_draws <- as_draws_array(spoken_group_fit)[
-  , , "b_recipient_accessibilitynew"
-]
-spoken_new_recipient_upper_mcse <- mcse_quantile(
-  spoken_new_recipient_draws, probs = .975
-)
-spoken_new_recipient_upper_mcse
-
-# Recheck common verb rates for the same observed verbs, conditional on their fitted intercepts.
-set.seed(214311)
-verb_draw_ids <- sample(seq_len(ndraws(as_draws(verb_fit))), 1000)
-verb_group_p <- posterior_epred(verb_fit, draw_ids = verb_draw_ids)
-verb_group_y <- posterior_predict(verb_fit, draw_ids = verb_draw_ids)
-verb_group_ppc <- check_group_rates(items$verb, items$pp, verb_group_y, verb_group_p, 40)
-verb_group_ppc$rates
-plot_group_rates(verb_group_ppc, "Verb, with fitted verb intercepts")
-```
-
-Use `sensitivity_table` to answer the following questions. Its estimates and intervals are on the log odds scale, so the value for no association is zero.
-
-1. In each pair of models fitted to the same rows, which posterior median signs agree? Which 95% credible intervals include zero? Report the new versus accessible recipient interval for both full corpus fits.
-2. For the spoken model with verb and speaker effects, compare the new recipient interval's upper endpoint with `spoken_new_recipient_upper_mcse`. This [Monte Carlo standard error](../../statistical-inference/monte-carlo-integration.qmd) estimates numerical uncertainty in the endpoint from using a finite number of posterior draws. If the endpoint's distance from zero is much smaller than this error, how much confidence should we place in its being just above or below zero? The [`mcse_quantile()` documentation](https://mc-stan.org/posterior/reference/mcse_quantile.html) describes this calculation.
-3. Do the verb effects improve the replicated rates for the common verbs? These intercepts were estimated using responses from those same verbs. Explain why this check differs from predicting a verb excluded from fitting.
-
-Interpret slopes in the grouped fits while holding the group intercepts fixed. Adding group effects can change coefficient estimates as well as interval widths, so examine both changes.
-
-State what dependence remains unmodeled. Consider [group specific predictor slopes](../../regression-models/random-slopes.qmd), conversation effects, and the missing written speaker IDs. Explain how these omissions limit uncertainty claims about new samples of English speakers, even if sampling diagnostics and the observed verb predictive check are satisfactory. Exercise 6 returns to the original baseline and alignment fits to evaluate excluded verb predictions.
+Exercise 6 excludes whole verbs during cross-validation. Explain why that split assesses prediction for excluded verbs while allowing speakers to occur in both training and test data. Would success on that task establish accuracy for new speakers? Relate this distinction to the MALD word folds, where different words may share listeners.
 
 ::: {.callout-note title="Your result"}
 Replace this sentence with your answers to Section 5.7.
@@ -1025,7 +948,7 @@ Replace this sentence with your answers to Section 5.7.
 
 ### 6.1 Compare profile probabilities and count matching tokens
 
-Use the profiles from Exercise 5 and the original alignment fit. [`posterior_epred()`](https://paulbuerkner.com/brms/reference/posterior_epred.brmsfit.html) returns posterior draws in rows and profiles in columns. For each profile, calculate the mean PP probability and its middle 95% credible interval. Subtract the first column from the second within each draw, then summarize the differences. Pairing the predictions by draw retains their shared coefficient uncertainty.
+Use the profiles from Exercise 5 and the alignment fit. [`posterior_epred()`](https://paulbuerkner.com/brms/reference/posterior_epred.brmsfit.html) returns posterior draws in rows and profiles in columns. For each profile, calculate the mean PP probability and its middle 95% credible interval. Subtract the first column from the second within each draw, then summarize the differences. Pairing the predictions by draw retains their shared coefficient uncertainty.
 
 Count observed tokens matching each profile. The `exact` count requires the same categorical predictors and equal length arguments. The `alignment_only` count matches accessibility, pronominality, and recipient animacy, allowing length, modality, and semantic class to differ.
 
@@ -1137,7 +1060,7 @@ Calculate Brier loss from the posterior averaged probability. Averaging losses a
 First report the numerical results from Sections 6.1–6.2 in tables. Then write a paragraph of six to eight sentences that connects the dative results. Organize it around four questions:
 
 1. What response did you model, and how did you fit and check the Stan models?
-2. Which predicted coefficient directions appear in the original alignment fit, and which conclusions change after adding verb or speaker effects?
+2. Which predicted coefficient directions appear in the alignment fit, and what independence assumption do its credible intervals require?
 3. What do the conditional predictive checks and profile matching counts reveal about the model's limitations?
 4. Does adding alignment predictors improve predictions for excluded verbs, and how does `tell` qualify that result?
 
@@ -1157,9 +1080,9 @@ Replace this sentence with your answers to Exercise 6.
 - Item mean residual variance is distinguished from within item trial variance.
 - Mean slopes, log SD slopes, and log odds slopes are interpreted on their respective scales.
 - Priors, prior predictions, posterior event definitions, and posterior summaries are explicit.
-- Chain diagnostics pass before full data, sensitivity, or held out posterior predictions are interpreted.
+- Chain diagnostics pass before full data or held out posterior predictions are interpreted.
 - Conditional predictive checks are reported by verb and predictor cell.
-- Dependence comparisons use matched data; written tokens with missing speaker IDs are excluded from the speaker comparison.
+- Repeated speakers and verbs are counted, missing speaker IDs are reported, and the independence assumption is stated.
 - The MALD interpretation explains that its intervals assume independent word rows and do not account for shared listeners.
 - Every random calculation has a recorded seed, and every fold fit uses training rows only.
 - Verb types never appear in both partitions of an omitted verb fold.

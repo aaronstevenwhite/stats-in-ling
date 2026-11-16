@@ -4,7 +4,7 @@
 
 ## Overview
 
-Complete all six exercises in `ps3.ipynb`. Exercises 1–4 fit linear regressions to MALD word summaries and compare predictions with constant and frequency dependent residual variance. Exercises 5–6 fit Bayesian logistic regressions to dative choices using Stan through `brms` and `cmdstanr`, as in Problem Set 2. Check predictions by verb and predictor combination, compare fits with verb and speaker intercepts, and evaluate predictions for excluded verbs.
+Complete all six exercises in `ps3.ipynb`. Exercises 1–4 fit linear regressions to MALD word summaries and compare predictions with constant and frequency dependent residual variance. Exercises 5–6 fit Bayesian logistic regressions to dative choices using Stan through `brms` and `cmdstanr`, as in Problem Set 2. Check predictions by verb and predictor combination, inspect repeated speakers and verbs, and evaluate predictions for excluded verbs.
 
 Open the notebook from the extracted `ps3-assignment` directory and select the R kernel. Both data tables are included.
 
@@ -88,7 +88,7 @@ cp data/mald/mald-items.csv problem-sets/ps3/data/mald-items.csv
 
 **Analysis columns:** recipient realization, argument lengths, accessibility, pronominality, recipient animacy, modality, semantic class, and verb. The response is `pp = 1` for a PP recipient and zero for an NP recipient. Fit Bernoulli models with a logit link, using independent zero centered normal priors for the internally centered intercept (SD 2.5) and slopes (SD 1.5). The baseline and alignment fits use four chains with 1,000 warmup and 1,000 retained iterations each. Summarize the posterior coefficients and check predictions by verb and modality by pronominality cell.
 
-Three additional fits assess verb and speaker dependence. Compare the full alignment model with a model adding verb intercepts, then compare spoken only fits with and without crossed verb and speaker intercepts. Speaker IDs are available for the 2,360 spoken tokens, covering 38 verbs and 424 speakers. The 903 written tokens have no speaker IDs and are excluded from the speaker comparison. Group specific slopes, discourse structure, and corpus sampling remain limitations. The observed verb check uses fitted verb intercepts; excluded verb evaluation uses the original baseline and alignment models.
+The token rows include repeated verbs and speakers. Speaker IDs are available for the 2,360 spoken tokens, covering 38 verbs and 424 speakers. The 903 written tokens have no speaker IDs. Count repeated identifiers and explain why the token count need not equal the amount of independent information. The models assume conditional independence across tokens; sampling diagnostics and predictive checks do not verify this assumption. Excluding verbs during cross-validation assesses prediction for those verbs, while speakers may occur in both partitions.
 
 The source package declares GPL (>= 2). The adapted CSV's SHA-256 checksum is `02a49e0ef2da7df73a7ef622ddf31a55ba13c52a9b66bcfdf2fef3def7932bea`. `scripts/prepare_data.R` reconstructs the CSV from the [frozen CRAN archive](https://cran.r-project.org/src/contrib/Archive/languageR/languageR_1.5.0.tar.gz), whose SHA-256 checksum is `d629739bbfd8846ac4db62310a99eda59a22cb0170e58bc2e1a241b244b637c6`:
 
@@ -104,12 +104,12 @@ Rscript scripts/prepare_data.R /path/to/languageR_1.5.0.tar.gz data/dative-alter
 | 2 | 20 | derive the frequency coefficient t test, calculate its standard error and p value, and interpret the slopes |
 | 3 | 25 | measure residual variance, derive its frequency equation and Gaussian likelihood, and derive and apply a likelihood ratio test |
 | 4 | 15 | implement five fold evaluation of predicted means and predictive distributions |
-| 5 | 20 | derive the log posterior, fit Stan models, check conditional predictions, and assess dependence with matched sensitivity fits |
+| 5 | 20 | derive the log posterior, fit Stan models, check conditional predictions, and examine observation units and conditional independence |
 | 6 | 10 | summarize posterior probability contrasts, count data support, and refit Stan models with verbs omitted |
 
 The points sum to 100. Fit MALD models by least squares and Gaussian maximum likelihood, and dative models by posterior sampling in Stan. Report confidence intervals for MALD coefficients and credible intervals for dative coefficients under their stated assumptions. Evaluate cross-validation scores descriptively because the training sets overlap.
 
-Dative validation requires 150 exact Stan refits. Each refit uses training tokens only, retains the same priors and sampler settings, and passes the full sampling checks. Predictions average posterior probabilities with `posterior_epred()`. Three additional sensitivity fits assess grouping assumptions. The two grouped fits use 4,000 iterations per chain, including 2,000 warmup iterations, and check population coefficients, group SDs, and fitted group intercepts. The spoken additive fit uses the original chain settings. The `stan_cache/` directory stores reusable compiled programs and model files. It is created locally and excluded from the student package; allow the first run to finish before rerunning cells that use the fits.
+Dative validation requires 150 exact Stan refits. Each refit uses training tokens only, retains the same priors and sampler settings, and passes the full sampling checks. Predictions average posterior probabilities with `posterior_epred()`. The `stan_cache/` directory stores reusable compiled programs and model files. It is created locally and excluded from the student package; allow the first run to finish before rerunning cells that use the fits.
 
 ## Instructor validation
 
@@ -121,7 +121,7 @@ Rscript problem-sets/ps3/scripts/validate_ps3_release.R
 bash scripts/build-problem-set-packages.sh ps3
 ```
 
-The validator checks the regression t statistic and log tail probability, reconstructs the Gaussian variance likelihood, and checks the likelihood ratio parameter counts. It executes every answer key code block and writes `research/homework-validation/ps3/stan-validation-summary.json`. It checks the MALD scale estimate and predictive losses, dative coefficient intervals, conditional predictive checks, grouping comparisons, profile matches, and excluded verb scores. It also checks sampling diagnostics for every Stan fit. In the full corpus comparison, the new recipient interval includes zero after adding verb intercepts. The earlier dative only validator concerns the previous maximum likelihood assignment.
+The validator checks the regression t statistic and log tail probability, reconstructs the Gaussian variance likelihood, and checks the likelihood ratio parameter counts. It executes every answer key code block and writes `research/homework-validation/ps3/stan-validation-summary.json`. It checks the MALD scale estimate and predictive losses, dative coefficient intervals, conditional predictive checks, counts of repeated identifiers, profile matches, and excluded verb scores. It also checks sampling diagnostics for every Stan fit. The earlier dative only validator concerns the previous maximum likelihood assignment.
 
 ## Grading
 
