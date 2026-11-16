@@ -1,10 +1,1166 @@
 ---
-title: "Problem Set 3: Harmonic alignment in the dative alternation"
-toc: false
-course-release-id: ps3
-course-release-placeholder: true
+title: "Problem Set 3: Regression models"
+subtitle: "Linear regression, conditional variance, and Bayesian logistic regression"
+format:
+  html:
+    toc: true
+execute:
+  enabled: false
 ---
 
-PS3 uses English dative alternation data to introduce logistic regression and evaluation on verbs omitted during fitting.
+## Regression for response times and dative choice
 
-**Available Wednesday, October 28, 2026.**
+Exercises 1–4 use auditory lexical decision data to estimate how word frequency, duration, and phone count relate to mean log response time (RT). Fit a [multiple linear regression](../../regression-models/multiple-regression.qmd), then allow the residual standard deviation (SD) to depend on frequency. Exercises 5–6 use Bayesian logistic regression to test predictions about English dative choice. Fit the dative models in Stan using `brms` and `cmdstanr`, as in Problem Set 2.
+
+All six exercises are required. The points sum to 100.
+
+::: {.callout-note title="Assignment files"}
+[Download the complete Problem Set 3 package](../../downloads/ps3-assignment.zip){download="ps3-assignment.zip"}. Extract the package and open `ps3.ipynb` from the extracted `ps3-assignment` directory. Select the R kernel. The package contains the notebook, assignment source, README, and both teaching tables.
+
+The files are also available separately:
+
+- [R notebook](ps3.ipynb){download="ps3.ipynb"}
+- [README and setup instructions](README.md)
+- [MALD word summaries](data/mald-items.csv){download="mald-items.csv"}
+- [Dative tokens](data/dative-alternation.csv){download="dative-alternation.csv"}
+:::
+
+Use `<-` for assignment, use `snake_case` object names, and record a seed before every random calculation. Every numerical answer must be produced by visible code.
+
+Complete the missing equations in the **Your LaTeX** blocks and replace every `___` in the R code. Run the cells in order. In each **Your result** block, report the numerical results and answer the interpretation questions from the preceding subsections. Tables may contain the requested estimates and intervals; you do not need to repeat every table entry in prose.
+
+```{r}
+# Run the notebook from the extracted ps3-assignment directory.
+stopifnot(
+  file.exists("README.md"),
+  file.exists("data/mald-items.csv"),
+  file.exists("data/dative-alternation.csv")
+)
+
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(nlme)
+```
+
+## Exercise 1: Define the response and prepare predictors (10 points)
+
+The data come from the [MALD 1.1 release](https://doi.org/10.7939/r3-kh0r-r116) of the Massive Auditory Lexical Decision database. Tucker et al. ([2019](https://doi.org/10.3758/s13428-018-1056-1)) describe the original study, in which listeners judged spoken words and nonwords. The teaching table contains 23,756 words with positive SUBTLEX frequency and at least five correct responses between 200 and 3,000 ms. RT is measured from recording onset. A duration effect may thus partly reflect time spent hearing the word.
+
+Each row summarizes one word. The response `mean_log_rt` averages the [log RTs](../../regression-models/response-transformations.qmd) of its retained trials: take logs before averaging. The columns `sd_log_rt` and `variance_log_rt` give the within word SD and variance of log RT; `n_observations` gives the trial count.
+
+### 1.1 Inspect and center the predictors
+
+Load the table and run the `stopifnot()` checks. [Center](../../regression-models/centering-predictors.qmd) log frequency, log duration, and phone count by subtracting each predictor's mean. In this additive model, centering changes the intercept's interpretation and leaves the slopes unchanged.
+
+```{r}
+mald <- read.csv("data/mald-items.csv")
+str(mald)
+stopifnot(
+  nrow(mald) == 23756,
+  !anyDuplicated(mald$item),
+  all(mald$n_observations >= 5),
+  all(mald$variance_log_rt > 0)
+)
+
+predictor_centers <- c(
+  frequency = mean(mald$log_frequency_subtlex),
+  duration = mean(mald$log_duration),
+  phones = mean(mald$n_phones)
+)
+mald <- mald |>
+  mutate(
+    frequency_c = log_frequency_subtlex - predictor_centers["frequency"],
+    duration_c = log_duration - predictor_centers["duration"],
+    phones_c = n_phones - predictor_centers["phones"]
+  )
+
+mald |>
+  summarize(
+    item_count = n(),
+    mean_log_rt = ___,
+    sd_item_means = ___,
+    mean_within_item_sd = ___
+  )
+```
+
+### 1.2 Plot the observed relations
+
+Plot `mean_log_rt` against centered log frequency and centered log duration, with a fitted straight line in each plot. These marginal plots show the relation with each predictor before adjustment for the others.
+
+```{r}
+ggplot(mald, aes(x = frequency_c, y = mean_log_rt)) +
+  geom_point(alpha = .05) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(x = "Centered log SUBTLEX frequency", y = "Mean log RT")
+
+ggplot(mald, aes(x = duration_c, y = mean_log_rt)) +
+  geom_point(alpha = .05) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  labs(x = "Centered log stimulus duration", y = "Mean log RT")
+```
+
+State the unit of observation, the response transformation, and the expected direction of the frequency and duration slopes. Explain why the stored within word SD and the SD of the word means summarize different variation.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 1.
+:::
+
+## Exercise 2: Derive and apply a regression t test (20 points)
+
+Let $Y_i$ be the random mean log RT for word $i$, with observed value $y_i$. Assume
+
+$$
+Y_i\mid\mathbf x_i\sim\mathcal N(\mu_i,\sigma^2),
+\qquad
+\mu_i=\beta_0+\beta_f F_i^c+\beta_d D_i^c+\beta_p P_i^c.
+$$
+
+The centered predictors are log frequency $F_i^c$, log duration $D_i^c$, and phone count $P_i^c$. The model assumes [independent errors](../../foundations/independence.qmd) with equal variance across words. Different word means may share listeners, whose identities are unavailable in this table. The confidence intervals below are conditional on the independence assumption.
+
+Two word means can be correlated when some of their contributing responses come from the same listeners. Recall the [variance decomposition](../../random-variables-and-distributions/variance-and-covariance.qmd#covariance-and-a-variance-decomposition):
+
+$$
+\operatorname{Var}(Y_i+Y_j)
+=\operatorname{Var}(Y_i)+\operatorname{Var}(Y_j)+2\operatorname{Cov}(Y_i,Y_j).
+$$
+
+Positive covariance increases the variance of the sum. A model of each word's residual variance addresses the first two terms; accounting for the covariance also requires information about shared listeners. Trial counts alone cannot identify this overlap.
+
+### 2.1 Derive a test of the frequency coefficient
+
+Test $H_0:\beta_f=0$ against $H_1:\beta_f\ne0$, holding duration and phone count in the mean model. Follow the [regression t test notes](../../regression-models/regression-t-statistic.qmd), extending the calculation to the four column [design matrix](../../regression-models/design-matrices.qmd) used here.
+
+The least squares estimator is
+
+$$
+\widehat{\boldsymbol\beta}
+=(\mathbf X^\top\mathbf X)^{-1}\mathbf X^\top\mathbf Y.
+$$
+
+Assume $\mathbf X$ has **full column rank**: no column can be written as an exact linear combination of the other columns. Here the four columns are the intercept, centered log frequency, centered log duration, and centered phone count, so full column rank means $\operatorname{rank}(\mathbf X)=4$. For instance, adding `2 * frequency_c` as another column would violate this condition because it is exactly twice the frequency column. Correlated predictors can still satisfy the condition.
+
+Full column rank makes $\mathbf X^\top\mathbf X$ invertible and the least squares coefficient estimate unique. Write $\mathbf C=(\mathbf X^\top\mathbf X)^{-1}$ and $\mathbf A=\mathbf C\mathbf X^\top$, so $\mathbf A\mathbf X=\mathbf I$.
+
+#### Step 1: derive the coefficient's sampling variance
+
+Under the model, $\mathbb E[\mathbf Y\mid\mathbf X]=\mathbf X\boldsymbol\beta$ and $\operatorname{Var}(\mathbf Y\mid\mathbf X)=\sigma^2\mathbf I$. Apply the [expectation and covariance rules for a linear transformation](../../random-variables-and-distributions/variance-and-covariance.qmd#vectors-matrices-and-covariance) to $\widehat{\boldsymbol\beta}=\mathbf A\mathbf Y$.
+
+**Your LaTeX**
+
+$$
+\mathbb E[\widehat{\boldsymbol\beta}\mid\mathbf X]
+=\text{enter the coefficient expectation},
+\qquad
+\operatorname{Var}(\widehat{\boldsymbol\beta}\mid\mathbf X)
+=\text{enter the coefficient covariance}.
+$$
+
+#### Step 2: standardize the frequency estimate
+
+Let $c_{ff}$ be the diagonal element of $\mathbf C$ corresponding to frequency. The estimate $\widehat\beta_f$ is normal because it is a linear combination of normal responses. Standardize its difference from $\beta_f$ using the variance from Step 1.
+
+**Your LaTeX**
+
+$$
+Z=\text{enter the standardized frequency estimate}
+\sim\mathcal N(0,1).
+$$
+
+#### Step 3: estimate the residual variance and coefficient standard error
+
+Fitting four mean coefficients leaves $n-4$ residual degrees of freedom. Use the residuals $e_i=y_i-\widehat\mu_i$ to estimate $\sigma^2$, then obtain the frequency coefficient's [standard error](../../statistical-inference/standard-errors.qmd).
+
+**Your LaTeX**
+
+$$
+s^2=\frac{\sum_{i=1}^n e_i^2}{\text{enter the residual degrees of freedom}},
+\qquad
+\widehat{\operatorname{SE}}(\widehat\beta_f)
+=\text{enter the frequency standard error}.
+$$
+
+Under the independent normal error model, the fitted and residual projections are independent. The residual projection has $n-4$ dimensions, giving
+
+$$
+Q=\frac{(n-4)s^2}{\sigma^2}\sim\chi^2_{n-4},
+\qquad Z\perp Q.
+$$
+
+#### Step 4: form the t statistic and its two-sided p value
+
+Use the [Student t construction](../../random-variables-and-distributions/student-t-distribution.qmd): divide a standard normal variable by the square root of an independent chi-squared variable divided by its degrees of freedom. Under $H_0$, substitute $Z$ and $Q$ and cancel $\sigma$.
+
+**Your LaTeX**
+
+$$
+T=\frac{Z}{\sqrt{Q/(n-4)}}
+=\text{enter the regression t statistic}
+\overset{H_0}{\sim}t_{\text{enter the regression t degrees of freedom}}.
+$$
+
+For observed statistic $t_{\mathrm{obs}}$, express the two-sided tail probability under this reference distribution.
+
+**Your LaTeX**
+
+$$
+p=\text{enter the regression two-sided p value}.
+$$
+
+### 2.2 Calculate the test and compare with R
+
+Fit the mean model, calculate the coefficient covariance matrix and frequency test, and compare the results with `summary(mean_fit)`. The matrix calculation checks the least squares formula. The ML variance estimate will be used in Exercise 3.
+
+```{r}
+mean_formula <- mean_log_rt ~ frequency_c + duration_c + phones_c
+x <- model.matrix(mean_formula, data = mald)
+y <- mald$mean_log_rt
+beta_manual <- solve(crossprod(x), crossprod(x, y))
+mean_fit <- lm(mean_formula, data = mald)
+stopifnot(max(abs(beta_manual - coef(mean_fit))) < 1e-8)
+
+mean_intervals <- confint(mean_fit)
+coefficient_table <- data.frame(
+  term = names(coef(mean_fit)),
+  estimate = coef(mean_fit),
+  lower_95 = mean_intervals[, 1],
+  upper_95 = mean_intervals[, 2],
+  row.names = NULL
+)
+coefficient_table
+
+residual_df <- nrow(x) - ncol(x)
+sigma_squared_unbiased <- sum(residuals(mean_fit)^2) / ___
+sigma_squared_ml <- sum(residuals(mean_fit)^2) / ___
+coefficient_covariance <- ___ * solve(crossprod(x))
+frequency_se <- ___
+frequency_t <- unname(coef(mean_fit)["frequency_c"] / ___)
+frequency_log_p <- log(2) + pt(-abs(frequency_t), df = ___, log.p = TRUE)
+data.frame(
+  estimate = unname(coef(mean_fit)["frequency_c"]),
+  standard_error = frequency_se, statistic = frequency_t,
+  degrees_of_freedom = residual_df,
+  log10_p_value = frequency_log_p / log(10)
+)
+coef(summary(mean_fit))
+```
+
+The frequency p value is small enough that direct floating point evaluation returns zero. Calculate it on the log scale, and report $\log_{10}p$ or an upper bound for $p$.
+
+### 2.3 Interpret the conditional mean
+
+A doubling of frequency adds $\log 2$ to log frequency. Derive the change in expected mean log RT and exponentiate it to obtain the ratio of modeled geometric mean RTs. Converting this result to an arithmetic mean RT contrast would require assumptions about the trial level RT distribution.
+
+**Your LaTeX**
+
+$$
+\Delta\mu=\text{enter the doubling contrast},
+\qquad
+\frac{\exp(\mu_{\mathrm{double}})}{\exp(\mu_{\mathrm{original}})}
+=\text{enter the ratio}.
+$$
+
+```{r}
+frequency_doubling_ratio <- exp(coef(mean_fit)["frequency_c"] * ___)
+frequency_doubling_ratio
+```
+
+Report the frequency test statistic, standard error, degrees of freedom, and p value, followed by the three slopes and their model based [95% confidence intervals](../../regression-models/linear-regression-uncertainty.qmd). Interpret the frequency doubling contrast and duration slope while holding the other predictors fixed. Use the discussion of [correlated predictors](../../regression-models/correlated-predictors.qmd) to explain whether the phone count coefficient supports a causal claim that adding phones makes a word easier to recognize. Exercise 3 will relax the equal variance assumption.
+
+Explain why changing each word's variance or resampling word rows would leave listener dependence unaccounted for. Specify the trial level identifiers needed and describe a model for responses that share a listener or word. A description of that model is sufficient here.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 2.
+:::
+
+## Exercise 3: Model heteroscedasticity at the item mean level (25 points)
+
+[Heteroscedasticity](../../regression-models/heteroscedasticity.qmd) occurs when residual variance depends on predictors. We will model the variance of word means around the regression, using [residuals](../../regression-models/residuals.qmd) $e_i=y_i-\widehat\mu_i$. The stored `sd_log_rt` instead measures variation among trials within a word.
+
+### 3.1 Measure residual variance across frequency
+
+Plot the mean model residuals against centered log frequency. Then plot the residual variance in ten approximately equal count frequency bins. The bin summaries are descriptive; they do not control for the other predictors.
+
+```{r}
+mald$residual <- residuals(mean_fit)
+spread_bins <- mald |>
+  mutate(frequency_bin = ntile(frequency_c, 10)) |>
+  group_by(frequency_bin) |>
+  summarize(
+    mean_frequency = mean(frequency_c),
+    residual_variance = ___,
+    mean_trial_variance = mean(variance_log_rt),
+    item_count = n(),
+    .groups = "drop"
+  )
+spread_bins
+
+ggplot(mald, aes(x = frequency_c, y = residual)) +
+  geom_point(alpha = .05) +
+  geom_hline(yintercept = 0, linetype = "dashed")
+
+ggplot(spread_bins, aes(x = mean_frequency, y = residual_variance)) +
+  geom_point() + geom_line() +
+  labs(x = "Mean centered log frequency", y = "Variance of item mean residuals")
+```
+
+Describe how residual spread changes with frequency. Compare `residual_variance`, the variance of word mean residuals in a bin, with `mean_trial_variance`, the average of the within word trial variances. Explain why their magnitudes and frequency patterns may differ.
+
+### 3.2 Derive a positive variance equation
+
+Retain the mean formula and use [distributional regression](../../regression-models/distributional-regression.qmd) to model log residual SD as a linear function of centered log frequency:
+
+$$
+\log\sigma_i=\gamma_0+\gamma_f F_i^c,
+\qquad
+\gamma_0=\log\sigma.
+$$
+
+#### Step 1: obtain the variance from log SD
+
+Exponentiate and square to obtain the conditional variance.
+
+**Your LaTeX**
+
+$$
+\operatorname{Var}(Y_i\mid\mathbf x_i)
+=\text{enter the variance equation}.
+$$
+
+#### Step 2: interpret a doubling of frequency
+
+Take the ratio of the variances at $F_i^c+\log 2$ and $F_i^c$.
+
+**Your LaTeX**
+
+$$
+\frac{\sigma^2(F_i^c+\log 2)}{\sigma^2(F_i^c)}
+=\text{enter the variance ratio}.
+$$
+
+Thus $\gamma_f<0$ means that word mean residual variance decreases with frequency. The mean slope $\beta_f$ and log SD slope $\gamma_f$ describe separate frequency associations.
+
+Use one word mean per likelihood contribution here. The linked notes also develop a grouped trial likelihood, which models individual responses using their retained summaries.
+
+### 3.3 Fit constant and frequency dependent variance with maximum likelihood
+
+[`nlme::varExp()`](https://search.r-project.org/CRAN/refmans/nlme/html/varExp.html) specifies $\sigma_i^2=\sigma^2\exp(2\gamma_f F_i^c)$. The factor of two arises from squaring the modeled SD. This variance is positive for every real value of the centered predictor. Fit both models by [maximum likelihood](../../statistical-inference/maximum-likelihood.qmd) with `method = "ML"`, using the same mean predictors and rows.
+
+```{r}
+constant_fit <- gls(mean_formula, data = mald, method = "ML")
+scale_fit <- gls(
+  mean_formula,
+  data = mald,
+  weights = varExp(form = ~ ___),
+  method = "ML"
+)
+
+gamma_frequency <- unname(coef(
+  scale_fit$modelStruct$varStruct, unconstrained = FALSE
+))
+scale_interval <- intervals(scale_fit, which = "var-cov")$varStruct
+scale_interval
+scale_mean_intervals <- intervals(scale_fit, which = "coef")$coef
+scale_mean_intervals
+c(
+  log_sd_slope = gamma_frequency,
+  sd_ratio_for_doubling = exp(gamma_frequency * log(2)),
+  variance_ratio_for_doubling = exp(___)
+)
+
+variance_grid <- data.frame(
+  frequency_c = seq(min(mald$frequency_c), max(mald$frequency_c), length.out = 100)
+)
+variance_grid$fitted_variance <- sigma(scale_fit)^2 *
+  exp(2 * gamma_frequency * variance_grid$frequency_c)
+ggplot(variance_grid, aes(x = frequency_c, y = fitted_variance)) +
+  geom_line() +
+  labs(x = "Centered log frequency", y = "Fitted conditional variance of item means")
+```
+
+Report the log SD slope $\gamma_f$ and its 95% confidence interval. Does the interval lie entirely below zero? Interpret the SD ratio and variance ratio separately. Compare the mean coefficient intervals from this model with those in Exercise 2. These intervals still assume independent word rows. Explain why allowing variance to depend on frequency does not account for word means that share listeners.
+
+### 3.4 Derive and apply a test of frequency dependent variance
+
+Use a [likelihood ratio test](../../model-criticism-and-prediction/likelihood-ratio-tests.qmd) of $H_0:\gamma_f=0$ against an unrestricted $\gamma_f$. This tests whether frequency predicts residual variance under the stated mean model. Zero lies in the interior of the alternative's parameter space.
+
+#### Step 1: derive the Gaussian log likelihood
+
+For $n$ independent word means, start from the [normal density](../../random-variables-and-distributions/normal-distribution.qmd):
+
+$$
+f(y_i\mid\mathbf x_i)
+=\frac{1}{\sqrt{2\pi}\sigma_i}
+\exp\left[-\frac{(y_i-\mu_i)^2}{2\sigma_i^2}\right].
+$$
+
+Take logs, sum over words, and substitute $\log\sigma_i=\gamma_0+\gamma_f F_i^c$. The mean $\mu_i$ retains the regression equation from Exercise 2.
+
+**Your LaTeX**
+
+$$
+\ell(\boldsymbol\beta,\gamma_0,\gamma_f)
+=\text{enter the Gaussian log likelihood}.
+$$
+
+Explain why setting $\gamma_f=0$ gives the constant variance model. Reestimate the mean coefficients and $\gamma_0$ in each model.
+
+#### Step 2: derive the likelihood ratio statistic
+
+Let $\widehat L_0$ and $\widehat L_1$ be the maximized likelihoods under the null and alternative, with logs $\widehat\ell_0$ and $\widehat\ell_1$. Express their ratio in terms of the maximized log likelihoods, then simplify $-2\log\Lambda$. Explain why $D\geq0$ for these nested models.
+
+**Your LaTeX**
+
+$$
+\Lambda=\frac{\widehat L_0}{\widehat L_1}
+=\text{enter the maximized likelihood ratio},
+\qquad
+D=-2\log\Lambda=\text{enter the likelihood ratio statistic}.
+$$
+
+#### Step 3: count parameters and specify the reference distribution
+
+Count the four mean coefficients and the freely estimated variance parameters in each model. Let $k_0$ and $k_1$ be the null and alternative parameter counts. Under $H_0$ and the likelihood's regularity and independence assumptions, the large sample reference distribution is $\chi^2_{k_1-k_0}$. Complete the counts and degrees of freedom.
+
+**Your LaTeX**
+
+$$
+k_0=\text{enter the null parameter count},
+\qquad
+k_1=\text{enter the alternative parameter count},
+$$
+
+$$
+D\overset{H_0}{\approx}\chi^2_{\text{enter the degrees of freedom}}.
+$$
+
+```{r}
+lr_statistic <- 2 * as.numeric(logLik(scale_fit) - logLik(constant_fit))
+lr_p_value <- pchisq(lr_statistic, df = ___, lower.tail = FALSE)
+c(statistic = lr_statistic, p_value = lr_p_value)
+anova(constant_fit, scale_fit)
+AIC(constant_fit, scale_fit)
+```
+
+Report the statistic, degrees of freedom, p value, and difference in [Akaike information criterion (AIC)](../../model-criticism-and-prediction/information-criteria.qmd). Lower AIC favors a model after accounting for its number of parameters. State the evidence for changing residual variance under the declared model. Would an interval for this word mean log SD slope establish that individual listeners become less variable with frequency?
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 3.
+:::
+
+## Exercise 4: Compare predictions on held out words (15 points)
+
+Use five fold [cross-validation](../../model-criticism-and-prediction/cross-validation.qmd), dividing the words into five groups called *folds*. For each fold, fit both models to the other four groups and predict the word means in the omitted group. These held out predictions concern words summarized over the listeners represented in the table. Evaluating new listener predictions would require splitting the trial level data by listener.
+
+### 4.1 Define two losses
+
+Calculate [squared error](../../model-criticism-and-prediction/predictive-loss.qmd) from the observed word mean $y_i$ and predicted mean $\widehat\mu_i$. Also calculate negative log predictive density (NLPD), the negative log [density](../../random-variables-and-distributions/probability-density-functions.qmd) assigned to $y_i$ by a normal distribution with fitted mean $\widehat\mu_i$ and SD $\widehat\sigma_i$. Both losses use the estimated parameters, with lower values indicating better predictions.
+
+**Your LaTeX**
+
+$$
+L_{\mathrm{SE},i}=\text{enter the squared error loss},
+$$
+
+$$
+L_{\mathrm{NLPD},i}
+=\tfrac12\log(2\pi)+\log\widehat\sigma_i
++\text{enter the standardized squared error term}.
+$$
+
+### 4.2 Fit each training fold and score its test fold
+
+Assign one fold label to each word. For each split, calculate predictor centers from the training rows, apply those centers to both partitions, and refit both models on the training rows. `center_partitions()` performs the centering.
+
+```{r}
+center_partitions <- function(train, test) {
+  raw_names <- c("log_frequency_subtlex", "log_duration", "n_phones")
+  centered_names <- c("frequency_c", "duration_c", "phones_c")
+  for (j in seq_along(raw_names)) {
+    training_center <- mean(train[[raw_names[j]]])
+    train[[centered_names[j]]] <- train[[raw_names[j]]] - training_center
+    test[[centered_names[j]]] <- test[[raw_names[j]]] - training_center
+  }
+  list(train = train, test = test)
+}
+
+set.seed(21403)
+fold_id <- sample(rep(1:5, length.out = nrow(mald)))
+word_scores <- vector("list", 5)
+for (fold in 1:5) {
+  partitions <- center_partitions(mald[fold_id != fold, ], mald[fold_id == fold, ])
+  train <- partitions$train
+  test <- partitions$test
+  stopifnot(!any(train$item %in% test$item))
+
+  constant_fold <- gls(mean_formula, data = train, method = "ML")
+  scale_fold <- gls(
+    mean_formula, data = train,
+    weights = varExp(form = ~ frequency_c), method = "ML"
+  )
+  constant_mu <- predict(constant_fold, newdata = test)
+  scale_mu <- predict(scale_fold, newdata = test)
+  gamma_fold <- unname(coef(scale_fold$modelStruct$varStruct, unconstrained = FALSE))
+  constant_sd <- rep(sigma(constant_fold), nrow(test))
+  scale_sd <- sigma(scale_fold) * exp(___)
+
+  word_scores[[fold]] <- data.frame(
+    item = test$item,
+    fold = fold,
+    constant_se = (test$mean_log_rt - constant_mu)^2,
+    scale_se = ___,
+    constant_nlpd = -dnorm(test$mean_log_rt, constant_mu, constant_sd, log = TRUE),
+    changed_mean_nlpd = -dnorm(test$mean_log_rt, scale_mu, constant_sd, log = TRUE),
+    scale_nlpd = ___
+  )
+}
+word_scores <- bind_rows(word_scores)
+stopifnot(nrow(word_scores) == nrow(mald), !anyDuplicated(word_scores$item))
+word_scores |>
+  summarize(across(c(constant_se, scale_se, constant_nlpd, scale_nlpd), mean))
+```
+
+Report each model's mean squared error and mean NLPD. Object names beginning with `constant` refer to constant variance; names beginning with `scale` refer to frequency dependent variance. Subtract the `scale` score from the `constant` score for each loss, so positive differences favor frequency dependent variance. Negative NLPD values are possible because a continuous probability density can exceed one.
+
+### 4.3 Explain why the losses can disagree
+
+Your scores should show lower NLPD and slightly higher squared error for the model with frequency dependent variance. Explain this result in terms of the predicted means and SDs.
+
+With the predicted mean fixed, increasing $\widehat\sigma_i$ reduces the standardized squared error term in NLPD and increases $\log\widehat\sigma_i$. A larger SD may assign more density to an observation far from the mean; a smaller SD concentrates density near the mean. Use these two terms to explain why increasing every predicted SD would not necessarily improve NLPD.
+
+Both models use the same mean formula, but their likelihoods weight the residuals differently. Dividing each squared residual by its fitted variance gives more weight to words with smaller variance. The mean coefficients can thus change when the variance model changes. A fit that uses these weights may have higher unweighted squared error on held out words.
+
+The `changed_mean_nlpd` column combines the frequency dependent model's means with the constant variance model's SD. Use it to calculate how much of the NLPD difference comes from changing the mean and how much comes from changing the SD. Let $L_{ab,i}$ use model $a$'s mean and model $b$'s SD, with 0 denoting constant variance and 1 denoting frequency dependent variance:
+
+$$
+L_{00,i}-L_{11,i}
+=\underbrace{L_{00,i}-L_{10,i}}_{\text{change in mean at fixed SD}}
++\underbrace{L_{10,i}-L_{11,i}}_{\text{change in SD at fixed mean}}.
+$$
+
+Calculate the average contribution from each change. Positive values favor the change. Check that their sum equals the total NLPD improvement.
+
+```{r}
+loss_contributions <- word_scores |>
+  summarize(
+    mean_change = ___,
+    scale_change = ___,
+    total = mean(constant_nlpd - scale_nlpd)
+  )
+loss_contributions
+stopifnot(abs(
+  loss_contributions$mean_change + loss_contributions$scale_change -
+    loss_contributions$total
+) < 1e-12)
+```
+
+Report which change contributes most to the NLPD improvement and whether changing the mean helps or hurts at fixed SD. Explain how the SD change offsets the deterioration in mean predictions. The decomposition changes the mean first; reversing this order may change the contributions, though their sum remains the same.
+
+### 4.4 Explain what the folds can establish
+
+As discussed in [comparing predictive losses](../../model-criticism-and-prediction/comparing-predictive-loss.qmd), the folds' training sets overlap, so a t test or standard error treating the five scores as independent would be inappropriate. Keep the specified formulas fixed. Any predictor selection based on these scores would need a separate predictive evaluation.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 4.
+:::
+
+## Exercise 5: Derive and fit logistic regression for dative choice (20 points)
+
+English speakers can describe a transfer as *Kim gave Lee the book* or *Kim gave the book to Lee*. In both sentences, *Lee* is the recipient and *the book* is the theme. In the first, the recipient is a noun phrase (NP) before the theme; in the second, it is part of a prepositional phrase (PP) after the theme. Bresnan, Cueni, Nikitina, and Baayen ([2007](https://web.stanford.edu/~bresnan/qs-submit.pdf)) connect this ordering to **harmonic alignment**: more accessible, pronominal, animate, and shorter arguments tend to appear earlier.
+
+Read the chapter's discussion of harmonic alignment and multiple predictor logistic regression. The chapter appears in *Cognitive Foundations of Interpretation*, pages 69–94. The [languageR documentation](https://search.r-project.org/CRAN/refmans/languageR/html/dative.html) describes the 3,263-token table adapted here from version 1.5.0. The corpus sources are spoken Switchboard and the written Wall Street Journal Treebank. The teaching table omits sentence text.
+
+Each row is an observed use, or *token*, of a dative construction. Code $Y_i=1$ for a PP recipient and $Y_i=0$ for an NP recipient, and use [logistic regression](../../regression-models/logistic-regression-with-multiple-predictors.qmd) to model PP probability given the predictors.
+
+### 5.1 Prepare the table and directional predictions
+
+Relative log length is log theme length minus log recipient length. A positive value means that the theme is longer, so the PP order places the longer argument first.
+
+```{r}
+items <- read.csv("data/dative-alternation.csv")
+items$pp <- as.integer(items$recipient_realization == "PP")
+items$relative_log_length <-
+  log(items$theme_length_words) - log(items$recipient_length_words)
+
+factor_levels <- list(
+  modality = c("spoken", "written"),
+  semantic_class = c("a", "c", "f", "p", "t"),
+  recipient_accessibility = c("accessible", "given", "new"),
+  theme_accessibility = c("accessible", "given", "new"),
+  recipient_pronominality = c("nonpronominal", "pronominal"),
+  theme_pronominality = c("nonpronominal", "pronominal"),
+  recipient_animacy = c("animate", "inanimate")
+)
+for (variable in names(factor_levels)) {
+  items[[variable]] <- factor(items[[variable]], levels = factor_levels[[variable]])
+}
+stopifnot(nrow(items) == 3263, length(unique(items$verb)) == 75, sum(items$pp) == 849)
+```
+
+The semantic classes are abstract (`a`), communication (`c`), future transfer (`f`), prevented possession (`p`), and transfer of possession (`t`). Modality distinguishes spoken from written tokens. We will compare two models:
+
+| Model | Predictors |
+|---|---|
+| Baseline | relative log length, modality, and semantic class |
+| Alignment | all baseline predictors, plus recipient and theme accessibility, recipient and theme pronominality, and recipient animacy |
+
+These are additive models: the linear predictor contains no interactions or verb and speaker effects. The first level listed for each factor in `factor_levels` is its [reference category](../../regression-models/coding-categorical-predictors.qmd). For instance, the new recipient coefficient compares new with accessible recipients at fixed values of the other predictors.
+
+Before fitting, make a table predicting the coefficient signs for eight contrasts: relative log length; given and new recipients relative to accessible recipients; given and new themes relative to accessible themes; pronominal recipients and themes relative to nonpronominal counterparts; and inanimate recipients relative to animate recipients. A positive [log odds coefficient](../../regression-models/odds-and-log-odds.qmd) favors PP order, with the theme first; a negative coefficient favors NP order, with the recipient first. Use this coding to explain each prediction.
+
+For the accessibility contrasts, test the hypothesis that given arguments tend to precede accessible arguments, which in turn tend to precede new arguments. State this assumed ordering when explaining your predictions. The priors below allow coefficients of either sign.
+
+### 5.2 Derive the likelihood and posterior
+
+Use the [logit link](../../regression-models/link-functions.qmd), $p_i=(1+\exp(-\eta_i))^{-1}$. Write the linear predictor using centered design columns so that the intercept prior matches the `brms` parameterization:
+
+$$
+\eta_i=\alpha+\sum_{k=1}^K\beta_k(x_{ik}-\overline x_k),
+\qquad
+\alpha\sim\mathcal N(0,2.5^2),
+\qquad
+\beta_k\sim\mathcal N(0,1.5^2).
+$$
+
+The [priors](../../statistical-inference/posterior-distributions.qmd) are independent and symmetric about zero. Here $\overline x_k$ is the fitting data mean of design column $k$: either the numerical length predictor or a binary factor contrast. `brms` applies the [intercept prior](https://paulbuerkner.com/brms/reference/set_prior.html) after centering these columns.
+
+Use $\alpha$ in the posterior derivation: it gives log odds when every design column is at its mean. The reported `b_Intercept` gives log odds at relative log length zero and the factor reference levels. Centering changes the intercept's interpretation while leaving the slopes unchanged.
+
+#### Step 1: take logs and sum
+
+A Bernoulli observation has probability $p_i^{y_i}(1-p_i)^{1-y_i}$. Complete the log likelihood.
+
+**Your LaTeX**
+
+$$
+\ell(\alpha,\boldsymbol\beta)=\text{enter the Bernoulli log likelihood}.
+$$
+
+#### Step 2: add the log priors
+
+For a zero centered normal prior with SD $s$, the coefficient dependent log density is $-b^2/(2s^2)$. Add these terms to the likelihood. Let $C$ collect terms constant in the coefficients.
+
+**Your LaTeX**
+
+$$
+\log p(\alpha,\boldsymbol\beta\mid\mathbf y,\mathbf X)
+=\text{enter the log posterior}+C.
+$$
+
+Use Stan's [No-U-Turn Sampler](../../statistical-inference/no-u-turn-sampler.qmd) to draw from this nonconjugate posterior, as in Problem Set 2.
+
+### 5.3 Check the prior predictions
+
+The code defines two profiles for spoken transfer of possession events with equal length arguments. The NP aligned profile has a given, pronominal, animate recipient and a new, nonpronominal theme. The PP aligned profile has a new, nonpronominal, inanimate recipient and a given, pronominal theme. The labels refer to their predicted ordering preferences.
+
+```{r}
+baseline_formula <- pp ~ relative_log_length + modality + semantic_class
+alignment_formula <- update(
+  baseline_formula,
+  . ~ . + recipient_accessibility + theme_accessibility +
+    recipient_pronominality + theme_pronominality + recipient_animacy
+)
+profiles <- data.frame(
+  profile = c("NP aligned", "PP aligned"),
+  relative_log_length = 0,
+  modality = "spoken", semantic_class = "t",
+  recipient_accessibility = c("given", "new"),
+  theme_accessibility = c("new", "given"),
+  recipient_pronominality = c("pronominal", "nonpronominal"),
+  theme_pronominality = c("nonpronominal", "pronominal"),
+  recipient_animacy = c("animate", "inanimate")
+)
+for (variable in names(factor_levels)) {
+  profiles[[variable]] <- factor(profiles[[variable]], levels = factor_levels[[variable]])
+}
+
+# Condition on the observed predictors, without using the response values.
+prior_x <- model.matrix(alignment_formula, data = items)[, -1, drop = FALSE]
+profile_x <- model.matrix(delete.response(terms(alignment_formula)), data = profiles)[, -1, drop = FALSE]
+profile_x_centered <- sweep(profile_x, 2, colMeans(prior_x), "-")
+set.seed(214304)
+prior_draw_count <- 10000
+alpha_prior <- rnorm(prior_draw_count, 0, 2.5)
+beta_prior <- matrix(
+  rnorm(prior_draw_count * ncol(prior_x), 0, 1.5),
+  nrow = prior_draw_count
+)
+prior_probability <- plogis(alpha_prior + beta_prior %*% t(profile_x_centered))
+prior_predictive <- matrix(
+  rbinom(length(prior_probability), size = 1, prob = as.vector(prior_probability)),
+  nrow = prior_draw_count
+)
+apply(prior_probability, 2, quantile, probs = c(.025, .5, .975))
+colMeans(prior_predictive)
+
+ggplot(tibble(probability = as.vector(prior_probability),
+              profile = rep(profiles$profile, each = prior_draw_count)),
+       aes(x = probability)) +
+  geom_histogram(bins = 40) + facet_wrap(~ profile) +
+  labs(x = "Prior PP probability", y = "Draw count")
+```
+
+The plot shows each profile's [prior PP probabilities](../../statistical-inference/prior-predictive-distributions.qmd). Report their medians and middle 95% intervals, and the proportion of ones in each column of `prior_predictive`. Explain how variation across prior probabilities differs from variation in the simulated binary responses. Does the prior allow strong preferences in both directions? Explain what we can learn from these simulations before observing the construction choices.
+
+### 5.4 Fit both models in Stan and check the chains
+
+Use `brms` with `family = bernoulli(link = "logit")` and the `cmdstanr` backend, as documented in [`brm()`](https://paulbuerkner.com/brms/reference/brm.html). Fit four chains with 1,000 warmup and 1,000 retained iterations each. The explicit priors replace data dependent defaults. Saved fits and compiled programs go in `stan_cache/`, and `file_refit = "on_change"` reuses a fit only when its model and data match.
+
+```{r}
+library(brms)
+library(posterior)
+detected_cores <- parallel::detectCores()
+core_count <- if (is.na(detected_cores)) 1L else min(4L, detected_cores)
+dir.create("stan_cache", showWarnings = FALSE)
+options(cmdstanr_write_stan_file_dir = normalizePath("stan_cache"))
+dative_prior <- c(
+  prior(normal(0, 2.5), class = Intercept),
+  prior(normal(0, 1.5), class = b)
+)
+
+baseline_fit <- brm(
+  baseline_formula, data = items, family = bernoulli(link = "logit"),
+  prior = dative_prior,
+  chains = 4, cores = core_count, iter = 2000, warmup = 1000,
+  seed = 214305, backend = "cmdstanr", control = list(adapt_delta = .95),
+  refresh = 0, file = "stan_cache/dative-baseline", file_refit = "on_change"
+)
+alignment_fit <- brm(
+  alignment_formula, data = items, family = ___,
+  prior = dative_prior,
+  chains = 4, cores = core_count, iter = 2000, warmup = 1000,
+  seed = 214306, backend = "cmdstanr", control = list(adapt_delta = .95),
+  refresh = 0, file = "stan_cache/dative-alignment", file_refit = "on_change"
+)
+
+# These gates assess sampling, not whether the response model is correct.
+check_dative_fit <- function(fit, max_treedepth = 10) {
+  diagnostics <- summarise_draws(as_draws(fit), "rhat", "ess_bulk", "ess_tail") |>
+    filter(grepl("^(b_|sd_|r_)", variable))
+  nuts <- nuts_params(fit)
+  divergences <- sum(nuts$Parameter == "divergent__" & nuts$Value == 1)
+  treedepth_hits <- sum(nuts$Parameter == "treedepth__" & nuts$Value >= max_treedepth)
+  stopifnot(
+    all(is.finite(diagnostics$rhat)), all(diagnostics$rhat < 1.01),
+    all(diagnostics$ess_bulk > 400), all(diagnostics$ess_tail > 400),
+    divergences == 0, treedepth_hits == 0
+  )
+  data.frame(max_rhat = max(diagnostics$rhat),
+             min_bulk_ess = min(diagnostics$ess_bulk),
+             min_tail_ess = min(diagnostics$ess_tail),
+             divergences = divergences, treedepth_hits = treedepth_hits)
+}
+stan_diagnostics <- bind_rows(
+  baseline = check_dative_fit(baseline_fit),
+  alignment = check_dative_fit(alignment_fit), .id = "model"
+)
+stan_diagnostics
+summarise_draws(as_draws(alignment_fit), "rhat", "ess_bulk", "ess_tail") |>
+  filter(grepl("^b_", variable))
+```
+
+Report the largest [$\widehat R$](../../statistical-inference/rhat.qmd), smallest bulk and tail [effective sample sizes](../../statistical-inference/effective-sample-size.qmd), and counts of [divergences](../../statistical-inference/divergent-transitions.qmd) and maximum treedepth hits for each fit. If `check_dative_fit()` stops, resolve the sampling problem and rerun the affected fit before interpreting its draws. These [diagnostics](../../statistical-inference/checking-markov-chains.qmd) assess the posterior simulation; Section 5.6 checks how well the model fits the data.
+
+### 5.5 Summarize posterior coefficients
+
+Let $\Omega$ contain the possible parameter values, and let $\mathrm B_k(\omega)$ give coefficient $k$ at outcome $\omega$. The posterior draws of this coefficient are $\beta_k^{(s)}$. Define the event that the coefficient is positive using full set builder notation, then estimate its posterior probability by [Monte Carlo integration](../../statistical-inference/monte-carlo-integration.qmd) from $S$ retained draws.
+
+**Your LaTeX**
+
+$$
+B_k^+=\text{enter the positive coefficient event},
+\qquad
+\mathbb P(B_k^+\mid\mathbf y,\mathbf X)
+\approx\text{enter the posterior sign average}.
+$$
+
+```{r}
+alignment_draws <- as_draws_df(alignment_fit)
+coefficient_names <- grep("^b_", names(alignment_draws), value = TRUE)
+logistic_table <- lapply(coefficient_names, function(variable) {
+  beta_draw <- alignment_draws[[variable]]
+  odds_draw <- ___
+  data.frame(
+    term = sub("^b_", "", variable),
+    log_odds_median = median(beta_draw),
+    lower_log_odds = unname(quantile(beta_draw, .025)),
+    upper_log_odds = unname(quantile(beta_draw, .975)),
+    odds_ratio_median = median(odds_draw),
+    lower_95 = unname(quantile(odds_draw, .025)),
+    upper_95 = unname(quantile(odds_draw, .975)),
+    probability_positive = mean(___)
+  )
+}) |> bind_rows()
+logistic_table
+
+
+```
+
+Compare all eight posterior median coefficient signs with your predictions. For each, report the fraction of draws with the predicted sign and whether its odds ratio [95% credible interval](../../statistical-inference/posterior-summaries.qmd) excludes one. The table's `probability_positive` column gives the positive sign fraction; use its complement for a predicted negative sign. For relative length and recipient pronominality, interpret the odds ratio $\exp(\beta_k)$ and its interval while holding the other predictors fixed. An odds ratio of one corresponds to a coefficient of zero.
+
+Interpret the sign fraction as a posterior probability conditional on the data, likelihood, and prior. Distinguish it from a p value, which concerns a test statistic under a null hypothesis. If every sampled draw has the same sign, report the count and total draws; the unobserved tail may still have positive probability.
+
+The likelihood assumes conditional independence across tokens. Check its predictions in Section 5.6 and examine verb and speaker effects in Section 5.7.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Sections 5.1–5.5.
+:::
+
+### 5.6 Check conditional structure by verb and predictor combination
+
+Check the alignment model's PP rates by verb and by combinations of modality, recipient pronominality, and theme pronominality. Each predictor combination forms a *cell*; for instance, spoken tokens with a nonpronominal recipient and a pronominal theme form one cell. Display verbs with at least 40 tokens and cells with at least 30. These thresholds depend only on group sizes and apply only to the displays. Fit and evaluate the model using all tokens.
+
+For each posterior draw, simulate a response for every observed predictor row and calculate the PP rate in each group. Compare the observed rate with the middle 95% of the simulated rates. These [posterior predictive ranges](../../statistical-inference/posterior-predictive-checks.qmd) include uncertainty in the coefficients and variation in the responses. The ranges are pointwise, applying separately to each group. To assess the displayed groups together, calculate the following discrepancy.
+
+For posterior draw $s$ and group $g$, let $E_g^{(s)}=\sum_{i\in g}p_i^{(s)}$ be the expected PP count, $V_g^{(s)}=\sum_{i\in g}p_i^{(s)}(1-p_i^{(s)})$ its variance under the independent token model, and $K_g(\mathbf y)=\sum_{i\in g}y_i$ the observed count. The following discrepancy adds the squared count errors after dividing each by its model variance:
+
+$$
+T(\mathbf y,\mathbf p^{(s)})
+=\sum_g\frac{[K_g(\mathbf y)-E_g^{(s)}]^2}{V_g^{(s)}}.
+$$
+
+`check_group_rates()` evaluates $T$ for the observed and simulated responses at each probability draw, then counts simulations whose discrepancy is at least as large as the observed discrepancy. Few such simulations suggest poor fit to these group counts. This [posterior predictive check](https://mc-stan.org/docs/stan-users-guide/posterior-predictive-checks.html) conditions on the fitted model and observed predictor rows. Its tail fraction has a different interpretation from a frequentist p value or a posterior probability that the model is correct.
+
+```{r}
+check_group_rates <- function(group, y, y_rep, p_draws, min_count) {
+  indices <- split(seq_along(y), as.character(group))
+  indices <- indices[lengths(indices) >= min_count]
+  stopifnot(length(indices) > 0, identical(dim(y_rep), dim(p_draws)))
+  observed_discrepancy <- replicated_discrepancy <- numeric(nrow(y_rep))
+  rate_rows <- vector("list", length(indices))
+  for (j in seq_along(indices)) {
+    rows <- indices[[j]]
+    replicated_counts <- rowSums(y_rep[, rows, drop = FALSE])
+    group_p <- p_draws[, rows, drop = FALSE]
+    expected_counts <- rowSums(group_p)
+    bernoulli_variance <- rowSums(group_p * (1 - group_p))
+    stopifnot(all(bernoulli_variance > 0))
+    observed_discrepancy <- observed_discrepancy +
+      (sum(y[rows]) - expected_counts)^2 / bernoulli_variance
+    replicated_discrepancy <- replicated_discrepancy +
+      (replicated_counts - expected_counts)^2 / bernoulli_variance
+    replicated_rates <- replicated_counts / length(rows)
+    rate_rows[[j]] <- data.frame(
+      group = names(indices)[j], n = length(rows),
+      observed_rate = mean(y[rows]),
+      replicated_mean = mean(replicated_rates),
+      lower_95 = unname(quantile(replicated_rates, .025)),
+      upper_95 = unname(quantile(replicated_rates, .975))
+    )
+  }
+  rates <- bind_rows(rate_rows) |>
+    mutate(outside = observed_rate < lower_95 | observed_rate > upper_95)
+  list(rates = rates,
+       observed_discrepancy = observed_discrepancy,
+       replicated_discrepancy = replicated_discrepancy,
+       tail_count = sum(replicated_discrepancy >= observed_discrepancy),
+       replication_count = nrow(y_rep),
+       tail_fraction = mean(replicated_discrepancy >= observed_discrepancy))
+}
+
+set.seed(214307)
+ppc_draw_ids <- sample(seq_len(ndraws(as_draws(alignment_fit))), 1000)
+p_draws <- posterior_epred(alignment_fit, draw_ids = ppc_draw_ids)
+y_rep <- posterior_predict(alignment_fit, draw_ids = ppc_draw_ids)
+replicated_pp_rates <- rowMeans(y_rep)
+c(observed = mean(items$pp), quantile(replicated_pp_rates, c(.025, .5, .975)))
+
+verb_ppc <- check_group_rates(items$verb, items$pp, y_rep, p_draws, min_count = 40)
+cell_group <- interaction(
+  items$modality, items$recipient_pronominality, items$theme_pronominality,
+  sep = " / ", drop = TRUE
+)
+table(cell_group)
+cell_ppc <- check_group_rates(cell_group, items$pp, y_rep, p_draws, min_count = 30)
+verb_ppc$rates
+cell_ppc$rates
+c(verb_tail_count = verb_ppc$tail_count,
+  cell_tail_count = cell_ppc$tail_count,
+  replications = nrow(y_rep))
+
+plot_group_rates <- function(check, group_label) {
+  ggplot(check$rates, aes(x = reorder(group, observed_rate))) +
+    geom_linerange(aes(ymin = lower_95, ymax = upper_95), color = "grey60") +
+    geom_point(aes(y = replicated_mean), color = "steelblue") +
+    geom_point(aes(y = observed_rate), shape = 4, size = 2) +
+    coord_flip() +
+    labs(x = group_label, y = "PP proportion",
+         caption = "Crosses: observed rates. Blue points and grey ranges: replicated means and pointwise 95% ranges.")
+}
+plot_group_rates(verb_ppc, "Verb (at least 40 tokens)")
+plot_group_rates(cell_ppc, "Modality / recipient pronominality / theme pronominality")
+```
+
+The plots compare observed and simulated PP rates for verbs and predictor cells. Describe the mismatch for `tell` and for the spoken nonpronominal recipient/pronominal theme cell, reporting the direction and token count for each. Explain how errors within groups can cancel when calculating the overall PP rate.
+
+For each grouping, report how many of the 1,000 simulated discrepancies reached the observed value. Report a zero count as “none of 1,000 simulations”; a finite simulation cannot establish an exact probability of zero. Explain why individual pointwise misses may occur under an adequate model and whether the joint discrepancy suggests broader lack of fit. Consider verb differences, predictor interactions, and token dependence as possible explanations. Which of these could the checks distinguish?
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Section 5.6.
+:::
+
+### 5.7 Check how conclusions change with verb and speaker effects
+
+Tokens may share verb or speaker effects beyond those captured by the predictors. Fit models that include these effects and compare their coefficient summaries with the original fit. This sensitivity analysis assesses how the independence assumption affects the conclusions. Begin by checking the available verb and speaker identifiers.
+
+```{r}
+items$speaker_recorded <- !is.na(items$speaker_id) &
+  nzchar(trimws(as.character(items$speaker_id)))
+dependence_audit <- items |>
+  group_by(modality) |>
+  summarize(
+    tokens = n(), verb_types = n_distinct(verb),
+    identified_speakers = n_distinct(speaker_id[speaker_recorded]),
+    missing_speaker_ids = sum(!speaker_recorded), .groups = "drop"
+  )
+dependence_audit
+```
+
+Speaker IDs are available only for spoken tokens. Leave written tokens out of the speaker comparison, and keep the rows fixed within each pair of fits:
+
+| Rows | Original model | Model with group effects |
+|---|---|---|
+| All tokens | alignment model from Section 5.4 | alignment model plus a shared intercept adjustment for each verb |
+| Spoken tokens only | alignment model refitted without modality | the same spoken model plus shared intercept adjustments for verbs and speakers |
+
+Omit modality from the spoken fits because it is constant in that subset. Pooling the blank written speaker IDs into one group would incorrectly assign every written token to the same person.
+
+A [random intercept](../../regression-models/random-intercepts.qmd) gives a group's tokens a shared log odds adjustment. Add $u_{v[i]}$ for token $i$'s verb, with $u_v\sim\mathcal N(0,\tau_v^2)$. In the spoken model, also add $a_{s[i]}$ for its speaker, with $a_s\sim\mathcal N(0,\tau_s^2)$. The verb and speaker effects are *crossed*: each token receives an adjustment from both grouping factors. Use independent $\operatorname{Exponential}(1)$ priors on $\tau_v$ and $\tau_s$.
+
+In [`brms`](https://paulbuerkner.com/brms/reference/brmsformula.html), `(1 | verb)` adds verb intercepts and `(1 | speaker_id)` adds speaker intercepts. The grouped fits use longer chains and a higher `adapt_delta` to obtain adequate sampling diagnostics.
+
+```{r}
+group_prior <- c(dative_prior, prior(exponential(1), class = sd))
+verb_formula <- update(alignment_formula, . ~ . + (1 | verb))
+verb_fit <- brm(
+  verb_formula, data = items, family = bernoulli(link = "logit"),
+  prior = group_prior, chains = 4, cores = core_count, iter = 4000, warmup = 2000,
+  seed = 214308, backend = "cmdstanr",
+  control = list(adapt_delta = .99, max_treedepth = 12), refresh = 0,
+  file = "stan_cache/dative-verb-sensitivity-4000", file_refit = "on_change"
+)
+spoken_items <- items[items$modality == "spoken", ]
+stopifnot(all(spoken_items$speaker_recorded))
+spoken_formula <- update(alignment_formula, . ~ . - modality)
+spoken_fit <- brm(
+  spoken_formula, data = spoken_items, family = bernoulli(link = "logit"),
+  prior = dative_prior, chains = 4, cores = core_count, iter = 2000, warmup = 1000,
+  seed = 214309, backend = "cmdstanr", control = list(adapt_delta = .95), refresh = 0,
+  file = "stan_cache/dative-spoken-sensitivity", file_refit = "on_change"
+)
+spoken_group_formula <- update(spoken_formula, . ~ . + (1 | verb) + (1 | speaker_id))
+spoken_group_fit <- brm(
+  spoken_group_formula, data = spoken_items, family = bernoulli(link = "logit"),
+  prior = group_prior, chains = 4, cores = core_count, iter = 4000, warmup = 2000,
+  seed = 214310, backend = "cmdstanr",
+  control = list(adapt_delta = .99, max_treedepth = 12), refresh = 0,
+  file = "stan_cache/dative-spoken-group-sensitivity-4000", file_refit = "on_change"
+)
+sensitivity_diagnostics <- bind_rows(
+  full_verb = check_dative_fit(verb_fit, max_treedepth = 12),
+  spoken_additive = check_dative_fit(spoken_fit),
+  spoken_grouped = check_dative_fit(spoken_group_fit, max_treedepth = 12),
+  .id = "model"
+)
+sensitivity_diagnostics
+
+focal_terms <- c(
+  "relative_log_length", "recipient_accessibilitygiven", "recipient_accessibilitynew",
+  "theme_accessibilitygiven", "theme_accessibilitynew",
+  "recipient_pronominalitypronominal", "theme_pronominalitypronominal",
+  "recipient_animacyinanimate"
+)
+summarize_focal <- function(fit, label) {
+  draws <- as_draws_df(fit)
+  lapply(focal_terms, function(term) {
+    values <- draws[[paste0("b_", term)]]
+    data.frame(model = label, term = term, median = median(values),
+               lower_95 = unname(quantile(values, .025)),
+               upper_95 = unname(quantile(values, .975)),
+               probability_positive = mean(values > 0))
+  }) |> bind_rows()
+}
+sensitivity_table <- bind_rows(
+  summarize_focal(alignment_fit, "full additive"),
+  summarize_focal(verb_fit, "full verb intercepts"),
+  summarize_focal(spoken_fit, "spoken additive"),
+  summarize_focal(spoken_group_fit, "spoken verb and speaker intercepts")
+)
+sensitivity_table
+
+# Preserve iterations and chains when estimating Monte Carlo error for a quantile.
+spoken_new_recipient_draws <- as_draws_array(spoken_group_fit)[
+  , , "b_recipient_accessibilitynew"
+]
+spoken_new_recipient_upper_mcse <- mcse_quantile(
+  spoken_new_recipient_draws, probs = .975
+)
+spoken_new_recipient_upper_mcse
+
+# Recheck common verb rates for the same observed verbs, conditional on their fitted intercepts.
+set.seed(214311)
+verb_draw_ids <- sample(seq_len(ndraws(as_draws(verb_fit))), 1000)
+verb_group_p <- posterior_epred(verb_fit, draw_ids = verb_draw_ids)
+verb_group_y <- posterior_predict(verb_fit, draw_ids = verb_draw_ids)
+verb_group_ppc <- check_group_rates(items$verb, items$pp, verb_group_y, verb_group_p, 40)
+verb_group_ppc$rates
+plot_group_rates(verb_group_ppc, "Verb, with fitted verb intercepts")
+```
+
+Use `sensitivity_table` to answer the following questions. Its estimates and intervals are on the log odds scale, so the value for no association is zero.
+
+1. In each pair of models fitted to the same rows, which posterior median signs agree? Which 95% credible intervals include zero? Report the new versus accessible recipient interval for both full corpus fits.
+2. For the spoken model with verb and speaker effects, compare the new recipient interval's upper endpoint with `spoken_new_recipient_upper_mcse`. This [Monte Carlo standard error](../../statistical-inference/monte-carlo-integration.qmd) estimates numerical uncertainty in the endpoint from using a finite number of posterior draws. If the endpoint's distance from zero is much smaller than this error, how much confidence should we place in its being just above or below zero? The [`mcse_quantile()` documentation](https://mc-stan.org/posterior/reference/mcse_quantile.html) describes this calculation.
+3. Do the verb effects improve the replicated rates for the common verbs? These intercepts were estimated using responses from those same verbs. Explain why this check differs from predicting a verb excluded from fitting.
+
+Interpret slopes in the grouped fits while holding the group intercepts fixed. Adding group effects can change coefficient estimates as well as interval widths, so examine both changes.
+
+State what dependence remains unmodeled. Consider [group specific predictor slopes](../../regression-models/random-slopes.qmd), conversation effects, and the missing written speaker IDs. Explain how these omissions limit uncertainty claims about new samples of English speakers, even if sampling diagnostics and the observed verb predictive check are satisfactory. Exercise 6 returns to the original baseline and alignment fits to evaluate excluded verb predictions.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Section 5.7.
+:::
+
+## Exercise 6: Predict construction probabilities for profiles and excluded verbs (10 points)
+
+### 6.1 Compare profile probabilities and count matching tokens
+
+Use the profiles from Exercise 5 and the original alignment fit. [`posterior_epred()`](https://paulbuerkner.com/brms/reference/posterior_epred.brmsfit.html) returns posterior draws in rows and profiles in columns. For each profile, calculate the mean PP probability and its middle 95% credible interval. Subtract the first column from the second within each draw, then summarize the differences. Pairing the predictions by draw retains their shared coefficient uncertainty.
+
+Count observed tokens matching each profile. The `exact` count requires the same categorical predictors and equal length arguments. The `alignment_only` count matches accessibility, pronominality, and recipient animacy, allowing length, modality, and semantic class to differ.
+
+```{r}
+profile_draws <- posterior_epred(alignment_fit, newdata = profiles)
+profiles$pp_probability <- ___
+profiles$lower_95 <- apply(profile_draws, 2, quantile, probs = .025)
+profiles$upper_95 <- apply(profile_draws, 2, quantile, probs = .975)
+profiles
+profile_difference_draws <- profile_draws[, 2] - profile_draws[, 1]
+profile_difference <- c(
+  mean = mean(profile_difference_draws),
+  lower_95 = quantile(profile_difference_draws, .025),
+  upper_95 = quantile(profile_difference_draws, .975)
+)
+profile_difference
+
+support_columns <- c(
+  "modality", "semantic_class", "recipient_accessibility", "theme_accessibility",
+  "recipient_pronominality", "theme_pronominality", "recipient_animacy"
+)
+count_matches <- function(profile, columns, equal_length) {
+  matches <- rep(TRUE, nrow(items))
+  for (variable in columns) {
+    matches <- matches & as.character(items[[variable]]) == as.character(profile[[variable]])
+  }
+  if (equal_length) matches <- matches & items$relative_log_length == 0
+  sum(matches)
+}
+profile_support <- data.frame(
+  profile = profiles$profile,
+  exact = vapply(1:2, function(i) count_matches(profiles[i, ], support_columns, TRUE), integer(1)),
+  alignment_only = vapply(1:2, function(i) count_matches(
+    profiles[i, ], setdiff(support_columns, c("modality", "semantic_class")), FALSE
+  ), integer(1))
+)
+profile_support
+```
+
+Report the probabilities, their 95% credible intervals, the difference and its interval, and both matching token counts. Explain how sparse matches limit the interpretation of an extreme prediction. Does the prediction support a categorical rule? The profiles differ on several properties, so specify what their comparison can establish. Also distinguish uncertainty about a PP probability from the binary outcome of a future token.
+
+### 6.2 Refit Stan models with entire verb types held out
+
+Use [leave one verb out evaluation](../../model-criticism-and-prediction/grouped-cross-validation.qmd): train on 74 of the 75 verb types and score every token of the omitted type. Calculate Brier loss as $(y_i-\widehat p_i)^2$, where $\widehat p_i$ averages the training posterior's PP probabilities. Lower loss indicates better prediction. The split holds out verbs; speakers and genres may occur in both partitions.
+
+[`update()`](https://paulbuerkner.com/brms/reference/update.brmsfit.html) fits a new posterior to `newdata` using the compiled Stan program. Keep the same priors, four chains, and iteration counts. Allow time for 150 refits: two models for each omitted verb. Saved fits let subsequent runs reuse completed folds.
+
+```{r}
+verb_levels <- unique(items$verb)
+verb_scores <- lapply(seq_along(verb_levels), function(fold) {
+  held_out_verb <- verb_levels[fold]
+  test <- items[items$verb == held_out_verb, ]
+  train <- items[items$verb != held_out_verb, ]
+  stopifnot(!any(train$verb %in% test$verb))
+  baseline_fold <- update(
+    baseline_fit, newdata = train, recompile = FALSE,
+    seed = 214600 + 2 * fold,
+    file = sprintf("stan_cache/verb-%02d-baseline", fold), file_refit = "on_change",
+    refresh = 0
+  )
+  alignment_fold <- update(
+    alignment_fit, newdata = train, recompile = FALSE,
+    seed = 214601 + 2 * fold,
+    file = sprintf("stan_cache/verb-%02d-alignment", fold), file_refit = "on_change",
+    refresh = 0
+  )
+  baseline_checks <- check_dative_fit(baseline_fold)
+  alignment_checks <- check_dative_fit(alignment_fold)
+  baseline_p <- colMeans(posterior_epred(baseline_fold, newdata = test))
+  alignment_p <- colMeans(posterior_epred(alignment_fold, newdata = test))
+  data.frame(
+    verb = held_out_verb,
+    token_count = nrow(test),
+    baseline_brier = mean((test$pp - baseline_p)^2),
+    alignment_brier = ___,
+    max_rhat = max(baseline_checks$max_rhat, alignment_checks$max_rhat),
+    min_bulk_ess = min(baseline_checks$min_bulk_ess, alignment_checks$min_bulk_ess),
+    min_tail_ess = min(baseline_checks$min_tail_ess, alignment_checks$min_tail_ess),
+    divergences = baseline_checks$divergences + alignment_checks$divergences,
+    treedepth_hits = baseline_checks$treedepth_hits + alignment_checks$treedepth_hits
+  )
+}) |> bind_rows()
+
+verb_scores <- verb_scores |>
+  mutate(improvement = baseline_brier - alignment_brier)
+verb_scores |>
+  summarize(
+    baseline_brier = weighted.mean(baseline_brier, token_count),
+    alignment_brier = weighted.mean(alignment_brier, token_count),
+    fraction_verbs_improved = mean(improvement > 0),
+    largest_rhat = max(max_rhat), smallest_bulk_ess = min(min_bulk_ess),
+    smallest_tail_ess = min(min_tail_ess), divergences = sum(divergences),
+    treedepth_hits = sum(treedepth_hits)
+  )
+verb_scores |> filter(verb == "tell")
+
+ggplot(verb_scores, aes(x = token_count, y = improvement)) +
+  geom_point() + scale_x_log10() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Held out verb token count", y = "Baseline minus alignment Brier loss")
+```
+
+Report both overall Brier losses, the fraction of verb types improved, the sampling diagnostics across folds, and the result for `tell`. The overall losses weight each verb by its token count, giving every token equal weight. The fraction improved gives each verb type equal weight. Explain why the alignment model can improve the overall loss while predicting a common verb worse. As in Exercise 4, overlapping training sets prevent us from treating the fold scores as independent observations for a t test.
+
+Calculate Brier loss from the posterior averaged probability. Averaging losses across coefficient draws would add posterior variance to that score.
+
+### 6.3 Write the results paragraph
+
+First report the numerical results from Sections 6.1–6.2 in tables. Then write a paragraph of six to eight sentences that connects the dative results. Organize it around four questions:
+
+1. What response did you model, and how did you fit and check the Stan models?
+2. Which predicted coefficient directions appear in the original alignment fit, and which conclusions change after adding verb or speaker effects?
+3. What do the conditional predictive checks and profile matching counts reveal about the model's limitations?
+4. Does adding alignment predictors improve predictions for excluded verbs, and how does `tell` qualify that result?
+
+Conclude by stating which corpus data and prediction task the results concern. Address the limits of causal and population claims: discourse properties were observed, and the corpora sample particular speakers and genres. Refer to your tables for estimates already reported there.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 6.
+:::
+
+## Submission checklist
+
+- The notebook runs from a fresh R session with the included tables and a working CmdStan installation.
+- Every derivation is entered in its LaTeX block.
+- Every computation is entered immediately after its instruction.
+- Every requested result is entered in its result block.
+- Linear regression precedes Bayesian logistic regression.
+- Item mean residual variance is distinguished from within item trial variance.
+- Mean slopes, log SD slopes, and log odds slopes are interpreted on their respective scales.
+- Priors, prior predictions, posterior event definitions, and posterior summaries are explicit.
+- Chain diagnostics pass before full data, sensitivity, or held out posterior predictions are interpreted.
+- Conditional predictive checks are reported by verb and predictor cell.
+- Dependence comparisons use matched data; written tokens with missing speaker IDs are excluded from the speaker comparison.
+- The MALD interpretation explains that its intervals assume independent word rows and do not account for shared listeners.
+- Every random calculation has a recorded seed, and every fold fit uses training rows only.
+- Verb types never appear in both partitions of an omitted verb fold.
+- Confidence intervals, credible intervals, predictive evaluation, and causal claims are distinguished.
