@@ -1,21 +1,29 @@
-# Problem Set 5: Low rank structure in phoneme inventories
+# Problem Set 5: Structure in phoneme inventories
 
-This directory contains the Fall 2026 PS5 release.
+Complete all ten numbered tasks in `ps5.qmd`. Use R and keep this directory as the working directory for the analysis.
 
-* `ps5.qmd`: student assignment
-* `ps5-answer-key.qmd`: instructor answer key, excluded from the public site
-* `scripts/prepare-phoible.R`: pinned PHOIBLE 2.0 retrieval and preparation
-* `scripts/phoible-svd-functions.R`: audited matrix, masking, SVD, and scoring functions
-* `data/README-PHOIBLE.md`: data provenance and generation instructions
+## Setup and files
 
-Generate the local data object from the repository root:
+The analysis uses base R. You also need an internet connection to download PHOIBLE 2.0 and either `shasum` or `sha256sum` to verify the archive.
 
-```bash
-Rscript problem-sets/ps5/scripts/prepare-phoible.R
+Run the preparation script from this directory:
+
+```sh
+Rscript scripts/prepare-phoible.R
 ```
 
-The assignment was frozen and piloted before release. Its specification, data card, analysis, outputs, and decision are in `research/homework-validation/ps5/`.
+It creates `data/phoible-pilot.rds`, containing the tables loaded by the assignment. The preparation script checks the source archive before creating the object.
 
-## Legacy materials
+- `ps5.qmd` contains the task instructions and R code.
+- `scripts/prepare-phoible.R` downloads and prepares the pinned PHOIBLE data.
+- `scripts/phoible-svd-functions.R` defines inventory selection, matrix construction, masking, SVD fitting, and scoring.
+- [data/README-PHOIBLE.md](data/README-PHOIBLE.md) describes the source, filters, and license.
 
-The Malayalam survey notebooks, data, tests, submissions, and grading records remain in this directory as archival Fall 2025 materials. They are not part of the Fall 2026 public assignment and must not be added to the Quarto render list.
+Select rank using validation cells, then evaluate the selected representation on test cells. Report your computed results and explain the prediction target and limits of the interpretation.
+
+## Grading and submission
+
+- **50% Functionality and completeness:** the code runs and every requested calculation, plot, and interpretation is present.
+- **50% In class presentation:** be prepared to explain any part of your submitted analysis.
+
+You may use LLMs for coding assistance, but you must understand and be able to explain the submitted code and reasoning. Submit the completed analysis through the course learning management system. All ten tasks are required; use the due date in the course schedule.

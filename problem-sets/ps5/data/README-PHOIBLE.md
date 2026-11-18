@@ -1,12 +1,12 @@
 # PHOIBLE teaching data
 
-Run the following command from the repository root:
+Run the following command from the directory containing the assignment:
 
 ```bash
-Rscript problem-sets/ps5/scripts/prepare-phoible.R
+Rscript scripts/prepare-phoible.R
 ```
 
-The script retrieves the pinned PHOIBLE 2.0 CLDF archive from Zenodo, checks its MD5 and SHA 256 values, and writes `phoible-pilot.rds` in this directory. The archive and generated R object are ignored by Git.
+The script retrieves the pinned PHOIBLE 2.0 CLDF archive from Zenodo, checks its MD5 and SHA 256 values, and writes `phoible-pilot.rds` in this directory.
 
 The archived release is Moran and McCloy's (2019) PHOIBLE 2.0, DOI `10.5281/zenodo.2593234`. The PHOIBLE site licenses the data under Creative Commons Attribution ShareAlike 3.0 Unported.
 
