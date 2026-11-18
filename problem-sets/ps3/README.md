@@ -23,9 +23,7 @@ ps3-assignment/
     └── prepare_data.R
 ```
 
-The historical filename `ps3-dative-alternation.qmd` preserves the course page's existing URL. It now contains the complete combined assignment and generates `ps3.ipynb`. `ps3-answer-key.qmd` and `ps3-answer-key.ipynb` are private instructor files and are excluded from the student package and course site. Rebuild the notebooks and complete key with `python3 scripts/rebuild_ps3_answer_key.py` from the repository root.
-
-The previous MALD student notebook and key are preserved in `research/homework-validation/ps3/legacy/`. The old `ps3_answer_key.ipynb` and `ps3.zip` are historical materials; use the hyphenated current key and `downloads/ps3-assignment.zip`.
+Complete the notebook. The Quarto file contains the same assignment in the format used for the course website. Keep the notebook, data, and scripts together in the extracted directory.
 
 ## Setup
 
@@ -42,7 +40,7 @@ cmdstanr::check_cmdstan_toolchain()
 cmdstanr::install_cmdstan(cores = 2)
 ```
 
-The [`cmdstanr` installation guide](https://mc-stan.org/cmdstanr/articles/cmdstanr.html) supplies platform specific compiler setup. If CmdStan already works for Problem Set 2, reuse that installation.
+The [`cmdstanr` installation guide](https://mc-stan.org/cmdstanr/articles/cmdstanr.html) explains compiler setup for each operating system. If CmdStan already works for Problem Set 2, reuse that installation.
 
 Then open the notebook:
 
@@ -70,15 +68,7 @@ Keep the notebook in the extracted assignment directory so that paths beginning 
 
 The variance model concerns **word means around the regression**. The stored trial variances describe variation within words. Trial counts, omitted word properties, and shared listeners may contribute to residual variation among word means. Listener identities are unavailable, so changing the variance equation or resampling word rows leaves shared listener dependence unaccounted for. Explain this limitation when reporting confidence intervals and likelihood ratio results.
 
-The table is copied without alteration from the course's audited `data/mald/mald-items.csv`. Its SHA-256 checksum is `96ce8002488a7e520851e15641edf70539a469e35e1511a32563a925b7e03a01`. The accompanying provenance file records source checksums, filters, and CC BY-NC 4.0 attribution. It also documents a separate connected trial table, which is not used or included in this assignment.
-
-To rebuild the audited table from the original release, run the existing course preparation script from the repository root:
-
-```bash
-Rscript scripts/data-grounding/prepare_mald.R \
-  /path/to/MALD1_1_AllData.txt data/mald
-cp data/mald/mald-items.csv problem-sets/ps3/data/mald-items.csv
-```
+The included table's SHA-256 checksum is `96ce8002488a7e520851e15641edf70539a469e35e1511a32563a925b7e03a01`. The accompanying provenance file records the source checksum, filters, and CC BY-NC 4.0 attribution. No MALD download or preparation is required for this assignment.
 
 ### English dative tokens
 
@@ -90,7 +80,7 @@ cp data/mald/mald-items.csv problem-sets/ps3/data/mald-items.csv
 
 The token rows include repeated verbs and speakers. Speaker IDs are available for the 2,360 spoken tokens, covering 38 verbs and 424 speakers. The 903 written tokens have no speaker IDs. Count repeated identifiers and explain why the token count need not equal the amount of independent information. The models assume conditional independence across tokens; sampling diagnostics and predictive checks do not verify this assumption. Excluding verbs during cross-validation assesses prediction for those verbs, while speakers may occur in both partitions.
 
-The source package declares GPL (>= 2). The adapted CSV's SHA-256 checksum is `02a49e0ef2da7df73a7ef622ddf31a55ba13c52a9b66bcfdf2fef3def7932bea`. `scripts/prepare_data.R` reconstructs the CSV from the [frozen CRAN archive](https://cran.r-project.org/src/contrib/Archive/languageR/languageR_1.5.0.tar.gz), whose SHA-256 checksum is `d629739bbfd8846ac4db62310a99eda59a22cb0170e58bc2e1a241b244b637c6`:
+The source package declares GPL (>= 2). To reproduce the dative CSV, install `digest` with `install.packages("digest")`, download the archive below, and run the command from the extracted assignment directory. The adapted CSV's SHA-256 checksum is `02a49e0ef2da7df73a7ef622ddf31a55ba13c52a9b66bcfdf2fef3def7932bea`. `scripts/prepare_data.R` reconstructs the CSV from the [frozen CRAN archive](https://cran.r-project.org/src/contrib/Archive/languageR/languageR_1.5.0.tar.gz), whose SHA-256 checksum is `d629739bbfd8846ac4db62310a99eda59a22cb0170e58bc2e1a241b244b637c6`:
 
 ```bash
 Rscript scripts/prepare_data.R /path/to/languageR_1.5.0.tar.gz data/dative-alternation.csv
@@ -109,19 +99,7 @@ Rscript scripts/prepare_data.R /path/to/languageR_1.5.0.tar.gz data/dative-alter
 
 The points sum to 100. Fit MALD models by least squares and Gaussian maximum likelihood, and dative models by posterior sampling in Stan. Report confidence intervals for MALD coefficients and credible intervals for dative coefficients under their stated assumptions. Evaluate cross-validation scores descriptively because the training sets overlap.
 
-Dative validation requires 150 exact Stan refits. Each refit uses training tokens only, retains the same priors and sampler settings, and passes the full sampling checks. Predictions average posterior probabilities with `posterior_epred()`. The `stan_cache/` directory stores reusable compiled programs and model files. It is created locally and excluded from the student package; allow the first run to finish before rerunning cells that use the fits.
-
-## Instructor validation
-
-From the repository root:
-
-```bash
-python3 scripts/rebuild_ps3_answer_key.py
-Rscript problem-sets/ps3/scripts/validate_ps3_release.R
-bash scripts/build-problem-set-packages.sh ps3
-```
-
-The validator checks the regression t statistic and log tail probability, reconstructs the Gaussian variance likelihood, and checks the likelihood ratio parameter counts. It executes every answer key code block and writes `research/homework-validation/ps3/stan-validation-summary.json`. It checks the MALD scale estimate and predictive losses, dative coefficient intervals, conditional predictive checks, counts of repeated identifiers, profile matches, and excluded verb scores. It also checks sampling diagnostics for every Stan fit. The earlier dative only validator concerns the previous maximum likelihood assignment.
+Dative validation requires 150 exact Stan refits. Each refit uses training tokens only, retains the same priors and sampler settings, and passes the full sampling checks. Predictions average posterior probabilities with `posterior_epred()`. The `stan_cache/` directory stores reusable compiled programs and model files. It is created when you run the notebook; allow the first run to finish before rerunning cells that use the fits. If you extend sampling after a diagnostic failure, set `file_refit = "always"` for the affected fit: `"on_change"` does not detect changes to iteration counts.
 
 ## Grading
 

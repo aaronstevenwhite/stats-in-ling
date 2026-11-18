@@ -1,16 +1,25 @@
 # Run from the extracted ps4-assignment directory.
 # Optional argument: a local clone of the authors' source repository.
 args <- commandArgs(trailingOnly = TRUE)
+if (length(args) > 1L) {
+  stop("Usage: Rscript scripts/prepare_data.R [path/to/source-repository]")
+}
+if (!requireNamespace("digest", quietly = TRUE)) {
+  stop('Install digest first: install.packages("digest").')
+}
 commit <- "e4b672a3068820458f42dfb7a4b70d417a887bc5"
 source_file <- function(path, checksum) {
   if (length(args)) {
     file <- file.path(args[1], path)
   } else {
     file <- tempfile(fileext = ".csv")
+    on.exit(unlink(file), add = TRUE)
     url <- paste0("https://raw.githubusercontent.com/judith-tonhauser/projective-probability/", commit, "/", path)
     download.file(url, file, mode = "wb")
   }
-  stopifnot(digest::digest(file = file, algo = "sha256") == checksum)
+  if (digest::digest(file = file, algo = "sha256") != checksum) {
+    stop("Source checksum mismatch: ", path, ". Use the revision in data/README.md.")
+  }
   x <- read.csv(file, stringsAsFactors = FALSE)
   x[x$trigger_class != "control", ]
 }
@@ -43,3 +52,4 @@ dir.create("data", showWarnings = FALSE)
 write.csv(choice, "data/inference-choices.csv", row.names = FALSE)
 write.csv(rating, "data/projection-ratings.csv", row.names = FALSE)
 write.csv(crosswalk, "data/contents.csv", row.names = FALSE)
+cat("Wrote inference-choices.csv, projection-ratings.csv, and contents.csv under data/.\n")
