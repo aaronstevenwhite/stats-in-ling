@@ -1,51 +1,20 @@
-# Problem Set 4: Commitment in naturally occurring discourse
+# Problem Set 4: Mixed effects models
 
-This directory contains the Fall 2026 CommitmentBank problem set. The assignment develops one multilevel cumulative logit model and uses prior prediction, sampling diagnostics, posterior prediction, posterior predictive checking, and discourse grouped validation to evaluate it.
+Extract the complete package and open ps4.ipynb with the R kernel. Run it from the extracted ps4-assignment directory. Complete all six exercises, including equations, code, and interpretation.
 
-## Current assignment files
+Exercises 1–3 fit frequentist logistic mixed models to written binary inference judgments with lme4. Exercises 4–6 develop and fit a Bayesian ordered beta mixed model of certainty slider ratings with brms, ordbetareg, and CmdStan. Install these R packages:
 
-- `ps4.qmd`: student handout and course reading
-- `ps4-answer-key.qmd`: executable instructor key
-- `scripts/prepare-commitmentbank.R`: retrieves the official release, verifies its checksum, and creates a text free analysis table
-- `data/commitmentbank-grouped-cv.csv`: anonymous discourse level results from the frozen grouped validation pilot
-- `data/README.md`: provenance and redistribution constraints
+    install.packages(c("lme4", "brms", "ordbetareg", "posterior", "dplyr", "ggplot2", "IRkernel"))
+    install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
+    cmdstanr::install_cmdstan()
+    IRkernel::installspec()
 
-The course website renders `ps4.qmd`. It does not render the older notebook.
+CmdStan requires a C++ toolchain. On macOS, install the Xcode command line tools; on Windows, install the Rtools version appropriate for R. See https://mc-stan.org/cmdstanr/articles/cmdstanr.html.
 
-## Prepare the data
+The frequentist section focuses on six predicates from the complete binary table and includes two full data fits, a Wald confidence interval, and five participant fold fits. The Bayesian section fits one ordered beta mixed model with four chains, 1,500 warmup iterations and 3,000 retained iterations per chain. Allow time for compilation, sampling, and prediction; runtime depends on the machine. The Bayesian fit is saved under stan_cache and reused when its specification and data match. Keep that directory while working. If you change sampling iterations, set file_refit = "always" for that run: "on_change" does not detect iteration changes. Do not interpret a model that fails the stated diagnostics.
 
-From the course repository root, run:
+The binary responses are recorded choices, not thresholded slider ratings. The slider table retains exact zeros and ones. high_c codes the experiment's prior probability condition, not a participant's measured prior belief. See data/README.md for measurements and provenance.
 
-```sh
-Rscript problem-sets/ps4/scripts/prepare-commitmentbank.R
-```
+The package contains the handout, clean student notebook, teaching tables, data documentation, and preparation script. Fitted models and the answer key are excluded.
 
-The script downloads the official CommitmentBank CSV and writes `data/commitmentbank-model.csv`. The analysis table excludes the source passage and prompt text. Those files remain local because the repository and source corpora do not state redistribution terms that would permit packaging the passages with the assignment.
-
-The student handout uses the prepared table for descriptive work and model fitting. It uses the supplied grouped result table for the five fold new discourse comparison so that students can analyze prediction for an omitted discourse without fitting ten additional multilevel models.
-
-## R packages
-
-The answer key uses:
-
-```r
-install.packages(c(
-  "brms",
-  "rstan",
-  "posterior",
-  "loo",
-  "ggplot2"
-))
-```
-
-The fitted models use four chains, 1,000 warmup iterations per chain, and 1,000 retained iterations per chain. A complete clean run may take substantial time because the data contain 9,599 ratings and three grouping distributions.
-
-## Scientific validation
-
-The frozen validation records are in `research/homework-validation/ps4/` at the repository root. The approved comparison holds out complete discourses. The environment model improves grouped expected log predictive density by 97.99, with discourse level standard error 14.10. The ratio is 6.95. All final fold fits have zero divergent transitions, and the largest final fold R-hat is 1.018.
-
-The earlier row level validation and the first grouped sampling run remain documented as failed gates. Their criteria were not weakened after the results were seen.
-
-## Archived Fall 2025 materials
-
-`ps4.ipynb`, `mald_items.csv`, and the Stan files in `models/` belong to the Fall 2025 MALD assignment. They remain in the directory to preserve the earlier course materials, but they are not part of the Fall 2026 problem set and are not rendered on the course website.
+The tables are ready to use. To reproduce them from the authors' pinned repository revision, run Rscript scripts/prepare_data.R from the assignment directory. This optional step requires digest and internet access. You can instead pass a local source repository path as the first argument.

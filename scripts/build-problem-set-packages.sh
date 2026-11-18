@@ -10,14 +10,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# With no arguments, rebuild every supported package. Pass ps3 to rebuild only PS3.
+# With no arguments, rebuild every supported package. Pass assignment names to rebuild selected packages.
 if [[ $# -eq 0 ]]; then
-  set -- ps1 ps2 ps3
+  set -- ps1 ps2 ps3 ps4
 fi
 # Validate all selections before writing any outputs.
 for problem_set in "$@"; do
   case "${problem_set}" in
-    ps1|ps2|ps3) ;;
+    ps1|ps2|ps3|ps4) ;;
     *) printf 'Unknown problem set: %s\n' "${problem_set}" >&2; exit 1 ;;
   esac
 done
@@ -74,6 +74,12 @@ for problem_set in "$@"; do
         "${source_directory}/data/mald-provenance.json" \
         "${source_directory}/data/dative-alternation.csv" \
         "${package_directory}/data/"
+      ;;
+    ps4)
+      cp "${source_directory}/scripts/prepare_data.R" "${source_directory}/scripts/helpers.R" "${package_directory}/scripts/"
+      for data_file in inference-choices.csv projection-ratings.csv contents.csv README.md provenance.json; do
+        cp "${source_directory}/data/${data_file}" "${package_directory}/data/"
+      done
       ;;
   esac
 

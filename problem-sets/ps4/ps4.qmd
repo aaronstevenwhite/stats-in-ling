@@ -1,6 +1,6 @@
 ---
-title: "Problem Set 4: Commitment in naturally occurring discourse"
-subtitle: "Statistical Methods in Linguistics"
+title: "Problem Set 4: Mixed effects models"
+subtitle: "Binary inference judgments and bounded certainty ratings"
 format:
   html:
     toc: true
@@ -8,393 +8,471 @@ execute:
   enabled: false
 ---
 
-## What this problem set asks
+## Repeated judgments
 
-Suppose someone says, *I did not know that it did that*. The complement *it did
-that* is not asserted. Yet a listener may still take the speaker to be committed to
-its truth. When commitment survives an environment that normally removes an
-entailment, the complement is said to [**project**](https://doi.org/10.18148/sub/2019.v23i2.601).
+Each participant judges several sentences, and each predicate and complement content receives judgments from several participants. A mixed effects model represents the dependence associated with these repeated units. Exercises 1–3 fit logistic models to binary judgments with `lme4`. Exercises 4–6 develop an ordered beta model of slider ratings and fit it in Stan through `brms`.
 
-A traditional account begins with the embedding predicate. Predicates such as
-*know* are classified as factive, while predicates such as *think* are classified as
-nonfactive. If this classification fully determines projection, the complement of a
-factive predicate should receive high commitment ratings across discourses. The
-CommitmentBank shows why this prediction is too strong. Factive predicates tend to
-receive higher ratings, but predicates within the same class differ, individual
-discourses differ, and annotators use the scale differently.
+All six exercises are required. The points sum to 100. Complete the equations in **Your LaTeX**, replace every `___`, and answer the questions in **Your result**. Every numerical answer must be produced by visible code.
 
-The binary factive/nonfactive classification is thus too coarse to determine commitment ratings by itself. The assignment
-asks how much that classification tells us, then asks whether the
-embedding environment tells us more. A multilevel ordinal model lets us answer both
-questions while retaining the seven ordered response categories and representing
-the three sources of repeated observations.
-
-The focal method is the [ordinal mixed model](../../regression-models/ordinal-mixed-models.qmd) introduced in the notes. Prior predictive
-simulation, sampling diagnostics, posterior prediction, posterior predictive
-checking, and grouped predictive comparison are parts of evaluating that one model
-family. They do not introduce additional response models.
-
-All seven numbered tasks are required for every student.
-
-::: {.callout-note title="Reading"}
-Read de Marneffe, Simons, and Tonhauser (2019), [“The CommitmentBank:
-Investigating projection in naturally occurring
-discourse”](https://doi.org/10.18148/sub/2019.v23i2.601), focusing on Sections 2,
-3.1, 3.4, and 3.5. The reading is included because it defines the commitment task,
-motivates the factivity and embedding predictors, documents the restriction to
-epistemic modals, and shows that predicate identity leaves substantial variation
-unexplained. We will reuse the data but replace the paper's separate factor tests
-with one prespecified Bayesian model sequence and a fuller dependence structure.
+::: {.callout-note title="Assignment files"}
+[Download Problem Set 4](../../downloads/ps4-assignment.zip){download="ps4-assignment.zip"}. Extract the package, open [`ps4.ipynb`](ps4.ipynb), and select the R kernel. The [README](README.md) describes installation and runtime. The package contains [binary judgments](data/inference-choices.csv), [slider ratings](data/projection-ratings.csv), [complement contents](data/contents.csv), and [data documentation](data/README.md).
 :::
 
-Before beginning, review [ordinal
-regression](../../regression-models/ordinal-regression.qmd), [ordinal mixed
-models](../../regression-models/ordinal-mixed-models.qmd), [prior
-predictive distributions](../../statistical-inference/prior-predictive-distributions.qmd),
-[Hamiltonian Monte Carlo](../../statistical-inference/hamiltonian-monte-carlo.qmd),
-[R-hat](../../statistical-inference/rhat.qmd), [effective sample
-size](../../statistical-inference/effective-sample-size.qmd), [posterior predictive
-checks](../../statistical-inference/posterior-predictive-checks.qmd), and [Bayesian
-grouped cross-validation](../../model-criticism-and-prediction/grouped-cross-validation.qmd).
-These pages establish the ordinal link and its multilevel extension before this
-problem set applies them to CommitmentBank.
-
-## Begin with the measurement
-
-The response scale has seven ordered categories:
-
-| Rating | Interpretation |
-|---:|---|
-| `-3` | the speaker is certain that the complement is false |
-| `0` | the speaker is uncertain whether the complement is true or false |
-| `3` | the speaker is certain that the complement is true |
-
-The intermediate categories express intermediate ordered judgments. The difference
-between `-3` and `-2` need not equal the difference between `1` and `2`. Thus a normal
-linear model would add a spacing assumption that the task did not establish.
-
-Recall from [ordinal regression](../../regression-models/ordinal-regression.qmd) that an ordinal model asks whether a response falls at or below each boundary.
-With seven categories, there are six boundaries. For boundary $k$, the cumulative
-logit model is
-
-$$
-\operatorname{logit}\left[\mathbb{P}(Y_i \leq k)\right]
-= \theta_k - \eta_i,
-\qquad k \in \{-3,-2,-1,0,1,2\}.
-$$
-
-The ordered thresholds $\theta_k$ divide a latent commitment scale into the seven
-observed categories. The linear predictor $\eta_i$ moves an observation along that
-scale. Because $\eta_i$ is subtracted, a positive coefficient lowers the probability
-of falling at or below every boundary and shifts probability toward higher ratings.
-
-One coefficient is shared across all six cumulative logits. This is the
-[proportional-odds assumption introduced earlier](../../regression-models/ordinal-regression.qmd#interpreting-one-coefficient-at-both-boundaries). It says that a predictor shifts location on the
-latent scale rather than having a separate effect at every response boundary. We
-will retain this assumption throughout the assignment so that the model sequence
-changes only the linguistic predictors.
-
-## Put the repeated observations into the model
-
-Let rating $i$ come from annotator $a[i]$, discourse $d[i]$, and predicate $v[i]$.
-The linear predictor for the larger model is
-
-$$
-\eta_i
-= \beta_F F_i
-+ \boldsymbol{x}_{E_i}^{\mathsf T}\boldsymbol{\beta}_E
-+ u_{a[i]} + w_{d[i]} + z_{v[i]},
-$$
-
-with
-
-$$
-u_a \sim \operatorname{Normal}(0,\sigma_a^2),
-\qquad
-w_d \sim \operatorname{Normal}(0,\sigma_d^2),
-\qquad
-z_v \sim \operatorname{Normal}(0,\sigma_v^2).
-$$
-
-The annotator intercept represents a person's general tendency to use higher or
-lower categories. The discourse intercept represents properties of a particular
-passage that every annotator saw. The predicate intercept represents lexical
-differences that remain after the binary factivity classification.
-
-Including factivity and predicate variation is not redundant. The factivity
-coefficient estimates the average difference between the two lexical classes. The
-predicate distribution asks how far individual predicates depart from that class
-average. This distinction makes the inadequacy of a class-only account estimable.
-
-## Prepare the data
-
-Before beginning the analysis, run the data preparation script:
-
-```sh
-Rscript problem-sets/ps4/scripts/prepare-commitmentbank.R
-```
+Read [structured data](../../regression-models/structured-data.qmd), [random effects](../../regression-models/random-effects.qmd), and [generalized linear mixed models](../../regression-models/generalized-linear-mixed-models.qmd). The `ordbetareg` package defines an ordered beta response family for `brms`; it uses Stan for sampling. It does not replace the mixed model formula.
 
 ```{r}
+library(lme4)
 library(brms)
-library(loo)
+library(ordbetareg)
+library(cmdstanr)
 library(posterior)
+library(dplyr)
 library(ggplot2)
-
-ratings <- read.csv("data/commitmentbank-model.csv")
-
-primary <- ratings[ratings$modal_type %in% c("none", "EP"), ]
-primary$rating <- ordered(primary$rating, levels = -3:3)
-primary$factive <- factor(primary$factive, levels = c("no", "yes"))
-primary$embedding <- factor(
-  primary$embedding,
-  levels = c("conditional", "modal", "negation", "question")
-)
-primary$annotator <- factor(primary$annotator)
-primary$discourse <- factor(primary$discourse)
-primary$predicate <- factor(primary$predicate)
-primary$cell <- interaction(
-  primary$factive,
-  primary$embedding,
-  sep = ": "
-)
-primary <- droplevels(primary)
-
-stopifnot(
-  nrow(primary) == 9599L,
-  nlevels(primary$discourse) == 982L,
-  nlevels(primary$annotator) == 496L,
-  nlevels(primary$predicate) == 45L
-)
+source("scripts/helpers.R")
+dir.create("stan_cache", showWarnings = FALSE)
+options(cmdstanr_write_stan_file_dir = normalizePath("stan_cache"))
+options(mc.cores = min(4L, parallel::detectCores()))
 ```
 
-The filter follows the paper. Weak epistemic modals can diagnose projection because
-they remove the matrix entailment without adding a non-epistemic interpretation.
-Ability, circumstantial, and deontic modals do not provide the same diagnostic. We
-will restore them only in the predeclared sensitivity analysis.
+## Exercise 1: Identify the repeated units (10 points)
 
-## Task 1: reconstruct the design (10 points) {#task-1-reconstruct-the-design}
+The first table contains binary judgments from Experiment 1b of Degen and Tonhauser's ([2022](https://doi.org/10.1353/lan.0.0271)) *Are there factive predicates? An empirical investigation*. Participants read questions containing clause-embedding predicates and answered a question about the questioner's certainty in the complement content. The second table contains slider judgments from Experiment 2b of their ([2021](https://doi.org/10.1162/opmi_a_00042)) *Prior beliefs modulate projection*. In that experiment, a preceding fact made the complement content more or less likely. Both tables retain the authors' participant exclusions and omit control trials; they come from the [authors' repository](https://github.com/judith-tonhauser/projective-probability).
 
-Create one table of rating counts and a second table of discourse counts by
-`factive` and `embedding`. Then answer the following questions.
+**Projection** is the inference that a speaker is committed to an embedded content even when the sentence does not assert that content. A question containing *know*, for instance, might suggest commitment to its complement despite being a question. The recorded judgments measure attributed certainty under a particular prompt; they do not directly observe a predicate's semantic representation.
 
-1. Why is the rating an ordered response rather than a continuous response?
-2. What is repeated within an annotator?
-3. What is repeated within a discourse?
-4. Why can the predicate effect not replace the discourse effect?
-5. Which factivity by environment cells have the weakest discourse support?
+### 1.1 Inspect the binary choices
 
-State the target of the conditional predictions used later. They describe a rating
-with the annotator, discourse, and predicate random intercepts set to zero. They are
-not probabilities averaged over those random-effect distributions, and they do not
-describe every English speaker or every clause-embedding predicate.
-
-## Task 2: check the priors before fitting the data (15 points) {#task-2-check-the-priors-before-fitting-the-data}
-
-Use the prespecified priors:
+The table contains all twenty predicates. To keep the fixed contrasts manageable, this analysis focuses on six: *know*, *think*, *discover*, *say*, *hear*, and *announce*. The *know–think* contrast is the target of the test below.
 
 ```{r}
-prior_set <- c(
-  prior(normal(0, 1.5), class = "Intercept"),
-  prior(normal(0, 1), class = "b"),
-  prior(exponential(1), class = "sd")
-)
+choice_all <- read.csv("data/inference-choices.csv")
+choice <- choice_all |>
+  filter(predicate %in% c("know", "think", "discover", "say", "hear", "announce")) |>
+  mutate(participant = factor(participant), content = factor(content),
+         predicate = relevel(factor(predicate), "think"))
+stopifnot(nrow(choice_all) == 8720, nrow(choice) == 2616, all(choice$yes %in% 0:1))
+choice |> summarize(judgments = n(), participants = n_distinct(participant),
+                    predicates = n_distinct(predicate), contents = n_distinct(content))
+choice |> count(participant) |> count(n)
+choice |> group_by(predicate) |> summarize(n = n(), yes_rate = mean(yes))
+choice |> count(participant, content) |> count(n)
 ```
 
-The `Intercept` class names the six ordered thresholds in this model. The `b` class
-names the factivity and embedding coefficients. The `sd` class names the three group
-standard deviations.
+Identify the observation, participant, predicate, and content. Explain why participant and content are crossed rather than nested: a content is judged by multiple participants, and a participant judges multiple contents. Does any predicate have only yes or only no responses? Why would that matter for an unpenalized logistic coefficient?
 
-Define the larger formula now because a prior predictive check should use the model
-whose posterior will later be interpreted.
+### 1.2 Inspect the slider ratings
 
 ```{r}
-environment_formula <- bf(
-  rating ~ factive + embedding +
-    (1 | annotator) + (1 | discourse) + (1 | predicate),
-  family = cumulative("logit")
-)
-
-# Fit with sample_prior = "only".
+rating <- read.csv("data/projection-ratings.csv") |>
+  mutate(participant = factor(participant), content = factor(content),
+         predicate = factor(predicate),
+         high_c = as.integer(prior_condition == "factH") - .5)
+stopifnot(nrow(rating) == 5320, all(rating$rating >= 0 & rating$rating <= 1))
+rating |> summarize(judgments = n(), participants = n_distinct(participant),
+                    predicates = n_distinct(predicate), contents = n_distinct(content))
+rating |> count(prior_condition)
+rating |> group_by(participant) |>
+  summarize(conditions = n_distinct(high_c), .groups = "drop") |> count(conditions)
+rating |> group_by(predicate, content) |>
+  summarize(conditions = n_distinct(high_c), .groups = "drop") |> count(conditions)
 ```
 
-Draw 500 replicated datasets from the prior predictive distribution. Plot the
-overall proportion in each category for every replicate, then place the observed
-proportions on the same plot. Answer three questions.
+`high_c` is −0.5 for the lower probability fact and +0.5 for the higher probability fact. It codes the experimental condition, not an individual participant's measured prior belief. Identify which grouping factors contain both conditions and can support a condition slope. A fact belongs to a particular content and condition; explain why forty fact labels would not constitute forty independent replications of the condition manipulation.
 
-1. Do the priors permit all seven response categories?
-2. Do they routinely imply that nearly every response occupies one category?
-3. Would you revise the priors before seeing the posterior? Explain the proposed
-   revision or explain why no revision is needed.
+The two experiments use related materials and ask about speaker certainty, but differ in preceding context and response format. Do not compare their raw means as if they were two conditions of one experiment. Participant labels have been replaced separately in each table and cannot establish whether someone took both studies.
 
-Do not choose a prior because it recreates the observed distribution closely. Prior
-predictive checking rules out implications that were unreasonable before the
-outcomes were used for fitting.
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 1.
+:::
 
-## Task 3: fit the factivity model (20 points) {#task-3-fit-the-factivity-model}
+## Exercise 2: Fit a mixed logistic model and derive a test (20 points)
 
-The first model asks whether the traditional lexical classification
-predicts the ordered commitment response while partially pooling the three grouping
-units.
+The binary model has fixed contrasts for the six selected predicates and twenty contents, with a random intercept for participant. Let $s[i]$, $c[i]$, and $v[i]$ identify those units for judgment $i$:
+
+$$
+\begin{aligned}
+Y_i\mid a_{s[i]}&\sim\operatorname{Bernoulli}(p_i),\\
+\operatorname{logit}(p_i)&=\alpha+\beta_{v[i]}+\gamma_{c[i]}+a_{s[i]},\\
+a_s&\sim\mathcal N(0,\tau_s^2).
+\end{aligned}
+$$
+
+Write $F(z)=1/(1+e^{-z})$ for the inverse logit. Set $\beta_{\textit{think}}=0$ and one content coefficient to zero as reference. Effects for distinct participants are independent. Judgments are independent conditional on these effects and the model parameters. Marginally, judgments sharing a unit can remain dependent.
+
+### 2.1 Derive a conditional contrast
+
+Compare *know* with *think* at the same participant and content effects. Subtract their linear predictors, then exponentiate to obtain the conditional odds ratio.
+
+**Your LaTeX**
+
+$$
+\log\frac{p_{\textit{know}}/(1-p_{\textit{know}})}
+{p_{\textit{think}}/(1-p_{\textit{think}})}=\text{enter know contrast},
+$$
+$$
+\operatorname{OR}_{\textit{know}/\textit{think}}=\text{enter know odds ratio}.
+$$
+
+Explain why this is not a difference in response probabilities. The model treats these predicates and contents as fixed contrasts because the prediction target concerns the recorded materials. Explain why adding a random intercept for predicate alongside a separate fixed coefficient for every predicate would not identify an additional source of predicate variation.
+
+### 2.2 Fit with lme4
+
+The [glmer documentation](https://lme4.github.io/lme4/reference/glmer.html) describes maximum likelihood estimation by integrating over random effects. With one scalar intercept per participant, `nAGQ = 9` uses nine adaptive quadrature points to approximate each Gaussian integral. Quadrature approximates an integral with a weighted sum of function values. The optimizer estimates the fixed coefficients and participant variance jointly.
 
 ```{r}
-factivity_formula <- bf(
-  rating ~ factive +
-    (1 | annotator) + (1 | discourse) + (1 | predicate),
-  family = cumulative("logit")
-)
-
-# Fit the factivity-only model with four chains, 1,000 warmup iterations, and 1,000 retained
-# iterations per chain. Use the prespecified priors, adapt_delta = 0.95, and a
-# fixed seed.
+fit_choice <- function(formula, data) {
+  glmer(formula, data = data, family = binomial(link = "logit"),
+        nAGQ = 9,
+        control = glmerControl(optimizer = "bobyqa", tolPwrss = 1e-9,
+                               optCtrl = list(maxfun = 200000)))
+}
+choice_fit <- fit_choice(yes ~ predicate + content + (1 | participant), choice)
+summary(choice_fit)
+lme4::VarCorr(choice_fit)
+isSingular(choice_fit)
+choice_fit@optinfo$conv
+stopifnot(is.null(choice_fit@optinfo$conv$lme4$messages))
+know_interval <- confint(choice_fit, parm = "predicateknow", method = "Wald")
+c(estimate = lme4::fixef(choice_fit)["predicateknow"], exp(know_interval))
 ```
 
-Before interpreting the model, report:
+Report the coefficient, odds ratio, approximate Wald confidence interval for the odds ratio, and participant intercept SD. This [Wald interval](../../statistical-inference/confidence-intervals.qmd) uses the coefficient estimate plus or minus 1.96 estimated standard errors, then exponentiates both limits. A confidence interval describes a procedure's repeated sampling behavior under its assumptions; it is not a posterior interval. Successful optimization does not verify the dependence assumptions or representative sampling.
 
-1. the number of divergent transitions;
-2. the largest split R-hat;
-3. the smallest bulk effective sample size among reported population and group-scale
-   parameters; and
-4. the smallest tail effective sample size among those parameters.
+### 2.3 Derive a likelihood ratio test
 
-Then report the median and 95 percent posterior interval for `factiveyes`. Explain
-its sign using the cumulative probability equation. Finally, report the three group
-standard deviations and inspect the predicate deviations for *know*, *realize*,
-*accept*, and *tell*.
+Test $H_0:\beta_{\textit{know}}=0$. Under this null, *know* and *think* share a fixed coefficient; every other predicate keeps its own coefficient. Combine just those two labels to impose this restriction. Retain all content contrasts and the participant random intercept, and reestimate its variance in each fit.
 
-The factivity coefficient and predicate deviations answer different questions. A
-positive class coefficient can coexist with substantial lexical departures. Explain
-how that combination bears on the limits of a class-only account.
+Let $\widehat\ell_0$ and $\widehat\ell_1$ be the maximized approximate log likelihoods. Following the [likelihood ratio test notes](../../model-criticism-and-prediction/likelihood-ratio-tests.qmd), take $-2$ times the log ratio of the maximized likelihoods. The alternative adds one fixed coefficient, and zero is an interior value of that coefficient.
 
-## Task 4: add embedding environment (20 points) {#task-4-add-embedding-environment}
+**Your LaTeX**
 
-Fit the model that adds embedding environment using `environment_formula`. Use
-the same data, priors, random structure, chains, iterations, and seed as the factivity-only model. This is a
-prespecified comparison: the only formula change is the addition of `embedding`.
-
-Perform the same diagnostic audit used for the factivity-only model. Then summarize the three embedding
-coefficients. Conditional antecedents are the reference level, so each coefficient
-compares one environment with a conditional antecedent while holding factivity fixed
-and setting the grouping deviations to their modeled values.
-
-Environment is constant within a discourse. This fact determines how the two models
-must be compared. If we leave out one rating, the remaining ratings of that discourse
-still estimate its discourse intercept. The intercept can then carry information
-that the environment predictor would otherwise supply. A rating-level comparison
-would answer the wrong question.
-
-The prespecified comparison instead uses five folds grouped by discourse and stratified by
-factivity and environment. Every rating of a discourse enters the same fold. Each
-held-out discourse receives one new discourse intercept drawn from the fitted group
-distribution, and that intercept is shared across its ratings. The ten model fits across
-five folds are slow, so you will audit the supplied discourse-level output instead of refitting them.
-
-[Download the grouped comparison
-results](data/commitmentbank-grouped-cv.csv), then read them into R.
+$$
+D=\text{enter likelihood statistic},\qquad
+D\overset{H_0}{\approx}\chi^2_{\text{enter degrees of freedom}}.
+$$
 
 ```{r}
-grouped_cv <- read.csv("data/commitmentbank-grouped-cv.csv")
-
-stopifnot(
-  nrow(grouped_cv) == 982L,
-  length(unique(grouped_cv$case)) == 982L,
-  setequal(grouped_cv$fold, 1:5)
-)
+choice$predicate_null <- factor(ifelse(choice$predicate %in% c("know", "think"),
+                                      "know_or_think", as.character(choice$predicate)))
+choice_null <- fit_choice(yes ~ predicate_null + content + (1 | participant), choice)
+stopifnot(is.null(choice_null@optinfo$conv$lme4$messages))
+likelihood_statistic <- ___
+likelihood_p <- pchisq(likelihood_statistic, df = ___, lower.tail = FALSE)
+c(statistic = likelihood_statistic, p_value = likelihood_p)
+anova(choice_null, choice_fit)
 ```
 
-First verify that each fold contains all eight factivity by environment cells and
-between 194 and 200 discourses. Each value $\ell_{d,m}$ in the supplied file is the
-log predictive density for all ratings in discourse $d$ under model $m$. This is the
-[group-level pointwise quantity](../../model-criticism-and-prediction/grouped-cross-validation.qmd)
-required by the new-discourse target. Then compute
+Report the statistic and p value. Explain why the alternative's maximum cannot be smaller when it contains the null. The chi-squared calibration is asymptotic and also depends on the likelihood approximation. This comparison tests the specified predicate contrast; it does not establish a discrete semantic classification of the twenty predicates.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 2.
+:::
+
+## Exercise 3: Derive partial pooling and predict for new participants (15 points)
+
+### 3.1 Derive the equation for a participant effect
+
+Hold all fixed coefficients and $\tau_s$ fixed. Write $\eta_i^{(-s)}=\alpha+\beta_{v[i]}+\gamma_{c[i]}$. The conditional log density for participant $s$ is, up to a constant,
 
 $$
-\Delta = \sum_d \left(\ell_{d,\mathrm{environment}} -
-\ell_{d,\mathrm{factivity}}\right)
+\ell_s(a)=\sum_{i:s[i]=s}\left[y_i(\eta_i^{(-s)}+a)
+-\log(1+e^{\eta_i^{(-s)}+a})\right]-\frac{a^2}{2\tau_s^2}.
 $$
 
-and its discourse-level standard error,
+Differentiate with respect to $a$, using the [logistic score](../../regression-models/logistic-regression.qmd). Complete the equation that sets the derivative to zero:
+
+**Your LaTeX**
 
 $$
-\operatorname{SE}(\Delta)
-= \sqrt{D\operatorname{Var}[\ell_{d,\mathrm{environment}} -
-\ell_{d,\mathrm{factivity}}]}.
+0=\text{enter conditional score}.
 $$
 
-Report the difference, its standard error, and their ratio. Explain why one row is
-one discourse rather than one rating. State whether the difference exceeds the
-prespecified two-standard-error threshold. Finally, explain one limitation of the standard
-error: the discourse is the pointwise unit, but the five training sets overlap.
+The Gaussian penalty contributes a term that pulls the conditional mode toward zero. Unlike the Gaussian calculation in the notes on [partial pooling](../../regression-models/fixed-and-random-effects.qmd), this equation generally requires a numerical solution. Explain why it still gives a finite mode when a participant gives only yes responses, provided $\tau_s>0$ is finite.
 
-## Task 5: return to response categories (20 points) {#task-5-return-to-response-categories}
+```{r}
+eta_without_participant <- predict(choice_fit, re.form = NA)
+tau_s <- attr(lme4::VarCorr(choice_fit)$participant, "stddev")[1]
+participant_modes <- lme4::ranef(choice_fit)$participant
+pooling <- lapply(levels(choice$participant), function(s) {
+  rows <- which(choice$participant == s)
+  score <- function(a) {
+    sum(choice$yes[rows] - plogis(eta_without_participant[rows] + a)) - ___
+  }
+  data.frame(participant = s, n = length(rows), yes_rate = mean(choice$yes[rows]),
+             derived_mode = uniroot(score, c(-30, 30), tol = 1e-10)$root,
+             fitted_mode = participant_modes[s, "(Intercept)"])
+}) |> bind_rows()
+max(abs(pooling$derived_mode - pooling$fitted_mode))
+pooling |> filter(yes_rate %in% c(0, 1))
+```
 
-Create the eight combinations of factivity and embedding environment. Use
-`posterior_epred()` with `re_formula = NA` to obtain conditional category
-probabilities from the model that includes embedding environment, with every random
-intercept set to zero. Do not call these population-averaged probabilities, because
-they do not integrate over the fitted random-effect distributions.
+[ranef()](https://lme4.github.io/lme4/reference/ranef.html) returns conditional modes. They need not equal conditional means in a logistic model. Compare the derived and fitted modes, allowing numerical approximation, and explain why this calculation omits uncertainty from estimating the other parameters.
 
-For each combination, report:
+### 3.2 Hold out complete participants
 
-1. the posterior mean and 95 percent interval for each of the seven category
-   probabilities;
-2. the probability of a high commitment response, defined before fitting as
-   $\mathbb{P}(Y \geq 2)$; and
-3. the posterior expected rating, used only as a compact summary of the seven
-   probabilities.
+Read [grouped cross-validation](../../model-criticism-and-prediction/grouped-cross-validation.qmd) and [prediction targets](../../model-criticism-and-prediction/prediction-targets.qmd). Compare the mixed model with a logistic regression using the same fixed predicate and content contrasts. Each fold excludes all judgments from its test participants. The target is a new participant judging the recorded predicates and contents.
 
-Plot the seven category probabilities rather than only the expected ratings. Then
-answer three substantive questions.
+For the mixed model, integrate over an unknown participant intercept. The required marginal probability is
 
-1. Does factivity shift probability toward stronger commitment in every
-   environment?
-2. Which environment has the largest probability of negative commitment responses?
-3. Does any environment make the factive and nonfactive distributions identical?
+$$
+p_{\mathrm{new}}(\mathbf x)=\int F(\mathbf x^\top\boldsymbol\beta+a)\,\varphi(a;0,\tau_s^2)\,da,
+$$
 
-The additive model builds in a common latent factivity shift. It does not build in
-identical response probabilities, because the inverse link and thresholds make the
-probability differences depend on position along the scale.
+where $\varphi$ is the normal density and $\mathbf x$ includes the fixed predicate and content contrasts. Setting the intercept to zero generally gives a different probability because the inverse logit is nonlinear. The code approximates the one-dimensional Gaussian integral with equally weighted normal quantiles; it retains the fixed content contrasts estimated from training.
 
-## Task 6: criticize the model (10 points) {#task-6-criticize-the-model}
+```{r}
+set.seed(485)
+participant_ids <- levels(choice$participant)
+folds <- data.frame(participant = participant_ids,
+                    fold = sample(rep(1:5, length.out = length(participant_ids))))
+normal_grid <- qnorm(((1:2000) - .5) / 2000)
+scored <- lapply(1:5, function(k) {
+  ids <- folds$participant[folds$fold == k]
+  train <- droplevels(choice[!choice$participant %in% ids, ])
+  test <- choice[choice$participant %in% ids, ]
+  mixed <- fit_choice(formula(choice_fit), train)
+  pooled <- glm(yes ~ predicate + content, data = train, family = binomial())
+  stopifnot(is.null(mixed@optinfo$conv$lme4$messages), pooled$converged,
+            all(is.finite(coef(pooled))))
+  eta <- predict(mixed, newdata = test, re.form = NA, allow.new.levels = TRUE)
+  tau <- attr(lme4::VarCorr(mixed)$participant, "stddev")[1]
+  mixed_p <- vapply(eta, function(e) mean(plogis(e + tau * normal_grid)), numeric(1))
+  pooled_p <- predict(pooled, newdata = test, type = "response")
+  loss <- function(p) -dbinom(test$yes, 1, p, log = TRUE)
+  data.frame(participant = test$participant, fold = k,
+             mixed_loss = loss(mixed_p), pooled_loss = loss(pooled_p),
+             singular = isSingular(mixed))
+}) |> bind_rows()
+participant_loss <- scored |> group_by(participant) |>
+  summarize(mixed = mean(mixed_loss), pooled = mean(pooled_loss),
+            improvement = ___, .groups = "drop")
+participant_loss |> summarize(mean_improvement = mean(improvement),
+                              improved = sum(improvement > 0), participants = n())
+scored |> distinct(fold, singular)
+```
 
-Generate posterior predictive datasets from the model that includes embedding environment. Compare observed and replicated
-category proportions overall, by factivity, by embedding environment, and within the
-eight factivity by environment cells. Identify one feature the model reproduces and
-one feature it misses. A fitted coefficient is not a substitute for checking the
-response distribution that the model generates.
+Positive improvement favors the mixed model. Report its average, how many participants improve, and any singular fold fits. A singular fit estimates a random effect dimension on a boundary; retain and report it. Does the result support a predictive benefit, or is the difference small or inconsistent? Explain why estimating variation among observed participants does not identify a new participant's offset. Do not infer a zero population variance from a small predictive difference. The training folds overlap, so the five scores are not independent observations for a t test.
 
-Next perform the prespecified sensitivity analysis. Restore all modal types, rebuild the
-factors in the same order, and refit the model that includes embedding environment without changing its formula or priors.
-Compare the factivity and embedding summaries with the primary fit. Focus on the
-modal prediction because every restored item contains a non-epistemic modal.
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 3.
+:::
 
-Explain whether the sensitivity result supports the paper's decision to restrict the
-projection diagnostic to epistemic modals. Do not select whichever fit gives a more
-dramatic coefficient. The two fits answer questions about different inclusion rules.
+## Exercise 4: Explain why an ordinary beta likelihood is inadequate (20 points)
 
-## Task 7: license the claim (5 points) {#task-7-license-the-claim}
+Read [why ordinary beta regression fails for endpoint responses](../../regression-models/why-not-beta-sliders.qmd) and [ordered beta regression](../../regression-models/ordered-beta-regression.qmd). Grove and White's (2026) discussion of beta likelihoods ([Supplementary Materials, Section 1](https://static-content.springer.com/esm/art%3A10.1007%2Fs11050-025-09244-9/MediaObjects/11050_2025_9244_MOESM1_ESM.pdf), accompanying their [factivity paper](https://doi.org/10.1007/s11050-025-09244-9)) motivates this exercise.
 
-Write a six-to-eight sentence results paragraph that does all of the following:
+An ordinary beta distribution with positive, finite shape parameters is continuous on the interior. It assigns zero probability mass to either endpoint, even when its density grows without bound near an endpoint. Density height and point probability are different quantities. The slider records exact zeros and ones, and those responses may matter for hypotheses about categorical certainty; replacing them with interior values changes the recorded judgments.
 
-1. names the ordered response and the two-model sequence;
-2. reports the factivity direction and uncertainty;
-3. reports variation among annotators, discourses, and predicates;
-4. reports the embedding model comparison with its predictive target;
-5. describes the category-level factivity and negation pattern;
-6. reports the modal-filter sensitivity; and
-7. limits the claim to these naturally occurring corpus discourses and the recorded
-   annotators.
+Interior observations contribute density to the likelihood; recorded endpoint events need probability masses or an explicit rounding or censoring model. If rounding produced the endpoints, integrating a beta density over rounding intervals would be a different measurement model. Evaluating a density after an arbitrary nudge does not perform that integration.
 
-Do not say that factivity determines projection. The intended conclusion is narrower:
-factivity supplies a positive but coarse shift, while embedding environment and the
-modeled grouping units account for additional structure in commitment judgments.
+### 4.1 Count the endpoints and derive nudge sensitivity
 
-## Submission checklist
+```{r}
+endpoint_counts <- rating |>
+  summarize(zero = sum(rating == 0), interior = sum(rating > 0 & rating < 1),
+            one = sum(rating == 1))
+endpoint_counts
+```
 
-1. The response remains an ordered factor with levels `-3` through `3`.
-2. The factivity-only model and the model that adds embedding environment use identical priors and random structures.
-3. Every fitted model receives a diagnostic audit before interpretation.
-4. The grouped comparison uses discourse as its pointwise unit and reports the
-   uncertainty of the difference.
-5. Posterior predictions show category probabilities, not only latent coefficients.
-6. The sensitivity analysis changes only the modal inclusion rule.
-7. The final paragraph states what the corpus sampling does not license.
+For constant shape parameters $A,B>0$, the beta log likelihood for $n$ interior values is
+
+$$
+\ell(A,B)=-n\log\mathrm B(A,B)
++(A-1)\sum_i\log y_i+(B-1)\sum_i\log(1-y_i).
+$$
+
+Here $\mathrm B$ is the beta function, which normalizes the density. A common workaround replaces each zero by $\delta$ and each one by $1-\delta$. Let $n_0$ and $n_1$ be their observed counts. Write the contribution of these replaced endpoint rows as
+
+$$
+-n_0\log\mathrm B(A,B)-n_1\log\mathrm B(A,B)
++K\log\delta+J\log(1-\delta).
+$$
+
+Collect coefficients to complete:
+
+**Your LaTeX**
+
+$$
+K=\text{enter log delta coefficient},\qquad
+J=\text{enter log one minus delta coefficient}.
+$$
+
+Since $\log\delta\to-\infty$ as $\delta\to0$, the choice of nudge can dominate the endpoint contribution. Its direction depends on the shape parameters; it need not always lower the log likelihood. Grove and White's concern is that an arbitrary response transformation can change likelihood-based model comparisons, including WAIC. It is not merely a numerical error that a smaller nudge repairs.
+
+```{r}
+nudge_check <- lapply(c(.01, .001, .0001, .00001), function(delta) {
+  y <- rating$rating
+  y[y == 0] <- delta
+  y[y == 1] <- 1 - delta
+  # Two fixed beta densities illustrate sensitivity; neither is a fitted regression.
+  data.frame(delta = delta,
+             log_density_2_2 = sum(dbeta(y, 2, 2, log = TRUE)),
+             log_density_half_half = sum(dbeta(y, .5, .5, log = TRUE)))
+}) |> bind_rows()
+nudge_check |> mutate(difference = log_density_2_2 - log_density_half_half)
+```
+
+Report how the difference changes with $\delta$. Explain why comparing scores computed on different transformed responses does not evaluate prediction of the same recorded outcome. In regression, $A_i,B_i$ can vary across rows, so the corresponding sensitivity terms also vary with the predictors. This exercise uses constant shapes only to isolate the algebra.
+
+### 4.2 Derive the ordered beta mean
+
+Let $F$ be the inverse logit, $\eta_i$ a predictor location, $\mu_i=F(\eta_i)$, $\phi>0$ an interior precision, and $\kappa_0<\kappa_1$ two cutpoints. Define
+
+$$
+\begin{aligned}
+p_{0i}&=F(\kappa_0-\eta_i),\\
+p_{1i}&=1-F(\kappa_1-\eta_i),\\
+p_{mi}&=F(\kappa_1-\eta_i)-F(\kappa_0-\eta_i).
+\end{aligned}
+$$
+
+A zero contributes mass $p_{0i}$, a one contributes mass $p_{1i}$, and an interior observation contributes density
+
+$$
+p_{mi}\operatorname{Beta}(y_i\mid\mu_i\phi,(1-\mu_i)\phi).
+$$
+
+Verify that the three region probabilities sum to one. Apply the law of total expectation to derive the mean of the full response:
+
+**Your LaTeX**
+
+$$
+\mathbb{E}[Y_i\mid\eta_i,\phi,\boldsymbol\kappa]
+=\text{enter ordered beta mean}.
+$$
+
+Explain why $\mu_i$ is the interior mean, rather than generally the mean of the full slider response. Ordered beta regression preserves endpoints but imposes a shared location: the same $\eta_i$ controls endpoint probabilities and the interior beta mean. It does not establish that endpoint selections reflect discrete semantic knowledge, and endpoint masses alone do not decide between discrete and gradient theories of projection.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 4.
+:::
+
+## Exercise 5: Fit a Bayesian ordered beta mixed model (20 points)
+
+### 5.1 Specify crossed intercepts and a varying slope
+
+For the slider data, use
+
+$$
+\eta_i=\alpha+\beta_H H_i+a_{s[i]}+b_{0v[i]}+b_{1v[i]}H_i+d_{c[i]},
+$$
+$$
+a_s\sim\mathcal N(0,\tau_s^2),\qquad d_c\sim\mathcal N(0,\tau_c^2),
+$$
+$$
+\begin{pmatrix}b_{0v}\\b_{1v}\end{pmatrix}
+\sim\mathcal N\left[
+\begin{pmatrix}0\\0\end{pmatrix},
+\begin{pmatrix}\tau_0^2&\rho\tau_0\tau_1\\
+\rho\tau_0\tau_1&\tau_1^2\end{pmatrix}\right].
+$$
+
+$H_i$ is the centered condition indicator. Participants, predicates, and contents are crossed. The condition slope varies across predicates. Unlike Exercise 2, predicates are modeled as deviations from a shared distribution, allowing partial pooling of their condition contrasts. Participant and content condition slopes are also supported by the design but omitted here; sensitivity to the condition may thus remain incompletely modeled.
+
+Read [random slopes](../../regression-models/random-slopes.qmd) and [random effect correlations](../../regression-models/random-effect-correlations.qmd). For two judgments sharing a predicate, isolate the covariance contributed by that predicate to their **location predictors**:
+
+**Your LaTeX**
+
+$$
+\operatorname{Cov}_v(\eta_i,\eta_j)=\text{enter predicate covariance}.
+$$
+
+Explain why this is not the covariance of the observed slider responses. The response link and ordered beta distribution intervene between location and observation.
+
+### 5.2 Fit through brms
+
+[`ordbetareg()`](https://search.r-project.org/CRAN/refmans/ordbetareg/html/ordbetareg.html) calls `brms` with a custom ordered beta family. `center = FALSE` keeps the fixed intercept at $H=0$, the midpoint of the conditions. The priors are $\alpha\sim\mathcal N(0,1.5^2)$, $\beta_H\sim\mathcal N(0,1)$, independent exponential priors with rate 1 on group SDs, an LKJ(2) prior on the predicate correlation matrix, and $\phi\sim\operatorname{Exponential}(.1)$. The cutpoint prior induces a Dirichlet(1,1,1) distribution on the three region probabilities at $\eta=0$. The Dirichlet prior is uniform over triples of nonnegative probabilities summing to one; it does not make the three probabilities independently uniform. With two predicate effects, LKJ(2) gives greater prior density near zero correlation than near ±1. These are response model priors, not measured prior beliefs about the complement.
+
+```{r}
+projection_fit <- ordbetareg::ordbetareg(
+  formula = bf(rating ~ high_c + (1 | participant) +
+                 (1 + high_c | predicate) + (1 | content), center = FALSE),
+  data = rating, true_bounds = c(0, 1),
+  coef_prior_SD = 1, intercept_prior_mean = 0, intercept_prior_SD = 1.5,
+  phi_prior = .1, dirichlet_prior = c(1, 1, 1),
+  extra_prior = c(prior(exponential(1), class = sd), prior(lkj(2), class = cor)),
+  backend = "cmdstanr", chains = 4, cores = 4,
+  iter = 4500, warmup = 1500, seed = 482, refresh = 0,
+  control = list(adapt_delta = .99, max_treedepth = 12),
+  file = "stan_cache/projection-ordered-beta", file_refit = "on_change"
+)
+check_fit <- function(fit) {
+  draws <- summarise_draws(as_draws_array(fit))
+  sampler <- nuts_params(fit)
+  diagnostic <- data.frame(
+    max_rhat = max(draws$rhat, na.rm = TRUE),
+    min_bulk_ess = min(draws$ess_bulk, na.rm = TRUE),
+    min_tail_ess = min(draws$ess_tail, na.rm = TRUE),
+    divergences = sum(sampler$Value[sampler$Parameter == "divergent__"]),
+    depth_hits = sum(sampler$Value[sampler$Parameter == "treedepth__"] >= 12))
+  print(diagnostic)
+  stopifnot(diagnostic$max_rhat < 1.01, diagnostic$min_bulk_ess > 400,
+            diagnostic$min_tail_ess > 400, diagnostic$divergences == 0,
+            diagnostic$depth_hits == 0)
+  invisible(diagnostic)
+}
+check_fit(projection_fit)
+brms::fixef(projection_fit)
+brms::VarCorr(projection_fit)
+projection_draws <- as_draws_df(projection_fit)
+quantile(projection_draws$b_high_c, c(.025, .5, .975))
+```
+
+If a diagnostic fails, inspect the chains before interpreting the fit. To extend sampling from an existing cache, increase `iter` and set `file_refit = "always"` for that run; `"on_change"` does not detect changes to sampling iterations.
+
+Use the [chain diagnostics notes](../../statistical-inference/checking-markov-chains.qmd) to interpret R-hat and bulk and tail effective sample size. Report the diagnostics, condition coefficient and interval, predicate slope SD and interval, and intercept–slope correlation and interval. A positive condition coefficient increases the probability of one, decreases the probability of zero, and increases the interior mean at fixed group effects. It is not itself a change in the mean slider rating. Explain why a small slope SD can make its intercept–slope correlation difficult to estimate. Do not assign a reliable direction to an interval spanning zero, or use a positive SD interval as a test of an exactly zero variance component.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 5.
+:::
+
+## Exercise 6: Check endpoint use and conditional response distributions (15 points)
+
+Read [posterior predictive checks](../../statistical-inference/posterior-predictive-checks.qmd). A model can match the overall mean while missing endpoint use or differences among predicates and conditions. Check both the mean and endpoint rates within each predicate–condition combination.
+
+```{r}
+replicated <- ordered_beta_replications(projection_fit, ndraws = 400, seed = 486)
+cell <- interaction(rating$predicate, rating$prior_condition, drop = TRUE)
+checks <- lapply(levels(cell), function(g) {
+  rows <- which(cell == g)
+  observed <- rating$rating[rows]
+  rep <- replicated$rating[, rows, drop = FALSE]
+  statistics <- list(mean = rowMeans(rep),
+                     zero = rowMeans(replicated$zero[, rows, drop = FALSE]),
+                     one = rowMeans(replicated$one[, rows, drop = FALSE]))
+  actual <- c(mean = mean(observed), zero = mean(observed == 0), one = mean(observed == 1))
+  bind_rows(lapply(names(statistics), function(name) {
+    limits <- quantile(statistics[[name]], c(.025, .5, .975))
+    data.frame(cell = g, statistic = name, n = length(rows), observed = actual[name],
+               lower = limits[1], median = limits[2], upper = limits[3])
+  }))
+}) |> bind_rows()
+ggplot(checks, aes(observed, median)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  geom_linerange(aes(ymin = lower, ymax = upper)) + geom_point() +
+  facet_wrap(~ statistic, scales = "free") +
+  labs(x = "Observed statistic", y = "Replicated statistic")
+checks |> mutate(outside = observed < lower | observed > upper) |>
+  group_by(statistic) |> summarize(outside = sum(outside), cells = n())
+```
+
+The helper in [`scripts/helpers.R`](scripts/helpers.R) records which region generated each response. This keeps floating point rounding of an interior beta draw from being counted as endpoint mass; it changes no observed response.
+
+Identify the two largest discrepancies, describe their direction, and assess whether they are substantial relative to the replicated ranges. These are pointwise ranges across many related checks, not a simultaneous acceptance test. A discrepancy may reflect an inadequate mean structure, missing dependence, or the shared location restriction; it does not uniquely diagnose a cause.
+
+Finally, compare the full expected response with the interior mean. The package calls its location parameter `mu`, but its identity link makes that parameter $\eta$ in our notation. Its `posterior_epred()` method returns the full ordered beta expectation derived in Exercise 4.
+
+```{r}
+expected <- posterior_epred(projection_fit, draw_ids = replicated$draw_ids)
+location <- posterior_linpred(projection_fit, draw_ids = replicated$draw_ids, transform = FALSE)
+mean_difference <- colMeans(expected) - colMeans(plogis(location))
+range(mean_difference)
+```
+
+Report the range. Explain why using only the inverse logit of the location would give the wrong squared error prediction in general. The posterior predictive checks condition on the observed participants, predicates, and contents; they are not a test of prediction for new participants. Contrast that target with the complete-participant folds in Exercise 3, and describe how a new predicate would require integrating a new intercept and condition slope together.
+
+::: {.callout-note title="Your result"}
+Replace this sentence with your answers to Exercise 6.
+:::
+
+Submit the completed notebook with all six result blocks, equations, and visible code output. Confirm that its cells run in order from a fresh R session; keep fitted model files out of the submission.
