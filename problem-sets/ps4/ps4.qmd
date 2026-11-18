@@ -18,6 +18,8 @@ All six exercises are required. The points sum to 100. Complete the equations in
 [Download Problem Set 4](../../downloads/ps4-assignment.zip){download="ps4-assignment.zip"}. Extract the package, open [`ps4.ipynb`](ps4.ipynb), and select the R kernel. The [README](README.md) describes installation and runtime. The package contains [binary judgments](data/inference-choices.csv), [slider ratings](data/projection-ratings.csv), [complement contents](data/contents.csv), and [data documentation](data/README.md).
 :::
 
+For each derivation, keep the displayed starting equations and fill the indicated steps. Show the substitution or cancellation requested at each step; you do not need to find a different proof. The numerical examples check your algebra before you apply it to the data.
+
 Read [structured data](../../regression-models/structured-data.qmd), [random effects](../../regression-models/random-effects.qmd), and [generalized linear mixed models](../../regression-models/generalized-linear-mixed-models.qmd). The `ordbetareg` package defines an ordered beta response family for `brms`; it uses Stan for sampling. It does not replace the mixed model formula.
 
 ```{r}
@@ -101,17 +103,31 @@ Write $F(z)=1/(1+e^{-z})$ for the inverse logit. Set $\beta_{\textit{think}}=0$ 
 
 ### 2.1 Derive a conditional contrast
 
-Compare *know* with *think* at the same participant and content effects. Subtract their linear predictors, then exponentiate to obtain the conditional odds ratio.
+Keep the participant effect $a$ and content effect $\gamma_c$ the same in both predictions. Here a conditional comparison means that these effects are held fixed. Complete the following steps in **Your LaTeX**.
 
-**Your LaTeX**
+1. Write the two log odds, using the reference constraint $\beta_{\textit{think}}=0$:
 
-$$
-\log\frac{p_{\textit{know}}/(1-p_{\textit{know}})}
-{p_{\textit{think}}/(1-p_{\textit{think}})}=\text{enter know contrast},
-$$
-$$
-\operatorname{OR}_{\textit{know}/\textit{think}}=\text{enter know odds ratio}.
-$$
+   $$
+   \begin{aligned}
+   \operatorname{logit}(p_{\textit{know}})&=\alpha+\beta_{\textit{know}}+\gamma_c+a,\\
+   \operatorname{logit}(p_{\textit{think}})&=\alpha+0+\gamma_c+a.
+   \end{aligned}
+   $$
+
+2. Subtract the second line from the first. Show which terms cancel:
+
+   $$
+   (\alpha+\beta_{\textit{know}}+\gamma_c+a)
+   -(\alpha+\gamma_c+a)=\text{enter know contrast}.
+   $$
+
+3. Use $\operatorname{logit}(p)=\log[p/(1-p)]$ and $\log u-\log v=\log(u/v)$. Thus the difference in step 2 is the log of the odds ratio. Apply $\exp$ to both sides:
+
+   $$
+   \operatorname{OR}_{\textit{know}/\textit{think}}=\text{enter know odds ratio}.
+   $$
+
+As an algebra check, a coefficient of $\log 2$ must give an odds ratio of 2. It does not double the response probability: starting from probability $1/2$, doubling the odds gives probability $2/3$.
 
 Explain why this is not a difference in response probabilities. The model treats these predicates and contents as fixed contrasts because the prediction target concerns the recorded materials. Explain why adding a random intercept for predicate alongside a separate fixed coefficient for every predicate would not identify an additional source of predicate variation.
 
@@ -142,14 +158,32 @@ Report the coefficient, odds ratio, approximate Wald confidence interval for the
 
 Test $H_0:\beta_{\textit{know}}=0$. Under this null, *know* and *think* share a fixed coefficient; every other predicate keeps its own coefficient. Combine just those two labels to impose this restriction. Retain all content contrasts and the participant random intercept, and reestimate its variance in each fit.
 
-Let $\widehat\ell_0$ and $\widehat\ell_1$ be the maximized approximate log likelihoods. Following the [likelihood ratio test notes](../../model-criticism-and-prediction/likelihood-ratio-tests.qmd), take $-2$ times the log ratio of the maximized likelihoods. The alternative adds one fixed coefficient, and zero is an interior value of that coefficient.
+Let $\widehat L_0,\widehat L_1$ be the maximized likelihoods under the null and alternative, and write $\widehat\ell_j=\log\widehat L_j$. Both likelihoods integrate over participant effects; they do not substitute the fitted participant modes into a Bernoulli likelihood. Here `glmer` approximates those integrals by quadrature.
 
-**Your LaTeX**
+Follow the [likelihood ratio test notes](../../model-criticism-and-prediction/likelihood-ratio-tests.qmd). Complete steps 2–4 in **Your LaTeX**.
 
-$$
-D=\text{enter likelihood statistic},\qquad
-D\overset{H_0}{\approx}\chi^2_{\text{enter degrees of freedom}}.
-$$
+1. Form the ratio $\Lambda=\widehat L_0/\widehat L_1$. The null parameter space is contained in the alternative parameter space, so $0<\Lambda\leq1$.
+2. Take logs. Use $\log(u/v)=\log u-\log v$:
+
+   $$
+   \log\Lambda=\text{enter log likelihood ratio}.
+   $$
+
+3. Multiply by $-2$ and reverse the subtraction so the larger log likelihood comes first:
+
+   $$
+   D=-2\log\Lambda=\text{enter likelihood statistic}.
+   $$
+
+   Check the sign: if the two fits have log likelihoods $-105$ and $-100$, respectively, $D$ should be 10, not $-10$.
+
+4. Count the free parameters that differ. The alternative has five predicate contrasts for six labels; the null has four for five labels. Both have an intercept, 19 content contrasts, and one participant variance. Thus the difference in dimension is $(1+5+19+1)-(1+4+19+1)$. Complete
+
+   $$
+   D\overset{H_0}{\approx}\chi^2_{\text{enter degrees of freedom}}.
+   $$
+
+5. The p value is the probability of a value at least as large as the observed $D$ under this reference distribution. Translate that upper tail into `pchisq(..., lower.tail = FALSE)` below. The null fixes a coefficient at an interior value, not a variance at its boundary; a test of zero participant variance would require a different calibration.
 
 ```{r}
 choice$predicate_null <- factor(ifelse(choice$predicate %in% c("know", "think"),
@@ -179,13 +213,37 @@ $$
 -\log(1+e^{\eta_i^{(-s)}+a})\right]-\frac{a^2}{2\tau_s^2}.
 $$
 
-Differentiate with respect to $a$, using the [logistic score](../../regression-models/logistic-regression.qmd). Complete the equation that sets the derivative to zero:
+For this derivative, $a$ is the only variable. The observations $y_i$, predictors $\eta_i^{(-s)}$, and positive variance $\tau_s^2$ are constants. Let $z_i=\eta_i^{(-s)}+a$, so $dz_i/da=1$. Use the [logistic score notes](../../regression-models/logistic-regression.qmd) and complete these steps in **Your LaTeX**.
 
-**Your LaTeX**
+1. Differentiate one linear term: $d(y_i z_i)/da=y_i$.
+2. Differentiate one log term by the chain rule. The derivative of $\log u$ is $u'/u$, and the derivative of $e^{z_i}$ is $e^{z_i}$:
 
-$$
-0=\text{enter conditional score}.
-$$
+   $$
+   \frac{d}{da}\log(1+e^{z_i})
+   =\frac{e^{z_i}}{1+e^{z_i}}=\text{enter inverse logit derivative term}.
+   $$
+
+3. Differentiate the Gaussian term, keeping its minus sign:
+
+   $$
+   \frac{d}{da}\left(-\frac{a^2}{2\tau_s^2}\right)
+   =\text{enter Gaussian penalty derivative}.
+   $$
+
+4. Add these derivatives over the participant's judgments. Set the sum to zero to obtain the equation solved by `uniroot()`:
+
+   $$
+   0=\ell_s'(a)=\text{enter conditional score}.
+   $$
+
+5. Check that a root gives a maximum. Use $F'(z)=F(z)[1-F(z)]$ and write $p_i(a)=F(\eta_i^{(-s)}+a)$:
+
+   $$
+   \ell_s''(a)=-\sum_{i:s[i]=s}p_i(a)[1-p_i(a)]
+   -\text{enter penalty curvature}.
+   $$
+
+   Explain why this derivative is strictly negative for finite positive $\tau_s^2$. For all-yes responses, the likelihood part of the score is nonnegative and bounded by the participant's number of judgments. Compare it with $-a/\tau_s^2$ as $a\to\infty$ and $a\to-\infty$ to show that the total score crosses zero.
 
 The Gaussian penalty contributes a term that pulls the conditional mode toward zero. Unlike the Gaussian calculation in the notes on [partial pooling](../../regression-models/fixed-and-random-effects.qmd), this equation generally requires a numerical solution. Explain why it still gives a finite mode when a participant gives only yes responses, provided $\tau_s>0$ is finite.
 
@@ -212,13 +270,26 @@ pooling |> filter(yes_rate %in% c(0, 1))
 
 Read [grouped cross-validation](../../model-criticism-and-prediction/grouped-cross-validation.qmd) and [prediction targets](../../model-criticism-and-prediction/prediction-targets.qmd). Compare the mixed model with a logistic regression using the same fixed predicate and content contrasts. Each fold excludes all judgments from its test participants. The target is a new participant judging the recorded predicates and contents.
 
-For the mixed model, integrate over an unknown participant intercept. The required marginal probability is
+For a participant absent from training, there is no fitted individual offset to insert. Construct the marginal prediction in three steps.
 
-$$
-p_{\mathrm{new}}(\mathbf x)=\int F(\mathbf x^\top\boldsymbol\beta+a)\,\varphi(a;0,\tau_s^2)\,da,
-$$
+1. Conditional on an intercept $a$, the yes probability is $F(\mathbf x^\top\boldsymbol\beta+a)$. The vector $\mathbf x$ contains the fixed predicate and content contrasts.
+2. Average that conditional probability over $a\sim\mathcal N(0,\tau_s^2)$:
 
-where $\varphi$ is the normal density and $\mathbf x$ includes the fixed predicate and content contrasts. Setting the intercept to zero generally gives a different probability because the inverse logit is nonlinear. The code approximates the one-dimensional Gaussian integral with equally weighted normal quantiles; it retains the fixed content contrasts estimated from training.
+   $$
+   p_{\mathrm{new}}(\mathbf x)=
+   \int F(\mathbf x^\top\boldsymbol\beta+a)\,
+   \varphi(a;0,\tau_s^2)\,da.
+   $$
+
+   Here $\varphi$ is the normal density, not the inverse logit $F$.
+3. Write $a=\tau_s z$, where $z$ has a standard normal distribution. Approximate the average by evaluating $F$ at 2,000 equally spaced normal quantiles:
+
+   $$
+   p_{\mathrm{new}}(\mathbf x)\approx\frac1{2000}
+   \sum_{g=1}^{2000}F(\mathbf x^\top\boldsymbol\beta+\tau_s z_g).
+   $$
+
+Match the fixed predictor, SD, and $z_g$ to `e`, `tau`, and `normal_grid` in the code. Averaging the probabilities is generally different from applying $F$ to the average intercept, zero, because $F$ is nonlinear. The fitted coefficients and SD are treated as estimates here; this calculation integrates a new participant effect, not uncertainty in all model parameters.
 
 ```{r}
 set.seed(485)
@@ -281,21 +352,41 @@ $$
 +(A-1)\sum_i\log y_i+(B-1)\sum_i\log(1-y_i).
 $$
 
-Here $\mathrm B$ is the beta function, which normalizes the density. A common workaround replaces each zero by $\delta$ and each one by $1-\delta$. Let $n_0$ and $n_1$ be their observed counts. Write the contribution of these replaced endpoint rows as
+Here $\mathrm B$ is the beta function, which normalizes the density. A common workaround replaces each zero by $\delta$ and each one by $1-\delta$, where $0<\delta<1/2$. Let $n_0$ and $n_1$ be their observed counts. Derive the effect of this replacement in **Your LaTeX**.
 
-$$
--n_0\log\mathrm B(A,B)-n_1\log\mathrm B(A,B)
-+K\log\delta+J\log(1-\delta).
-$$
+1. Start from a single row's log density:
 
-Collect coefficients to complete:
+   $$
+   g(y)=-\log\mathrm B(A,B)+(A-1)\log y+(B-1)\log(1-y).
+   $$
 
-**Your LaTeX**
+2. Substitute $y=\delta$ for an original zero. Substitute $y=1-\delta$ for an original one. In the second substitution, simplify $1-y=1-(1-\delta)=\delta$:
 
-$$
-K=\text{enter log delta coefficient},\qquad
-J=\text{enter log one minus delta coefficient}.
-$$
+   $$
+   \begin{aligned}
+   g(\delta)&=-\log\mathrm B(A,B)
+   +(A-1)\log\delta+(B-1)\log(1-\delta),\\
+   g(1-\delta)&=-\log\mathrm B(A,B)
+   +(A-1)\log(1-\delta)+(B-1)\log\delta.
+   \end{aligned}
+   $$
+
+3. Multiply the first line by $n_0$ and the second by $n_1$. Add them and collect the terms multiplying each log:
+
+   $$
+   \begin{aligned}
+   n_0g(\delta)+n_1g(1-\delta)
+   &=-(n_0+n_1)\log\mathrm B(A,B)\\
+   &\quad+K\log\delta+J\log(1-\delta),
+   \end{aligned}
+   $$
+
+   $$
+   K=\text{enter log delta coefficient},\qquad
+   J=\text{enter log one minus delta coefficient}.
+   $$
+
+4. Check your coefficients in two cases. For $A=B=2$, both should equal $n_0+n_1$. For $A=B=1/2$, both should equal $-(n_0+n_1)/2$. Which choice makes the endpoint contribution increase as $\delta$ approaches zero?
 
 Since $\log\delta\to-\infty$ as $\delta\to0$, the choice of nudge can dominate the endpoint contribution. Its direction depends on the shape parameters; it need not always lower the log likelihood. Grove and White's concern is that an arbitrary response transformation can change likelihood-based model comparisons, including WAIC. It is not merely a numerical error that a smaller nudge repairs.
 
@@ -332,14 +423,31 @@ $$
 p_{mi}\operatorname{Beta}(y_i\mid\mu_i\phi,(1-\mu_i)\phi).
 $$
 
-Verify that the three region probabilities sum to one. Apply the law of total expectation to derive the mean of the full response:
+Use the [law of total expectation](../../random-variables-and-distributions/conditional-expectation.qmd) to average over the three regions. Complete these steps in **Your LaTeX**.
 
-**Your LaTeX**
+1. Abbreviate $F(\kappa_0-\eta_i)$ by $F_0$ and $F(\kappa_1-\eta_i)$ by $F_1$. Add the masses:
 
-$$
-\mathbb{E}[Y_i\mid\eta_i,\phi,\boldsymbol\kappa]
-=\text{enter ordered beta mean}.
-$$
+   $$
+   p_{0i}+p_{mi}+p_{1i}=F_0+(F_1-F_0)+(1-F_1)=1.
+   $$
+
+2. List the conditional means. In the zero region, $Y_i$ is exactly 0; in the one region, it is exactly 1. In the interior region, the beta mean is
+
+   $$
+   \frac{\mu_i\phi}{\mu_i\phi+(1-\mu_i)\phi}=\mu_i.
+   $$
+
+3. Multiply each conditional mean by the probability of its region. Simplify:
+
+   $$
+   \begin{aligned}
+   \mathbb{E}[Y_i\mid\eta_i,\phi,\boldsymbol\kappa]
+   &=p_{0i}\,0+p_{mi}\,\mu_i+p_{1i}\,1\\
+   &=\text{enter ordered beta mean}.
+   \end{aligned}
+   $$
+
+4. Check with $p_{0i}=.2$, $p_{mi}=.5$, $p_{1i}=.3$, and $\mu_i=.4$. The full mean should be .5. State why the precision cancels from this conditional mean even though it affects the interior response distribution.
 
 Explain why $\mu_i$ is the interior mean, rather than generally the mean of the full slider response. Ordered beta regression preserves endpoints but imposes a shared location: the same $\eta_i$ controls endpoint probabilities and the interior beta mean. It does not establish that endpoint selections reflect discrete semantic knowledge, and endpoint masses alone do not decide between discrete and gradient theories of projection.
 
@@ -369,15 +477,32 @@ $$
 
 $H_i$ is the centered condition indicator. Participants, predicates, and contents are crossed. The condition slope varies across predicates. Unlike Exercise 2, predicates are modeled as deviations from a shared distribution, allowing partial pooling of their condition contrasts. Participant and content condition slopes are also supported by the design but omitted here; sensitivity to the condition may thus remain incompletely modeled.
 
-Read [random slopes](../../regression-models/random-slopes.qmd) and [random effect correlations](../../regression-models/random-effect-correlations.qmd). For two judgments sharing a predicate, isolate the covariance contributed by that predicate to their **location predictors**:
+Read [random slopes](../../regression-models/random-slopes.qmd) and [random effect correlations](../../regression-models/random-effect-correlations.qmd). Isolate the covariance contributed by a shared predicate to two **location predictors**. Complete steps 2–4 in **Your LaTeX**.
 
-**Your LaTeX**
+1. Keep only the predicate terms: $B_i=b_{0v}+H_i b_{1v}$ and $B_j=b_{0v}+H_j b_{1v}$. Treat $H_i,H_j$ as fixed numbers. Both effects have mean zero, so $\operatorname{Cov}(B_i,B_j)=\mathbb{E}[B_iB_j]$.
+2. Multiply the two sums before taking expectations:
 
-$$
-\operatorname{Cov}_v(\eta_i,\eta_j)=\text{enter predicate covariance}.
-$$
+   $$
+   B_iB_j=b_{0v}^2+(H_i+H_j)b_{0v}b_{1v}
+   +\text{enter slope product}.
+   $$
 
-Explain why this is not the covariance of the observed slider responses. The response link and ordered beta distribution intervene between location and observation.
+3. Read the three second moments from the covariance matrix: $\mathbb{E}[b_{0v}^2]=\tau_0^2$, $\mathbb{E}[b_{1v}^2]=\tau_1^2$, and $\mathbb{E}[b_{0v}b_{1v}]=\rho\tau_0\tau_1$. Substitute them into step 2:
+
+   $$
+   \operatorname{Cov}_v(\eta_i,\eta_j)=\text{enter predicate covariance}.
+   $$
+
+4. For two judgments in the low condition, substitute $H_i=H_j=-1/2$. For one low and one high judgment, substitute $H_i=-1/2,H_j=1/2$. Complete
+
+   $$
+   \begin{aligned}
+   \operatorname{Cov}_v(\eta_L,\eta_L')&=\text{enter low condition covariance},\\
+   \operatorname{Cov}_v(\eta_L,\eta_H)&=\text{enter cross condition covariance}.
+   \end{aligned}
+   $$
+
+Explain why judgments sharing only a predicate can have different covariances depending on condition. Independent effects from different predicates contribute zero covariance; shared participant or content effects would contribute additional terms. This calculation concerns the location predictors. The response link and ordered beta distribution intervene between those predictors and the observed slider responses.
 
 ### 5.2 Fit through brms
 
