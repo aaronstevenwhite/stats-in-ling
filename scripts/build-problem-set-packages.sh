@@ -12,12 +12,12 @@ trap cleanup EXIT
 
 # With no arguments, rebuild every supported package. Pass assignment names to rebuild selected packages.
 if [[ $# -eq 0 ]]; then
-  set -- ps1 ps2 ps3 ps4
+  set -- ps1 ps2 ps3 ps4 ps5
 fi
 # Validate all selections before writing any outputs.
 for problem_set in "$@"; do
   case "${problem_set}" in
-    ps1|ps2|ps3|ps4) ;;
+    ps1|ps2|ps3|ps4|ps5) ;;
     *) printf 'Unknown problem set: %s\n' "${problem_set}" >&2; exit 1 ;;
   esac
 done
@@ -78,6 +78,14 @@ for problem_set in "$@"; do
     ps4)
       cp "${source_directory}/scripts/prepare_data.R" "${source_directory}/scripts/helpers.R" "${package_directory}/scripts/"
       for data_file in inference-choices.csv projection-ratings.csv contents.csv README.md provenance.json; do
+        cp "${source_directory}/data/${data_file}" "${package_directory}/data/"
+      done
+      ;;
+    ps5)
+      cp "${source_directory}/scripts/helpers.R" "${source_directory}/scripts/prepare_data.R" "${package_directory}/scripts/"
+      mkdir -p "${package_directory}/models"
+      cp "${source_directory}/models/fixed-telicity.stan" "${source_directory}/models/varying-telicity.stan" "${package_directory}/models/"
+      for data_file in aspect-responses.csv aspect-sentences.csv README.md provenance.json CC-BY-SA-4.0.txt; do
         cp "${source_directory}/data/${data_file}" "${package_directory}/data/"
       done
       ;;

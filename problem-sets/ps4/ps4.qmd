@@ -133,6 +133,8 @@ Explain why this is not a difference in response probabilities. The model treats
 
 ### 2.2 Fit with lme4
 
+Read the formula below from left to right. Each row contributes one `yes` response. The terms `predicate + content` give the log odds for that row’s predicate and content when the participant offset is zero. In `(1 | participant)`, the `1` gives each participant an intercept adjustment. All judgments from the same participant reuse that adjustment. A participant with an adjustment of $\log 2$, for instance, has twice the odds of a yes response at each predicate and content. The SD in `VarCorr()` describes how much these adjustments vary across participants on the log odds scale.
+
 The [glmer documentation](https://lme4.github.io/lme4/reference/glmer.html) describes maximum likelihood estimation by integrating over random effects. With one scalar intercept per participant, `nAGQ = 9` uses nine adaptive quadrature points to approximate each Gaussian integral. Quadrature approximates an integral with a weighted sum of function values. The optimizer estimates the fixed coefficients and participant variance jointly.
 
 ```{r}
@@ -149,7 +151,9 @@ isSingular(choice_fit)
 choice_fit@optinfo$conv
 stopifnot(is.null(choice_fit@optinfo$conv$lme4$messages))
 know_interval <- confint(choice_fit, parm = "predicateknow", method = "Wald")
-c(estimate = lme4::fixef(choice_fit)["predicateknow"], exp(know_interval))
+know_log_odds_ratio <- unname(lme4::fixef(choice_fit)["predicateknow"])
+c(log_odds_ratio = know_log_odds_ratio, odds_ratio = exp(know_log_odds_ratio),
+  lower_OR = exp(know_interval[1]), upper_OR = exp(know_interval[2]))
 ```
 
 Report the coefficient, odds ratio, approximate Wald confidence interval for the odds ratio, and participant intercept SD. This [Wald interval](../../statistical-inference/confidence-intervals.qmd) uses the coefficient estimate plus or minus 1.96 estimated standard errors, then exponentiates both limits. A confidence interval describes a procedure's repeated sampling behavior under its assumptions; it is not a posterior interval. Successful optimization does not verify the dependence assumptions or representative sampling.
@@ -244,6 +248,8 @@ For this derivative, $a$ is the only variable. The observations $y_i$, predictor
    $$
 
    Explain why this derivative is strictly negative for finite positive $\tau_s^2$. For all-yes responses, the likelihood part of the score is nonnegative and bounded by the participant's number of judgments. Compare it with $-a/\tau_s^2$ as $a\to\infty$ and $a\to-\infty$ to show that the total score crosses zero.
+
+To see why the number of judgments matters, imagine two participants with identical predictor values and the same fraction of yes responses. One contributes twice as many judgments as the other. At the same candidate offset $a$, doubling the observations doubles the sum of response residuals in step 4. The term from the Gaussian density occurs once per participant in both cases. Which participant’s responses thus carry more weight relative to the pull toward zero?
 
 The Gaussian penalty contributes a term that pulls the conditional mode toward zero. Unlike the Gaussian calculation in the notes on [partial pooling](../../regression-models/fixed-and-random-effects.qmd), this equation generally requires a numerical solution. Explain why it still gives a finite mode when a participant gives only yes responses, provided $\tau_s>0$ is finite.
 
@@ -417,6 +423,8 @@ p_{mi}&=F(\kappa_1-\eta_i)-F(\kappa_0-\eta_i).
 \end{aligned}
 $$
 
+Follow one recorded response through the model. Participant `p001` gave a rating of .61 for `establish` with content `c03` in the high condition. First the model assigns probabilities to three possible regions of the slider. As .61 is in the middle region, its likelihood contribution uses both the probability of reaching that region and the beta density at .61 within it. Had the same row recorded 1, its contribution would instead have been $p_{1i}$. This is why predicting endpoint use and predicting the typical interior rating require different calculations.
+
 A zero contributes mass $p_{0i}$, a one contributes mass $p_{1i}$, and an interior observation contributes density
 
 $$
@@ -476,6 +484,8 @@ $$
 $$
 
 $H_i$ is the centered condition indicator. Participants, predicates, and contents are crossed. The condition slope varies across predicates. Unlike Exercise 2, predicates are modeled as deviations from a shared distribution, allowing partial pooling of their condition contrasts. Participant and content condition slopes are also supported by the design but omitted here; sensitivity to the condition may thus remain incompletely modeled.
+
+Return to the .61 rating. In the formula below, `(1 | participant)` adds the offset for `p001`, and `(1 | content)` adds the offset for `c03`. The term `(1 + high_c | predicate)` gives `establish` two deviations, one for its midpoint location and one for its response to condition. For this high-condition trial its predicate contribution is $b_{0v}+.5b_{1v}$. For a low-condition trial with the same participant, content, and predicate, substitute $-.5$ for $+.5$. Subtract the two full location predictors. Which terms cancel, and which two coefficients determine the high minus low contrast for `establish`?
 
 Read [random slopes](../../regression-models/random-slopes.qmd) and [random effect correlations](../../regression-models/random-effect-correlations.qmd). Isolate the covariance contributed by a shared predicate to two **location predictors**. Complete steps 2–4 in **Your LaTeX**.
 
@@ -582,6 +592,10 @@ checks |> mutate(outside = observed < lower | observed > upper) |>
 ```
 
 The helper in [`scripts/helpers.R`](scripts/helpers.R) records which region generated each response. This keeps floating point rounding of an interior beta draw from being counted as endpoint mass; it changes no observed response.
+
+Read one point in the mean panel first. Its horizontal coordinate is the observed cell mean. Its vertical coordinate is the median cell mean across replicated datasets. A point below the diagonal means that the model usually predicts a lower mean than the one observed. The vertical line shows how much that statistic varies across replications. In the zero and one panels, read the axes the same way, using the fraction of responses at the corresponding endpoint.
+
+To rank the cells, compute `observed - median` for each row of `checks` and sort by the absolute value of that difference. Keep the sign when you report the result. Compare `observed` with `lower` and `upper` to see whether it falls within the replicated range.
 
 Identify the two largest discrepancies, describe their direction, and assess whether they are substantial relative to the replicated ranges. These are pointwise ranges across many related checks, not a simultaneous acceptance test. A discrepancy may reflect an inadequate mean structure, missing dependence, or the shared location restriction; it does not uniquely diagnose a cause.
 
